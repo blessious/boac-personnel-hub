@@ -1,4 +1,4 @@
-import { Bell, Moon, Sun, Camera, Upload, X, LogOut, User as UserIcon } from "lucide-react";
+import { Bell, Moon, Sun, Camera, Upload, X, LogOut, User as UserIcon, Menu, LayoutDashboard, Users, FileText, CalendarDays, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -9,13 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, Link, useRouterState } from "@tanstack/react-router";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 
 export function AppHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   const { user, logout, updateProfile } = useAuth();
-  const { theme, toggleTheme } = useSettings();
+  const { theme, toggleTheme, agency } = useSettings();
   const dark = theme === "dark";
   const navigate = useNavigate();
+  const path = useRouterState({ select: (s) => s.location.pathname });
 
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [formData, setFormData] = useState({ name: "", photoUrl: "" });
@@ -49,12 +52,78 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
     navigate({ to: "/login" });
   };
 
+  const isActive = (to: string, exact?: boolean) => exact ? path === to : path === to || path.startsWith(to + "/");
+
+  const NAV: { to: "/" | "/employees" | "/leave" | "/reports" | "/settings"; label: string; icon: typeof LayoutDashboard; exact?: boolean }[] = [
+    { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
+    { to: "/employees", label: "Employees", icon: Users },
+    { to: "/leave", label: "Leave Management", icon: CalendarDays },
+    { to: "/reports", label: "Reports", icon: FileText },
+    { to: "/settings", label: "Settings", icon: SettingsIcon },
+  ];
+
   return (
     <>
-      <header className="flex items-center justify-between gap-4 h-16 px-6 border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-20">
-        <div className="min-w-0">
-          <h1 className="text-[18px] font-bold tracking-tight text-foreground/90">{title}</h1>
-          {subtitle && <p className="text-[11px] text-muted-foreground/80 font-medium">{subtitle}</p>}
+      <header className="flex items-center justify-between gap-4 h-16 px-4 md:px-6 border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-20">
+        <div className="flex items-center gap-3 min-w-0">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden shrink-0 h-9 w-9">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[280px] p-0 flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+              <div className="flex items-center gap-2 h-16 border-b border-sidebar-border px-4 shrink-0">
+                <div className={cn(
+                  "rounded-lg grid place-items-center shrink-0 overflow-hidden h-9 w-9",
+                  agency.logoUrl ? "" : "bg-[var(--navy)] text-[var(--navy-foreground)] shadow-sm"
+                )}>
+                  {agency.logoUrl ? (
+                    <img src={agency.logoUrl} alt="Logo" className="h-full w-full object-contain" />
+                  ) : (
+                    <ShieldCheck className="h-5 w-5" />
+                  )}
+                </div>
+                <div className="leading-tight overflow-hidden flex-1">
+                  <div className="font-semibold text-sm truncate">{agency.name} PMIS</div>
+                  <div className="text-[11px] text-muted-foreground truncate">{agency.tagline}</div>
+                </div>
+              </div>
+              <div className="px-4 pt-4 pb-2 text-[10px] tracking-widest uppercase text-muted-foreground">Menu</div>
+              <nav className="flex-1 overflow-y-auto px-4 space-y-1.5 py-2">
+                {NAV.map((item) => {
+                  const active = isActive(item.to, item.exact);
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className={cn(
+                        "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition-all duration-200",
+                        active ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(var(--primary),0.1)]" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      )}
+                    >
+                      <Icon className={cn("h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
+              <div className="p-4 border-t border-sidebar-border/50">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-200 group"
+                >
+                  <LogOut className="h-[18px] w-[18px] transition-transform duration-200 group-hover:-translate-x-1" />
+                  <span>Log Out</span>
+                </button>
+              </div>
+            </SheetContent>
+          </Sheet>
+          <div className="min-w-0">
+            <h1 className="text-[18px] font-bold tracking-tight text-foreground/90 truncate">{title}</h1>
+            {subtitle && <p className="text-[11px] text-muted-foreground/80 font-medium truncate hidden sm:block">{subtitle}</p>}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center bg-muted/30 p-1 rounded-full border border-border/40 mr-2">

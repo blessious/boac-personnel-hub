@@ -114,9 +114,9 @@ function LeavePage() {
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3 font-medium">Employee</th>
                 <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Period</th>
-                <th className="px-4 py-3 font-medium">Amount</th>
-                <th className="px-4 py-3 font-medium">Date Recorded</th>
+                <th className="px-4 py-3 font-medium hidden md:table-cell">Period</th>
+                <th className="px-4 py-3 font-medium hidden sm:table-cell">Amount</th>
+                <th className="px-4 py-3 font-medium hidden lg:table-cell">Date Recorded</th>
               </tr>
             </thead>
             <tbody>
@@ -135,7 +135,8 @@ function LeavePage() {
                     <td className="px-4 py-3">{rec.type}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">{rec.period}</span>
+                        <span className="text-muted-foreground hidden md:inline">{rec.period}</span>
+                        <span className="text-muted-foreground inline md:hidden text-xs">{rec.period.split(" to ")[0]}</span>
                         {active && (
                           <Badge className="bg-primary/10 text-primary border-primary/20 shadow-sm text-[10px] h-5 px-1.5">
                             Active
@@ -143,8 +144,8 @@ function LeavePage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">{(rec.type === "Sick Leave" ? rec.slAbsWP : rec.vlAbsWP) || 0}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{rec.dateAction}</td>
+                    <td className="px-4 py-3 hidden sm:table-cell">{(rec.type === "Sick Leave" ? rec.slAbsWP : rec.vlAbsWP) || 0}</td>
+                    <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">{rec.dateAction}</td>
                   </tr>
                 );
               })}

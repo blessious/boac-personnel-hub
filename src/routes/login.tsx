@@ -70,8 +70,8 @@ function LoginPage() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_20%_20%,rgba(30,58,95,0.09),transparent_45%),radial-gradient(circle_at_80%_15%,rgba(99,102,241,0.08),transparent_40%),linear-gradient(to_bottom,rgba(255,255,255,0.96),rgba(245,247,251,0.96))] px-4 py-10">
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-md items-center">
-        <div className="w-full rounded-2xl border border-border bg-card p-6 shadow-sm">
+      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-[380px] items-center">
+        <div className="w-full rounded-2xl border border-border bg-card p-8 shadow-sm">
           <div className="flex flex-col items-center text-center">
             <div className={cn(
               "grid h-20 w-20 place-items-center rounded-full overflow-hidden",
@@ -83,8 +83,9 @@ function LoginPage() {
                 <ShieldCheck className="h-8 w-8 text-[var(--navy)]" />
               )}
             </div>
-            <h1 className="mt-6 text-2xl font-semibold tracking-tight">{agency.name} PMIS Login</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <h1 className="mt-6 text-2xl font-bold tracking-tight">{agency.name}</h1>
+            <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-primary mt-1.5">PMIS Login</p>
+            <p className="mt-4 text-xs text-muted-foreground/60">
               Personnel Management Information System
             </p>
           </div>
@@ -129,11 +130,6 @@ function LoginPage() {
               Login
             </Button>
           </form>
-
-          <div className="mt-6 rounded-lg border border-border bg-muted/40 p-4 text-xs text-muted-foreground">
-            <div className="font-medium text-foreground mb-1">Demo accounts</div>
-            <div>admin / admin · HR Officer: hr / hr · Viewer: viewer / viewer</div>
-          </div>
 
           <div className="mt-4 text-center text-[11px] text-muted-foreground uppercase tracking-widest font-medium">
             © {new Date().getFullYear()} HRPMIS

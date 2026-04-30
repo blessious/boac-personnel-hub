@@ -162,17 +162,16 @@ function EmployeesPage() {
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3 font-medium">ID</th>
+                <th className="px-4 py-3 font-medium hidden sm:table-cell">ID</th>
                 <th className="px-4 py-3 font-medium">Full Name</th>
-                <th className="px-4 py-3 font-medium">Department</th>
-                <th className="px-4 py-3 font-medium">Position</th>
+                <th className="px-4 py-3 font-medium hidden lg:table-cell">Department</th>
+                <th className="px-4 py-3 font-medium hidden md:table-cell">Position</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Type</th>
+                <th className="px-4 py-3 font-medium hidden xl:table-cell">Type</th>
                 <th className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
             </thead>
@@ -186,7 +185,7 @@ function EmployeesPage() {
                   )}
                   onClick={() => navigate({ to: "/employees/$id", params: { id: e.id } })}
                 >
-                  <td className="px-4 py-3 text-muted-foreground font-mono text-xs">
+                  <td className="px-4 py-3 text-muted-foreground font-mono text-xs hidden sm:table-cell">
                     <Link
                       to="/employees/$id"
                       params={{ id: e.id }}
@@ -205,19 +204,19 @@ function EmployeesPage() {
                       </Avatar>
                       <div>
                         <div className="font-medium">{e.lastname}, {e.firstname} {e.middlename?.[0]}.</div>
-                        <div className="text-xs text-muted-foreground">{e.email}</div>
+                        <div className="text-xs text-muted-foreground hidden sm:block">{e.email}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{e.department}</td>
-                  <td className="px-4 py-3">{e.position}</td>
+                  <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">{e.department}</td>
+                  <td className="px-4 py-3 hidden md:table-cell">{e.position}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className={cn("h-2 w-2 rounded-full shrink-0", STATUS_DOT[e.status])} />
                       <span className="text-[13px] font-medium text-foreground/80">{e.status}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{e.statusClass}</td>
+                  <td className="px-4 py-3 text-muted-foreground hidden xl:table-cell">{e.statusClass}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex items-center gap-1" onClick={(ev) => ev.stopPropagation()}>
                       <Link

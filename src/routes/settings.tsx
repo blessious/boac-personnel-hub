@@ -37,13 +37,15 @@ function SettingsPage() {
   return (
     <AppShell title="Settings" subtitle="Manage reference data, salary tables, and accounts">
       <Tabs defaultValue="agency">
-        <TabsList className="bg-card border border-border">
-          <TabsTrigger value="agency">Agency Profile</TabsTrigger>
-          <TabsTrigger value="departments">Departments</TabsTrigger>
-          <TabsTrigger value="positions">Positions</TabsTrigger>
-          <TabsTrigger value="salary">Salary Grades</TabsTrigger>
-          <TabsTrigger value="users" disabled={!isAdmin}>Users</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto no-scrollbar">
+          <TabsList className="bg-card border border-border w-max min-w-full">
+            <TabsTrigger value="agency">Agency Profile</TabsTrigger>
+            <TabsTrigger value="departments">Departments</TabsTrigger>
+            <TabsTrigger value="positions">Positions</TabsTrigger>
+            <TabsTrigger value="salary">Salary Grades</TabsTrigger>
+            <TabsTrigger value="users" disabled={!isAdmin}>Users</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="agency" className="mt-4">
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
