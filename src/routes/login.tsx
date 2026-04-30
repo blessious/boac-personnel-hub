@@ -129,7 +129,7 @@ function LoginPage() {
               disabled={submitting}
             >
               {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Login to System
+              Login
             </Button>
           </form>
 
