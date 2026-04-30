@@ -5,7 +5,7 @@ export interface User { username: string; name: string; role: Role }
 
 interface AuthCtx {
   user: User | null;
-  login: (u: string, p: string) => Promise<User>;
+  login: (u: string, p: string, expectedRole?: Role) => Promise<User>;
   logout: () => void;
   can: (action: "edit" | "delete" | "manageUsers") => boolean;
 }
@@ -18,12 +18,38 @@ const ACCOUNTS: Record<string, { password: string; user: User }> = {
   viewer: { password: "viewer", user: { username: "viewer", name: "Pedro Cruz", role: "Viewer" } },
 };
 
+const AUTH_COOKIE = "pmis_jwt";
+
+function makeMockJwt(user: User) {
+  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payload = btoa(JSON.stringify({ sub: user.username, role: user.role, iat: Date.now() }));
+  return `${header}.${payload}.mock-signature`;
+}
+
+function setAuthCookie(token: string) {
+  const expires = new Date(Date.now() + 1000 * 60 * 60 * 8).toUTCString();
+  document.cookie = `${AUTH_COOKIE}=${token}; expires=${expires}; path=/; SameSite=Lax`;
+}
+
+function clearAuthCookie() {
+  document.cookie = `${AUTH_COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+}
+
+function hasAuthCookie() {
+  return document.cookie.split(";").some((c) => c.trim().startsWith(`${AUTH_COOKIE}=`));
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!hasAuthCookie()) {
+      window.localStorage.removeItem("pmis-user");
+      setReady(true);
+      return;
+    }
     const raw = window.localStorage.getItem("pmis-user");
     if (raw) {
       try { setUser(JSON.parse(raw)); } catch { /* noop */ }
@@ -31,9 +57,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setReady(true);
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const login = async (username: string, password: string, expectedRole?: Role) => {
     const acc = ACCOUNTS[username.toLowerCase()];
     if (!acc || acc.password !== password) throw new Error("Invalid username or password");
+    if (expectedRole && acc.user.role !== expectedRole) {
+      throw new Error("Selected role does not match this account");
+    }
+    const token = makeMockJwt(acc.user);
+    setAuthCookie(token);
     setUser(acc.user);
     window.localStorage.setItem("pmis-user", JSON.stringify(acc.user));
     return acc.user;
@@ -41,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
+    clearAuthCookie();
     window.localStorage.removeItem("pmis-user");
   };
 

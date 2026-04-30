@@ -25,9 +25,9 @@ export const Route = createFileRoute("/employees/$id")({
 });
 
 const TABS = [
-  "Personal", "Family", "Children", "Educational", "Civil Service",
-  "Work Experience", "Organization", "Training", "Salary",
-  "Service Record", "Leave Balance", "IPCR",
+  "PERSONAL", "FAMILY", "CHILDREN", "EDUCATIONAL", "CIVIL SERVICE",
+  "WORK EXPERIENCE", "ORGANIZATION", "TRAINING", "SALARY",
+  "SERVICE RECORD", "LEAVE BALANCE", "IPCR",
 ] as const;
 type Tab = typeof TABS[number];
 
@@ -35,7 +35,7 @@ function EmployeeFile() {
   const { id } = useParams({ from: "/employees/$id" });
   const { can } = useAuth();
   const employee = EMPLOYEES.find((e) => e.id === id);
-  const [active, setActive] = useState<Tab>("Personal");
+  const [active, setActive] = useState<Tab>("PERSONAL");
   const [, force] = useState(0);
   const refresh = () => force((n) => n + 1);
 
@@ -86,6 +86,7 @@ function EmployeeFile() {
               onClick={() => setActive(t)}
               className={cn(
                 "px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors",
+                "snap-start",
                 active === t
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground",
@@ -98,17 +99,17 @@ function EmployeeFile() {
       </div>
 
       <div className="mt-4">
-        {active === "Personal" && <PersonalTab employee={employee} canEdit={can("edit")} />}
-        {active === "Family" && <FamilyTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "Children" && <ChildrenTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "Educational" && <EducationTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "Civil Service" && <CivilServiceTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "Work Experience" && <WorkTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "Organization" && <OrgTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "Training" && <TrainingTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "Salary" && <SalaryTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "Service Record" && <ServiceTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "Leave Balance" && <LeaveTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "PERSONAL" && <PersonalTab employee={employee} canEdit={can("edit")} />}
+        {active === "FAMILY" && <FamilyTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "CHILDREN" && <ChildrenTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "EDUCATIONAL" && <EducationTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "CIVIL SERVICE" && <CivilServiceTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "WORK EXPERIENCE" && <WorkTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "ORGANIZATION" && <OrgTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "TRAINING" && <TrainingTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "SALARY" && <SalaryTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "SERVICE RECORD" && <ServiceTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "LEAVE BALANCE" && <LeaveTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
         {active === "IPCR" && <IPCRTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
       </div>
     </AppShell>
@@ -186,52 +187,58 @@ function PersonalTab({ employee, canEdit }: { employee: typeof EMPLOYEES[number]
         <Field label="Date Separated"><Input type="date" defaultValue={employee.dateSeparated} /></Field>
       </FormSection>
 
-      <FormSection title="Identity">
-        <Field label="Lastname" required><Input defaultValue={employee.lastname} /></Field>
-        <Field label="Firstname" required><Input defaultValue={employee.firstname} /></Field>
-        <Field label="Middlename"><Input defaultValue={employee.middlename} /></Field>
-        <Field label="Name Extension"><Input defaultValue={employee.nameExt} placeholder="Jr., Sr., III" /></Field>
-        <Field label="Birthday" required><Input type="date" defaultValue={employee.birthday} /></Field>
-        <Field label="Gender">
-          <RadioGroup defaultValue={employee.gender} className="flex gap-4 pt-1">
-            <div className="flex items-center gap-2"><RadioGroupItem value="Male" id="g-1" /><Label htmlFor="g-1" className="text-sm">Male</Label></div>
-            <div className="flex items-center gap-2"><RadioGroupItem value="Female" id="g-2" /><Label htmlFor="g-2" className="text-sm">Female</Label></div>
-          </RadioGroup>
-        </Field>
-        <Field label="Civil Status">
-          <Select defaultValue={employee.civilStatus}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Single">Single</SelectItem>
-              <SelectItem value="Married">Married</SelectItem>
-              <SelectItem value="Widowed">Widowed</SelectItem>
-              <SelectItem value="Separated">Separated</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Citizenship">
-          <RadioGroup defaultValue={employee.citizenship} className="flex gap-4 pt-1">
-            <div className="flex items-center gap-2"><RadioGroupItem value="Filipino" id="c-1" /><Label htmlFor="c-1" className="text-sm">Filipino</Label></div>
-            <div className="flex items-center gap-2"><RadioGroupItem value="Foreigner" id="c-2" /><Label htmlFor="c-2" className="text-sm">Foreigner</Label></div>
-          </RadioGroup>
-        </Field>
-        <Field label="Place of Birth" className="md:col-span-2 lg:col-span-3">
-          <Textarea defaultValue={employee.placeOfBirth} rows={2} />
-        </Field>
-        <Field label="Photo" className="md:col-span-2 lg:col-span-3">
-          <div className="flex items-center gap-4">
-            <div className="h-24 w-24 rounded-lg border border-dashed border-border grid place-items-center bg-muted/30 overflow-hidden">
-              {photo
-                ? <img src={photo} alt="" className="h-full w-full object-cover" />
-                : <span className="text-xs text-muted-foreground">No photo</span>}
-            </div>
-            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-border hover:bg-accent cursor-pointer text-sm">
-              <Upload className="h-4 w-4" /> Upload
-              <input type="file" accept="image/*" className="hidden" onChange={onPhoto} />
-            </label>
+      <section className="rounded-xl border border-border bg-card/50 p-3 mb-3">
+        <h4 className="text-sm font-semibold mb-2.5 text-foreground">Identity</h4>
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_164px] xl:items-start">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <Field label="Lastname" required><Input defaultValue={employee.lastname} /></Field>
+            <Field label="Firstname" required><Input defaultValue={employee.firstname} /></Field>
+            <Field label="Middlename"><Input defaultValue={employee.middlename} /></Field>
+            <Field label="Name Extension"><Input defaultValue={employee.nameExt} placeholder="Jr., Sr., III" /></Field>
+            <Field label="Birthday" required><Input type="date" defaultValue={employee.birthday} /></Field>
+            <Field label="Gender">
+              <RadioGroup defaultValue={employee.gender} className="flex gap-3 pt-1">
+                <div className="flex items-center gap-2"><RadioGroupItem value="Male" id="g-1" /><Label htmlFor="g-1" className="text-sm">Male</Label></div>
+                <div className="flex items-center gap-2"><RadioGroupItem value="Female" id="g-2" /><Label htmlFor="g-2" className="text-sm">Female</Label></div>
+              </RadioGroup>
+            </Field>
+            <Field label="Civil Status">
+              <Select defaultValue={employee.civilStatus}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Single">Single</SelectItem>
+                  <SelectItem value="Married">Married</SelectItem>
+                  <SelectItem value="Widowed">Widowed</SelectItem>
+                  <SelectItem value="Separated">Separated</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Citizenship" className="md:col-span-2 xl:col-span-1">
+              <RadioGroup defaultValue={employee.citizenship} className="flex gap-3 pt-1">
+                <div className="flex items-center gap-2"><RadioGroupItem value="Filipino" id="c-1" /><Label htmlFor="c-1" className="text-sm">Filipino</Label></div>
+                <div className="flex items-center gap-2"><RadioGroupItem value="Foreigner" id="c-2" /><Label htmlFor="c-2" className="text-sm">Foreigner</Label></div>
+              </RadioGroup>
+            </Field>
+            <Field label="Place of Birth" className="md:col-span-2 xl:col-span-3">
+              <Textarea defaultValue={employee.placeOfBirth} rows={2} />
+            </Field>
           </div>
-        </Field>
-      </FormSection>
+
+          <Field label="Photo" className="justify-self-start xl:justify-self-end xl:pt-1">
+            <div className="flex flex-col items-start gap-2">
+              <div className="h-24 w-24 rounded-lg border border-dashed border-border grid place-items-center bg-muted/30 overflow-hidden">
+                {photo
+                  ? <img src={photo} alt="Employee ID" className="h-full w-full object-cover" />
+                  : <span className="text-xs text-muted-foreground text-center px-2">No photo</span>}
+              </div>
+              <label className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-border hover:bg-accent cursor-pointer text-sm">
+                <Upload className="h-4 w-4" /> Upload
+                <input type="file" accept="image/*" className="hidden" onChange={onPhoto} />
+              </label>
+            </div>
+          </Field>
+        </div>
+      </section>
 
       <FormSection title="Body Measurements & Government IDs">
         <Field label="Height">
@@ -296,6 +303,7 @@ function FamilyTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; on
     mother: { lastname: "", firstname: "", middlename: "" },
   };
   const [form, setForm] = useState(existing);
+  const hasExisting = Boolean(STORE.family[id]);
 
   const save = () => {
     STORE.family[id] = form;
@@ -326,7 +334,8 @@ function FamilyTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; on
       </FormSection>
       <div className="flex justify-end gap-2 mt-4">
         <Button variant="outline" onClick={() => setForm(existing)}>Cancel</Button>
-        <Button disabled={!canEdit} onClick={save} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Save</Button>
+        <Button disabled={!canEdit || hasExisting} onClick={save} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Add</Button>
+        <Button disabled={!canEdit || !hasExisting} onClick={save} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Update</Button>
       </div>
     </div>
   );
@@ -336,12 +345,31 @@ function FamilyTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; on
 function ChildrenTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
   const list = STORE.children[id] ?? (STORE.children[id] = []);
   const blank: Omit<ChildRecord, "id"> = { lastname: "", firstname: "", middlename: "", gender: "Male", birthday: "" };
-  const { state, set, reset } = useRecordForm(blank);
+  const { state, set, setState } = useRecordForm(blank);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const clear = () => {
+    setState(blank);
+    setEditingId(null);
+  };
 
   const add = () => {
     if (!state.firstname || !state.lastname) { toast.error("Lastname and firstname required"); return; }
     list.push({ ...state, id: uid() });
-    reset(); onChange(); toast.success("Child added");
+    clear(); onChange(); toast.success("Child added");
+  };
+  const edit = (cid: string) => {
+    const row = list.find((c) => c.id === cid);
+    if (!row) return;
+    setState({ lastname: row.lastname, firstname: row.firstname, middlename: row.middlename, gender: row.gender, birthday: row.birthday });
+    setEditingId(cid);
+  };
+  const update = () => {
+    if (!editingId) return;
+    const idx = list.findIndex((c) => c.id === editingId);
+    if (idx < 0) return;
+    list[idx] = { ...list[idx], ...state };
+    clear(); onChange(); toast.success("Child updated");
   };
   const del = (cid: string) => { STORE.children[id] = list.filter((c) => c.id !== cid); onChange(); toast("Removed"); };
 
@@ -360,12 +388,14 @@ function ChildrenTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; 
         <Field label="Birthday"><Input type="date" value={state.birthday} onChange={(e) => set("birthday", e.target.value)} /></Field>
       </FormSection>
       <div className="flex justify-end gap-2 mb-4">
-        <Button variant="outline" onClick={reset}>Cancel</Button>
+        <Button variant="outline" onClick={clear}>Cancel</Button>
+        <Button disabled={!canEdit || !editingId} onClick={update} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Update</Button>
         <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button>
       </div>
       <RecordTable
         cols={["ID", "Lastname", "Firstname", "Middlename", "Gender", "Birthday"]}
         rows={list.map((c) => [c.id.slice(0, 5), c.lastname, c.firstname, c.middlename, c.gender, c.birthday])}
+        onEdit={canEdit ? (i) => edit(list[i].id) : undefined}
         onDelete={canEdit ? (i) => del(list[i].id) : undefined}
       />
     </div>
@@ -418,10 +448,28 @@ function RecordTable({
 function EducationTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
   const list = STORE.education[id] ?? (STORE.education[id] = []);
   const blank: Omit<EducationRecord, "id"> = { level: "College", school: "", degree: "", yearFrom: "", yearTo: "", yearGraduated: "", scholarship: "" };
-  const { state, set, reset } = useRecordForm(blank);
+  const { state, set, setState } = useRecordForm(blank);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const clear = () => {
+    setState(blank);
+    setEditingId(null);
+  };
   const add = () => {
     if (!state.school) { toast.error("School name required"); return; }
-    list.push({ ...state, id: uid() }); reset(); onChange(); toast.success("Education added");
+    list.push({ ...state, id: uid() }); clear(); onChange(); toast.success("Education added");
+  };
+  const edit = (rid: string) => {
+    const row = list.find((x) => x.id === rid);
+    if (!row) return;
+    setState({ level: row.level, school: row.school, degree: row.degree, yearFrom: row.yearFrom, yearTo: row.yearTo, yearGraduated: row.yearGraduated, scholarship: row.scholarship });
+    setEditingId(rid);
+  };
+  const update = () => {
+    if (!editingId) return;
+    const idx = list.findIndex((x) => x.id === editingId);
+    if (idx < 0) return;
+    list[idx] = { ...list[idx], ...state };
+    clear(); onChange(); toast.success("Education updated");
   };
   const del = (rid: string) => { STORE.education[id] = list.filter((x) => x.id !== rid); onChange(); };
 
@@ -443,10 +491,15 @@ function EducationTab({ id, canEdit, onChange }: { id: string; canEdit: boolean;
         <Field label="Year Graduated"><Input value={state.yearGraduated} onChange={(e) => set("yearGraduated", e.target.value)} /></Field>
         <Field label="Scholarship" className="md:col-span-2"><Input value={state.scholarship} onChange={(e) => set("scholarship", e.target.value)} /></Field>
       </FormSection>
-      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
+      <div className="flex justify-end gap-2 mb-4">
+        <Button variant="outline" onClick={clear}>Cancel</Button>
+        <Button disabled={!canEdit || !editingId} onClick={update} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Update</Button>
+        <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button>
+      </div>
       <RecordTable
         cols={["Level", "School", "Degree", "From", "To", "Graduated", "Scholarship"]}
         rows={list.map((r) => [r.level, r.school, r.degree, r.yearFrom, r.yearTo, r.yearGraduated, r.scholarship])}
+        onEdit={canEdit ? (i) => edit(list[i].id) : undefined}
         onDelete={canEdit ? (i) => del(list[i].id) : undefined}
       />
     </div>
@@ -571,6 +624,11 @@ function SalaryTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; on
     amount: 0, gross: 0, type: "Step Increment", pera: 2000, rata: 0, cata: 0,
   };
   const { state, set, setState } = useRecordForm(blank);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const clear = () => {
+    setState(blank);
+    setEditingId(null);
+  };
 
   const recompute = () => {
     const amount = SALARY_TABLE[state.grade]?.[state.step - 1] ?? 0;
@@ -585,6 +643,32 @@ function SalaryTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; on
     const gross = state.gross || amount + state.pera + state.rata + state.cata;
     list.push({ ...state, amount, gross, id: uid() });
     onChange(); toast.success("Salary record added");
+  };
+  const edit = (rid: string) => {
+    const row = list.find((x) => x.id === rid);
+    if (!row) return;
+    setState({
+      date: row.date,
+      description: row.description,
+      ordinance: row.ordinance,
+      grade: row.grade,
+      step: row.step,
+      tax: row.tax,
+      amount: row.amount,
+      gross: row.gross,
+      type: row.type,
+      pera: row.pera,
+      rata: row.rata,
+      cata: row.cata,
+    });
+    setEditingId(rid);
+  };
+  const update = () => {
+    if (!editingId) return;
+    const idx = list.findIndex((x) => x.id === editingId);
+    if (idx < 0) return;
+    list[idx] = { ...list[idx], ...state };
+    clear(); onChange(); toast.success("Salary record updated");
   };
   const del = (rid: string) => { STORE.salary[id] = list.filter((x) => x.id !== rid); onChange(); };
 
@@ -630,12 +714,15 @@ function SalaryTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; on
         <Field label="CATA"><Input type="number" value={state.cata} onChange={(e) => set("cata", Number(e.target.value))} /></Field>
       </FormSection>
       <div className="flex justify-end gap-2 mb-4">
+        <Button variant="outline" onClick={clear}>Cancel</Button>
+        <Button variant="outline" onClick={update} disabled={!canEdit || !editingId}>Update</Button>
         <Button variant="outline" onClick={recompute}><RefreshCw className="h-4 w-4 mr-1.5" /> Refresh / Recompute</Button>
         <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button>
       </div>
       <RecordTable
         cols={["Date", "Description", "Type", "Tax", "SG", "Step", "Amount", "Annual", "Gross", "PERA", "RATA", "CATA"]}
         rows={list.map((r) => [r.date, r.description, r.type, r.tax, `SG-${r.grade}`, `Step ${r.step}`, r.amount.toLocaleString(), (r.amount * 12).toLocaleString(), r.gross.toLocaleString(), r.pera, r.rata, r.cata])}
+        onEdit={canEdit ? (i) => edit(list[i].id) : undefined}
         onDelete={canEdit ? (i) => del(list[i].id) : undefined}
       />
     </div>
@@ -667,9 +754,10 @@ function ServiceTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; o
       </FormSection>
       <div className="flex justify-end gap-2 mb-4">
         <Button variant="outline" onClick={reset}>Cancel</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Save</Button>
+        <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">ADD</Button>
+        <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">SAVE</Button>
       </div>
-      <RecordTable cols={["From", "To", "Position", "Status", "Salary", "Department"]} rows={list.map((r) => [r.from, r.to, r.designation, r.status, r.salary, r.department])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
+      <RecordTable cols={["ID", "Service From", "Service To", "Position", "Status", "Salary"]} rows={list.map((r) => [r.id.slice(0, 5), r.from, r.to, r.designation, r.status, r.salary])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
     </div>
   );
 }
@@ -710,8 +798,8 @@ function LeaveTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onC
       </FormSection>
       <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
       <RecordTable
-        cols={["Type", "Period", "Particulars", "VL Earn", "VL WP", "VL Bal", "VL WOP", "SL Earn", "SL WP", "SL Bal", "SL WOP", "Date"]}
-        rows={list.map((r) => [r.type, r.period, r.particulars, r.vlEarned, r.vlAbsWP, r.vlBalance, r.vlAbsWOP, r.slEarned, r.slAbsWP, r.slBalance, r.slAbsWOP, r.dateAction])}
+        cols={["ID", "Period", "Particulars", "VL Earned", "VL Abs WP", "VL Balance", "VL Abs WOP", "SL Earned", "SL Abs WP", "SL Balance", "SL Abs WOP", "Date Action"]}
+        rows={list.map((r) => [r.id.slice(0, 5), r.period, r.particulars, r.vlEarned, r.vlAbsWP, r.vlBalance, r.vlAbsWOP, r.slEarned, r.slAbsWP, r.slBalance, r.slAbsWOP, r.dateAction])}
         onDelete={canEdit ? (i) => del(list[i].id) : undefined}
       />
     </div>

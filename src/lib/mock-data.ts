@@ -142,7 +142,7 @@ export function generateEmployees(count = 47): Employee[] {
     const id = `${1000 + i}`;
     list.push({
       id,
-      refId: `BOAC-${id}`,
+      refId: `EMP-${id}`,
       lastname: ln,
       firstname: fn,
       middlename: mn,
@@ -160,7 +160,7 @@ export function generateEmployees(count = 47): Employee[] {
       citizenship: "Filipino",
       bloodType: ["A+", "B+", "O+", "AB+", "O-"][Math.floor(rnd() * 5)],
       cellphoneNo: `0917${Math.floor(1000000 + rnd() * 8999999)}`,
-      email: `${fn.toLowerCase()}.${ln.toLowerCase().replace(/\s/g, "")}@boac.gov.ph`,
+      email: `${fn.toLowerCase()}.${ln.toLowerCase().replace(/\s/g, "")}@agency.gov.ph`,
       residentialAddress: `Brgy. ${["Poblacion", "Mercado", "Caganhao", "Tanza", "Boi", "Murallon"][Math.floor(rnd() * 6)]}, Boac, Marinduque`,
       residentialZipcode: "4900",
       permanentAddress: `Brgy. Poblacion, Boac, Marinduque`,
@@ -236,6 +236,12 @@ export const SETTINGS = {
     { id: "u2", username: "hr", role: "HR Officer", name: "Maria Santos" },
     { id: "u3", username: "viewer", role: "Viewer", name: "Pedro Cruz" },
   ],
+  agency: {
+    name: "Agency Name",
+    tagline: "Organization Subtitle",
+    logoUrl: "",
+    iconUrl: "",
+  },
 };
 
 export function uid() {

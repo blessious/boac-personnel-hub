@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth";
+import { SettingsProvider, useSettings } from "@/lib/settings-context";
 
 import appCss from "../styles.css?url";
 
@@ -31,10 +33,10 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Boac PMIS — Personnel Management Information System" },
-      { name: "description", content: "Personnel Management Information System for the Municipality of Boac, Marinduque." },
-      { property: "og:title", content: "Boac PMIS" },
-      { property: "og:description", content: "Personnel records, plantilla, leave and salary management for LGU Boac." },
+      { title: "PMIS — Personnel Management Information System" },
+      { name: "description", content: "Personnel Management Information System for government agencies and organizations." },
+      { property: "og:title", content: "PMIS" },
+      { property: "og:description", content: "Personnel records, plantilla, leave and salary management." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -67,8 +69,34 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   return (
     <AuthProvider>
+      <SettingsProvider>
+        <RootWithSettings />
+      </SettingsProvider>
+    </AuthProvider>
+  );
+}
+
+function RootWithSettings() {
+  const { agency } = useSettings();
+
+  useEffect(() => {
+    document.title = `${agency.name} PMIS`;
+    
+    if (agency.iconUrl) {
+      let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+      if (!link) {
+        link = document.createElement("link");
+        link.rel = "icon";
+        document.getElementsByTagName("head")[0].appendChild(link);
+      }
+      link.href = agency.iconUrl;
+    }
+  }, [agency.name, agency.iconUrl]);
+
+  return (
+    <>
       <Outlet />
       <Toaster richColors position="top-right" />
-    </AuthProvider>
+    </>
   );
 }

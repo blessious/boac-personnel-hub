@@ -1,14 +1,27 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Search, Plus, Eye, MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, Eye, MoreHorizontal, ChevronLeft, ChevronRight, Camera, Upload, X } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
-import { EMPLOYEES, DEPARTMENTS, type EmploymentStatus } from "@/lib/mock-data";
+import { EMPLOYEES, DEPARTMENTS, POSITIONS, SALARY_GRADES, uid, type EmploymentStatus } from "@/lib/mock-data";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth";
+import { cn } from "@/lib/utils";
+import { Edit, Archive, Trash2 as TrashIcon } from "lucide-react";
 
 export const Route = createFileRoute("/employees")({
   component: EmployeesPage,
@@ -25,12 +38,29 @@ const STATUS_COLOR: Record<EmploymentStatus, string> = {
 const PAGE_SIZE = 10;
 
 function EmployeesPage() {
+  const location = useLocation();
+
+  if (location.pathname !== "/employees") {
+    return <Outlet />;
+  }
+
   const navigate = useNavigate();
   const { can } = useAuth();
   const [q, setQ] = useState("");
   const [dept, setDept] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
   const [page, setPage] = useState(1);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [formData, setFormData] = useState({
+    firstname: "",
+    middlename: "",
+    lastname: "",
+    email: "",
+    department: "",
+    position: "",
+    status: "PERMANENT" as EmploymentStatus,
+    photoUrl: "",
+  });
 
   const filtered = useMemo(() => {
     return EMPLOYEES.filter((e) => {
@@ -45,6 +75,48 @@ function EmployeesPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const cur = Math.min(page, totalPages);
   const slice = filtered.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE);
+
+  const handleAddEmployee = () => {
+    if (!formData.firstname.trim() || !formData.lastname.trim() || !formData.department || !formData.position) {
+      alert("Please fill in all required fields");
+      return;
+    }
+    
+    const newEmployee = {
+      id: uid(),
+      refId: `EMP-${Date.now()}`,
+      firstname: formData.firstname.trim(),
+      middlename: formData.middlename.trim(),
+      lastname: formData.lastname.trim(),
+      email: formData.email.trim(),
+      department: formData.department,
+      position: formData.position,
+      status: formData.status,
+      level: "First Level" as const,
+      statusClass: "Administrative" as const,
+      dateEmployed: new Date().toISOString().split("T")[0],
+      empStatus: "Employed" as const,
+      birthday: "",
+      gender: "Male" as const,
+      civilStatus: "Single" as const,
+      citizenship: "Filipino" as const,
+      photoUrl: formData.photoUrl,
+    };
+    
+    EMPLOYEES.push(newEmployee);
+    setShowAddDialog(false);
+    setFormData({
+      firstname: "",
+      middlename: "",
+      lastname: "",
+      email: "",
+      department: "",
+      position: "",
+      status: "PERMANENT",
+      photoUrl: "",
+    });
+    setPage(1);
+  };
 
   return (
     <AppShell title="Employees" subtitle={`${filtered.length} total personnel records`}>
@@ -82,6 +154,7 @@ function EmployeesPage() {
             <Button
               className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"
               disabled={!can("edit")}
+              onClick={() => setShowAddDialog(true)}
             >
               <Plus className="h-4 w-4 mr-1.5" /> Add Employee
             </Button>
@@ -106,10 +179,22 @@ function EmployeesPage() {
               {slice.map((e, i) => (
                 <tr
                   key={e.id}
-                  className={i % 2 ? "bg-muted/40" : ""}
+                  className={cn(
+                    "cursor-pointer hover:bg-muted/60 transition-colors border-b border-border/50 last:border-0",
+                    i % 2 ? "bg-muted/20" : ""
+                  )}
                   onClick={() => navigate({ to: "/employees/$id", params: { id: e.id } })}
                 >
-                  <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{e.refId}</td>
+                  <td className="px-4 py-3 text-muted-foreground font-mono text-xs">
+                    <Link
+                      to="/employees/$id"
+                      params={{ id: e.id }}
+                      className="hover:text-primary hover:underline"
+                      onClick={(ev) => ev.stopPropagation()}
+                    >
+                      {e.refId}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8">
@@ -136,11 +221,46 @@ function EmployeesPage() {
                         params={{ id: e.id }}
                         className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline px-2 py-1"
                       >
-                        <Eye className="h-3.5 w-3.5" /> View 201
+                        <Eye className="h-3.5 w-3.5" /> View
                       </Link>
-                      <button className="h-7 w-7 grid place-items-center rounded-md hover:bg-accent text-muted-foreground">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
+                      
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="h-7 w-7 grid place-items-center rounded-md hover:bg-accent text-muted-foreground outline-none">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => toast.info(`Editing ${e.firstname}…`)}>
+                            <Edit className="mr-2 h-4 w-4" /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            e.empStatus = "Not Employed";
+                            toast.success(`${e.lastname} archived`);
+                            navigate({ to: "/employees" });
+                          }}>
+                            <Archive className="mr-2 h-4 w-4" /> Archive
+                          </DropdownMenuItem>
+                          {can("delete") && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => {
+                                  const idx = EMPLOYEES.findIndex(x => x.id === e.id);
+                                  if (idx > -1) EMPLOYEES.splice(idx, 1);
+                                  toast.error("Employee deleted");
+                                  navigate({ to: "/employees" });
+                                }}
+                              >
+                                <TrashIcon className="mr-2 h-4 w-4" /> Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </td>
                 </tr>
@@ -166,6 +286,135 @@ function EmployeesPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Employee</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-2">
+            <div className="flex flex-col items-center gap-2">
+              <div className="relative group">
+                <div className="h-24 w-24 rounded-full border-2 border-dashed border-border bg-muted/30 grid place-items-center overflow-hidden">
+                  {formData.photoUrl ? (
+                    <img src={formData.photoUrl} alt="Preview" className="h-full w-full object-cover" />
+                  ) : (
+                    <Camera className="h-8 w-8 text-muted-foreground/40" />
+                  )}
+                </div>
+                {formData.photoUrl && (
+                  <button 
+                    onClick={() => setFormData({ ...formData, photoUrl: "" })}
+                    className="absolute -top-1 -right-1 h-6 w-6 rounded-full bg-destructive text-destructive-foreground grid place-items-center shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+              <Label htmlFor="photo-upload" className="cursor-pointer inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+                <Upload className="h-3 w-3" /> {formData.photoUrl ? "Change Photo" : "Upload ID Photo"}
+              </Label>
+              <input 
+                id="photo-upload" 
+                type="file" 
+                accept="image/*" 
+                className="hidden" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setFormData({ ...formData, photoUrl: reader.result as string });
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">First Name *</Label>
+                <Input
+                  value={formData.firstname}
+                  onChange={(e) => setFormData({ ...formData, firstname: e.target.value })}
+                  placeholder="First name"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Middle Name</Label>
+                <Input
+                  value={formData.middlename}
+                  onChange={(e) => setFormData({ ...formData, middlename: e.target.value })}
+                  placeholder="Middle name"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Last Name *</Label>
+                <Input
+                  value={formData.lastname}
+                  onChange={(e) => setFormData({ ...formData, lastname: e.target.value })}
+                  placeholder="Last name"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Email</Label>
+                <Input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="Email address"
+                />
+              </div>
+              <div className="col-span-2 space-y-1">
+                <Label className="text-sm font-medium">Department *</Label>
+                <Select value={formData.department} onValueChange={(value) => setFormData({ ...formData, department: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DEPARTMENTS.map((d) => (
+                      <SelectItem key={d} value={d}>{d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Position *</Label>
+                <Select value={formData.position} onValueChange={(value) => setFormData({ ...formData, position: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select position" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {POSITIONS.map((p) => (
+                      <SelectItem key={p} value={p}>{p}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Status *</Label>
+                <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value as EmploymentStatus })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PERMANENT">Permanent</SelectItem>
+                    <SelectItem value="CASUAL">Casual</SelectItem>
+                    <SelectItem value="CONTRACTUAL">Contractual</SelectItem>
+                    <SelectItem value="COTERMINOUS">Co-terminous</SelectItem>
+                    <SelectItem value="ELECTED">Elected</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>Cancel</Button>
+            <Button className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90" onClick={handleAddEmployee}>Add Employee</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

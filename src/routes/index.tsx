@@ -54,7 +54,7 @@ function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold">Employees by Department</h3>
-              <p className="text-xs text-muted-foreground">Distribution across LGU Boac offices</p>
+              <p className="text-xs text-muted-foreground">Distribution across organization offices</p>
             </div>
           </div>
           <div className="h-[320px] mt-4">

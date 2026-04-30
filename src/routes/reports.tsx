@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { FileText, Download, Calendar } from "lucide-react";
 import { toast } from "sonner";
+import { useSettings } from "@/lib/settings-context";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,14 +20,54 @@ const REPORTS = [
 ];
 
 function ReportsPage() {
+  const { agency } = useSettings();
+  const escapePdf = (text: string) => text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+
+  const createPdfBlob = (lines: string[]) => {
+    const contentLines = [
+      "BT",
+      "/F1 12 Tf",
+      "50 760 Td",
+      ...lines.map((line, i) => `${i === 0 ? "" : "0 -16 Td\n"}(${escapePdf(line)}) Tj`).join("\n").split("\n"),
+      "ET",
+    ];
+    const stream = `${contentLines.join("\n")}\n`;
+
+    const objects = [
+      "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+      "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+      "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n",
+      `4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}endstream\nendobj\n`,
+      "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+    ];
+
+    let pdf = "%PDF-1.4\n";
+    const offsets = [0];
+    for (const obj of objects) {
+      offsets.push(pdf.length);
+      pdf += obj;
+    }
+    const xrefStart = pdf.length;
+    pdf += `xref\n0 ${objects.length + 1}\n`;
+    pdf += "0000000000 65535 f \n";
+    for (let i = 1; i <= objects.length; i++) {
+      pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+    }
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+    return new Blob([pdf], { type: "application/pdf" });
+  };
+
   const handleGenerate = (title: string) => {
     toast.success(`Generating ${title}…`, { description: "PDF download will start in a moment." });
-    // simulate download trigger
     setTimeout(() => {
-      const blob = new Blob([`${title}\nMunicipality of Boac, Marinduque\nGenerated: ${new Date().toLocaleString()}`], { type: "text/plain" });
+      const blob = createPdfBlob([
+        title,
+        `${agency.name} | ${agency.tagline}`,
+        `Generated: ${new Date().toLocaleString()}`,
+      ]);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = `${title.replace(/\s+/g, "_")}.txt`; a.click();
+      a.href = url; a.download = `${title.replace(/\s+/g, "_")}.pdf`; a.click();
       URL.revokeObjectURL(url);
     }, 600);
   };

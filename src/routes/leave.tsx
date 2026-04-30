@@ -54,11 +54,9 @@ function LeavePage() {
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3 font-medium">Employee</th>
-                <th className="px-4 py-3 font-medium">Department</th>
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Period</th>
-                <th className="px-4 py-3 font-medium">VL Bal</th>
-                <th className="px-4 py-3 font-medium">SL Bal</th>
+                <th className="px-4 py-3 font-medium">Amount</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Date Approved</th>
               </tr>
@@ -67,17 +65,15 @@ function LeavePage() {
               {rows.map(({ emp, rec }, i) => (
                 <tr key={rec.id} className={i % 2 ? "bg-muted/40" : ""}>
                   <td className="px-4 py-3 font-medium">{emp.lastname}, {emp.firstname}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{emp.department}</td>
                   <td className="px-4 py-3">{rec.type}</td>
                   <td className="px-4 py-3 text-muted-foreground">{rec.period}</td>
-                  <td className="px-4 py-3">{rec.vlBalance}</td>
-                  <td className="px-4 py-3">{rec.slBalance}</td>
+                  <td className="px-4 py-3">{(rec.type === "Sick Leave" ? rec.slAbsWP : rec.vlAbsWP) || 0}</td>
                   <td className="px-4 py-3"><Badge variant="outline" className="bg-success/15 text-success border-success/30">Approved</Badge></td>
                   <td className="px-4 py-3 text-muted-foreground">{rec.dateAction}</td>
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">No leave records found.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">No leave records found.</td></tr>
               )}
             </tbody>
           </table>

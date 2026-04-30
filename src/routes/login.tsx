@@ -5,14 +5,18 @@ import { z } from "zod";
 import { ShieldCheck, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useAuth } from "@/lib/auth";
+import { type Role, useAuth } from "@/lib/auth";
+import { useSettings } from "@/lib/settings-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const schema = z.object({
   username: z.string().trim().min(1, "Username required").max(50),
   password: z.string().min(1, "Password required").max(100),
+  role: z.enum(["Admin", "HR Officer", "Viewer"]),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -25,6 +29,7 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const { user, login } = useAuth();
+  const { agency } = useSettings();
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
   const [submitting, setSubmitting] = useState(false);
@@ -35,15 +40,27 @@ function LoginPage() {
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { username: "", password: "" },
+    defaultValues: { username: "", password: "", role: "Viewer" },
   });
 
   const onSubmit = async (data: FormData) => {
     setSubmitting(true);
     try {
-      await login(data.username, data.password);
+      await login(data.username, data.password, data.role as Role);
       toast.success("Welcome back!");
-      navigate({ to: search.redirect || "/" });
+      const redirect = search.redirect || "/";
+      if (redirect.startsWith("/employees/")) {
+        const id = redirect.split("/").filter(Boolean).at(-1);
+        if (id) {
+          navigate({ to: "/employees/$id", params: { id } });
+          return;
+        }
+      }
+      if (redirect === "/" || redirect === "/employees" || redirect === "/leave" || redirect === "/reports" || redirect === "/settings") {
+        navigate({ to: redirect });
+      } else {
+        navigate({ to: "/" });
+      }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -52,47 +69,30 @@ function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen w-full grid lg:grid-cols-2 bg-background">
-      {/* Brand panel */}
-      <div className="hidden lg:flex flex-col justify-between p-10 bg-[var(--navy)] text-[var(--navy-foreground)]">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 grid place-items-center rounded-lg bg-white/10">
-            <ShieldCheck className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="text-sm uppercase tracking-widest opacity-70">Republic of the Philippines</div>
-            <div className="font-semibold">Municipality of Boac, Marinduque</div>
-          </div>
-        </div>
-        <div>
-          <h2 className="text-4xl font-semibold leading-tight">
-            Personnel Management<br />Information System
-          </h2>
-          <p className="mt-4 text-white/70 max-w-md text-sm">
-            Centralized 201 files, plantilla, leave, and salary records for all
-            employees of the Local Government Unit.
-          </p>
-        </div>
-        <div className="text-xs text-white/50">
-          © {new Date().getFullYear()} LGU Boac · Internal use only
-        </div>
-      </div>
-
-      {/* Form panel */}
-      <div className="flex items-center justify-center p-6">
-        <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden flex items-center gap-2">
-            <div className="h-9 w-9 grid place-items-center rounded-lg bg-[var(--navy)] text-[var(--navy-foreground)]">
-              <ShieldCheck className="h-5 w-5" />
+    <div className="min-h-screen bg-[radial-gradient(circle_at_20%_20%,rgba(30,58,95,0.09),transparent_45%),radial-gradient(circle_at_80%_15%,rgba(99,102,241,0.08),transparent_40%),linear-gradient(to_bottom,rgba(255,255,255,0.96),rgba(245,247,251,0.96))] px-4 py-10">
+      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-md items-center">
+        <div className="w-full rounded-2xl border border-border bg-card p-6 shadow-sm">
+          <div className="flex flex-col items-center text-center">
+            <div className={cn(
+              "grid h-20 w-20 place-items-center rounded-full overflow-hidden",
+              agency.logoUrl ? "" : "border-2 border-dashed border-[var(--navy)]/35 bg-[var(--navy)]/5"
+            )}>
+              {agency.logoUrl ? (
+                <img src={agency.logoUrl} alt="Seal" className="h-full w-full object-contain" />
+              ) : (
+                <ShieldCheck className="h-8 w-8 text-[var(--navy)]" />
+              )}
             </div>
-            <div className="font-semibold">Boac PMIS</div>
+            <div className="mt-3 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              {agency.logoUrl ? "Agency Seal" : "Seal Placeholder"}
+            </div>
+            <h1 className="mt-4 text-2xl font-semibold tracking-tight">{agency.name} PMIS Login</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Personnel Management Information System
+            </p>
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Enter your credentials to access the system.
-          </p>
 
-          <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8 space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="mt-7 space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="username">Username</Label>
               <Input id="username" autoComplete="username" {...form.register("username")} />
@@ -107,15 +107,39 @@ function LoginPage() {
                 <p className="text-xs text-destructive">{form.formState.errors.password.message}</p>
               )}
             </div>
-            <Button type="submit" className="w-full bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90" disabled={submitting}>
+            <div className="space-y-1.5">
+              <Label>Role</Label>
+              <Select value={form.watch("role")} onValueChange={(v) => form.setValue("role", v as Role, { shouldValidate: true })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Admin">Admin</SelectItem>
+                  <SelectItem value="HR Officer">HR Officer</SelectItem>
+                  <SelectItem value="Viewer">Viewer</SelectItem>
+                </SelectContent>
+              </Select>
+              {form.formState.errors.role && (
+                <p className="text-xs text-destructive">{form.formState.errors.role.message}</p>
+              )}
+            </div>
+            <Button 
+              type="submit" 
+              className="w-full bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-md hover:shadow-blue-500/20 transition-all duration-200" 
+              disabled={submitting}
+            >
               {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Sign In
+              Login to System
             </Button>
           </form>
 
-          <div className="mt-8 rounded-lg border border-border bg-muted/40 p-4 text-xs text-muted-foreground">
+          <div className="mt-6 rounded-lg border border-border bg-muted/40 p-4 text-xs text-muted-foreground">
             <div className="font-medium text-foreground mb-1">Demo accounts</div>
             <div>admin / admin · HR Officer: hr / hr · Viewer: viewer / viewer</div>
+          </div>
+
+          <div className="mt-4 text-center text-[11px] text-muted-foreground">
+            © {new Date().getFullYear()} {agency.name}
           </div>
         </div>
       </div>

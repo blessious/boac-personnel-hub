@@ -9,7 +9,7 @@ export function Field({
   children,
 }: { label: string; required?: boolean; className?: string; children: ReactNode }) {
   return (
-    <div className={cn("space-y-1.5", className)}>
+    <div className={cn("space-y-1", className)}>
       <Label className="text-xs font-medium text-muted-foreground">
         {label}{required && <span className="text-destructive ml-0.5">*</span>}
       </Label>
@@ -20,9 +20,9 @@ export function Field({
 
 export function FormSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-xl border border-border bg-card/50 p-4 mb-4">
-      <h4 className="text-sm font-semibold mb-3 text-foreground">{title}</h4>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">{children}</div>
+    <section className="rounded-xl border border-border bg-card/50 p-3 mb-3">
+      <h4 className="text-sm font-semibold mb-2.5 text-foreground">{title}</h4>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">{children}</div>
     </section>
   );
 }

@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { useSettings } from "@/lib/settings-context";
 import { cn } from "@/lib/utils";
 
 type NavItem = { to: "/" | "/employees" | "/leave" | "/reports" | "/settings"; label: string; icon: typeof LayoutDashboard; exact?: boolean };
@@ -20,6 +21,7 @@ export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { user, logout } = useAuth();
+  const { agency } = useSettings();
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? path === to : path === to || path.startsWith(to + "/");
@@ -31,19 +33,33 @@ export function AppSidebar() {
         collapsed ? "w-[72px]" : "w-[248px]",
       )}
     >
-      <div className="flex items-center gap-2 px-4 h-16 border-b border-sidebar-border">
-        <div className="h-9 w-9 rounded-lg bg-[var(--navy)] text-[var(--navy-foreground)] grid place-items-center shrink-0 shadow-sm">
-          <ShieldCheck className="h-5 w-5" />
+      <div className={cn(
+        "flex items-center h-16 border-b border-sidebar-border transition-all px-4",
+        collapsed ? "justify-between px-3 gap-0" : "gap-2"
+      )}>
+        <div className={cn(
+          "rounded-lg grid place-items-center shrink-0 overflow-hidden transition-all",
+          agency.logoUrl ? "" : "bg-[var(--navy)] text-[var(--navy-foreground)] shadow-sm",
+          collapsed ? "h-8 w-8" : "h-9 w-9"
+        )}>
+          {agency.logoUrl ? (
+            <img src={agency.logoUrl} alt="Logo" className="h-full w-full object-contain" />
+          ) : (
+            <ShieldCheck className={collapsed ? "h-4 w-4" : "h-5 w-5"} />
+          )}
         </div>
         {!collapsed && (
-          <div className="leading-tight">
-            <div className="font-semibold text-sm">Boac PMIS</div>
-            <div className="text-[11px] text-muted-foreground">Marinduque LGU</div>
+          <div className="leading-tight overflow-hidden animate-in fade-in slide-in-from-left-2 duration-300 flex-1">
+            <div className="font-semibold text-sm truncate">{agency.name} PMIS</div>
+            <div className="text-[11px] text-muted-foreground truncate">{agency.tagline}</div>
           </div>
         )}
         <button
           onClick={() => setCollapsed((c) => !c)}
-          className="ml-auto h-7 w-7 grid place-items-center rounded-md hover:bg-sidebar-accent text-muted-foreground"
+          className={cn(
+            "h-7 w-7 grid place-items-center rounded-md hover:bg-sidebar-accent text-muted-foreground transition-colors shrink-0",
+            collapsed ? "" : "ml-auto"
+          )}
           aria-label="Toggle sidebar"
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
