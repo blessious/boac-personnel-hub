@@ -1,6 +1,10 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Save, Plus, Trash2, Pencil, RefreshCw, Upload } from "lucide-react";
+import { 
+  ArrowLeft, Save, Plus, Trash2, Pencil, RefreshCw, Upload,
+  User, Users, Baby, GraduationCap, Award, Briefcase, Building2, 
+  BookOpen, Banknote, FileText, Calendar, BarChart3 
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -30,6 +34,27 @@ const TABS = [
   "SERVICE RECORD", "LEAVE BALANCE", "IPCR",
 ] as const;
 type Tab = typeof TABS[number];
+
+const TAB_ICONS: Record<Tab, React.ElementType> = {
+  PERSONAL: User,
+  FAMILY: Users,
+  CHILDREN: Baby,
+  EDUCATIONAL: GraduationCap,
+  "CIVIL SERVICE": Award,
+  "WORK EXPERIENCE": Briefcase,
+  ORGANIZATION: Building2,
+  TRAINING: BookOpen,
+  SALARY: Banknote,
+  "SERVICE RECORD": FileText,
+  "LEAVE BALANCE": Calendar,
+  IPCR: BarChart3,
+};
+
+const TAB_CONFIG = TABS.map((t) => ({
+  id: t,
+  icon: TAB_ICONS[t],
+  label: t === "IPCR" ? "IPCR" : t.split(" ").map(w => w[0] + w.slice(1).toLowerCase()).join(" ")
+}));
 
 function EmployeeFile() {
   const { id } = useParams({ from: "/employees/$id" });
@@ -78,23 +103,28 @@ function EmployeeFile() {
       </div>
 
       {/* Tab bar — horizontally scrollable, no wrap */}
-      <div className="mt-4 -mx-6 px-6">
-        <div className="flex gap-1 overflow-x-auto tab-scroll scrollbar-thin border-b border-border">
-          {TABS.map((t) => (
-            <button
-              key={t}
-              onClick={() => setActive(t)}
-              className={cn(
-                "px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors",
-                "snap-start",
-                active === t
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t}
-            </button>
-          ))}
+      <div className="mt-6 -mx-6 px-6">
+        <div className="flex gap-2 overflow-x-auto pb-2 tab-scroll no-scrollbar">
+          <div className="flex bg-muted/30 p-1 rounded-xl border border-border/50">
+            {TAB_CONFIG.map(({ id: tid, icon: Icon, label }) => {
+              const isActive = active === tid;
+              return (
+                <button
+                  key={tid}
+                  onClick={() => setActive(tid)}
+                  className={cn(
+                    "flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap snap-start",
+                    isActive
+                      ? "bg-card text-primary shadow-sm ring-1 ring-border"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  )}
+                >
+                  {Icon && <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "opacity-60")} />}
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

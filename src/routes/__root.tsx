@@ -1,8 +1,10 @@
 import { useEffect } from "react";
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation, Navigate } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
-import { AuthProvider } from "@/lib/auth";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { SettingsProvider, useSettings } from "@/lib/settings-context";
+import { AppSidebar } from "@/components/layout/AppSidebar";
+import { AppHeader } from "@/components/layout/AppHeader";
 
 import appCss from "../styles.css?url";
 
@@ -77,7 +79,10 @@ function RootComponent() {
 }
 
 function RootWithSettings() {
-  const { agency } = useSettings();
+  const { agency, title, subtitle } = useSettings();
+  const { user } = useAuth();
+  const location = useLocation();
+  const isLoginPage = location.pathname === "/login";
 
   useEffect(() => {
     document.title = `${agency.name} PMIS`;
@@ -93,9 +98,25 @@ function RootWithSettings() {
     }
   }, [agency.name, agency.iconUrl]);
 
+  if (!user && !isLoginPage) {
+    return <Navigate to="/login" search={{ redirect: location.pathname }} />;
+  }
+
   return (
     <>
-      <Outlet />
+      {isLoginPage ? (
+        <Outlet />
+      ) : (
+        <div className="flex min-h-screen w-full bg-background">
+          <AppSidebar />
+          <div className="flex-1 flex flex-col min-w-0">
+            <AppHeader title={title} subtitle={subtitle} />
+            <main className="flex-1 p-4 xl:p-5">
+              <Outlet />
+            </main>
+          </div>
+        </div>
+      )}
       <Toaster richColors position="top-right" />
     </>
   );

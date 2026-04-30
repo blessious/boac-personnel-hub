@@ -8,9 +8,19 @@ export interface AgencySettings {
   iconUrl: string;
 }
 
+export type Theme = "light" | "dark";
+
 interface SettingsContextType {
   agency: AgencySettings;
   updateAgency: (settings: Partial<AgencySettings>) => void;
+  sidebarCollapsed: boolean;
+  toggleSidebar: () => void;
+  theme: Theme;
+  toggleTheme: () => void;
+  title: string;
+  setTitle: (t: string) => void;
+  subtitle: string;
+  setSubtitle: (s: string) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -28,6 +38,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     return SETTINGS.agency;
   });
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem("pmis_sidebar_collapsed");
+    return saved === "true";
+  });
+
   const updateAgency = (newSettings: Partial<AgencySettings>) => {
     setAgency((prev) => {
       const updated = { ...prev, ...newSettings };
@@ -36,8 +51,36 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("pmis_sidebar_collapsed", String(next));
+      return next;
+    });
+  };
+
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem("pmis_theme") as Theme;
+    if (saved === "dark" || saved === "light") return saved;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    localStorage.setItem("pmis_theme", theme);
+  }, [theme]);
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+  };
+
+  const [title, setTitle] = useState("");
+  const [subtitle, setSubtitle] = useState("");
+
   return (
-    <SettingsContext.Provider value={{ agency, updateAgency }}>
+    <SettingsContext.Provider value={{ 
+      agency, updateAgency, sidebarCollapsed, toggleSidebar, theme, toggleTheme,
+      title, setTitle, subtitle, setSubtitle 
+    }}>
       {children}
     </SettingsContext.Provider>
   );

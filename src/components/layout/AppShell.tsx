@@ -1,8 +1,5 @@
-import { type ReactNode } from "react";
-import { Navigate, useLocation } from "@tanstack/react-router";
-import { AppSidebar } from "./AppSidebar";
-import { AppHeader } from "./AppHeader";
-import { useAuth } from "@/lib/auth";
+import { type ReactNode, useEffect } from "react";
+import { useSettings } from "@/lib/settings-context";
 
 export function AppShell({
   title,
@@ -13,20 +10,12 @@ export function AppShell({
   subtitle?: string;
   children: ReactNode;
 }) {
-  const { user } = useAuth();
-  const location = useLocation();
+  const { setTitle, setSubtitle } = useSettings();
 
-  if (!user) {
-    return <Navigate to="/login" search={{ redirect: location.pathname }} />;
-  }
+  useEffect(() => {
+    setTitle(title);
+    setSubtitle(subtitle ?? "");
+  }, [title, subtitle, setTitle, setSubtitle]);
 
-  return (
-    <div className="flex min-h-screen w-full bg-background">
-      <AppSidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <AppHeader title={title} subtitle={subtitle} />
-        <main className="flex-1 p-4 xl:p-5">{children}</main>
-      </div>
-    </div>
-  );
+  return <>{children}</>;
 }

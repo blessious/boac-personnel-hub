@@ -25,7 +25,12 @@ function SettingsPage() {
   const [salaryGrades, setSalaryGrades] = useState([...SETTINGS.salaryGrades]);
   const [newDept, setNewDept] = useState("");
   const [newPos, setNewPos] = useState("");
+  const [deptQuery, setDeptQuery] = useState("");
+  const [posQuery, setPosQuery] = useState("");
   const [newSalaryGrade, setNewSalaryGrade] = useState({ ordinance: "", grade: "", step: "", amount: "" });
+
+  const filteredDepts = depts.filter(d => d.toLowerCase().includes(deptQuery.toLowerCase()));
+  const filteredPos = pos.filter(p => p.toLowerCase().includes(posQuery.toLowerCase()));
 
   const isAdmin = user?.role === "Admin";
 
@@ -183,42 +188,76 @@ function SettingsPage() {
 
         <TabsContent value="departments" className="mt-4">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <div className="flex gap-2 mb-4">
-              <Input placeholder="New department name" value={newDept} onChange={(e) => setNewDept(e.target.value)} />
-              <Button
-                disabled={!can("edit") || !newDept.trim()}
-                onClick={() => { setDepts((d) => [...d, newDept.trim()]); setNewDept(""); toast.success("Department added"); }}
-                className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"
-              ><Plus className="h-4 w-4 mr-1" /> Add</Button>
+            <div className="flex flex-col sm:flex-row gap-3 mb-6">
+              <div className="flex-1 flex gap-2">
+                <Input 
+                  placeholder="New department name" 
+                  value={newDept} 
+                  onChange={(e) => setNewDept(e.target.value)} 
+                />
+                <Button
+                  disabled={!can("edit") || !newDept.trim()}
+                  onClick={() => { setDepts((d) => [...d, newDept.trim()]); setNewDept(""); toast.success("Department added"); }}
+                  className="bg-primary text-primary-foreground"
+                ><Plus className="h-4 w-4 mr-1" /> Add</Button>
+              </div>
+              <div className="w-full sm:w-64">
+                <Input 
+                  placeholder="Search departments..." 
+                  value={deptQuery} 
+                  onChange={(e) => setDeptQuery(e.target.value)} 
+                  className="bg-muted/50"
+                />
+              </div>
             </div>
-            <ul className="divide-y divide-border">
-              {depts.map((d, i) => (
-                <li key={d + i} className="flex items-center justify-between py-2.5 text-sm">
+            <ul className="divide-y divide-border border-t border-border">
+              {filteredDepts.map((d, i) => (
+                <li key={d + i} className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors">
                   <span>{d}</span>
-                  <button disabled={!can("delete")} onClick={() => { setDepts((x) => x.filter((_, j) => j !== i)); toast("Removed"); }} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+                  <button disabled={!can("delete")} onClick={() => { setDepts((x) => x.filter((val) => val !== d)); toast("Removed"); }} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                 </li>
               ))}
+              {filteredDepts.length === 0 && (
+                <li className="py-8 text-center text-muted-foreground text-sm">No departments found.</li>
+              )}
             </ul>
           </div>
         </TabsContent>
 
         <TabsContent value="positions" className="mt-4">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <div className="flex gap-2 mb-4">
-              <Input placeholder="New position title" value={newPos} onChange={(e) => setNewPos(e.target.value)} />
-              <Button
-                disabled={!can("edit") || !newPos.trim()}
-                onClick={() => { setPos((p) => [...p, newPos.trim()]); setNewPos(""); toast.success("Position added"); }}
-                className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"
-              ><Plus className="h-4 w-4 mr-1" /> Add</Button>
+            <div className="flex flex-col sm:flex-row gap-3 mb-6">
+              <div className="flex-1 flex gap-2">
+                <Input 
+                  placeholder="New position title" 
+                  value={newPos} 
+                  onChange={(e) => setNewPos(e.target.value)} 
+                />
+                <Button
+                  disabled={!can("edit") || !newPos.trim()}
+                  onClick={() => { setPos((p) => [...p, newPos.trim()]); setNewPos(""); toast.success("Position added"); }}
+                  className="bg-primary text-primary-foreground"
+                ><Plus className="h-4 w-4 mr-1" /> Add</Button>
+              </div>
+              <div className="w-full sm:w-64">
+                <Input 
+                  placeholder="Search positions..." 
+                  value={posQuery} 
+                  onChange={(e) => setPosQuery(e.target.value)} 
+                  className="bg-muted/50"
+                />
+              </div>
             </div>
-            <ul className="divide-y divide-border">
-              {pos.map((p, i) => (
-                <li key={p + i} className="flex items-center justify-between py-2.5 text-sm">
+            <ul className="divide-y divide-border border-t border-border">
+              {filteredPos.map((p, i) => (
+                <li key={p + i} className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors">
                   <span>{p}</span>
-                  <button disabled={!can("delete")} onClick={() => { setPos((x) => x.filter((_, j) => j !== i)); toast("Removed"); }} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+                  <button disabled={!can("delete")} onClick={() => { setPos((x) => x.filter((val) => val !== p)); toast("Removed"); }} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                 </li>
               ))}
+              {filteredPos.length === 0 && (
+                <li className="py-8 text-center text-muted-foreground text-sm">No positions found.</li>
+              )}
             </ul>
           </div>
         </TabsContent>
