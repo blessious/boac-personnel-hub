@@ -9,38 +9,154 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as LeaveRouteImport } from './routes/leave'
+import { Route as EmployeesRouteImport } from './routes/employees'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as EmployeesIdRouteImport } from './routes/employees.$id'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportsRoute = ReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeaveRoute = LeaveRouteImport.update({
+  id: '/leave',
+  path: '/leave',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EmployeesRoute = EmployeesRouteImport.update({
+  id: '/employees',
+  path: '/employees',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EmployeesIdRoute = EmployeesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => EmployeesRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/employees': typeof EmployeesRouteWithChildren
+  '/leave': typeof LeaveRoute
+  '/login': typeof LoginRoute
+  '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
+  '/employees/$id': typeof EmployeesIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/employees': typeof EmployeesRouteWithChildren
+  '/leave': typeof LeaveRoute
+  '/login': typeof LoginRoute
+  '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
+  '/employees/$id': typeof EmployeesIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/employees': typeof EmployeesRouteWithChildren
+  '/leave': typeof LeaveRoute
+  '/login': typeof LoginRoute
+  '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
+  '/employees/$id': typeof EmployeesIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/employees'
+    | '/leave'
+    | '/login'
+    | '/reports'
+    | '/settings'
+    | '/employees/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/employees'
+    | '/leave'
+    | '/login'
+    | '/reports'
+    | '/settings'
+    | '/employees/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/employees'
+    | '/leave'
+    | '/login'
+    | '/reports'
+    | '/settings'
+    | '/employees/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  EmployeesRoute: typeof EmployeesRouteWithChildren
+  LeaveRoute: typeof LeaveRoute
+  LoginRoute: typeof LoginRoute
+  ReportsRoute: typeof ReportsRoute
+  SettingsRoute: typeof SettingsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reports': {
+      id: '/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leave': {
+      id: '/leave'
+      path: '/leave'
+      fullPath: '/leave'
+      preLoaderRoute: typeof LeaveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/employees': {
+      id: '/employees'
+      path: '/employees'
+      fullPath: '/employees'
+      preLoaderRoute: typeof EmployeesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +164,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/employees/$id': {
+      id: '/employees/$id'
+      path: '/$id'
+      fullPath: '/employees/$id'
+      preLoaderRoute: typeof EmployeesIdRouteImport
+      parentRoute: typeof EmployeesRoute
+    }
   }
 }
 
+interface EmployeesRouteChildren {
+  EmployeesIdRoute: typeof EmployeesIdRoute
+}
+
+const EmployeesRouteChildren: EmployeesRouteChildren = {
+  EmployeesIdRoute: EmployeesIdRoute,
+}
+
+const EmployeesRouteWithChildren = EmployeesRoute._addFileChildren(
+  EmployeesRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  EmployeesRoute: EmployeesRouteWithChildren,
+  LeaveRoute: LeaveRoute,
+  LoginRoute: LoginRoute,
+  ReportsRoute: ReportsRoute,
+  SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
