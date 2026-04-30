@@ -83,10 +83,7 @@ function LoginPage() {
                 <ShieldCheck className="h-8 w-8 text-[var(--navy)]" />
               )}
             </div>
-            <div className="mt-3 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              {agency.logoUrl ? "Agency Seal" : "Seal Placeholder"}
-            </div>
-            <h1 className="mt-4 text-2xl font-semibold tracking-tight">{agency.name} PMIS Login</h1>
+            <h1 className="mt-6 text-2xl font-semibold tracking-tight">{agency.name} PMIS Login</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Personnel Management Information System
             </p>
@@ -138,8 +135,8 @@ function LoginPage() {
             <div>admin / admin · HR Officer: hr / hr · Viewer: viewer / viewer</div>
           </div>
 
-          <div className="mt-4 text-center text-[11px] text-muted-foreground">
-            © {new Date().getFullYear()} {agency.name}
+          <div className="mt-4 text-center text-[11px] text-muted-foreground uppercase tracking-widest font-medium">
+            © {new Date().getFullYear()} HRPMIS
           </div>
         </div>
       </div>
