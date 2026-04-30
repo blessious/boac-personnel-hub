@@ -7,13 +7,14 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+type NavItem = { to: "/" | "/employees" | "/leave" | "/reports" | "/settings"; label: string; icon: typeof LayoutDashboard; exact?: boolean };
+const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/employees", label: "Employees", icon: Users },
   { to: "/leave", label: "Leave Management", icon: CalendarDays },
   { to: "/reports", label: "Reports", icon: FileText },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
-] as const;
+];
 
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
