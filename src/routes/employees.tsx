@@ -27,15 +27,15 @@ export const Route = createFileRoute("/employees")({
   component: EmployeesPage,
 });
 
-const STATUS_COLOR: Record<EmploymentStatus, string> = {
-  PERMANENT: "bg-success/15 text-success border-success/30",
-  CASUAL: "bg-warning/15 text-warning-foreground border-warning/30",
-  CONTRACTUAL: "bg-primary/15 text-primary border-primary/30",
-  COTERMINOUS: "bg-accent text-accent-foreground border-accent",
-  ELECTED: "bg-destructive/10 text-destructive border-destructive/30",
+const STATUS_DOT: Record<EmploymentStatus, string> = {
+  PERMANENT: "bg-emerald-500",
+  CASUAL: "bg-amber-500",
+  CONTRACTUAL: "bg-blue-500",
+  COTERMINOUS: "bg-purple-500",
+  ELECTED: "bg-rose-500",
 };
 
-const PAGE_SIZE = 10;
+// Page size is now stateful in the component
 
 function EmployeesPage() {
   const location = useLocation();
@@ -50,6 +50,7 @@ function EmployeesPage() {
   const [dept, setDept] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [formData, setFormData] = useState({
     firstname: "",
@@ -72,9 +73,9 @@ function EmployeesPage() {
     });
   }, [q, dept, status]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const cur = Math.min(page, totalPages);
-  const slice = filtered.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE);
+  const slice = filtered.slice((cur - 1) * pageSize, cur * pageSize);
 
   const handleAddEmployee = () => {
     if (!formData.firstname.trim() || !formData.lastname.trim() || !formData.department || !formData.position) {
@@ -152,7 +153,7 @@ function EmployeesPage() {
           </Select>
           <div className="lg:ml-auto">
             <Button
-              className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"
+              className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-md hover:shadow-blue-500/20 transition-all duration-200"
               disabled={!can("edit")}
               onClick={() => setShowAddDialog(true)}
             >
@@ -211,7 +212,10 @@ function EmployeesPage() {
                   <td className="px-4 py-3 text-muted-foreground">{e.department}</td>
                   <td className="px-4 py-3">{e.position}</td>
                   <td className="px-4 py-3">
-                    <Badge variant="outline" className={`${STATUS_COLOR[e.status]} font-medium`}>{e.status}</Badge>
+                    <div className="flex items-center gap-2">
+                      <div className={cn("h-2 w-2 rounded-full shrink-0", STATUS_DOT[e.status])} />
+                      <span className="text-[13px] font-medium text-foreground/80">{e.status}</span>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{e.statusClass}</td>
                   <td className="px-4 py-3 text-right">
@@ -273,14 +277,31 @@ function EmployeesPage() {
         </div>
 
         {/* Pagination */}
-        <div className="p-4 flex items-center justify-between border-t border-border text-sm text-muted-foreground">
-          <div>Showing {slice.length} of {filtered.length}</div>
+        <div className="p-4 flex flex-col sm:flex-row items-center justify-between border-t border-border gap-4 text-sm text-muted-foreground">
+          <div className="flex items-center gap-4">
+            <div>Showing {slice.length} of {filtered.length}</div>
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 text-xs uppercase tracking-wider font-semibold">Show</span>
+              <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+                <SelectTrigger className="h-8 w-[70px] bg-muted/30">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 100].map(n => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={cur === 1}>
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={cur === 1} className="h-8 w-8 p-0">
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="px-3">Page {cur} / {totalPages}</span>
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={cur === totalPages}>
+            <div className="flex items-center bg-muted/30 rounded-md px-3 h-8 font-medium">
+              Page {cur} of {totalPages}
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={cur === totalPages} className="h-8 w-8 p-0">
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -411,7 +432,7 @@ function EmployeesPage() {
           
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>Cancel</Button>
-            <Button className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90" onClick={handleAddEmployee}>Add Employee</Button>
+            <Button className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]" onClick={handleAddEmployee}>Add Employee</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

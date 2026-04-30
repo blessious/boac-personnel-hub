@@ -177,7 +177,7 @@ function SettingsPage() {
               <div className="pt-4 flex justify-end">
                 <Button 
                   onClick={() => toast.success("Agency profile updated")}
-                  className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"
+                  className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-md hover:shadow-blue-500/20 transition-all duration-200"
                 >
                   Save Changes
                 </Button>
@@ -198,7 +198,7 @@ function SettingsPage() {
                 <Button
                   disabled={!can("edit") || !newDept.trim()}
                   onClick={() => { setDepts((d) => [...d, newDept.trim()]); setNewDept(""); toast.success("Department added"); }}
-                  className="bg-primary text-primary-foreground"
+                  className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
                 ><Plus className="h-4 w-4 mr-1" /> Add</Button>
               </div>
               <div className="w-full sm:w-64">
@@ -236,7 +236,7 @@ function SettingsPage() {
                 <Button
                   disabled={!can("edit") || !newPos.trim()}
                   onClick={() => { setPos((p) => [...p, newPos.trim()]); setNewPos(""); toast.success("Position added"); }}
-                  className="bg-primary text-primary-foreground"
+                  className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
                 ><Plus className="h-4 w-4 mr-1" /> Add</Button>
               </div>
               <div className="w-full sm:w-64">
@@ -282,7 +282,7 @@ function SettingsPage() {
                     setNewSalaryGrade({ ordinance: "", grade: "", step: "", amount: "" });
                     toast.success("Salary grade added");
                   }}
-                  className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"
+                  className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
                 ><Plus className="h-4 w-4 mr-1" /> Add</Button>
               </div>
             </div>
@@ -333,7 +333,9 @@ function SettingsPage() {
                     <tr key={u.id} className="border-t border-border">
                       <td className="px-2 py-3">{u.name}</td>
                       <td className="px-2 py-3 text-muted-foreground">{u.username}</td>
-                      <td className="px-2 py-3"><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{u.role}</Badge></td>
+                      <td className="px-2 py-3">
+                        <span className="text-xs font-semibold text-primary uppercase tracking-wider">{u.role}</span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
