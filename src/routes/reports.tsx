@@ -101,7 +101,7 @@ function ReportsPage() {
             )}
 
             <div className="mt-4 flex justify-end">
-              <Button onClick={() => handleGenerate(r.title)} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">
+              <Button onClick={() => handleGenerate(r.title)} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">
                 <Download className="h-4 w-4 mr-1.5" /> Generate
               </Button>
             </div>
