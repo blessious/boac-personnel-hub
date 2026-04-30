@@ -116,8 +116,7 @@ function LeavePage() {
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Period</th>
                 <th className="px-4 py-3 font-medium">Amount</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Date Approved</th>
+                <th className="px-4 py-3 font-medium">Date Recorded</th>
               </tr>
             </thead>
             <tbody>
@@ -133,21 +132,18 @@ function LeavePage() {
                         {emp.lastname}, {emp.firstname}
                       </Link>
                     </td>
+                    <td className="px-4 py-3">{rec.type}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        {rec.type}
-                        {active && <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />}
+                        <span className="text-muted-foreground">{rec.period}</span>
+                        {active && (
+                          <Badge className="bg-primary/10 text-primary border-primary/20 shadow-sm text-[10px] h-5 px-1.5">
+                            Active
+                          </Badge>
+                        )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{rec.period}</td>
                     <td className="px-4 py-3">{(rec.type === "Sick Leave" ? rec.slAbsWP : rec.vlAbsWP) || 0}</td>
-                    <td className="px-4 py-3">
-                      {active ? (
-                        <Badge className="bg-primary text-primary-foreground border-transparent shadow-sm">Active</Badge>
-                      ) : (
-                        <Badge variant="outline" className="bg-success/15 text-success border-success/30 font-medium">Approved</Badge>
-                      )}
-                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{rec.dateAction}</td>
                   </tr>
                 );
