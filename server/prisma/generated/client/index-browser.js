@@ -122,7 +122,10 @@ exports.Prisma.AgencyScalarFieldEnum = {
   name: 'name',
   address: 'address',
   contactNo: 'contactNo',
-  logoBase64: 'logoBase64'
+  tagline: 'tagline',
+  logoUrl: 'logoUrl',
+  iconUrl: 'iconUrl',
+  bannerUrl: 'bannerUrl'
 };
 
 exports.Prisma.DepartmentScalarFieldEnum = {
@@ -300,7 +303,10 @@ exports.Prisma.AgencyOrderByRelevanceFieldEnum = {
   name: 'name',
   address: 'address',
   contactNo: 'contactNo',
-  logoBase64: 'logoBase64'
+  tagline: 'tagline',
+  logoUrl: 'logoUrl',
+  iconUrl: 'iconUrl',
+  bannerUrl: 'bannerUrl'
 };
 
 exports.Prisma.DepartmentOrderByRelevanceFieldEnum = {

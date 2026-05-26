@@ -1,13 +1,13 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { EMPLOYEES, STORE, DEPARTMENTS } from "@/lib/mock-data";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Download, Search } from "lucide-react";
+import { Download, Search, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/leave")({
   component: LeavePage,
@@ -18,34 +18,50 @@ function LeavePage() {
   const [dept, setDept] = useState("all");
   const [search, setSearch] = useState("");
 
+  const { data: employees = [], isLoading } = useQuery({
+    queryKey: ["employees"],
+    queryFn: async () => {
+      const res = await fetch("/api/employees");
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    }
+  });
+
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings");
+      return res.json();
+    }
+  });
+
+  const DEPARTMENTS = settings?.departments || [];
+
   const rows = useMemo(() => {
-    const all: Array<{ emp: typeof EMPLOYEES[number]; rec: typeof STORE.leave[string][number] }> = [];
-    for (const e of EMPLOYEES) {
-      const list = STORE.leave[e.id] ?? [];
+    const all: Array<{ emp: any; rec: any }> = [];
+    for (const e of employees) {
+      const list = e.leaves || [];
       for (const r of list) all.push({ emp: e, rec: r });
     }
     return all.filter(({ emp, rec }) => {
       if (type !== "all" && rec.type !== type) return false;
-      if (dept !== "all" && emp.department !== dept) return false;
+      if (dept !== "all" && emp.departmentName !== dept) return false;
       if (search) {
         const query = search.toLowerCase();
-        const fullName = `${emp.firstname} ${emp.lastname}`.toLowerCase();
-        if (!fullName.includes(query) && !emp.refId.toLowerCase().includes(query)) return false;
+        const fullName = `${emp.firstName} ${emp.lastName}`.toLowerCase();
+        if (!fullName.includes(query)) return false;
       }
       return true;
     });
-  }, [type, dept, search]);
+  }, [type, dept, search, employees]);
 
-  const isCurrentlyOnLeave = (period: string) => {
+  const isCurrentlyOnLeave = (start: string, end: string) => {
     try {
-      const parts = period.split(" to ");
-      if (parts.length !== 2) return false;
-      const start = new Date(parts[0]);
-      const end = new Date(parts[1]);
+      const s = new Date(start);
+      const e = new Date(end);
       const now = new Date();
-      // Normalize to midnight for comparison
       now.setHours(0, 0, 0, 0);
-      return now >= start && now <= end;
+      return now >= s && now <= e;
     } catch {
       return false;
     }
@@ -53,9 +69,19 @@ function LeavePage() {
 
   const stats = useMemo(() => {
     const total = rows.length;
-    const activeCount = rows.filter(({ rec }) => isCurrentlyOnLeave(rec.period)).length;
+    const activeCount = rows.filter(({ rec }) => isCurrentlyOnLeave(rec.startDate, rec.endDate)).length;
     return { total, activeCount };
   }, [rows]);
+
+  if (isLoading) {
+    return (
+      <AppShell title="Leave Management" subtitle="Loading data...">
+        <div className="flex h-full items-center justify-center min-h-[400px]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="Leave Management" subtitle="All approved leave records across departments">
@@ -100,7 +126,7 @@ function LeavePage() {
               <SelectTrigger className="w-full sm:w-[220px]"><SelectValue placeholder="Department" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
-                {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                {DEPARTMENTS.map((d: string) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -115,28 +141,30 @@ function LeavePage() {
                 <th className="px-4 py-3 font-medium">Employee</th>
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium hidden md:table-cell">Period</th>
-                <th className="px-4 py-3 font-medium hidden sm:table-cell">Amount</th>
-                <th className="px-4 py-3 font-medium hidden lg:table-cell">Date Recorded</th>
+                <th className="px-4 py-3 font-medium hidden lg:table-cell">Status</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(({ emp, rec }, i) => {
-                const active = isCurrentlyOnLeave(rec.period);
+                const active = isCurrentlyOnLeave(rec.startDate, rec.endDate);
+                const sDate = new Date(rec.startDate).toLocaleDateString();
+                const eDate = new Date(rec.endDate).toLocaleDateString();
+                const period = `${sDate} to ${eDate}`;
                 return (
                   <tr key={rec.id} className={cn(
                     "transition-colors",
                     active ? "bg-primary/5 hover:bg-primary/10" : i % 2 ? "bg-muted/40" : "hover:bg-muted/20"
                   )}>
                     <td className="px-4 py-3 font-medium">
-                      <Link to="/employees/$id" params={{ id: emp.id }} className="hover:underline text-foreground">
-                        {emp.lastname}, {emp.firstname}
+                      <Link to="/employees/$id" params={{ id: emp.id.toString() }} className="hover:underline text-foreground">
+                        {emp.lastName}, {emp.firstName}
                       </Link>
                     </td>
                     <td className="px-4 py-3">{rec.type}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground hidden md:inline">{rec.period}</span>
-                        <span className="text-muted-foreground inline md:hidden text-xs">{rec.period.split(" to ")[0]}</span>
+                        <span className="text-muted-foreground hidden md:inline">{period}</span>
+                        <span className="text-muted-foreground inline md:hidden text-xs">{sDate}</span>
                         {active && (
                           <Badge className="bg-primary/10 text-primary border-primary/20 shadow-sm text-[10px] h-5 px-1.5">
                             Active
@@ -144,13 +172,12 @@ function LeavePage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 hidden sm:table-cell">{(rec.type === "Sick Leave" ? rec.slAbsWP : rec.vlAbsWP) || 0}</td>
-                    <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">{rec.dateAction}</td>
+                    <td className="px-4 py-3 hidden lg:table-cell">{rec.status}</td>
                   </tr>
                 );
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">No leave records found.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">No leave records found.</td></tr>
               )}
             </tbody>
           </table>

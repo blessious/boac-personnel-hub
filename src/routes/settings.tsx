@@ -6,12 +6,14 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SETTINGS } from "@/lib/mock-data";
-import { useAuth } from "@/lib/auth";
-import { useSettings } from "@/lib/settings-context";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { useSettings } from "@/lib/settings-context";
+import { useEffect } from "react";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -20,9 +22,28 @@ export const Route = createFileRoute("/settings")({
 function SettingsPage() {
   const { can, user } = useAuth();
   const { agency, updateAgency } = useSettings();
-  const [depts, setDepts] = useState([...SETTINGS.departments]);
-  const [pos, setPos] = useState([...SETTINGS.positions]);
-  const [salaryGrades, setSalaryGrades] = useState([...SETTINGS.salaryGrades]);
+  const queryClient = useQueryClient();
+  
+  const { data: settingsData, isLoading } = useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings");
+      return res.json();
+    }
+  });
+
+  const [depts, setDepts] = useState<string[]>([]);
+  const [pos, setPos] = useState<string[]>([]);
+  const [salaryGrades, setSalaryGrades] = useState<any[]>([]);
+
+  // Sync state when data loads
+  useEffect(() => {
+    if (settingsData) {
+      setDepts(settingsData.departments || []);
+      setPos(settingsData.positions || []);
+      setSalaryGrades(settingsData.salaryGrades || []);
+    }
+  }, [settingsData]);
   const [newDept, setNewDept] = useState("");
   const [newPos, setNewPos] = useState("");
   const [deptQuery, setDeptQuery] = useState("");
@@ -33,6 +54,16 @@ function SettingsPage() {
   const filteredPos = pos.filter(p => p.toLowerCase().includes(posQuery.toLowerCase()));
 
   const isAdmin = user?.role === "Admin";
+
+  if (isLoading) {
+    return (
+      <AppShell title="Settings" subtitle="Loading data...">
+        <div className="flex h-full items-center justify-center min-h-[400px]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="Settings" subtitle="Manage reference data, salary tables, and accounts">
@@ -360,15 +391,7 @@ function SettingsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {SETTINGS.users.map((u) => (
-                    <tr key={u.id} className="border-t border-border">
-                      <td className="px-2 py-3">{u.name}</td>
-                      <td className="px-2 py-3 text-muted-foreground">{u.username}</td>
-                      <td className="px-2 py-3">
-                        <span className="text-xs font-semibold text-primary uppercase tracking-wider">{u.role}</span>
-                      </td>
-                    </tr>
-                  ))}
+                  <tr><td colSpan={3} className="px-2 py-8 text-center text-muted-foreground">Users are managed in the database now.</td></tr>
                 </tbody>
               </table>
             )}

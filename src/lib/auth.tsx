@@ -13,19 +13,7 @@ interface AuthCtx {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
-const ACCOUNTS: Record<string, { password: string; user: User }> = {
-  admin: { password: "admin", user: { username: "admin", name: "Brooklyn Simmons", role: "Admin" } },
-  hr: { password: "hr", user: { username: "hr", name: "Maria Santos", role: "HR Officer" } },
-  viewer: { password: "viewer", user: { username: "viewer", name: "Pedro Cruz", role: "Viewer" } },
-};
-
 const AUTH_COOKIE = "pmis_jwt";
-
-function makeMockJwt(user: User) {
-  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const payload = btoa(JSON.stringify({ sub: user.username, role: user.role, iat: Date.now() }));
-  return `${header}.${payload}.mock-signature`;
-}
 
 function setAuthCookie(token: string) {
   const expires = new Date(Date.now() + 1000 * 60 * 60 * 8).toUTCString();
@@ -59,16 +47,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (username: string, password: string, expectedRole?: Role) => {
-    const acc = ACCOUNTS[username.toLowerCase()];
-    if (!acc || acc.password !== password) throw new Error("Invalid username or password");
-    if (expectedRole && acc.user.role !== expectedRole) {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || "Login failed");
+    }
+
+    const data = await res.json();
+    
+    if (expectedRole && data.user.role !== expectedRole) {
       throw new Error("Selected role does not match this account");
     }
-    const token = makeMockJwt(acc.user);
-    setAuthCookie(token);
-    setUser(acc.user);
-    window.localStorage.setItem("pmis-user", JSON.stringify(acc.user));
-    return acc.user;
+
+    setAuthCookie(data.token);
+    setUser(data.user);
+    window.localStorage.setItem("pmis-user", JSON.stringify(data.user));
+    return data.user;
   };
 
   const logout = () => {

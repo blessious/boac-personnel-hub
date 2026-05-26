@@ -9,11 +9,14 @@ datasource db {
 }
 
 model Agency {
-  id         Int     @id @default(autoincrement())
-  name       String
-  address    String
-  contactNo  String
-  logoBase64 String? @db.LongText
+  id        Int     @id @default(autoincrement())
+  name      String
+  address   String
+  contactNo String
+  tagline   String?
+  logoUrl   String? @db.LongText
+  iconUrl   String? @db.LongText
+  bannerUrl String? @db.LongText
 }
 
 model Department {

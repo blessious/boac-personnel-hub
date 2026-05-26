@@ -2166,7 +2166,10 @@ export namespace Prisma {
     name: string | null
     address: string | null
     contactNo: string | null
-    logoBase64: string | null
+    tagline: string | null
+    logoUrl: string | null
+    iconUrl: string | null
+    bannerUrl: string | null
   }
 
   export type AgencyMaxAggregateOutputType = {
@@ -2174,7 +2177,10 @@ export namespace Prisma {
     name: string | null
     address: string | null
     contactNo: string | null
-    logoBase64: string | null
+    tagline: string | null
+    logoUrl: string | null
+    iconUrl: string | null
+    bannerUrl: string | null
   }
 
   export type AgencyCountAggregateOutputType = {
@@ -2182,7 +2188,10 @@ export namespace Prisma {
     name: number
     address: number
     contactNo: number
-    logoBase64: number
+    tagline: number
+    logoUrl: number
+    iconUrl: number
+    bannerUrl: number
     _all: number
   }
 
@@ -2200,7 +2209,10 @@ export namespace Prisma {
     name?: true
     address?: true
     contactNo?: true
-    logoBase64?: true
+    tagline?: true
+    logoUrl?: true
+    iconUrl?: true
+    bannerUrl?: true
   }
 
   export type AgencyMaxAggregateInputType = {
@@ -2208,7 +2220,10 @@ export namespace Prisma {
     name?: true
     address?: true
     contactNo?: true
-    logoBase64?: true
+    tagline?: true
+    logoUrl?: true
+    iconUrl?: true
+    bannerUrl?: true
   }
 
   export type AgencyCountAggregateInputType = {
@@ -2216,7 +2231,10 @@ export namespace Prisma {
     name?: true
     address?: true
     contactNo?: true
-    logoBase64?: true
+    tagline?: true
+    logoUrl?: true
+    iconUrl?: true
+    bannerUrl?: true
     _all?: true
   }
 
@@ -2311,7 +2329,10 @@ export namespace Prisma {
     name: string
     address: string
     contactNo: string
-    logoBase64: string | null
+    tagline: string | null
+    logoUrl: string | null
+    iconUrl: string | null
+    bannerUrl: string | null
     _count: AgencyCountAggregateOutputType | null
     _avg: AgencyAvgAggregateOutputType | null
     _sum: AgencySumAggregateOutputType | null
@@ -2338,7 +2359,10 @@ export namespace Prisma {
     name?: boolean
     address?: boolean
     contactNo?: boolean
-    logoBase64?: boolean
+    tagline?: boolean
+    logoUrl?: boolean
+    iconUrl?: boolean
+    bannerUrl?: boolean
   }, ExtArgs["result"]["agency"]>
 
 
@@ -2347,7 +2371,10 @@ export namespace Prisma {
     name?: boolean
     address?: boolean
     contactNo?: boolean
-    logoBase64?: boolean
+    tagline?: boolean
+    logoUrl?: boolean
+    iconUrl?: boolean
+    bannerUrl?: boolean
   }
 
 
@@ -2359,7 +2386,10 @@ export namespace Prisma {
       name: string
       address: string
       contactNo: string
-      logoBase64: string | null
+      tagline: string | null
+      logoUrl: string | null
+      iconUrl: string | null
+      bannerUrl: string | null
     }, ExtArgs["result"]["agency"]>
     composites: {}
   }
@@ -2733,7 +2763,10 @@ export namespace Prisma {
     readonly name: FieldRef<"Agency", 'String'>
     readonly address: FieldRef<"Agency", 'String'>
     readonly contactNo: FieldRef<"Agency", 'String'>
-    readonly logoBase64: FieldRef<"Agency", 'String'>
+    readonly tagline: FieldRef<"Agency", 'String'>
+    readonly logoUrl: FieldRef<"Agency", 'String'>
+    readonly iconUrl: FieldRef<"Agency", 'String'>
+    readonly bannerUrl: FieldRef<"Agency", 'String'>
   }
     
 
@@ -16594,7 +16627,10 @@ export namespace Prisma {
     name: 'name',
     address: 'address',
     contactNo: 'contactNo',
-    logoBase64: 'logoBase64'
+    tagline: 'tagline',
+    logoUrl: 'logoUrl',
+    iconUrl: 'iconUrl',
+    bannerUrl: 'bannerUrl'
   };
 
   export type AgencyScalarFieldEnum = (typeof AgencyScalarFieldEnum)[keyof typeof AgencyScalarFieldEnum]
@@ -16823,7 +16859,10 @@ export namespace Prisma {
     name: 'name',
     address: 'address',
     contactNo: 'contactNo',
-    logoBase64: 'logoBase64'
+    tagline: 'tagline',
+    logoUrl: 'logoUrl',
+    iconUrl: 'iconUrl',
+    bannerUrl: 'bannerUrl'
   };
 
   export type AgencyOrderByRelevanceFieldEnum = (typeof AgencyOrderByRelevanceFieldEnum)[keyof typeof AgencyOrderByRelevanceFieldEnum]
@@ -17024,7 +17063,10 @@ export namespace Prisma {
     name?: StringFilter<"Agency"> | string
     address?: StringFilter<"Agency"> | string
     contactNo?: StringFilter<"Agency"> | string
-    logoBase64?: StringNullableFilter<"Agency"> | string | null
+    tagline?: StringNullableFilter<"Agency"> | string | null
+    logoUrl?: StringNullableFilter<"Agency"> | string | null
+    iconUrl?: StringNullableFilter<"Agency"> | string | null
+    bannerUrl?: StringNullableFilter<"Agency"> | string | null
   }
 
   export type AgencyOrderByWithRelationInput = {
@@ -17032,7 +17074,10 @@ export namespace Prisma {
     name?: SortOrder
     address?: SortOrder
     contactNo?: SortOrder
-    logoBase64?: SortOrderInput | SortOrder
+    tagline?: SortOrderInput | SortOrder
+    logoUrl?: SortOrderInput | SortOrder
+    iconUrl?: SortOrderInput | SortOrder
+    bannerUrl?: SortOrderInput | SortOrder
     _relevance?: AgencyOrderByRelevanceInput
   }
 
@@ -17044,7 +17089,10 @@ export namespace Prisma {
     name?: StringFilter<"Agency"> | string
     address?: StringFilter<"Agency"> | string
     contactNo?: StringFilter<"Agency"> | string
-    logoBase64?: StringNullableFilter<"Agency"> | string | null
+    tagline?: StringNullableFilter<"Agency"> | string | null
+    logoUrl?: StringNullableFilter<"Agency"> | string | null
+    iconUrl?: StringNullableFilter<"Agency"> | string | null
+    bannerUrl?: StringNullableFilter<"Agency"> | string | null
   }, "id">
 
   export type AgencyOrderByWithAggregationInput = {
@@ -17052,7 +17100,10 @@ export namespace Prisma {
     name?: SortOrder
     address?: SortOrder
     contactNo?: SortOrder
-    logoBase64?: SortOrderInput | SortOrder
+    tagline?: SortOrderInput | SortOrder
+    logoUrl?: SortOrderInput | SortOrder
+    iconUrl?: SortOrderInput | SortOrder
+    bannerUrl?: SortOrderInput | SortOrder
     _count?: AgencyCountOrderByAggregateInput
     _avg?: AgencyAvgOrderByAggregateInput
     _max?: AgencyMaxOrderByAggregateInput
@@ -17068,7 +17119,10 @@ export namespace Prisma {
     name?: StringWithAggregatesFilter<"Agency"> | string
     address?: StringWithAggregatesFilter<"Agency"> | string
     contactNo?: StringWithAggregatesFilter<"Agency"> | string
-    logoBase64?: StringNullableWithAggregatesFilter<"Agency"> | string | null
+    tagline?: StringNullableWithAggregatesFilter<"Agency"> | string | null
+    logoUrl?: StringNullableWithAggregatesFilter<"Agency"> | string | null
+    iconUrl?: StringNullableWithAggregatesFilter<"Agency"> | string | null
+    bannerUrl?: StringNullableWithAggregatesFilter<"Agency"> | string | null
   }
 
   export type DepartmentWhereInput = {
@@ -18155,7 +18209,10 @@ export namespace Prisma {
     name: string
     address: string
     contactNo: string
-    logoBase64?: string | null
+    tagline?: string | null
+    logoUrl?: string | null
+    iconUrl?: string | null
+    bannerUrl?: string | null
   }
 
   export type AgencyUncheckedCreateInput = {
@@ -18163,14 +18220,20 @@ export namespace Prisma {
     name: string
     address: string
     contactNo: string
-    logoBase64?: string | null
+    tagline?: string | null
+    logoUrl?: string | null
+    iconUrl?: string | null
+    bannerUrl?: string | null
   }
 
   export type AgencyUpdateInput = {
     name?: StringFieldUpdateOperationsInput | string
     address?: StringFieldUpdateOperationsInput | string
     contactNo?: StringFieldUpdateOperationsInput | string
-    logoBase64?: NullableStringFieldUpdateOperationsInput | string | null
+    tagline?: NullableStringFieldUpdateOperationsInput | string | null
+    logoUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    iconUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    bannerUrl?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type AgencyUncheckedUpdateInput = {
@@ -18178,7 +18241,10 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     address?: StringFieldUpdateOperationsInput | string
     contactNo?: StringFieldUpdateOperationsInput | string
-    logoBase64?: NullableStringFieldUpdateOperationsInput | string | null
+    tagline?: NullableStringFieldUpdateOperationsInput | string | null
+    logoUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    iconUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    bannerUrl?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type AgencyCreateManyInput = {
@@ -18186,14 +18252,20 @@ export namespace Prisma {
     name: string
     address: string
     contactNo: string
-    logoBase64?: string | null
+    tagline?: string | null
+    logoUrl?: string | null
+    iconUrl?: string | null
+    bannerUrl?: string | null
   }
 
   export type AgencyUpdateManyMutationInput = {
     name?: StringFieldUpdateOperationsInput | string
     address?: StringFieldUpdateOperationsInput | string
     contactNo?: StringFieldUpdateOperationsInput | string
-    logoBase64?: NullableStringFieldUpdateOperationsInput | string | null
+    tagline?: NullableStringFieldUpdateOperationsInput | string | null
+    logoUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    iconUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    bannerUrl?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type AgencyUncheckedUpdateManyInput = {
@@ -18201,7 +18273,10 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     address?: StringFieldUpdateOperationsInput | string
     contactNo?: StringFieldUpdateOperationsInput | string
-    logoBase64?: NullableStringFieldUpdateOperationsInput | string | null
+    tagline?: NullableStringFieldUpdateOperationsInput | string | null
+    logoUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    iconUrl?: NullableStringFieldUpdateOperationsInput | string | null
+    bannerUrl?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type DepartmentCreateInput = {
@@ -19379,7 +19454,10 @@ export namespace Prisma {
     name?: SortOrder
     address?: SortOrder
     contactNo?: SortOrder
-    logoBase64?: SortOrder
+    tagline?: SortOrder
+    logoUrl?: SortOrder
+    iconUrl?: SortOrder
+    bannerUrl?: SortOrder
   }
 
   export type AgencyAvgOrderByAggregateInput = {
@@ -19391,7 +19469,10 @@ export namespace Prisma {
     name?: SortOrder
     address?: SortOrder
     contactNo?: SortOrder
-    logoBase64?: SortOrder
+    tagline?: SortOrder
+    logoUrl?: SortOrder
+    iconUrl?: SortOrder
+    bannerUrl?: SortOrder
   }
 
   export type AgencyMinOrderByAggregateInput = {
@@ -19399,7 +19480,10 @@ export namespace Prisma {
     name?: SortOrder
     address?: SortOrder
     contactNo?: SortOrder
-    logoBase64?: SortOrder
+    tagline?: SortOrder
+    logoUrl?: SortOrder
+    iconUrl?: SortOrder
+    bannerUrl?: SortOrder
   }
 
   export type AgencySumOrderByAggregateInput = {

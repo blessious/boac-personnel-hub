@@ -13,7 +13,10 @@ model Agency {
   name       String
   address    String
   contactNo  String
-  logoBase64 String?  @db.LongText
+  tagline    String?
+  logoUrl    String?  @db.LongText
+  iconUrl    String?  @db.LongText
+  bannerUrl  String?  @db.LongText
 }
 
 model Department {

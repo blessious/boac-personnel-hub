@@ -38,7 +38,7 @@ export function AppSidebar() {
       )}>
         <div className={cn(
           "rounded-lg grid place-items-center shrink-0 overflow-hidden transition-all",
-          agency.logoUrl ? "" : "bg-[var(--navy)] text-[var(--navy-foreground)] shadow-sm",
+          agency.logoUrl ? "bg-transparent" : "bg-[var(--navy)] text-[var(--navy-foreground)] shadow-sm",
           collapsed ? "h-8 w-8" : "h-9 w-9"
         )}>
           {agency.logoUrl ? (

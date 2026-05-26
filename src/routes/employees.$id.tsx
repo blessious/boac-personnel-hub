@@ -16,12 +16,30 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Field, FormSection } from "@/components/forms/Field";
 import { useAuth } from "@/lib/auth";
-import {
-  EMPLOYEES, DEPARTMENTS, POSITIONS, SALARY_GRADES, SALARY_STEPS, SALARY_TABLE, STORE, uid,
-  type ChildRecord, type EducationRecord, type CivilServiceRecord, type WorkRecord,
-  type OrgRecord, type TrainingRecord, type SalaryRecord, type ServiceRecord,
-  type LeaveRecord, type IPCRRecord,
-} from "@/lib/mock-data";
+import { uid, type EmploymentStatus } from "@/lib/types";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+
+// Types that were in mock-data
+type ChildRecord = any;
+type EducationRecord = any;
+type CivilServiceRecord = any;
+type WorkRecord = any;
+type OrgRecord = any;
+type TrainingRecord = any;
+type SalaryRecord = any;
+type ServiceRecord = any;
+type LeaveRecord = any;
+type IPCRRecord = any;
+
+const STORE: any = {
+  family: {}, children: {}, education: {}, civilService: {}, work: {},
+  org: {}, training: {}, salary: {}, service: {}, leave: {}, ipcr: {}
+};
+
+const SALARY_GRADES = Array.from({ length: 33 }, (_, i) => i + 1);
+const SALARY_STEPS = [1, 2, 3, 4, 5, 6, 7, 8];
+const SALARY_TABLE: Record<number, number[]> = {};
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/employees/$id")({
@@ -59,10 +77,37 @@ const TAB_CONFIG = TABS.map((t) => ({
 function EmployeeFile() {
   const { id } = useParams({ from: "/employees/$id" });
   const { can } = useAuth();
-  const employee = EMPLOYEES.find((e) => e.id === id);
+  
+  const { data: employee, isLoading } = useQuery({
+    queryKey: ["employee", id],
+    queryFn: async () => {
+      const res = await fetch(`/api/employees/${id}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    }
+  });
+
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch(`/api/settings`);
+      return res.json();
+    }
+  });
+
   const [active, setActive] = useState<Tab>("PERSONAL");
   const [, force] = useState(0);
   const refresh = () => force((n) => n + 1);
+
+  if (isLoading) {
+    return (
+      <AppShell title="Loading">
+        <div className="flex h-full items-center justify-center min-h-[400px]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppShell>
+    );
+  }
 
   if (!employee) {
     return (
@@ -74,6 +119,22 @@ function EmployeeFile() {
       </AppShell>
     );
   }
+
+  // Pre-populate STORE with mysql data for the tabs
+  STORE.family[id] = employee.family;
+  STORE.children[id] = employee.children;
+  STORE.education[id] = employee.education;
+  STORE.civilService[id] = employee.civilService;
+  STORE.work[id] = employee.workExperience;
+  STORE.org[id] = employee.voluntaryWork;
+  STORE.training[id] = employee.training;
+  STORE.salary[id] = [];
+  STORE.service[id] = [];
+  STORE.leave[id] = employee.leaves;
+  STORE.ipcr[id] = [];
+  
+  const DEPARTMENTS = settings?.departments || [];
+  const POSITIONS = settings?.positions || [];
 
   return (
     <AppShell title="201 File" subtitle="Personnel record management">
@@ -130,25 +191,25 @@ function EmployeeFile() {
       </div>
 
       <div className="mt-4">
-        {active === "PERSONAL" && <PersonalTab employee={employee} canEdit={can("edit")} />}
-        {active === "FAMILY" && <FamilyTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "CHILDREN" && <ChildrenTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "EDUCATIONAL" && <EducationTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "CIVIL SERVICE" && <CivilServiceTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "WORK EXPERIENCE" && <WorkTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "ORGANIZATION" && <OrgTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "TRAINING" && <TrainingTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "SALARY" && <SalaryTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "SERVICE RECORD" && <ServiceTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "LEAVE BALANCE" && <LeaveTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "IPCR" && <IPCRTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "PERSONAL" && <PersonalTab employee={employee} DEPARTMENTS={DEPARTMENTS} POSITIONS={POSITIONS} canEdit={can("edit")} />}
+        {active === "FAMILY" && <FamilyTab id={employee.id.toString()} canEdit={can("edit")} onChange={refresh} />}
+        {active === "CHILDREN" && <ChildrenTab id={employee.id.toString()} canEdit={can("edit")} onChange={refresh} />}
+        {active === "EDUCATIONAL" && <EducationTab id={employee.id.toString()} canEdit={can("edit")} onChange={refresh} />}
+        {active === "CIVIL SERVICE" && <CivilServiceTab id={employee.id.toString()} canEdit={can("edit")} onChange={refresh} />}
+        {active === "WORK EXPERIENCE" && <WorkTab id={employee.id.toString()} canEdit={can("edit")} onChange={refresh} />}
+        {active === "ORGANIZATION" && <OrgTab id={employee.id.toString()} canEdit={can("edit")} onChange={refresh} />}
+        {active === "TRAINING" && <TrainingTab id={employee.id.toString()} canEdit={can("edit")} onChange={refresh} />}
+        {active === "SALARY" && <SalaryTab id={employee.id.toString()} canEdit={can("edit")} onChange={refresh} />}
+        {active === "SERVICE RECORD" && <ServiceTab id={employee.id.toString()} DEPARTMENTS={DEPARTMENTS} POSITIONS={POSITIONS} canEdit={can("edit")} onChange={refresh} />}
+        {active === "LEAVE BALANCE" && <LeaveTab id={employee.id.toString()} canEdit={can("edit")} onChange={refresh} />}
+        {active === "IPCR" && <IPCRTab id={employee.id.toString()} canEdit={can("edit")} onChange={refresh} />}
       </div>
     </AppShell>
   );
 }
 
 /* ---------------- TAB 1: PERSONAL ---------------- */
-function PersonalTab({ employee, canEdit }: { employee: typeof EMPLOYEES[number]; canEdit: boolean }) {
+function PersonalTab({ employee, DEPARTMENTS, POSITIONS, canEdit }: { employee: any; DEPARTMENTS: string[]; POSITIONS: string[]; canEdit: boolean }) {
   const [photo, setPhoto] = useState<string | undefined>(employee.photoUrl);
 
   const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -761,7 +822,7 @@ function SalaryTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; on
 }
 
 /* ---------------- TAB 10: SERVICE RECORD ---------------- */
-function ServiceTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
+function ServiceTab({ id, DEPARTMENTS, POSITIONS, canEdit, onChange }: { id: string; DEPARTMENTS: string[]; POSITIONS: string[]; canEdit: boolean; onChange: () => void }) {
   const list = STORE.service[id] ?? (STORE.service[id] = []);
   const blank: Omit<ServiceRecord, "id"> = { from: "", to: "", status: "Permanent", salary: "", designation: "", department: "", assignment: "", branch: "", leave: "", sepDate: "", sepCause: "" };
   const { state, set, reset } = useRecordForm(blank);

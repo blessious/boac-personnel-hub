@@ -25,7 +25,7 @@ interface SettingsContextType {
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => {
       const res = await fetch('/api/settings');
@@ -38,8 +38,55 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [subtitle, setSubtitle] = useState("Overview and statistics");
 
   if (isLoading || !data) {
-    return <div>Loading...</div>; // Could be a better loading state
+    return <div>Loading...</div>;
   }
+
+  const updateAgency = async (settings: any) => {
+    try {
+      await fetch('/api/settings/agency', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+      refetch();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const addDepartment = async (dept: Partial<Department>) => {
+    try {
+      await fetch('/api/settings/departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dept)
+      });
+      refetch();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const deleteDepartment = async (id: number) => {
+    // Implement delete if needed later on the backend
+  };
+
+  const addPosition = async (pos: Partial<Position>) => {
+    try {
+      await fetch('/api/settings/positions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pos)
+      });
+      refetch();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const deletePosition = async (id: number) => {
+    // Implement delete if needed later on the backend
+  };
 
   const value = {
     agency: data.agency,
@@ -50,11 +97,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     subtitle,
     setTitle,
     setSubtitle,
-    updateAgency: (s) => {},
-    addDepartment: (d) => {},
-    deleteDepartment: (id) => {},
-    addPosition: (p) => {},
-    deletePosition: (id) => {},
+    updateAgency,
+    addDepartment,
+    deleteDepartment,
+    addPosition,
+    deletePosition,
   };
 
   return (
