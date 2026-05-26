@@ -6,6 +6,7 @@ export interface AgencySettings {
   tagline: string;
   logoUrl: string;
   iconUrl: string;
+  bannerUrl?: string;
 }
 
 export type Theme = "light" | "dark";
@@ -46,7 +47,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const updateAgency = (newSettings: Partial<AgencySettings>) => {
     setAgency((prev) => {
       const updated = { ...prev, ...newSettings };
-      localStorage.setItem("pmis_agency_settings", JSON.stringify(updated));
+      // Only store non-image data in localStorage to avoid quota issues
+      const { logoUrl, iconUrl, bannerUrl, ...textSettings } = updated;
+      localStorage.setItem("pmis_agency_settings", JSON.stringify(textSettings));
+      // Images are kept in memory only
       return updated;
     });
   };

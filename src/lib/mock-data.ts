@@ -241,6 +241,7 @@ export const SETTINGS = {
     tagline: "Organization Subtitle",
     logoUrl: "",
     iconUrl: "",
+    bannerUrl: "",
   },
 };
 
