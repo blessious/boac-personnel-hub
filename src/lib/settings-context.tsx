@@ -6,6 +6,7 @@ export interface AgencySettings {
   tagline: string;
   logoUrl: string;
   iconUrl: string;
+  bannerUrl: string;
 }
 
 export type Theme = "light" | "dark";

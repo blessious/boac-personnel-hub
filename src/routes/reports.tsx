@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { FileText, Download, Calendar } from "lucide-react";
 import { toast } from "sonner";
-import { useSettings } from "@/lib/settings-context";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useSettings } from "@/lib/settings-context";
 
 export const Route = createFileRoute("/reports")({
   component: ReportsPage,
@@ -21,6 +21,7 @@ const REPORTS = [
 
 function ReportsPage() {
   const { agency } = useSettings();
+
   const escapePdf = (text: string) => text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 
   const createPdfBlob = (lines: string[]) => {
@@ -62,7 +63,7 @@ function ReportsPage() {
     setTimeout(() => {
       const blob = createPdfBlob([
         title,
-        `${agency.name} | ${agency.tagline}`,
+        `${agency.name}${agency.tagline ? ` - ${agency.tagline}` : ""}`,
         `Generated: ${new Date().toLocaleString()}`,
       ]);
       const url = URL.createObjectURL(blob);
@@ -101,7 +102,7 @@ function ReportsPage() {
             )}
 
             <div className="mt-4 flex justify-end">
-              <Button onClick={() => handleGenerate(r.title)} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">
+              <Button onClick={() => handleGenerate(r.title)} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">
                 <Download className="h-4 w-4 mr-1.5" /> Generate
               </Button>
             </div>

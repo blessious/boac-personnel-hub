@@ -1,3 +1,4 @@
+import dbEmployeesRaw from "./db-employees.json";
 // Mock data layer for PMIS - Municipality of Boac, Marinduque
 // All data lives in-memory. Replace with Axios calls to Hono backend later.
 
@@ -113,64 +114,8 @@ for (const g of SALARY_GRADES) {
   SALARY_TABLE[g] = Array.from({ length: 8 }, (_, s) => Math.round(base * (1 + s * 0.018)));
 }
 
-const FIRST = ["Juan", "Maria", "Jose", "Ana", "Pedro", "Liza", "Mark", "Grace", "Ramon", "Cristina", "Antonio", "Rosa", "Eduardo", "Luz", "Manuel", "Teresa", "Roberto", "Imelda", "Carlos", "Divina"];
-const LAST = ["Reyes", "Santos", "Cruz", "Garcia", "Mercado", "Bautista", "Villanueva", "Aquino", "Mendoza", "Dela Cruz", "Rivera", "Castillo", "Pangilinan", "Salazar", "Lopez", "Domingo", "Tolentino", "Marasigan", "Nieto", "Solis"];
-const MIDDLE = ["Lim", "Tan", "Co", "Ong", "Sy", "Yap", "Uy", "Chan", "Lee", "Ang"];
-
-const seed = (n: number) => {
-  let x = n + 1;
-  return () => {
-    x = (x * 9301 + 49297) % 233280;
-    return x / 233280;
-  };
-};
-
-export function generateEmployees(count = 47): Employee[] {
-  const rnd = seed(7);
-  const list: Employee[] = [];
-  for (let i = 0; i < count; i++) {
-    const ln = LAST[Math.floor(rnd() * LAST.length)];
-    const fn = FIRST[Math.floor(rnd() * FIRST.length)];
-    const mn = MIDDLE[Math.floor(rnd() * MIDDLE.length)];
-    const dept = DEPARTMENTS[Math.floor(rnd() * DEPARTMENTS.length)];
-    const pos = POSITIONS[Math.floor(rnd() * POSITIONS.length)];
-    const statusPool: EmploymentStatus[] = ["PERMANENT", "PERMANENT", "PERMANENT", "CASUAL", "CONTRACTUAL", "COTERMINOUS", "ELECTED"];
-    const status = statusPool[Math.floor(rnd() * statusPool.length)];
-    const year = 2005 + Math.floor(rnd() * 20);
-    const month = 1 + Math.floor(rnd() * 12);
-    const day = 1 + Math.floor(rnd() * 27);
-    const id = `${1000 + i}`;
-    list.push({
-      id,
-      refId: `EMP-${id}`,
-      lastname: ln,
-      firstname: fn,
-      middlename: mn,
-      department: dept,
-      position: pos,
-      status,
-      level: rnd() > 0.6 ? "Second Level" : "First Level",
-      statusClass: rnd() > 0.5 ? "Administrative" : rnd() > 0.5 ? "Technical" : "Legislative",
-      dateEmployed: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-      empStatus: "Employed",
-      itemNo: `OSEC-DBM-A-${10 + i}`,
-      birthday: `${1965 + Math.floor(rnd() * 35)}-${String(1 + Math.floor(rnd() * 12)).padStart(2, "0")}-${String(1 + Math.floor(rnd() * 27)).padStart(2, "0")}`,
-      gender: rnd() > 0.5 ? "Male" : "Female",
-      civilStatus: rnd() > 0.5 ? "Married" : "Single",
-      citizenship: "Filipino",
-      bloodType: ["A+", "B+", "O+", "AB+", "O-"][Math.floor(rnd() * 5)],
-      cellphoneNo: `0917${Math.floor(1000000 + rnd() * 8999999)}`,
-      email: `${fn.toLowerCase()}.${ln.toLowerCase().replace(/\s/g, "")}@agency.gov.ph`,
-      residentialAddress: `Brgy. ${["Poblacion", "Mercado", "Caganhao", "Tanza", "Boi", "Murallon"][Math.floor(rnd() * 6)]}, Boac, Marinduque`,
-      residentialZipcode: "4900",
-      permanentAddress: `Brgy. Poblacion, Boac, Marinduque`,
-      permanentZipcode: "4900",
-    });
-  }
-  return list;
-}
-
-export const EMPLOYEES = generateEmployees();
+const dbEmployees = Array.isArray(dbEmployeesRaw) ? dbEmployeesRaw : (dbEmployeesRaw as any).value || [];
+export const EMPLOYEES: Employee[] = dbEmployees as Employee[];
 
 // --- Sub-record stores keyed by employee id ---
 export interface FamilyRecord {
@@ -241,6 +186,7 @@ export const SETTINGS = {
     tagline: "Organization Subtitle",
     logoUrl: "",
     iconUrl: "",
+    bannerUrl: "",
   },
 };
 
