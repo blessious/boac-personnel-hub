@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Agency {
+  id         Int     @id @default(autoincrement())
+  name       String
+  address    String
+  contactNo  String
+  logoBase64 String? @db.LongText
+}
+
+model Department {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  employees Employee[]
+}
+
+model Position {
+  id        Int        @id @default(autoincrement())
+  title     String     @unique
+  employees Employee[]
+}
+
+model SalaryGrade {
+  id     Int   @id @default(autoincrement())
+  grade  Int   @unique
+  step   Int   @default(1)
+  amount Float
+}
+
+model User {
+  id       Int    @id @default(autoincrement())
+  username String @unique
+  password String
+  role     String @default("HR_STAFF")
+  name     String
+}
+
+model Employee {
+  id                 Int      @id @default(autoincrement())
+  firstName          String
+  lastName           String
+  middleName         String?
+  nameExtension      String?
+  dateOfBirth        DateTime
+  placeOfBirth       String
+  sex                String
+  civilStatus        String
+  height             Float?
+  weight             Float?
+  bloodType          String?
+  gsisNo             String?
+  pagibigNo          String?
+  philhealthNo       String?
+  sssNo              String?
+  tinNo              String?
+  agencyEmployeeNo   String?
+  citizenship        String
+  residentialAddress String
+  permanentAddress   String
+  telephoneNo        String?
+  mobileNo           String?
+  email              String?
+
+  departmentId Int
+  department   Department @relation(fields: [departmentId], references: [id])
+  positionId   Int
+  position     Position   @relation(fields: [positionId], references: [id])
+
+  status    String    @default("ACTIVE")
+  dateHired DateTime?
+
+  children       ChildRecord[]
+  education      EducationalBackground[]
+  civilService   CivilServiceEligibility[]
+  workExperience WorkExperience[]
+  voluntaryWork  VoluntaryWork[]
+  training       TrainingProgram[]
+  skills         OtherInformation[]
+  family         FamilyBackground?
+  leaves         LeaveRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FamilyBackground {
+  id                    Int      @id @default(autoincrement())
+  employeeId            Int      @unique
+  employee              Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  spouseFirstName       String?
+  spouseLastName        String?
+  spouseMiddleName      String?
+  spouseOccupation      String?
+  spouseEmployer        String?
+  spouseBusinessAddress String?
+  spouseTelephone       String?
+  fatherFirstName       String
+  fatherLastName        String
+  fatherMiddleName      String?
+  motherMaidenFirst     String
+  motherMaidenLast      String
+  motherMaidenMiddle    String?
+}
+
+model ChildRecord {
+  id          Int      @id @default(autoincrement())
+  employeeId  Int
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  name        String
+  dateOfBirth DateTime
+}
+
+model EducationalBackground {
+  id                 Int       @id @default(autoincrement())
+  employeeId         Int
+  employee           Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  level              String
+  schoolName         String
+  degreeCourse       String?
+  yearGraduated      String?
+  highestLevelEarned String?
+  dateFrom           DateTime?
+  dateTo             DateTime?
+  scholarships       String?
+}
+
+model CivilServiceEligibility {
+  id                 Int       @id @default(autoincrement())
+  employeeId         Int
+  employee           Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  careerService      String
+  rating             Float?
+  dateOfExamination  DateTime?
+  placeOfExamination String?
+  licenseNo          String?
+  licenseValidity    DateTime?
+}
+
+model WorkExperience {
+  id                      Int       @id @default(autoincrement())
+  employeeId              Int
+  employee                Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  dateFrom                DateTime
+  dateTo                  DateTime?
+  positionTitle           String
+  departmentAgencyCompany String
+  monthlySalary           Float?
+  salaryGrade             String?
+  statusOfAppointment     String?
+  isGovService            Boolean   @default(false)
+}
+
+model VoluntaryWork {
+  id                  Int       @id @default(autoincrement())
+  employeeId          Int
+  employee            Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organizationName    String
+  organizationAddress String?
+  dateFrom            DateTime
+  dateTo              DateTime?
+  numberOfHours       Float?
+  positionNature      String
+}
+
+model TrainingProgram {
+  id              Int       @id @default(autoincrement())
+  employeeId      Int
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  titleOfLearning String
+  dateFrom        DateTime
+  dateTo          DateTime?
+  numberOfHours   Float?
+  typeOfId        String?
+  sponsoredBy     String?
+}
+
+model OtherInformation {
+  id                      Int      @id @default(autoincrement())
+  employeeId              Int
+  employee                Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  specialSkills           String?
+  nonAcademicDistinctions String?
+  membershipInAssoc       String?
+}
+
+model LeaveRecord {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type       String
+  startDate  DateTime
+  endDate    DateTime
+  status     String   @default("PENDING")
+  reason     String?
+  createdAt  DateTime @default(now())
+}

@@ -49,7 +49,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
 
   const handleLogout = () => {
     logout();
-    navigate({ to: "/login" });
+    navigate({ to: "/login", search: { redirect: undefined } });
   };
 
   const isActive = (to: string, exact?: boolean) => exact ? path === to : path === to || path.startsWith(to + "/");

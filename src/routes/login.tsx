@@ -22,7 +22,7 @@ type FormData = z.infer<typeof schema>;
 
 export const Route = createFileRoute("/login")({
   validateSearch: (s: Record<string, unknown>) => ({
-    redirect: typeof s.redirect === "string" ? s.redirect : "/",
+    redirect: (s.redirect as string) || undefined,
   }),
   component: LoginPage,
 });

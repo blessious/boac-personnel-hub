@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { SettingsProvider, useSettings } from "@/lib/settings-context";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 
 import appCss from "../styles.css?url";
 
@@ -35,7 +37,7 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "PMIS — Personnel Management Information System" },
+      { title: "PMIS ??? Personnel Management Information System" },
       { name: "description", content: "Personnel Management Information System for government agencies and organizations." },
       { property: "og:title", content: "PMIS" },
       { property: "og:description", content: "Personnel records, plantilla, leave and salary management." },
@@ -70,11 +72,13 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   return (
-    <AuthProvider>
-      <SettingsProvider>
-        <RootWithSettings />
-      </SettingsProvider>
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <SettingsProvider>
+            <RootWithSettings />
+          </SettingsProvider>
+        </AuthProvider>
+    </QueryClientProvider>
   );
 }
 
