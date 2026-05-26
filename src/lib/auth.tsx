@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 export type Role = "Admin" | "HR Officer" | "Viewer";
-export interface User { username: string; name: string; role: Role }
+export interface User { username: string; name: string; role: Role; photoUrl?: string }
 
 interface AuthCtx {
   user: User | null;
   login: (u: string, p: string, expectedRole?: Role) => Promise<User>;
   logout: () => void;
+  updateProfile: (updates: Partial<User>) => Promise<User>;
   can: (action: "edit" | "delete" | "manageUsers") => boolean;
 }
 
@@ -76,6 +77,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.localStorage.removeItem("pmis-user");
   };
 
+  const updateProfile = async (updates: Partial<User>) => {
+    // Backend-ready: In the future, this will be an API call (e.g., PUT /api/users/profile)
+    // For now, we update the local state and localStorage.
+    if (!user) throw new Error("Not logged in");
+    const updatedUser = { ...user, ...updates };
+    setUser(updatedUser);
+    window.localStorage.setItem("pmis-user", JSON.stringify(updatedUser));
+    // If we were updating the backend, we might get a new token back, but for mock, it's fine.
+    return updatedUser;
+  };
+
   const can = (action: "edit" | "delete" | "manageUsers") => {
     if (!user) return false;
     if (user.role === "Admin") return true;
@@ -84,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   if (!ready) return null;
-  return <Ctx.Provider value={{ user, login, logout, can }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, login, logout, updateProfile, can }}>{children}</Ctx.Provider>;
 }
 
 export function useAuth() {

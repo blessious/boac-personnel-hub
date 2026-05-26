@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router"
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ShieldCheck, Loader2, User, Lock } from "lucide-react";
+import { ShieldCheck, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { type Role, useAuth } from "@/lib/auth";
@@ -69,157 +69,70 @@ function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background overflow-hidden font-sans">
-      {/* Left Side: Hero Section */}
-      <div className="relative hidden w-0 flex-1 lg:block">
-        <div
-          className="absolute inset-0 bg-cover bg-center transition-all duration-1000"
-          style={{
-            backgroundImage: agency.bannerUrl ? `url(${agency.bannerUrl})` : `url('https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=2029&auto=format&fit=crop')`,
-          }}
-        >
-          {!agency.bannerUrl && (
-            <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-primary/80 flex items-center justify-center">
-              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
-              <div className="relative z-10 text-center">
-                <div className="mx-auto h-32 w-32 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 flex items-center justify-center mb-6 shadow-2xl animate-pulse">
-                  <ShieldCheck className="h-16 w-16 text-white" />
-                </div>
-                <div className="text-white/40 text-sm font-bold uppercase tracking-[0.3em]">Agency Branding Placeholder</div>
-              </div>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_20%_20%,rgba(30,58,95,0.09),transparent_45%),radial-gradient(circle_at_80%_15%,rgba(99,102,241,0.08),transparent_40%),linear-gradient(to_bottom,rgba(255,255,255,0.96),rgba(245,247,251,0.96))] px-4 py-10">
+      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-[380px] items-center">
+        <div className="w-full rounded-2xl border border-border bg-card p-8 shadow-sm">
+          <div className="flex flex-col items-center text-center">
+            <div className={cn(
+              "grid h-20 w-20 place-items-center rounded-full overflow-hidden",
+              agency.logoUrl ? "" : "border-2 border-dashed border-[var(--navy)]/35 bg-[var(--navy)]/5"
+            )}>
+              {agency.logoUrl ? (
+                <img src={agency.logoUrl} alt="Seal" className="h-full w-full object-contain" />
+              ) : (
+                <ShieldCheck className="h-8 w-8 text-[var(--navy)]" />
+              )}
             </div>
-          )}
-          <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/50 to-white/10" />
-        </div>
-
-        <div className="relative flex h-full items-center px-20">
-          <div className="max-w-xl text-white">
-            <div className="flex items-center gap-4 mb-8">
-              <div className="h-16 w-16 flex items-center justify-center">
-                {agency.logoUrl ? (
-                  <img src={agency.logoUrl} alt="Logo" className="h-full w-full object-contain drop-shadow-lg" />
-                ) : (
-                  <ShieldCheck className="h-14 w-14 text-white drop-shadow-md" />
-                )}
-              </div>
-              <div>
-                <h2 className="text-3xl font-bold tracking-tight">{agency.name || "HRPMIS"}</h2>
-                <p className="text-white/70 font-medium uppercase tracking-widest text-xs mt-1">{agency.tagline}</p>
-              </div>
-            </div>
-
-            <h1 className="text-5xl font-extrabold tracking-tight leading-tight">
-              Streamlining <br />
-              <span className="text-white">Human Resources</span>
-            </h1>
-            <p className="mt-6 text-xl text-white/80 max-w-md font-light leading-relaxed">
-              Personnel Management Information System. A secure and efficient platform for modern government administration.
-            </p>
-          </div>
-        </div>
-
-      </div>
-
-      {/* Right Side: Login Form */}
-      <div className="flex flex-1 flex-col justify-center px-4 py-12 sm:px-6 lg:flex-none lg:px-20 xl:px-24 bg-card shadow-2xl z-10">
-        <div className="mx-auto w-full max-w-sm lg:w-96">
-          <div className="text-center lg:text-left">
-            <div className="lg:hidden flex justify-center mb-6">
-              <div className="h-16 w-16 flex items-center justify-center">
-                {agency.logoUrl ? (
-                  <img src={agency.logoUrl} alt="Logo" className="h-full w-full object-contain drop-shadow-md" />
-                ) : (
-                  <ShieldCheck className="h-12 w-12 text-primary" />
-                )}
-              </div>
-            </div>
-            <h2 className="text-3xl font-extrabold tracking-tight text-foreground">Sign in</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Please enter your credentials to access your account
+            <h1 className="mt-6 text-2xl font-bold tracking-tight">{agency.name}</h1>
+            <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-primary mt-1.5">PMIS Login</p>
+            <p className="mt-4 text-xs text-muted-foreground/60">
+              Personnel Management Information System
             </p>
           </div>
 
-          <div className="mt-10">
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="username" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Username</Label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none">
-                    <User className="h-4 w-4 text-muted-foreground/40" />
-                  </div>
-                  <Input
-                    id="username"
-                    autoComplete="username"
-                    placeholder="Enter username"
-                    className="h-10 pl-8 bg-transparent border-t-0 border-x-0 border-b-2 border-border/60 rounded-none focus-visible:ring-0 focus:border-t-0 focus:border-x-0 focus:border-b-primary transition-none placeholder:text-muted-foreground/40 text-sm shadow-none"
-                    {...form.register("username")}
-                  />
-                </div>
-                {form.formState.errors.username && (
-                  <p className="text-xs font-medium text-destructive mt-1">{form.formState.errors.username.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Password</Label>
-                  <a href="#" className="text-xs font-semibold text-primary hover:underline">Forgot Password?</a>
-                </div>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none">
-                    <Lock className="h-4 w-4 text-muted-foreground/40" />
-                  </div>
-                  <Input
-                    id="password"
-                    type="password"
-                    autoComplete="current-password"
-                    placeholder="••••••••"
-                    className="h-10 pl-8 bg-transparent border-t-0 border-x-0 border-b-2 border-border/60 rounded-none focus-visible:ring-0 focus:border-t-0 focus:border-x-0 focus:border-b-primary transition-none placeholder:text-muted-foreground/40 text-sm shadow-none"
-                    {...form.register("password")}
-                  />
-                </div>
-                {form.formState.errors.password && (
-                  <p className="text-xs font-medium text-destructive mt-1">{form.formState.errors.password.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Access Role</Label>
-                <Select value={form.watch("role")} onValueChange={(v) => form.setValue("role", v as Role, { shouldValidate: true })}>
-                  <SelectTrigger className="h-10 bg-transparent border-t-0 border-x-0 border-b-2 border-border/60 rounded-none focus:ring-0 focus:border-b-primary transition-none shadow-none px-0.5 outline-none text-sm shadow-none">
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-none border-border shadow-2xl">
-                    <SelectItem value="Admin" className="text-sm">Admin</SelectItem>
-                    <SelectItem value="HR Officer" className="text-sm">HR Officer</SelectItem>
-                    <SelectItem value="Viewer" className="text-sm">Viewer</SelectItem>
-                  </SelectContent>
-                </Select>
-                {form.formState.errors.role && (
-                  <p className="text-xs font-medium text-destructive mt-1">{form.formState.errors.role.message}</p>
-                )}
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full h-12 bg-primary text-white hover:bg-primary/90 shadow-none transition-all duration-300 font-bold uppercase tracking-widest text-xs rounded-xl mt-4 active:scale-[0.98]"
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Sign In"
-                )}
-              </Button>
-            </form>
-
-            <div className="mt-8 pt-8 border-t border-muted">
-              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-medium tracking-widest">
-                <span>© {new Date().getFullYear()}</span>
-                <span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
-                <span></span>
-              </div>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="mt-7 space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="username">Username</Label>
+              <Input id="username" autoComplete="username" {...form.register("username")} />
+              {form.formState.errors.username && (
+                <p className="text-xs text-destructive">{form.formState.errors.username.message}</p>
+              )}
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input id="password" type="password" autoComplete="current-password" {...form.register("password")} />
+              {form.formState.errors.password && (
+                <p className="text-xs text-destructive">{form.formState.errors.password.message}</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Role</Label>
+              <Select value={form.watch("role")} onValueChange={(v) => form.setValue("role", v as Role, { shouldValidate: true })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Admin">Admin</SelectItem>
+                  <SelectItem value="HR Officer">HR Officer</SelectItem>
+                  <SelectItem value="Viewer">Viewer</SelectItem>
+                </SelectContent>
+              </Select>
+              {form.formState.errors.role && (
+                <p className="text-xs text-destructive">{form.formState.errors.role.message}</p>
+              )}
+            </div>
+            <Button 
+              type="submit" 
+              className="w-full bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-md hover:shadow-blue-500/20 transition-all duration-200" 
+              disabled={submitting}
+            >
+              {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Login
+            </Button>
+          </form>
+
+          <div className="mt-4 text-center text-[11px] text-muted-foreground uppercase tracking-widest font-medium">
+            © {new Date().getFullYear()} HRPMIS
           </div>
         </div>
       </div>

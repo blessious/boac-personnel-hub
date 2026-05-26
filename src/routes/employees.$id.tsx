@@ -1,6 +1,10 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Save, Plus, Trash2, Pencil, RefreshCw, Upload } from "lucide-react";
+import { 
+  ArrowLeft, Save, Plus, Trash2, Pencil, RefreshCw, Upload,
+  User, Users, Baby, GraduationCap, Award, Briefcase, Building2, 
+  BookOpen, Banknote, FileText, Calendar, BarChart3 
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -31,6 +35,27 @@ const TABS = [
 ] as const;
 type Tab = typeof TABS[number];
 
+const TAB_ICONS: Record<Tab, React.ElementType> = {
+  PERSONAL: User,
+  FAMILY: Users,
+  CHILDREN: Baby,
+  EDUCATIONAL: GraduationCap,
+  "CIVIL SERVICE": Award,
+  "WORK EXPERIENCE": Briefcase,
+  ORGANIZATION: Building2,
+  TRAINING: BookOpen,
+  SALARY: Banknote,
+  "SERVICE RECORD": FileText,
+  "LEAVE BALANCE": Calendar,
+  IPCR: BarChart3,
+};
+
+const TAB_CONFIG = TABS.map((t) => ({
+  id: t,
+  icon: TAB_ICONS[t],
+  label: t === "IPCR" ? "IPCR" : t.split(" ").map(w => w[0] + w.slice(1).toLowerCase()).join(" ")
+}));
+
 function EmployeeFile() {
   const { id } = useParams({ from: "/employees/$id" });
   const { can } = useAuth();
@@ -53,48 +78,54 @@ function EmployeeFile() {
   return (
     <AppShell title="201 File" subtitle="Personnel record management">
       {/* Sticky top bar */}
-      <div className="sticky top-16 z-10 -mx-6 px-6 py-3 bg-background/95 backdrop-blur border-b border-border flex items-center gap-4">
-        <Link to="/employees" className="h-9 w-9 grid place-items-center rounded-lg hover:bg-accent text-muted-foreground">
+      <div className="sticky top-16 z-10 -mx-3 sm:-mx-4 xl:-mx-5 px-3 sm:px-4 xl:px-5 py-3 bg-background/95 backdrop-blur border-b border-border flex items-center gap-2 sm:gap-4">
+        <Link to="/employees" className="h-9 w-9 grid place-items-center rounded-lg hover:bg-accent text-muted-foreground shrink-0">
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <Avatar className="h-10 w-10">
+        <Avatar className="h-9 w-9 shrink-0">
           <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
             {employee.firstname[0]}{employee.lastname[0]}
           </AvatarFallback>
         </Avatar>
-        <div className="min-w-0">
-          <div className="text-xs text-muted-foreground font-mono">{employee.refId}</div>
-          <div className="font-semibold truncate">{employee.lastname}, {employee.firstname} {employee.middlename}</div>
+        <div className="min-w-0 flex-1">
+          <div className="text-xs text-muted-foreground font-mono hidden sm:block">{employee.refId}</div>
+          <div className="font-semibold truncate text-sm sm:text-base">{employee.lastname}, {employee.firstname} {employee.middlename}</div>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0">
           <Button
             disabled={!can("edit")}
             onClick={() => toast.success("Record saved")}
-            className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"
+            className="bg-success text-success-foreground hover:bg-success/90 shadow-sm"
+            size="sm"
           >
-            <Save className="h-4 w-4 mr-1.5" /> Save & Finish
+            <Save className="h-4 w-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">Save &amp; Finish</span>
           </Button>
         </div>
       </div>
 
-      {/* Tab bar — horizontally scrollable, no wrap */}
-      <div className="mt-4 -mx-6 px-6">
-        <div className="flex gap-1 overflow-x-auto tab-scroll scrollbar-thin border-b border-border">
-          {TABS.map((t) => (
-            <button
-              key={t}
-              onClick={() => setActive(t)}
-              className={cn(
-                "px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors",
-                "snap-start",
-                active === t
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t}
-            </button>
-          ))}
+      {/* Tab bar — wrapping flex layout for true responsiveness */}
+      <div className="mt-4 border-b border-border">
+        <div className="flex flex-wrap gap-x-1 sm:gap-x-2">
+          {TAB_CONFIG.map(({ id: tid, label }) => {
+            const isActive = active === tid;
+            return (
+              <button
+                key={tid}
+                onClick={() => setActive(tid)}
+                id={`tab-${tid}`}
+                className={cn(
+                  "relative px-3 py-2.5 text-xs sm:text-sm font-medium transition-colors duration-150",
+                  "after:absolute after:bottom-0 after:left-1 after:right-1 after:h-[2px] after:rounded-full after:transition-all after:duration-200",
+                  isActive
+                    ? "text-primary after:bg-primary"
+                    : "text-muted-foreground hover:text-foreground after:bg-transparent hover:after:bg-border/50"
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -281,7 +312,7 @@ function PersonalTab({ employee, canEdit }: { employee: typeof EMPLOYEES[number]
 
       <div className="flex justify-end gap-2 mt-4">
         <Button variant="outline">Cancel</Button>
-        <Button disabled={!canEdit} onClick={() => toast.success("Personal info updated")} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Update</Button>
+        <Button disabled={!canEdit} onClick={() => toast.success("Personal info updated")} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Update</Button>
       </div>
     </div>
   );
@@ -334,8 +365,8 @@ function FamilyTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; on
       </FormSection>
       <div className="flex justify-end gap-2 mt-4">
         <Button variant="outline" onClick={() => setForm(existing)}>Cancel</Button>
-        <Button disabled={!canEdit || hasExisting} onClick={save} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Add</Button>
-        <Button disabled={!canEdit || !hasExisting} onClick={save} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Update</Button>
+        <Button disabled={!canEdit || hasExisting} onClick={save} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Add</Button>
+        <Button disabled={!canEdit || !hasExisting} onClick={save} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Update</Button>
       </div>
     </div>
   );
@@ -389,8 +420,8 @@ function ChildrenTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; 
       </FormSection>
       <div className="flex justify-end gap-2 mb-4">
         <Button variant="outline" onClick={clear}>Cancel</Button>
-        <Button disabled={!canEdit || !editingId} onClick={update} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Update</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button>
+        <Button disabled={!canEdit || !editingId} onClick={update} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Update</Button>
+        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button>
       </div>
       <RecordTable
         cols={["ID", "Lastname", "Firstname", "Middlename", "Gender", "Birthday"]}
@@ -412,26 +443,26 @@ function RecordTable({
   onEdit?: (i: number) => void;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+    <div className="rounded-xl border border-border bg-card overflow-hidden my-2">
+      <div className="overflow-x-auto scrollbar-thin">
+        <table className="w-full text-sm min-w-[600px] sm:min-w-full">
           <thead>
-            <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
-              {cols.map((c) => <th key={c} className="px-3 py-2.5 font-medium">{c}</th>)}
-              {(onDelete || onEdit) && <th className="px-3 py-2.5 font-medium text-right">Actions</th>}
+            <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border bg-muted/30">
+              {cols.map((c) => <th key={c} className="px-3 py-2.5 font-medium whitespace-nowrap">{c}</th>)}
+              {(onDelete || onEdit) && <th className="px-3 py-2.5 font-medium text-right sticky right-0 bg-card/90 backdrop-blur shadow-[-10px_0_10px_-5px_rgba(0,0,0,0.05)]">Actions</th>}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={cols.length + 1} className="px-3 py-8 text-center text-muted-foreground text-sm">No Records Found!</td></tr>
+              <tr><td colSpan={cols.length + 1} className="px-3 py-8 text-center text-muted-foreground text-sm font-medium italic">No Records Found!</td></tr>
             ) : rows.map((r, i) => (
-              <tr key={i} className={i % 2 ? "bg-muted/40" : ""}>
-                {r.map((v, j) => <td key={j} className="px-3 py-2.5">{v}</td>)}
+              <tr key={i} className={cn("hover:bg-muted/30 transition-colors", i % 2 ? "bg-muted/10" : "")}>
+                {r.map((v, j) => <td key={j} className="px-3 py-2.5 whitespace-nowrap">{v}</td>)}
                 {(onDelete || onEdit) && (
-                  <td className="px-3 py-2.5 text-right">
+                  <td className="px-3 py-2.5 text-right sticky right-0 bg-card/90 backdrop-blur shadow-[-10px_0_10px_-5px_rgba(0,0,0,0.05)]">
                     <div className="inline-flex gap-1">
-                      {onEdit && <button onClick={() => onEdit(i)} className="h-7 w-7 grid place-items-center rounded hover:bg-accent text-muted-foreground"><Pencil className="h-3.5 w-3.5" /></button>}
-                      {onDelete && <button onClick={() => onDelete(i)} className="h-7 w-7 grid place-items-center rounded hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>}
+                      {onEdit && <button onClick={() => onEdit(i)} className="h-7 w-7 grid place-items-center rounded-md hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors"><Pencil className="h-3.5 w-3.5" /></button>}
+                      {onDelete && <button onClick={() => onDelete(i)} className="h-7 w-7 grid place-items-center rounded-md hover:bg-destructive/10 text-destructive transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>}
                     </div>
                   </td>
                 )}
@@ -493,8 +524,8 @@ function EducationTab({ id, canEdit, onChange }: { id: string; canEdit: boolean;
       </FormSection>
       <div className="flex justify-end gap-2 mb-4">
         <Button variant="outline" onClick={clear}>Cancel</Button>
-        <Button disabled={!canEdit || !editingId} onClick={update} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Update</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button>
+        <Button disabled={!canEdit || !editingId} onClick={update} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Update</Button>
+        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button>
       </div>
       <RecordTable
         cols={["Level", "School", "Degree", "From", "To", "Graduated", "Scholarship"]}
@@ -524,7 +555,7 @@ function CivilServiceTab({ id, canEdit, onChange }: { id: string; canEdit: boole
         <Field label="License"><Input value={state.license} onChange={(e) => set("license", e.target.value)} /></Field>
         <Field label="Date Release"><Input type="date" value={state.dateRelease} onChange={(e) => set("dateRelease", e.target.value)} /></Field>
       </FormSection>
-      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
+      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
       <RecordTable cols={["Type", "Place", "Date", "Rating", "License", "Released"]} rows={list.map((r) => [r.type, r.place, r.date, r.rating, r.license, r.dateRelease])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
     </div>
   );
@@ -554,7 +585,7 @@ function WorkTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onCh
           </RadioGroup>
         </Field>
       </FormSection>
-      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
+      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
       <RecordTable cols={["Position", "Company", "Status", "From", "To", "Salary", "Gov't"]} rows={list.map((r) => [r.position, r.company, r.status, r.dateFrom, r.dateTo, r.salary, r.govEmp])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
     </div>
   );
@@ -578,7 +609,7 @@ function OrgTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onCha
         <Field label="Year To"><Input value={state.yearTo} onChange={(e) => set("yearTo", e.target.value)} /></Field>
         <Field label="No. of Hours"><Input value={state.hours} onChange={(e) => set("hours", e.target.value)} /></Field>
       </FormSection>
-      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
+      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
       <RecordTable cols={["Name", "Position", "Address", "From", "To", "Hours"]} rows={list.map((r) => [r.name, r.position, r.address, r.yearFrom, r.yearTo, r.hours])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
     </div>
   );
@@ -609,7 +640,7 @@ function TrainingTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; 
       </FormSection>
       <div className="flex justify-end gap-2 mb-4">
         <Button variant="outline" onClick={reset}>Cancel</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">Save</Button>
+        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Save</Button>
       </div>
       <RecordTable cols={["Training", "Conducted By", "From", "To", "Hours", "File"]} rows={list.map((r) => [r.name, r.conductedBy, r.yearFrom, r.yearTo, r.hours, r.file ?? ""])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
     </div>
@@ -717,7 +748,7 @@ function SalaryTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; on
         <Button variant="outline" onClick={clear}>Cancel</Button>
         <Button variant="outline" onClick={update} disabled={!canEdit || !editingId}>Update</Button>
         <Button variant="outline" onClick={recompute}><RefreshCw className="h-4 w-4 mr-1.5" /> Refresh / Recompute</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button>
+        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button>
       </div>
       <RecordTable
         cols={["Date", "Description", "Type", "Tax", "SG", "Step", "Amount", "Annual", "Gross", "PERA", "RATA", "CATA"]}
@@ -754,8 +785,8 @@ function ServiceTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; o
       </FormSection>
       <div className="flex justify-end gap-2 mb-4">
         <Button variant="outline" onClick={reset}>Cancel</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">ADD</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90">SAVE</Button>
+        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">ADD</Button>
+        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">SAVE</Button>
       </div>
       <RecordTable cols={["ID", "Service From", "Service To", "Position", "Status", "Salary"]} rows={list.map((r) => [r.id.slice(0, 5), r.from, r.to, r.designation, r.status, r.salary])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
     </div>
@@ -796,7 +827,7 @@ function LeaveTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onC
         <Field label="SL Balance"><Input type="number" value={state.slBalance} onChange={(e) => set("slBalance", Number(e.target.value))} /></Field>
         <Field label="SL Abs WOP"><Input type="number" value={state.slAbsWOP} onChange={(e) => set("slAbsWOP", Number(e.target.value))} /></Field>
       </FormSection>
-      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
+      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
       <RecordTable
         cols={["ID", "Period", "Particulars", "VL Earned", "VL Abs WP", "VL Balance", "VL Abs WOP", "SL Earned", "SL Abs WP", "SL Balance", "SL Abs WOP", "Date Action"]}
         rows={list.map((r) => [r.id.slice(0, 5), r.period, r.particulars, r.vlEarned, r.vlAbsWP, r.vlBalance, r.vlAbsWOP, r.slEarned, r.slAbsWP, r.slBalance, r.slAbsWOP, r.dateAction])}
@@ -837,7 +868,7 @@ function IPCRTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onCh
       </FormSection>
       <div className="flex justify-end gap-2 mb-4">
         <Button variant="outline" onClick={reset}>Cancel</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[var(--navy)] text-[var(--navy-foreground)] hover:bg-[var(--navy)]/90"><Plus className="h-4 w-4 mr-1" /> Add</Button>
+        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button>
       </div>
       <RecordTable cols={["Month", "From", "To", "Grades", "Remarks", "File"]} rows={list.map((r) => [r.month, r.from, r.to, r.grades, r.remarks, r.file ?? ""])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
     </div>
