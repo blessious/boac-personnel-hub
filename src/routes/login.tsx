@@ -82,10 +82,7 @@ function LoginPage() {
             <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-primary/80 flex items-center justify-center">
               <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
               <div className="relative z-10 text-center">
-                <div className="mx-auto h-32 w-32 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 flex items-center justify-center mb-6 shadow-2xl animate-pulse">
-                  <ShieldCheck className="h-16 w-16 text-white" />
-                </div>
-                <div className="text-white/40 text-sm font-bold uppercase tracking-[0.3em]">Agency Branding Placeholder</div>
+                <div className="text-white/40 text-sm font-bold uppercase tracking-[0.3em]"></div>
               </div>
             </div>
           )}
@@ -109,11 +106,11 @@ function LoginPage() {
             </div>
 
             <h1 className="text-5xl font-extrabold tracking-tight leading-tight">
-              Streamlining <br />
-              <span className="text-white">Human Resources</span>
+              Personnel Management<br />
+              <span className="text-white"> Information System</span>
             </h1>
             <p className="mt-6 text-xl text-white/80 max-w-md font-light leading-relaxed">
-              Personnel Management Information System. A secure and efficient platform for modern government administration.
+              A secure and efficient platform for modern government administration.
             </p>
           </div>
         </div>

@@ -232,7 +232,7 @@ export const SETTINGS = {
     SALARY_STEPS.map((s) => ({ ordinance: "Annex 1", grade: g, step: s, amount: SALARY_TABLE[g][s - 1] }))
   ),
   users: [
-    { id: "u1", username: "admin", role: "Admin", name: "Brooklyn Simmons" },
+    { id: "u1", username: "admin", role: "Admin", name: "Blessious Landoy" },
     { id: "u2", username: "hr", role: "HR Officer", name: "Maria Santos" },
     { id: "u3", username: "viewer", role: "Viewer", name: "Pedro Cruz" },
   ],

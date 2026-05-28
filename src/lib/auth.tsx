@@ -14,7 +14,7 @@ interface AuthCtx {
 const Ctx = createContext<AuthCtx | null>(null);
 
 const ACCOUNTS: Record<string, { password: string; user: User }> = {
-  admin: { password: "admin", user: { username: "admin", name: "Brooklyn Simmons", role: "Admin" } },
+  admin: { password: "admin", user: { username: "admin", name: "Blessious Landoy", role: "Admin" } },
   hr: { password: "hr", user: { username: "hr", name: "Maria Santos", role: "HR Officer" } },
   viewer: { password: "viewer", user: { username: "viewer", name: "Pedro Cruz", role: "Viewer" } },
 };
