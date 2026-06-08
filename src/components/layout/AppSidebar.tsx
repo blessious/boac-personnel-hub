@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, Users, CalendarDays, MonitorSmartphone,
-  BarChart3, ShieldCheck,
+  BarChart3, ShieldCheck, Settings,
   LogOut, ChevronLeft, ChevronRight, Stethoscope,
 } from "lucide-react";
 import { useState } from "react";
@@ -10,7 +10,7 @@ import { useSettings } from "@/lib/settings-context";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
-  to: "/" | "/employees" | "/attendance" | "/self-service" | "/reports" | "/admin";
+  to: "/" | "/employees" | "/attendance" | "/self-service" | "/reports" | "/admin" | "/settings";
   label: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
@@ -23,12 +23,20 @@ const NAV: NavItem[] = [
   { to: "/self-service", label: "Self-Service Portal", icon: MonitorSmartphone },
   { to: "/reports", label: "Reports & Analytics", icon: BarChart3 },
   { to: "/admin", label: "System Administration", icon: ShieldCheck },
+  { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function AppSidebar() {
   const { agency, sidebarCollapsed: collapsed, toggleSidebar } = useSettings();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { user, logout } = useAuth();
+  const nav = NAV.filter((item) => {
+    if (!user) return false;
+    if (user.role === "Admin") return true;
+    if (item.to === "/" || item.to === "/self-service") return true;
+    if (user.role === "Employee") return false;
+    return item.to !== "/admin";
+  });
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? path === to : path === to || path.startsWith(to + "/");
@@ -80,7 +88,7 @@ export function AppSidebar() {
       )}
 
       <nav className="px-2 flex-1 space-y-0.5 py-2 overflow-y-auto">
-        {NAV.map((item) => {
+        {nav.map((item) => {
           const active = isActive(item.to, item.exact);
           const Icon = item.icon;
           return (

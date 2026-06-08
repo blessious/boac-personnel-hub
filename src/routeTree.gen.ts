@@ -15,6 +15,7 @@ import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeaveRouteImport } from './routes/leave'
 import { Route as EmployeesRouteImport } from './routes/employees'
+import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AttendanceRouteImport } from './routes/attendance'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
@@ -50,6 +51,11 @@ const EmployeesRoute = EmployeesRouteImport.update({
   path: '/employees',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChangePasswordRoute = ChangePasswordRouteImport.update({
+  id: '/change-password',
+  path: '/change-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AttendanceRoute = AttendanceRouteImport.update({
   id: '/attendance',
   path: '/attendance',
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/attendance': typeof AttendanceRoute
+  '/change-password': typeof ChangePasswordRoute
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/attendance': typeof AttendanceRoute
+  '/change-password': typeof ChangePasswordRoute
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
@@ -100,6 +108,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/attendance': typeof AttendanceRoute
+  '/change-password': typeof ChangePasswordRoute
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/attendance'
+    | '/change-password'
     | '/employees'
     | '/leave'
     | '/login'
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/attendance'
+    | '/change-password'
     | '/employees'
     | '/leave'
     | '/login'
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/attendance'
+    | '/change-password'
     | '/employees'
     | '/leave'
     | '/login'
@@ -151,6 +163,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   AttendanceRoute: typeof AttendanceRoute
+  ChangePasswordRoute: typeof ChangePasswordRoute
   EmployeesRoute: typeof EmployeesRouteWithChildren
   LeaveRoute: typeof LeaveRoute
   LoginRoute: typeof LoginRoute
@@ -203,6 +216,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EmployeesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/change-password': {
+      id: '/change-password'
+      path: '/change-password'
+      fullPath: '/change-password'
+      preLoaderRoute: typeof ChangePasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/attendance': {
       id: '/attendance'
       path: '/attendance'
@@ -250,6 +270,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   AttendanceRoute: AttendanceRoute,
+  ChangePasswordRoute: ChangePasswordRoute,
   EmployeesRoute: EmployeesRouteWithChildren,
   LeaveRoute: LeaveRoute,
   LoginRoute: LoginRoute,

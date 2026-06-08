@@ -1,46 +1,161 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SETTINGS, DEPARTMENTS, POSITIONS, SALARY_GRADES, SALARY_STEPS, SALARY_TABLE } from "@/lib/mock-data";
 import { useAuth } from "@/lib/auth";
-import { useSettings } from "@/lib/settings-context";
-import { Badge } from "@/components/ui/badge";
+import { type AgencySettings, useSettings } from "@/lib/settings-context";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
+interface DepartmentRow { id: number; name: string }
+interface PositionRow { id: number; title: string }
+interface SalaryGradeRow { id: number; ordinance: string; grade: number; step: number; amount: number }
+
 function SettingsPage() {
   const { can, user } = useAuth();
   const { agency, updateAgency } = useSettings();
-  const [depts, setDepts] = useState([...DEPARTMENTS]);
-  const [pos, setPos] = useState([...POSITIONS]);
-  const [salaryGrades, setSalaryGrades] = useState(() => 
-    SALARY_GRADES.flatMap((g) =>
-      SALARY_STEPS.map((s) => ({ ordinance: "Annex 1", grade: g, step: s, amount: SALARY_TABLE[g][s - 1] }))
-    )
-  );
+  const [depts, setDepts] = useState<DepartmentRow[]>([]);
+  const [pos, setPos] = useState<PositionRow[]>([]);
+  const [salaryGrades, setSalaryGrades] = useState<SalaryGradeRow[]>([]);
   const [newDept, setNewDept] = useState("");
   const [newPos, setNewPos] = useState("");
   const [deptQuery, setDeptQuery] = useState("");
   const [posQuery, setPosQuery] = useState("");
   const [newSalaryGrade, setNewSalaryGrade] = useState({ ordinance: "", grade: "", step: "", amount: "" });
+  const [loading, setLoading] = useState(true);
 
-  const filteredDepts = depts.filter(d => d.toLowerCase().includes(deptQuery.toLowerCase()));
-  const filteredPos = pos.filter(p => p.toLowerCase().includes(posQuery.toLowerCase()));
+  const filteredDepts = depts.filter(d => d.name.toLowerCase().includes(deptQuery.toLowerCase()));
+  const filteredPos = pos.filter(p => p.title.toLowerCase().includes(posQuery.toLowerCase()));
 
   const isAdmin = user?.role === "Admin";
+
+  const loadSettings = async () => {
+    setLoading(true);
+    try {
+      const data = await api<{
+        agency: AgencySettings;
+        departments: DepartmentRow[];
+        positions: PositionRow[];
+        salaryGrades: SalaryGradeRow[];
+      }>("/api/settings");
+      updateAgency(data.agency);
+      setDepts(data.departments);
+      setPos(data.positions);
+      setSalaryGrades(data.salaryGrades);
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const saveAgency = async () => {
+    try {
+      const result = await api<{ agency: AgencySettings }>("/api/settings/agency", {
+        method: "PUT",
+        body: JSON.stringify(agency),
+      });
+      updateAgency(result.agency);
+      toast.success("Agency profile updated");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
+
+  const addDepartment = async () => {
+    try {
+      const result = await api<{ department: DepartmentRow }>("/api/settings/departments", {
+        method: "POST",
+        body: JSON.stringify({ name: newDept.trim() }),
+      });
+      setDepts((prev) => [...prev, result.department]);
+      setNewDept("");
+      toast.success("Department added");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
+
+  const deleteDepartment = async (id: number) => {
+    try {
+      await api<{ ok: boolean }>(`/api/settings/departments/${id}`, { method: "DELETE" });
+      setDepts((prev) => prev.filter((item) => item.id !== id));
+      toast.success("Department removed");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
+
+  const addPosition = async () => {
+    try {
+      const result = await api<{ position: PositionRow }>("/api/settings/positions", {
+        method: "POST",
+        body: JSON.stringify({ title: newPos.trim() }),
+      });
+      setPos((prev) => [...prev, result.position]);
+      setNewPos("");
+      toast.success("Position added");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
+
+  const deletePosition = async (id: number) => {
+    try {
+      await api<{ ok: boolean }>(`/api/settings/positions/${id}`, { method: "DELETE" });
+      setPos((prev) => prev.filter((item) => item.id !== id));
+      toast.success("Position removed");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
+
+  const addSalaryGrade = async () => {
+    try {
+      const result = await api<{ salaryGrade: SalaryGradeRow }>("/api/settings/salary-grades", {
+        method: "POST",
+        body: JSON.stringify({
+          ordinance: newSalaryGrade.ordinance.trim(),
+          grade: Number(newSalaryGrade.grade),
+          step: Number(newSalaryGrade.step),
+          amount: Number(newSalaryGrade.amount),
+        }),
+      });
+      setSalaryGrades((prev) => [...prev, result.salaryGrade].sort((a, b) => a.grade - b.grade || a.step - b.step));
+      setNewSalaryGrade({ ordinance: "", grade: "", step: "", amount: "" });
+      toast.success("Salary grade added");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
+
+  const deleteSalaryGrade = async (id: number) => {
+    try {
+      await api<{ ok: boolean }>(`/api/settings/salary-grades/${id}`, { method: "DELETE" });
+      setSalaryGrades((prev) => prev.filter((item) => item.id !== id));
+      toast.success("Salary grade removed");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
 
   return (
     <AppShell title="Settings" subtitle="Manage reference data, salary tables, and accounts">
       <Tabs defaultValue="agency">
+        {loading && <div className="mb-3 text-sm text-muted-foreground">Loading database settings...</div>}
         <div className="overflow-x-auto no-scrollbar">
           <TabsList className="bg-card border border-border w-max min-w-full">
             <TabsTrigger value="agency">Agency Profile</TabsTrigger>
@@ -211,7 +326,7 @@ function SettingsPage() {
 
               <div className="pt-4 flex justify-end">
                 <Button 
-                  onClick={() => toast.success("Agency profile updated")}
+                  onClick={saveAgency}
                   className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-md hover:shadow-blue-500/20 transition-all duration-200"
                 >
                   Save Changes
@@ -232,7 +347,7 @@ function SettingsPage() {
                 />
                 <Button
                   disabled={!can("edit") || !newDept.trim()}
-                  onClick={() => { setDepts((d) => [...d, newDept.trim()]); setNewDept(""); toast.success("Department added"); }}
+                  onClick={addDepartment}
                   className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
                 ><Plus className="h-4 w-4 mr-1" /> Add</Button>
               </div>
@@ -246,10 +361,10 @@ function SettingsPage() {
               </div>
             </div>
             <ul className="divide-y divide-border border-t border-border">
-              {filteredDepts.map((d, i) => (
-                <li key={d + i} className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors">
-                  <span>{d}</span>
-                  <button disabled={!can("delete")} onClick={() => { setDepts((x) => x.filter((val) => val !== d)); toast("Removed"); }} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+              {filteredDepts.map((d) => (
+                <li key={d.id} className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors">
+                  <span>{d.name}</span>
+                  <button disabled={!can("delete")} onClick={() => deleteDepartment(d.id)} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                 </li>
               ))}
               {filteredDepts.length === 0 && (
@@ -270,7 +385,7 @@ function SettingsPage() {
                 />
                 <Button
                   disabled={!can("edit") || !newPos.trim()}
-                  onClick={() => { setPos((p) => [...p, newPos.trim()]); setNewPos(""); toast.success("Position added"); }}
+                  onClick={addPosition}
                   className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
                 ><Plus className="h-4 w-4 mr-1" /> Add</Button>
               </div>
@@ -284,10 +399,10 @@ function SettingsPage() {
               </div>
             </div>
             <ul className="divide-y divide-border border-t border-border">
-              {filteredPos.map((p, i) => (
-                <li key={p + i} className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors">
-                  <span>{p}</span>
-                  <button disabled={!can("delete")} onClick={() => { setPos((x) => x.filter((val) => val !== p)); toast("Removed"); }} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+              {filteredPos.map((p) => (
+                <li key={p.id} className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors">
+                  <span>{p.title}</span>
+                  <button disabled={!can("delete")} onClick={() => deletePosition(p.id)} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                 </li>
               ))}
               {filteredPos.length === 0 && (
@@ -307,16 +422,7 @@ function SettingsPage() {
                 <Input placeholder="Amount" type="number" value={newSalaryGrade.amount} onChange={(e) => setNewSalaryGrade({ ...newSalaryGrade, amount: e.target.value })} />
                 <Button
                   disabled={!can("edit") || !newSalaryGrade.ordinance.trim() || !newSalaryGrade.grade.trim() || !newSalaryGrade.step.trim() || !newSalaryGrade.amount.trim()}
-                  onClick={() => {
-                    setSalaryGrades((prev) => [...prev, {
-                      ordinance: newSalaryGrade.ordinance.trim(),
-                      grade: parseInt(newSalaryGrade.grade) || 0,
-                      step: parseInt(newSalaryGrade.step) || 0,
-                      amount: parseFloat(newSalaryGrade.amount) || 0,
-                    }]);
-                    setNewSalaryGrade({ ordinance: "", grade: "", step: "", amount: "" });
-                    toast.success("Salary grade added");
-                  }}
+                  onClick={addSalaryGrade}
                   className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
                 ><Plus className="h-4 w-4 mr-1" /> Add</Button>
               </div>
@@ -334,13 +440,13 @@ function SettingsPage() {
                 </thead>
                 <tbody>
                   {salaryGrades.map((s, i) => (
-                    <tr key={i} className={i % 2 ? "bg-muted/40" : ""}>
+                    <tr key={s.id} className={i % 2 ? "bg-muted/40" : ""}>
                       <td className="px-4 py-2.5">{s.ordinance}</td>
                       <td className="px-4 py-2.5">SG-{s.grade}</td>
                       <td className="px-4 py-2.5">Step {s.step}</td>
                       <td className="px-4 py-2.5 text-right font-mono">{s.amount.toLocaleString()}</td>
                       <td className="px-4 py-2.5 text-right">
-                        <button disabled={!can("delete")} onClick={() => { setSalaryGrades((x) => x.filter((_, j) => j !== i)); toast("Salary grade removed"); }} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+                        <button disabled={!can("delete")} onClick={() => deleteSalaryGrade(s.id)} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                       </td>
                     </tr>
                   ))}
@@ -364,15 +470,9 @@ function SettingsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {SETTINGS.users.map((u) => (
-                    <tr key={u.id} className="border-t border-border">
-                      <td className="px-2 py-3">{u.name}</td>
-                      <td className="px-2 py-3 text-muted-foreground">{u.username}</td>
-                      <td className="px-2 py-3">
-                        <span className="text-xs font-semibold text-primary uppercase tracking-wider">{u.role}</span>
-                      </td>
-                    </tr>
-                  ))}
+                  <tr className="border-t border-border">
+                    <td className="px-2 py-3 text-muted-foreground" colSpan={3}>Use System Administration for user add, edit, and delete.</td>
+                  </tr>
                 </tbody>
               </table>
             )}

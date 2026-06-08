@@ -1,6 +1,14 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation, useNavigate } from "@tanstack/react-router";
+import {
+  Outlet,
+  Link,
+  createRootRoute,
+  HeadContent,
+  Scripts,
+  useLocation,
+  useNavigate,
+} from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
-import { AuthProvider, useAuth } from "@/lib/auth";
+import { AuthProvider, useAuth, type Role } from "@/lib/auth";
 import { SettingsProvider } from "@/lib/settings-context";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppHeader } from "@/components/layout/AppHeader";
@@ -36,9 +44,15 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "STRH HRIS — Human Resource Information System" },
-      { name: "description", content: "Human Resource Information System for DOH Southern Tagalog Regional Hospital." },
+      {
+        name: "description",
+        content: "Human Resource Information System for DOH Southern Tagalog Regional Hospital.",
+      },
       { property: "og:title", content: "STRH HRIS" },
-      { property: "og:description", content: "Personnel records, attendance, leave and HR management." },
+      {
+        property: "og:description",
+        content: "Personnel records, attendance, leave and HR management.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -46,7 +60,10 @@ export const Route = createRootRoute({
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
+      },
     ],
   }),
   shellComponent: RootShell,
@@ -83,18 +100,28 @@ function AppLayout() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isLoginPage = location.pathname === "/login";
+  const isChangePasswordPage = location.pathname === "/change-password";
+  const authorized = !user || isLoginPage || canAccessPath(user.role, location.pathname);
 
   useEffect(() => {
     if (!user && !isLoginPage) {
       navigate({ to: "/login" });
+      return;
     }
-  }, [user, isLoginPage, navigate]);
+    if (user?.mustChangePassword && !isChangePasswordPage) {
+      navigate({ to: "/change-password" });
+      return;
+    }
+    if (user && !isLoginPage && !canAccessPath(user.role, location.pathname)) {
+      navigate({ to: "/" });
+    }
+  }, [user, isLoginPage, isChangePasswordPage, location.pathname, navigate]);
 
-  if (!user && !isLoginPage) return null;
+  if ((!user && !isLoginPage) || !authorized) return null;
 
   return (
     <>
-      {isLoginPage ? (
+      {isLoginPage || isChangePasswordPage ? (
         <Outlet />
       ) : (
         <div className="flex min-h-screen w-full bg-background">
@@ -110,4 +137,12 @@ function AppLayout() {
       <Toaster richColors position="top-right" />
     </>
   );
+}
+
+function canAccessPath(role: Role, pathname: string) {
+  if (role === "Admin") return true;
+  if (pathname === "/" || pathname.startsWith("/self-service")) return true;
+  if (role === "Employee") return false;
+  if (pathname.startsWith("/admin") || pathname.startsWith("/settings")) return false;
+  return role === "HR" || role === "Viewer";
 }

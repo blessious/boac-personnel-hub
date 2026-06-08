@@ -1,75 +1,234 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { 
-  ArrowLeft, Save, Plus, Trash2, Pencil, RefreshCw, Upload,
-  User, Users, Baby, GraduationCap, Award, Briefcase, Building2, 
-  BookOpen, Banknote, FileText, Calendar, BarChart3 
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Pencil, Plus, Save, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Field, FormSection } from "@/components/forms/Field";
 import { useAuth } from "@/lib/auth";
 import {
-  EMPLOYEES, DEPARTMENTS, POSITIONS, SALARY_GRADES, SALARY_STEPS, SALARY_TABLE, STORE, uid,
-  type ChildRecord, type EducationRecord, type CivilServiceRecord, type WorkRecord,
-  type OrgRecord, type TrainingRecord, type SalaryRecord, type ServiceRecord,
-  type LeaveRecord, type IPCRRecord,
-} from "@/lib/mock-data";
+  CIVIL_STATUSES,
+  createSectionRow,
+  deleteSectionRow,
+  EMPLOYEE_LEVELS,
+  EMPLOYMENT_STATUSES,
+  GENDERS,
+  getEmployee,
+  getSettingsOptions,
+  updateEmployee,
+  updateSectionRow,
+  type EmployeeRecord,
+  type SectionRow,
+  type SettingsOptions,
+} from "@/lib/employees-api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/employees/$id")({
   component: EmployeeFile,
 });
 
-const TABS = [
-  "PERSONAL", "FAMILY", "CHILDREN", "EDUCATIONAL", "CIVIL SERVICE",
-  "WORK EXPERIENCE", "ORGANIZATION", "TRAINING", "SALARY",
-  "SERVICE RECORD", "LEAVE BALANCE", "IPCR",
-] as const;
-type Tab = typeof TABS[number];
+type Tab =
+  | "PERSONAL"
+  | "FAMILY"
+  | "CHILDREN"
+  | "EDUCATIONAL"
+  | "CIVIL SERVICE"
+  | "WORK EXPERIENCE"
+  | "ORGANIZATION"
+  | "TRAINING"
+  | "SALARY"
+  | "SERVICE RECORD"
+  | "LEAVE BALANCE"
+  | "IPCR";
 
-const TAB_ICONS: Record<Tab, React.ElementType> = {
-  PERSONAL: User,
-  FAMILY: Users,
-  CHILDREN: Baby,
-  EDUCATIONAL: GraduationCap,
-  "CIVIL SERVICE": Award,
-  "WORK EXPERIENCE": Briefcase,
-  ORGANIZATION: Building2,
-  TRAINING: BookOpen,
-  SALARY: Banknote,
-  "SERVICE RECORD": FileText,
-  "LEAVE BALANCE": Calendar,
-  IPCR: BarChart3,
+const TABS: Tab[] = [
+  "PERSONAL",
+  "FAMILY",
+  "CHILDREN",
+  "EDUCATIONAL",
+  "CIVIL SERVICE",
+  "WORK EXPERIENCE",
+  "ORGANIZATION",
+  "TRAINING",
+  "SALARY",
+  "SERVICE RECORD",
+  "LEAVE BALANCE",
+  "IPCR",
+];
+
+const SECTION_BY_TAB: Partial<Record<Tab, string>> = {
+  FAMILY: "family",
+  CHILDREN: "children",
+  EDUCATIONAL: "education",
+  "CIVIL SERVICE": "civilService",
+  "WORK EXPERIENCE": "work",
+  ORGANIZATION: "organization",
+  TRAINING: "training",
+  SALARY: "salary",
+  "SERVICE RECORD": "service",
+  IPCR: "ipcr",
 };
 
-const TAB_CONFIG = TABS.map((t) => ({
-  id: t,
-  icon: TAB_ICONS[t],
-  label: t === "IPCR" ? "IPCR" : t.split(" ").map(w => w[0] + w.slice(1).toLowerCase()).join(" ")
-}));
+type FieldConfig = {
+  key: string;
+  label: string;
+  type?: "text" | "date" | "number" | "textarea" | "select";
+  options?: string[];
+};
+
+const SECTION_FIELDS: Record<string, FieldConfig[]> = {
+  family: [
+    { key: "spouseLastname", label: "Spouse Lastname" },
+    { key: "spouseFirstname", label: "Spouse Firstname" },
+    { key: "spouseMiddlename", label: "Spouse Middlename" },
+    { key: "spouseOccupation", label: "Spouse Occupation" },
+    { key: "spouseEmployer", label: "Spouse Employer" },
+    { key: "spouseBusinessTel", label: "Business Tel No" },
+    { key: "spouseBusinessAddress", label: "Business Address", type: "textarea" },
+    { key: "fatherLastname", label: "Father Lastname" },
+    { key: "fatherFirstname", label: "Father Firstname" },
+    { key: "fatherMiddlename", label: "Father Middlename" },
+    { key: "motherLastname", label: "Mother Maiden Lastname" },
+    { key: "motherFirstname", label: "Mother Firstname" },
+    { key: "motherMiddlename", label: "Mother Middlename" },
+  ],
+  children: [
+    { key: "lastname", label: "Lastname" },
+    { key: "firstname", label: "Firstname" },
+    { key: "middlename", label: "Middlename" },
+    { key: "gender", label: "Gender", type: "select", options: [...GENDERS] },
+    { key: "birthday", label: "Birthday", type: "date" },
+  ],
+  education: [
+    { key: "level", label: "Level", type: "select", options: ["Elementary", "Secondary", "Vocational", "College", "Graduate Studies"] },
+    { key: "school", label: "School" },
+    { key: "degree", label: "Degree / Course" },
+    { key: "yearFrom", label: "Year From" },
+    { key: "yearTo", label: "Year To" },
+    { key: "yearGraduated", label: "Year Graduated" },
+    { key: "scholarship", label: "Scholarship / Honors" },
+  ],
+  civilService: [
+    { key: "type", label: "Career Service / Eligibility" },
+    { key: "place", label: "Place" },
+    { key: "date", label: "Date", type: "date" },
+    { key: "rating", label: "Rating" },
+    { key: "license", label: "License" },
+    { key: "dateRelease", label: "Date Released", type: "date" },
+    { key: "licenseValidity", label: "License Validity", type: "date" },
+  ],
+  work: [
+    { key: "position", label: "Position" },
+    { key: "company", label: "Company / Office" },
+    { key: "status", label: "Status" },
+    { key: "dateFrom", label: "Date From", type: "date" },
+    { key: "dateTo", label: "Date To", type: "date" },
+    { key: "salary", label: "Salary" },
+    { key: "govEmp", label: "Government Service", type: "select", options: ["YES", "NO"] },
+  ],
+  organization: [
+    { key: "name", label: "Organization Name" },
+    { key: "position", label: "Position" },
+    { key: "address", label: "Address" },
+    { key: "yearFrom", label: "Year From" },
+    { key: "yearTo", label: "Year To" },
+    { key: "hours", label: "No. of Hours", type: "number" },
+  ],
+  training: [
+    { key: "name", label: "Training / Seminar Name" },
+    { key: "conductedBy", label: "Conducted By" },
+    { key: "yearFrom", label: "Year From" },
+    { key: "yearTo", label: "Year To" },
+    { key: "hours", label: "No. of Hours", type: "number" },
+    { key: "file", label: "File Name" },
+  ],
+  salary: [
+    { key: "date", label: "Date Increment", type: "date" },
+    { key: "description", label: "Description" },
+    { key: "ordinance", label: "Ordinance" },
+    { key: "grade", label: "Salary Grade", type: "number" },
+    { key: "step", label: "Step", type: "number" },
+    { key: "tax", label: "Tax Exemption" },
+    { key: "amount", label: "Salary Amount", type: "number" },
+    { key: "gross", label: "Gross Amount", type: "number" },
+    { key: "type", label: "Income Type", type: "select", options: ["Step Increment", "Not Step Increment"] },
+    { key: "pera", label: "PERA", type: "number" },
+    { key: "rata", label: "RATA", type: "number" },
+    { key: "cata", label: "CATA", type: "number" },
+  ],
+  service: [
+    { key: "from", label: "Service From", type: "date" },
+    { key: "to", label: "Service To", type: "date" },
+    { key: "status", label: "Status" },
+    { key: "salary", label: "Salary" },
+    { key: "designation", label: "Designation" },
+    { key: "department", label: "Department" },
+    { key: "assignment", label: "Assignment" },
+    { key: "branch", label: "Branch" },
+    { key: "leave", label: "Leave With/Without Pay" },
+    { key: "sepDate", label: "Separation Date", type: "date" },
+    { key: "sepCause", label: "Separation Cause" },
+  ],
+  ipcr: [
+    { key: "month", label: "Month" },
+    { key: "from", label: "Date From", type: "date" },
+    { key: "to", label: "Date To", type: "date" },
+    { key: "grades", label: "Grades" },
+    { key: "remarks", label: "Remarks", type: "textarea" },
+    { key: "file", label: "File Name" },
+  ],
+};
 
 function EmployeeFile() {
   const { id } = useParams({ from: "/employees/$id" });
   const { can } = useAuth();
-  const employee = EMPLOYEES.find((e) => e.id === id);
+  const canEdit = can("edit");
   const [active, setActive] = useState<Tab>("PERSONAL");
-  const [, force] = useState(0);
-  const refresh = () => force((n) => n + 1);
+  const [employee, setEmployee] = useState<EmployeeRecord | null>(null);
+  const [sections, setSections] = useState<Record<string, SectionRow[]>>({});
+  const [options, setOptions] = useState<SettingsOptions>({ departments: [], positions: [], salaryGrades: [] });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  if (!employee) {
+  const load = () => {
+    setLoading(true);
+    setError("");
+    getEmployee(id)
+      .then((result) => {
+        setEmployee(result.employee);
+        setSections(result.sections);
+      })
+      .catch((err) => setError(err.message || "Unable to load employee"))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [id]);
+  useEffect(() => {
+    getSettingsOptions()
+      .then(setOptions)
+      .catch(() => setOptions({ departments: [], positions: [], salaryGrades: [] }));
+  }, []);
+
+  if (loading) {
+    return (
+      <AppShell title="201 File" subtitle="Personnel record management">
+        <div className="rounded-xl border border-border bg-card p-12 text-center text-muted-foreground">Loading employee record...</div>
+      </AppShell>
+    );
+  }
+
+  if (error || !employee) {
     return (
       <AppShell title="Employee Not Found">
         <div className="rounded-xl border border-border bg-card p-12 text-center">
-          <p className="text-muted-foreground">No employee with ID {id}</p>
-          <Link to="/employees" className="text-primary text-sm mt-4 inline-block">← Back to list</Link>
+          <p className="text-muted-foreground">{error || `No employee with ID ${id}`}</p>
+          <Link to="/employees" className="mt-4 inline-block text-sm text-primary">Back to list</Link>
         </div>
       </AppShell>
     );
@@ -77,194 +236,179 @@ function EmployeeFile() {
 
   return (
     <AppShell title="201 File" subtitle="Personnel record management">
-      {/* Sticky top bar */}
-      <div className="sticky top-16 z-10 -mx-3 sm:-mx-4 xl:-mx-5 px-3 sm:px-4 xl:px-5 py-3 bg-background/95 backdrop-blur border-b border-border flex items-center gap-2 sm:gap-4">
-        <Link to="/employees" className="h-9 w-9 grid place-items-center rounded-lg hover:bg-accent text-muted-foreground shrink-0">
+      <div className="sticky top-16 z-10 -mx-3 flex items-center gap-3 border-b border-border bg-background/95 px-3 py-3 backdrop-blur sm:-mx-4 sm:px-4 xl:-mx-5 xl:px-5">
+        <Link to="/employees" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-accent">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <Avatar className="h-9 w-9 shrink-0">
-          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-            {employee.firstname[0]}{employee.lastname[0]}
+          <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+            {employee.firstname[0] || "?"}{employee.lastname[0] || "?"}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-        <div className="text-xs text-muted-foreground font-mono hidden sm:block">{employee.employeeId ?? employee.id}</div>
-          <div className="font-semibold truncate text-sm sm:text-base">{employee.lastname}, {employee.firstname} {employee.middlename}</div>
-        </div>
-        <div className="ml-auto shrink-0">
-          <Button
-            disabled={!can("edit")}
-            onClick={() => toast.success("Record saved")}
-            className="bg-success text-success-foreground hover:bg-success/90 shadow-sm"
-            size="sm"
-          >
-            <Save className="h-4 w-4 sm:mr-1.5" />
-            <span className="hidden sm:inline">Save &amp; Finish</span>
-          </Button>
+          <div className="hidden font-mono text-xs text-muted-foreground sm:block">{employee.employeeId}</div>
+          <div className="truncate text-sm font-semibold sm:text-base">{employee.lastname}, {employee.firstname} {employee.middlename}</div>
         </div>
       </div>
 
-      {/* Tab bar — wrapping flex layout for true responsiveness */}
       <div className="mt-4 border-b border-border">
         <div className="flex flex-wrap gap-x-1 sm:gap-x-2">
-          {TAB_CONFIG.map(({ id: tid, label }) => {
-            const isActive = active === tid;
-            return (
-              <button
-                key={tid}
-                onClick={() => setActive(tid)}
-                id={`tab-${tid}`}
-                className={cn(
-                  "relative px-3 py-2.5 text-xs sm:text-sm font-medium transition-colors duration-150",
-                  "after:absolute after:bottom-0 after:left-1 after:right-1 after:h-[2px] after:rounded-full after:transition-all after:duration-200",
-                  isActive
-                    ? "text-primary after:bg-primary"
-                    : "text-muted-foreground hover:text-foreground after:bg-transparent hover:after:bg-border/50"
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActive(tab)}
+              className={cn(
+                "relative px-3 py-2.5 text-xs font-medium transition-colors sm:text-sm",
+                "after:absolute after:bottom-0 after:left-1 after:right-1 after:h-[2px] after:rounded-full",
+                active === tab ? "text-primary after:bg-primary" : "text-muted-foreground after:bg-transparent hover:text-foreground",
+              )}
+            >
+              {tab === "IPCR" ? "IPCR" : tab.split(" ").map((word) => word[0] + word.slice(1).toLowerCase()).join(" ")}
+            </button>
+          ))}
         </div>
       </div>
 
       <div className="mt-4">
-        {active === "PERSONAL" && <PersonalTab employee={employee} canEdit={can("edit")} />}
-        {active === "FAMILY" && <FamilyTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "CHILDREN" && <ChildrenTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "EDUCATIONAL" && <EducationTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "CIVIL SERVICE" && <CivilServiceTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "WORK EXPERIENCE" && <WorkTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "ORGANIZATION" && <OrgTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "TRAINING" && <TrainingTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "SALARY" && <SalaryTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "SERVICE RECORD" && <ServiceTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "LEAVE BALANCE" && <LeaveTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
-        {active === "IPCR" && <IPCRTab id={employee.id} canEdit={can("edit")} onChange={refresh} />}
+        {active === "PERSONAL" ? (
+          <PersonalTab employee={employee} options={options} canEdit={canEdit} onSaved={(updated) => setEmployee(updated)} />
+        ) : active === "LEAVE BALANCE" ? (
+          <DeferredLeaveTab />
+        ) : (
+          <SectionTab
+            employeeId={employee.id}
+            section={SECTION_BY_TAB[active] || ""}
+            title={active}
+            rows={sections[SECTION_BY_TAB[active] || ""] || []}
+            canEdit={canEdit}
+            onChange={load}
+          />
+        )}
       </div>
     </AppShell>
   );
 }
 
-/* ---------------- TAB 1: PERSONAL ---------------- */
-function PersonalTab({ employee, canEdit }: { employee: any; canEdit: boolean }) {
-  const [photo, setPhoto] = useState<string | undefined>(employee.photoUrl);
+function PersonalTab({
+  employee,
+  options,
+  canEdit,
+  onSaved,
+}: {
+  employee: EmployeeRecord;
+  options: SettingsOptions;
+  canEdit: boolean;
+  onSaved: (employee: EmployeeRecord) => void;
+}) {
+  const [form, setForm] = useState<EmployeeRecord>(employee);
+  const departments = options.departments.map((department) => department.name);
+  const positions = options.positions.map((position) => position.title);
 
-  const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    const url = URL.createObjectURL(f); setPhoto(url);
+  const set = (key: keyof EmployeeRecord, value: string) => setForm((current) => ({ ...current, [key]: value }));
+
+  const save = async () => {
+    try {
+      const result = await updateEmployee(employee.id, form);
+      onSaved(result.employee);
+      setForm(result.employee);
+      toast.success("Personal information saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to save employee");
+    }
   };
 
   return (
     <div>
       <FormSection title="Employment">
+        <Field label="Employee ID"><Input value={form.employeeId} onChange={(e) => set("employeeId", e.target.value)} /></Field>
         <Field label="Department" required>
-          <Select defaultValue={employee.department}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>{DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+          <Select value={form.department} onValueChange={(value) => set("department", value)}>
+            <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+            <SelectContent>{departments.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
           </Select>
         </Field>
         <Field label="Position" required>
-          <Select defaultValue={employee.position}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>{POSITIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+          <Select value={form.position} onValueChange={(value) => set("position", value)}>
+            <SelectTrigger><SelectValue placeholder="Select position" /></SelectTrigger>
+            <SelectContent>{positions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
           </Select>
         </Field>
         <Field label="Status">
-          <Select defaultValue={employee.status}>
+          <Select value={form.status} onValueChange={(value) => set("status", value)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="PERMANENT">PERMANENT</SelectItem>
-              <SelectItem value="CASUAL">CASUAL</SelectItem>
-              <SelectItem value="CONTRACTUAL">CONTRACTUAL</SelectItem>
-              <SelectItem value="COTERMINOUS">COTERMINOUS</SelectItem>
-              <SelectItem value="ELECTED">ELECTED</SelectItem>
-            </SelectContent>
+            <SelectContent>{EMPLOYMENT_STATUSES.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
           </Select>
         </Field>
         <Field label="Level">
-          <Select defaultValue={employee.level}>
+          <Select value={form.level || "none"} onValueChange={(value) => set("level", value === "none" ? "" : value)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="First Level">First Level</SelectItem>
-              <SelectItem value="Second Level">Second Level</SelectItem>
-              <SelectItem value="Executive">Executive</SelectItem>
+              <SelectItem value="none">Not specified</SelectItem>
+              {EMPLOYEE_LEVELS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Status Class">
-          <Select defaultValue={employee.statusClass}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Technical">Technical</SelectItem>
-              <SelectItem value="Administrative">Administrative</SelectItem>
-              <SelectItem value="Legislative">Legislative</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Date Employed"><Input type="date" defaultValue={employee.dateEmployed} /></Field>
-        <Field label="Item No"><Input defaultValue={employee.itemNo} /></Field>
-        <Field label="Veterans Code"><Input defaultValue={employee.veteransCode} /></Field>
-        <Field label="Bank Account ID"><Input defaultValue={employee.bankAccountId} /></Field>
-        <Field label="Card Serial No"><Input defaultValue={employee.cardSerialNo} /></Field>
+        <Field label="Status Class"><Input value={form.statusClass} onChange={(e) => set("statusClass", e.target.value)} /></Field>
+        <Field label="Date Hired"><Input type="date" value={form.dateHired} onChange={(e) => set("dateHired", e.target.value)} /></Field>
+        <Field label="Date Employed"><Input type="date" value={form.dateEmployed} onChange={(e) => set("dateEmployed", e.target.value)} /></Field>
+        <Field label="Item No"><Input value={form.itemNo} onChange={(e) => set("itemNo", e.target.value)} /></Field>
         <Field label="Employment Status">
-          <RadioGroup defaultValue={employee.empStatus} className="flex gap-4 pt-1">
-            <div className="flex items-center gap-2"><RadioGroupItem value="Employed" id="ems-1" /><Label htmlFor="ems-1" className="text-sm">Employed</Label></div>
-            <div className="flex items-center gap-2"><RadioGroupItem value="Not Employed" id="ems-2" /><Label htmlFor="ems-2" className="text-sm">Not Employed</Label></div>
+          <RadioGroup value={form.empStatus} onValueChange={(value) => set("empStatus", value)} className="flex gap-4 pt-1">
+            <RadioItem id="emp-active" value="Active" label="Active" />
+            <RadioItem id="emp-inactive" value="Inactive" label="Inactive" />
           </RadioGroup>
         </Field>
-        <Field label="Agency"><Input defaultValue={employee.agency} /></Field>
-        <Field label="Date Separated"><Input type="date" defaultValue={employee.dateSeparated} /></Field>
+        <Field label="Agency"><Input value={form.agency} onChange={(e) => set("agency", e.target.value)} /></Field>
+        <Field label="Date Separated"><Input type="date" value={form.dateSeparated} onChange={(e) => set("dateSeparated", e.target.value)} /></Field>
       </FormSection>
 
-      <section className="rounded-xl border border-border bg-card/50 p-3 mb-3">
-        <h4 className="text-sm font-semibold mb-2.5 text-foreground">Identity</h4>
+      <section className="mb-3 rounded-xl border border-border bg-card/50 p-3">
+        <h4 className="mb-2.5 text-sm font-semibold text-foreground">Identity</h4>
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_164px] xl:items-start">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            <Field label="Lastname" required><Input defaultValue={employee.lastname} /></Field>
-            <Field label="Firstname" required><Input defaultValue={employee.firstname} /></Field>
-            <Field label="Middlename"><Input defaultValue={employee.middlename} /></Field>
-            <Field label="Name Extension"><Input defaultValue={employee.nameExt} placeholder="Jr., Sr., III" /></Field>
-            <Field label="Birthday" required><Input type="date" defaultValue={employee.birthday} /></Field>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <Field label="Lastname" required><Input value={form.lastname} onChange={(e) => set("lastname", e.target.value)} /></Field>
+            <Field label="Firstname" required><Input value={form.firstname} onChange={(e) => set("firstname", e.target.value)} /></Field>
+            <Field label="Middlename"><Input value={form.middlename} onChange={(e) => set("middlename", e.target.value)} /></Field>
+            <Field label="Name Extension"><Input value={form.nameExt} onChange={(e) => set("nameExt", e.target.value)} /></Field>
+            <Field label="Birthday"><Input type="date" value={form.birthday} onChange={(e) => set("birthday", e.target.value)} /></Field>
             <Field label="Gender">
-              <RadioGroup defaultValue={employee.gender} className="flex gap-3 pt-1">
-                <div className="flex items-center gap-2"><RadioGroupItem value="Male" id="g-1" /><Label htmlFor="g-1" className="text-sm">Male</Label></div>
-                <div className="flex items-center gap-2"><RadioGroupItem value="Female" id="g-2" /><Label htmlFor="g-2" className="text-sm">Female</Label></div>
+              <RadioGroup value={form.gender} onValueChange={(value) => set("gender", value)} className="flex gap-3 pt-1">
+                {GENDERS.map((item) => <RadioItem key={item} id={`gender-${item}`} value={item} label={item} />)}
               </RadioGroup>
             </Field>
             <Field label="Civil Status">
-              <Select defaultValue={employee.civilStatus}>
+              <Select value={form.civilStatus || "none"} onValueChange={(value) => set("civilStatus", value === "none" ? "" : value)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Single">Single</SelectItem>
-                  <SelectItem value="Married">Married</SelectItem>
-                  <SelectItem value="Widowed">Widowed</SelectItem>
-                  <SelectItem value="Separated">Separated</SelectItem>
+                  <SelectItem value="none">Not specified</SelectItem>
+                  {CIVIL_STATUSES.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Citizenship" className="md:col-span-2 xl:col-span-1">
-              <RadioGroup defaultValue={employee.citizenship} className="flex gap-3 pt-1">
-                <div className="flex items-center gap-2"><RadioGroupItem value="Filipino" id="c-1" /><Label htmlFor="c-1" className="text-sm">Filipino</Label></div>
-                <div className="flex items-center gap-2"><RadioGroupItem value="Foreigner" id="c-2" /><Label htmlFor="c-2" className="text-sm">Foreigner</Label></div>
-              </RadioGroup>
-            </Field>
+            <Field label="Citizenship"><Input value={form.citizenship} onChange={(e) => set("citizenship", e.target.value)} /></Field>
             <Field label="Place of Birth" className="md:col-span-2 xl:col-span-3">
-              <Textarea defaultValue={employee.placeOfBirth} rows={2} />
+              <Textarea value={form.placeOfBirth} onChange={(e) => set("placeOfBirth", e.target.value)} rows={2} />
             </Field>
           </div>
-
           <Field label="Photo" className="justify-self-start xl:justify-self-end xl:pt-1">
             <div className="flex flex-col items-start gap-2">
-              <div className="h-24 w-24 rounded-lg border border-dashed border-border grid place-items-center bg-muted/30 overflow-hidden">
-                {photo
-                  ? <img src={photo} alt="Employee ID" className="h-full w-full object-cover" />
-                  : <span className="text-xs text-muted-foreground text-center px-2">No photo</span>}
+              <div className="grid h-24 w-24 place-items-center overflow-hidden rounded-lg border border-dashed border-border bg-muted/30">
+                {form.photoUrl ? <img src={form.photoUrl} alt="Employee" className="h-full w-full object-cover" /> : <span className="px-2 text-center text-xs text-muted-foreground">No photo</span>}
               </div>
-              <label className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-border hover:bg-accent cursor-pointer text-sm">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
                 <Upload className="h-4 w-4" /> Upload
-                <input type="file" accept="image/*" className="hidden" onChange={onPhoto} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => set("photoUrl", String(reader.result || ""));
+                    reader.readAsDataURL(file);
+                  }}
+                />
               </label>
             </div>
           </Field>
@@ -272,202 +416,183 @@ function PersonalTab({ employee, canEdit }: { employee: any; canEdit: boolean })
       </section>
 
       <FormSection title="Body Measurements & Government IDs">
-        <Field label="Height">
-          <div className="flex gap-2">
-            <Input defaultValue={employee.height} />
-            <Select defaultValue={employee.heightUnit ?? "M"}><SelectTrigger className="w-20"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="M">M</SelectItem><SelectItem value="FT">FT</SelectItem></SelectContent></Select>
-          </div>
-        </Field>
-        <Field label="Weight">
-          <div className="flex gap-2">
-            <Input defaultValue={employee.weight} />
-            <Select defaultValue={employee.weightUnit ?? "KL"}><SelectTrigger className="w-20"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="KL">KL</SelectItem><SelectItem value="LB">LB</SelectItem></SelectContent></Select>
-          </div>
-        </Field>
-        <Field label="Blood Type"><Input defaultValue={employee.bloodType} /></Field>
-        <Field label="SSS"><Input defaultValue={employee.sss} /></Field>
-        <Field label="GSIS"><Input defaultValue={employee.gsis} /></Field>
-        <Field label="PAG-IBIG"><Input defaultValue={employee.pagibig} /></Field>
-        <Field label="TIN"><Input defaultValue={employee.tin} /></Field>
-        <Field label="PHILHEALTH"><Input defaultValue={employee.philhealth} /></Field>
-        <Field label="CTC No"><Input defaultValue={employee.ctcNo} /></Field>
-        <Field label="CTC Place Issued"><Input defaultValue={employee.ctcPlaceIssued} /></Field>
-        <Field label="CTC Date Issued"><Input type="date" defaultValue={employee.ctcDateIssued} /></Field>
+        <Field label="Height"><Input value={form.height} onChange={(e) => set("height", e.target.value)} /></Field>
+        <Field label="Weight"><Input value={form.weight} onChange={(e) => set("weight", e.target.value)} /></Field>
+        <Field label="Blood Type"><Input value={form.bloodType} onChange={(e) => set("bloodType", e.target.value)} /></Field>
+        <Field label="SSS"><Input value={form.sss} onChange={(e) => set("sss", e.target.value)} /></Field>
+        <Field label="GSIS"><Input value={form.gsis} onChange={(e) => set("gsis", e.target.value)} /></Field>
+        <Field label="PAG-IBIG"><Input value={form.pagibig} onChange={(e) => set("pagibig", e.target.value)} /></Field>
+        <Field label="TIN"><Input value={form.tin} onChange={(e) => set("tin", e.target.value)} /></Field>
+        <Field label="PHILHEALTH"><Input value={form.philhealth} onChange={(e) => set("philhealth", e.target.value)} /></Field>
+        <Field label="CTC No"><Input value={form.ctcNo} onChange={(e) => set("ctcNo", e.target.value)} /></Field>
+        <Field label="CTC Place Issued"><Input value={form.ctcPlaceIssued} onChange={(e) => set("ctcPlaceIssued", e.target.value)} /></Field>
+        <Field label="CTC Date Issued"><Input type="date" value={form.ctcDateIssued} onChange={(e) => set("ctcDateIssued", e.target.value)} /></Field>
       </FormSection>
 
       <FormSection title="Contact & Address">
-        <Field label="Cellphone No"><Input defaultValue={employee.cellphoneNo} /></Field>
-        <Field label="Email Address" className="md:col-span-2"><Input type="email" defaultValue={employee.email} /></Field>
-        <Field label="Residential Address" className="md:col-span-2 lg:col-span-3">
-          <Textarea defaultValue={employee.residentialAddress} rows={2} />
-        </Field>
-        <Field label="Residential Zipcode"><Input defaultValue={employee.residentialZipcode} /></Field>
-        <Field label="Residential Telephone No" className="md:col-span-2"><Input defaultValue={employee.residentialTelNo} /></Field>
-        <Field label="Permanent Address" className="md:col-span-2 lg:col-span-3">
-          <Textarea defaultValue={employee.permanentAddress} rows={2} />
-        </Field>
-        <Field label="Permanent Zipcode"><Input defaultValue={employee.permanentZipcode} /></Field>
-        <Field label="Permanent Telephone No" className="md:col-span-2"><Input defaultValue={employee.permanentTelNo} /></Field>
+        <Field label="Cellphone No"><Input value={form.cellphoneNo} onChange={(e) => set("cellphoneNo", e.target.value)} /></Field>
+        <Field label="Email Address" className="md:col-span-2"><Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} /></Field>
+        <Field label="Residential Address" className="md:col-span-2 lg:col-span-3"><Textarea value={form.residentialAddress} onChange={(e) => set("residentialAddress", e.target.value)} rows={2} /></Field>
+        <Field label="Residential Zipcode"><Input value={form.residentialZipcode} onChange={(e) => set("residentialZipcode", e.target.value)} /></Field>
+        <Field label="Residential Telephone No" className="md:col-span-2"><Input value={form.residentialTelNo} onChange={(e) => set("residentialTelNo", e.target.value)} /></Field>
+        <Field label="Permanent Address" className="md:col-span-2 lg:col-span-3"><Textarea value={form.permanentAddress} onChange={(e) => set("permanentAddress", e.target.value)} rows={2} /></Field>
+        <Field label="Permanent Zipcode"><Input value={form.permanentZipcode} onChange={(e) => set("permanentZipcode", e.target.value)} /></Field>
+        <Field label="Permanent Telephone No" className="md:col-span-2"><Input value={form.permanentTelNo} onChange={(e) => set("permanentTelNo", e.target.value)} /></Field>
       </FormSection>
 
-      <div className="flex justify-end gap-2 mt-4">
-        <Button variant="outline">Cancel</Button>
-        <Button disabled={!canEdit} onClick={() => toast.success("Personal info updated")} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Update</Button>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" onClick={() => setForm(employee)}>Cancel</Button>
+        <Button disabled={!canEdit} onClick={save} className="bg-blue-600 text-white hover:bg-blue-700">
+          <Save className="mr-1.5 h-4 w-4" /> Save Personal Info
+        </Button>
       </div>
     </div>
   );
 }
 
-/* ---------------- Reusable simple text input bound to local state ---------------- */
-function useRecordForm<T extends Record<string, unknown>>(initial: T) {
-  const [state, setState] = useState<T>(initial);
-  const set = <K extends keyof T>(k: K, v: T[K]) => setState((s) => ({ ...s, [k]: v }));
-  const reset = () => setState(initial);
-  return { state, set, reset, setState };
-}
-
-/* ---------------- TAB 2: FAMILY ---------------- */
-function FamilyTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
-  const existing = STORE.family[id] ?? {
-    spouse: { lastname: "", firstname: "", middlename: "", occupation: "", employer: "", businessTel: "", businessAddress: "" },
-    father: { lastname: "", firstname: "", middlename: "" },
-    mother: { lastname: "", firstname: "", middlename: "" },
-  };
-  const [form, setForm] = useState(existing);
-  const hasExisting = Boolean(STORE.family[id]);
-
-  const save = () => {
-    STORE.family[id] = form;
-    toast.success("Family record saved");
-    onChange();
-  };
-
-  return (
-    <div>
-      <FormSection title="Spouse">
-        <Field label="Lastname"><Input value={form.spouse.lastname} onChange={(e) => setForm({ ...form, spouse: { ...form.spouse, lastname: e.target.value } })} /></Field>
-        <Field label="Firstname"><Input value={form.spouse.firstname} onChange={(e) => setForm({ ...form, spouse: { ...form.spouse, firstname: e.target.value } })} /></Field>
-        <Field label="Middlename"><Input value={form.spouse.middlename} onChange={(e) => setForm({ ...form, spouse: { ...form.spouse, middlename: e.target.value } })} /></Field>
-        <Field label="Occupation"><Input value={form.spouse.occupation} onChange={(e) => setForm({ ...form, spouse: { ...form.spouse, occupation: e.target.value } })} /></Field>
-        <Field label="Employer"><Input value={form.spouse.employer} onChange={(e) => setForm({ ...form, spouse: { ...form.spouse, employer: e.target.value } })} /></Field>
-        <Field label="Business Tel No"><Input value={form.spouse.businessTel} onChange={(e) => setForm({ ...form, spouse: { ...form.spouse, businessTel: e.target.value } })} /></Field>
-        <Field label="Business Address" className="md:col-span-2 lg:col-span-3"><Textarea rows={2} value={form.spouse.businessAddress} onChange={(e) => setForm({ ...form, spouse: { ...form.spouse, businessAddress: e.target.value } })} /></Field>
-      </FormSection>
-      <FormSection title="Father">
-        <Field label="Lastname"><Input value={form.father.lastname} onChange={(e) => setForm({ ...form, father: { ...form.father, lastname: e.target.value } })} /></Field>
-        <Field label="Firstname"><Input value={form.father.firstname} onChange={(e) => setForm({ ...form, father: { ...form.father, firstname: e.target.value } })} /></Field>
-        <Field label="Middlename"><Input value={form.father.middlename} onChange={(e) => setForm({ ...form, father: { ...form.father, middlename: e.target.value } })} /></Field>
-      </FormSection>
-      <FormSection title="Mother (Maiden)">
-        <Field label="Lastname"><Input value={form.mother.lastname} onChange={(e) => setForm({ ...form, mother: { ...form.mother, lastname: e.target.value } })} /></Field>
-        <Field label="Firstname"><Input value={form.mother.firstname} onChange={(e) => setForm({ ...form, mother: { ...form.mother, firstname: e.target.value } })} /></Field>
-        <Field label="Middlename"><Input value={form.mother.middlename} onChange={(e) => setForm({ ...form, mother: { ...form.mother, middlename: e.target.value } })} /></Field>
-      </FormSection>
-      <div className="flex justify-end gap-2 mt-4">
-        <Button variant="outline" onClick={() => setForm(existing)}>Cancel</Button>
-        <Button disabled={!canEdit || hasExisting} onClick={save} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Add</Button>
-        <Button disabled={!canEdit || !hasExisting} onClick={save} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Update</Button>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- TAB 3: CHILDREN ---------------- */
-function ChildrenTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
-  const list = STORE.children[id] ?? (STORE.children[id] = []);
-  const blank: Omit<ChildRecord, "id"> = { lastname: "", firstname: "", middlename: "", gender: "Male", birthday: "" };
-  const { state, set, setState } = useRecordForm(blank);
+function SectionTab({
+  employeeId,
+  section,
+  title,
+  rows,
+  canEdit,
+  onChange,
+}: {
+  employeeId: string;
+  section: string;
+  title: string;
+  rows: SectionRow[];
+  canEdit: boolean;
+  onChange: () => void;
+}) {
+  const fields = SECTION_FIELDS[section] || [];
+  const blank = useMemo(() => Object.fromEntries(fields.map((field) => [field.key, ""])), [fields]);
+  const [form, setForm] = useState<Record<string, string | number | boolean | null>>(blank);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  useEffect(() => {
+    setForm(blank);
+    setEditingId(null);
+  }, [blank]);
+
+  const set = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const clear = () => {
-    setState(blank);
+    setForm(blank);
     setEditingId(null);
   };
-
-  const add = () => {
-    if (!state.firstname || !state.lastname) { toast.error("Lastname and firstname required"); return; }
-    list.push({ ...state, id: uid() });
-    clear(); onChange(); toast.success("Child added");
+  const save = async () => {
+    try {
+      if (editingId) {
+        await updateSectionRow(employeeId, section, editingId, form);
+        toast.success("Record updated");
+      } else {
+        await createSectionRow(employeeId, section, form);
+        toast.success("Record added");
+      }
+      clear();
+      onChange();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to save record");
+    }
   };
-  const edit = (cid: string) => {
-    const row = list.find((c) => c.id === cid);
-    if (!row) return;
-    setState({ lastname: row.lastname, firstname: row.firstname, middlename: row.middlename, gender: row.gender, birthday: row.birthday });
-    setEditingId(cid);
+  const edit = (row: SectionRow) => {
+    setForm({ ...blank, ...row.payload });
+    setEditingId(row.id);
   };
-  const update = () => {
-    if (!editingId) return;
-    const idx = list.findIndex((c) => c.id === editingId);
-    if (idx < 0) return;
-    list[idx] = { ...list[idx], ...state };
-    clear(); onChange(); toast.success("Child updated");
+  const remove = async (row: SectionRow) => {
+    if (!window.confirm("Delete this 201 record?")) return;
+    try {
+      await deleteSectionRow(employeeId, section, row.id);
+      toast.success("Record deleted");
+      onChange();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to delete record");
+    }
   };
-  const del = (cid: string) => { STORE.children[id] = list.filter((c) => c.id !== cid); onChange(); toast("Removed"); };
 
   return (
     <div>
-      <FormSection title="Add Child">
-        <Field label="Lastname"><Input value={state.lastname} onChange={(e) => set("lastname", e.target.value)} /></Field>
-        <Field label="Firstname"><Input value={state.firstname} onChange={(e) => set("firstname", e.target.value)} /></Field>
-        <Field label="Middlename"><Input value={state.middlename} onChange={(e) => set("middlename", e.target.value)} /></Field>
-        <Field label="Gender">
-          <RadioGroup value={state.gender} onValueChange={(v) => set("gender", v as "Male" | "Female")} className="flex gap-4 pt-1">
-            <div className="flex items-center gap-2"><RadioGroupItem value="Male" id="ch-m" /><Label htmlFor="ch-m" className="text-sm">Male</Label></div>
-            <div className="flex items-center gap-2"><RadioGroupItem value="Female" id="ch-f" /><Label htmlFor="ch-f" className="text-sm">Female</Label></div>
-          </RadioGroup>
-        </Field>
-        <Field label="Birthday"><Input type="date" value={state.birthday} onChange={(e) => set("birthday", e.target.value)} /></Field>
+      <FormSection title={editingId ? `Edit ${title}` : `Add ${title}`}>
+        {fields.map((field) => (
+          <Field key={field.key} label={field.label} className={field.type === "textarea" ? "md:col-span-2 lg:col-span-3" : undefined}>
+            <SectionInput field={field} value={String(form[field.key] ?? "")} onChange={(value) => set(field.key, value)} />
+          </Field>
+        ))}
       </FormSection>
-      <div className="flex justify-end gap-2 mb-4">
+      <div className="mb-4 flex justify-end gap-2">
         <Button variant="outline" onClick={clear}>Cancel</Button>
-        <Button disabled={!canEdit || !editingId} onClick={update} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Update</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button>
+        <Button disabled={!canEdit} onClick={save} className="bg-blue-600 text-white hover:bg-blue-700">
+          {editingId ? <Pencil className="mr-1.5 h-4 w-4" /> : <Plus className="mr-1.5 h-4 w-4" />}
+          {editingId ? "Update" : "Add"}
+        </Button>
       </div>
-      <RecordTable
-        cols={["ID", "Lastname", "Firstname", "Middlename", "Gender", "Birthday"]}
-        rows={list.map((c) => [c.id.slice(0, 5), c.lastname, c.firstname, c.middlename, c.gender, c.birthday])}
-        onEdit={canEdit ? (i) => edit(list[i].id) : undefined}
-        onDelete={canEdit ? (i) => del(list[i].id) : undefined}
-      />
+      <RecordTable fields={fields} rows={rows} canEdit={canEdit} onEdit={edit} onDelete={remove} />
     </div>
   );
 }
 
-/* ---------------- Reusable record table ---------------- */
+function SectionInput({ field, value, onChange }: { field: FieldConfig; value: string; onChange: (value: string) => void }) {
+  if (field.type === "textarea") return <Textarea value={value} onChange={(event) => onChange(event.target.value)} rows={2} />;
+  if (field.type === "select") {
+    return (
+      <Select value={value || "none"} onValueChange={(next) => onChange(next === "none" ? "" : next)}>
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">Not specified</SelectItem>
+          {(field.options || []).map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    );
+  }
+  return <Input type={field.type || "text"} value={value} onChange={(event) => onChange(event.target.value)} />;
+}
+
 function RecordTable({
-  cols, rows, onDelete, onEdit,
+  fields,
+  rows,
+  canEdit,
+  onEdit,
+  onDelete,
 }: {
-  cols: string[];
-  rows: (string | number)[][];
-  onDelete?: (i: number) => void;
-  onEdit?: (i: number) => void;
+  fields: FieldConfig[];
+  rows: SectionRow[];
+  canEdit: boolean;
+  onEdit: (row: SectionRow) => void;
+  onDelete: (row: SectionRow) => void;
 }) {
+  const visibleFields = fields.slice(0, 6);
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden my-2">
-      <div className="overflow-x-auto scrollbar-thin">
-        <table className="w-full text-sm min-w-[600px] sm:min-w-full">
+    <div className="my-2 overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
-            <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border bg-muted/30">
-              {cols.map((c) => <th key={c} className="px-3 py-2.5 font-medium whitespace-nowrap">{c}</th>)}
-              {(onDelete || onEdit) && <th className="px-3 py-2.5 font-medium text-right sticky right-0 bg-card/90 backdrop-blur shadow-[-10px_0_10px_-5px_rgba(0,0,0,0.05)]">Actions</th>}
+            <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              {visibleFields.map((field) => <th key={field.key} className="px-3 py-2.5 font-medium">{field.label}</th>)}
+              {canEdit && <th className="px-3 py-2.5 text-right font-medium">Actions</th>}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={cols.length + 1} className="px-3 py-8 text-center text-muted-foreground text-sm font-medium italic">No Records Found!</td></tr>
-            ) : rows.map((r, i) => (
-              <tr key={i} className={cn("hover:bg-muted/30 transition-colors", i % 2 ? "bg-muted/10" : "")}>
-                {r.map((v, j) => <td key={j} className="px-3 py-2.5 whitespace-nowrap">{v}</td>)}
-                {(onDelete || onEdit) && (
-                  <td className="px-3 py-2.5 text-right sticky right-0 bg-card/90 backdrop-blur shadow-[-10px_0_10px_-5px_rgba(0,0,0,0.05)]">
-                    <div className="inline-flex gap-1">
-                      {onEdit && <button onClick={() => onEdit(i)} className="h-7 w-7 grid place-items-center rounded-md hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors"><Pencil className="h-3.5 w-3.5" /></button>}
-                      {onDelete && <button onClick={() => onDelete(i)} className="h-7 w-7 grid place-items-center rounded-md hover:bg-destructive/10 text-destructive transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>}
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
+              <tr><td colSpan={visibleFields.length + 1} className="px-3 py-8 text-center text-sm text-muted-foreground">No records found.</td></tr>
+            ) : (
+              rows.map((row, index) => (
+                <tr key={row.id} className={cn("border-b border-border/50 last:border-0 hover:bg-muted/30", index % 2 === 1 && "bg-muted/10")}>
+                  {visibleFields.map((field) => <td key={field.key} className="whitespace-nowrap px-3 py-2.5">{String(row.payload[field.key] ?? "")}</td>)}
+                  {canEdit && (
+                    <td className="px-3 py-2.5 text-right">
+                      <div className="inline-flex gap-1">
+                        <button onClick={() => onEdit(row)} className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => onDelete(row)} className="grid h-7 w-7 place-items-center rounded-md text-destructive hover:bg-destructive/10">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -475,407 +600,22 @@ function RecordTable({
   );
 }
 
-/* ---------------- TAB 4: EDUCATIONAL ---------------- */
-function EducationTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
-  const list = STORE.education[id] ?? (STORE.education[id] = []);
-  const blank: Omit<EducationRecord, "id"> = { level: "College", school: "", degree: "", yearFrom: "", yearTo: "", yearGraduated: "", scholarship: "" };
-  const { state, set, setState } = useRecordForm(blank);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const clear = () => {
-    setState(blank);
-    setEditingId(null);
-  };
-  const add = () => {
-    if (!state.school) { toast.error("School name required"); return; }
-    list.push({ ...state, id: uid() }); clear(); onChange(); toast.success("Education added");
-  };
-  const edit = (rid: string) => {
-    const row = list.find((x) => x.id === rid);
-    if (!row) return;
-    setState({ level: row.level, school: row.school, degree: row.degree, yearFrom: row.yearFrom, yearTo: row.yearTo, yearGraduated: row.yearGraduated, scholarship: row.scholarship });
-    setEditingId(rid);
-  };
-  const update = () => {
-    if (!editingId) return;
-    const idx = list.findIndex((x) => x.id === editingId);
-    if (idx < 0) return;
-    list[idx] = { ...list[idx], ...state };
-    clear(); onChange(); toast.success("Education updated");
-  };
-  const del = (rid: string) => { STORE.education[id] = list.filter((x) => x.id !== rid); onChange(); };
-
+function DeferredLeaveTab() {
   return (
-    <div>
-      <FormSection title="Add Education">
-        <Field label="Level">
-          <Select value={state.level} onValueChange={(v) => set("level", v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {["Elementary", "Secondary", "Vocational", "College", "Graduate"].map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="School Name" className="md:col-span-2"><Input value={state.school} onChange={(e) => set("school", e.target.value)} /></Field>
-        <Field label="Degree / Course"><Input value={state.degree} onChange={(e) => set("degree", e.target.value)} /></Field>
-        <Field label="Year From"><Input value={state.yearFrom} onChange={(e) => set("yearFrom", e.target.value)} /></Field>
-        <Field label="Year To"><Input value={state.yearTo} onChange={(e) => set("yearTo", e.target.value)} /></Field>
-        <Field label="Year Graduated"><Input value={state.yearGraduated} onChange={(e) => set("yearGraduated", e.target.value)} /></Field>
-        <Field label="Scholarship" className="md:col-span-2"><Input value={state.scholarship} onChange={(e) => set("scholarship", e.target.value)} /></Field>
-      </FormSection>
-      <div className="flex justify-end gap-2 mb-4">
-        <Button variant="outline" onClick={clear}>Cancel</Button>
-        <Button disabled={!canEdit || !editingId} onClick={update} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Update</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button>
-      </div>
-      <RecordTable
-        cols={["Level", "School", "Degree", "From", "To", "Graduated", "Scholarship"]}
-        rows={list.map((r) => [r.level, r.school, r.degree, r.yearFrom, r.yearTo, r.yearGraduated, r.scholarship])}
-        onEdit={canEdit ? (i) => edit(list[i].id) : undefined}
-        onDelete={canEdit ? (i) => del(list[i].id) : undefined}
-      />
+    <div className="rounded-xl border border-border bg-card p-8 text-center shadow-sm">
+      <h2 className="text-lg font-semibold text-foreground">Leave Balance is deferred</h2>
+      <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
+        Mock leave balances were removed. This tab will be connected when the Attendance & Leave module is implemented.
+      </p>
     </div>
   );
 }
 
-/* ---------------- TAB 5: CIVIL SERVICE ---------------- */
-function CivilServiceTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
-  const list = STORE.civilService[id] ?? (STORE.civilService[id] = []);
-  const blank: Omit<CivilServiceRecord, "id"> = { type: "", place: "", date: "", rating: "", license: "", dateRelease: "", licenseValidity: "" };
-  const { state, set, reset } = useRecordForm(blank);
-  const add = () => { if (!state.type) { toast.error("Type required"); return; } list.push({ ...state, id: uid() }); reset(); onChange(); toast.success("Added"); };
-  const del = (rid: string) => { STORE.civilService[id] = list.filter((x) => x.id !== rid); onChange(); };
-
+function RadioItem({ id, value, label }: { id: string; value: string; label: string }) {
   return (
-    <div>
-      <FormSection title="Add Eligibility">
-        <Field label="Civil Service / Board Exam Type" className="md:col-span-2"><Input value={state.type} onChange={(e) => set("type", e.target.value)} placeholder="e.g. Career Service Professional, Board Exam for Nurses" /></Field>
-        <Field label="Place of Exam"><Input value={state.place} onChange={(e) => set("place", e.target.value)} /></Field>
-        <Field label="Date of Exam"><Input type="date" value={state.date} onChange={(e) => set("date", e.target.value)} /></Field>
-        <Field label="Rating %"><Input value={state.rating} onChange={(e) => set("rating", e.target.value)} /></Field>
-        <Field label="License No."><Input value={state.license} onChange={(e) => set("license", e.target.value)} placeholder="License number" /></Field>
-        <Field label="Date Released"><Input type="date" value={state.dateRelease} onChange={(e) => set("dateRelease", e.target.value)} /></Field>
-        <Field label="License No. Validity"><Input type="date" value={state.licenseValidity} onChange={(e) => set("licenseValidity", e.target.value)} /></Field>
-      </FormSection>
-      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
-      <RecordTable
-        cols={["Type", "Place", "Date of Exam", "Rating", "License No.", "Date Released", "License Validity"]}
-        rows={list.map((r) => [r.type, r.place, r.date, r.rating, r.license, r.dateRelease, r.licenseValidity])}
-        onDelete={canEdit ? (i) => del(list[i].id) : undefined}
-      />
-    </div>
-  );
-}
-
-/* ---------------- TAB 6: WORK EXPERIENCE ---------------- */
-function WorkTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
-  const list = STORE.work[id] ?? (STORE.work[id] = []);
-  const blank: Omit<WorkRecord, "id"> = { position: "", company: "", status: "Permanent", dateFrom: "", dateTo: "", salary: "", govEmp: "NO" };
-  const { state, set, reset } = useRecordForm(blank);
-  const add = () => { if (!state.position) { toast.error("Position required"); return; } list.push({ ...state, id: uid() }); reset(); onChange(); toast.success("Added"); };
-  const del = (rid: string) => { STORE.work[id] = list.filter((x) => x.id !== rid); onChange(); };
-
-  return (
-    <div>
-      <FormSection title="Add Work Experience">
-        <Field label="Position"><Input value={state.position} onChange={(e) => set("position", e.target.value)} /></Field>
-        <Field label="Department / Company" className="md:col-span-2"><Input value={state.company} onChange={(e) => set("company", e.target.value)} /></Field>
-        <Field label="Status"><Select value={state.status} onValueChange={(v) => set("status", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Permanent", "Casual", "Contractual"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></Field>
-        <Field label="Date From"><Input type="date" value={state.dateFrom} onChange={(e) => set("dateFrom", e.target.value)} /></Field>
-        <Field label="Date To"><Input type="date" value={state.dateTo} onChange={(e) => set("dateTo", e.target.value)} /></Field>
-        <Field label="Monthly Salary"><Input value={state.salary} onChange={(e) => set("salary", e.target.value)} /></Field>
-        <Field label="Government Employee">
-          <RadioGroup value={state.govEmp} onValueChange={(v) => set("govEmp", v as "YES" | "NO")} className="flex gap-4 pt-1">
-            <div className="flex items-center gap-2"><RadioGroupItem value="YES" id="ge-y" /><Label htmlFor="ge-y" className="text-sm">YES</Label></div>
-            <div className="flex items-center gap-2"><RadioGroupItem value="NO" id="ge-n" /><Label htmlFor="ge-n" className="text-sm">NO</Label></div>
-          </RadioGroup>
-        </Field>
-      </FormSection>
-      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
-      <RecordTable cols={["Position", "Company", "Status", "From", "To", "Salary", "Gov't"]} rows={list.map((r) => [r.position, r.company, r.status, r.dateFrom, r.dateTo, r.salary, r.govEmp])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
-    </div>
-  );
-}
-
-/* ---------------- TAB 7: ORGANIZATION ---------------- */
-function OrgTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
-  const list = STORE.org[id] ?? (STORE.org[id] = []);
-  const blank: Omit<OrgRecord, "id"> = { name: "", position: "", address: "", yearFrom: "", yearTo: "", hours: "" };
-  const { state, set, reset } = useRecordForm(blank);
-  const add = () => { if (!state.name) { toast.error("Name required"); return; } list.push({ ...state, id: uid() }); reset(); onChange(); toast.success("Added"); };
-  const del = (rid: string) => { STORE.org[id] = list.filter((x) => x.id !== rid); onChange(); };
-
-  return (
-    <div>
-      <FormSection title="Add Organization">
-        <Field label="Organization Name" className="md:col-span-2"><Input value={state.name} onChange={(e) => set("name", e.target.value)} /></Field>
-        <Field label="Position"><Input value={state.position} onChange={(e) => set("position", e.target.value)} /></Field>
-        <Field label="Address" className="md:col-span-2 lg:col-span-3"><Input value={state.address} onChange={(e) => set("address", e.target.value)} /></Field>
-        <Field label="Year From"><Input value={state.yearFrom} onChange={(e) => set("yearFrom", e.target.value)} /></Field>
-        <Field label="Year To"><Input value={state.yearTo} onChange={(e) => set("yearTo", e.target.value)} /></Field>
-        <Field label="No. of Hours"><Input value={state.hours} onChange={(e) => set("hours", e.target.value)} /></Field>
-      </FormSection>
-      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
-      <RecordTable cols={["Name", "Position", "Address", "From", "To", "Hours"]} rows={list.map((r) => [r.name, r.position, r.address, r.yearFrom, r.yearTo, r.hours])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
-    </div>
-  );
-}
-
-/* ---------------- TAB 8: TRAINING ---------------- */
-function TrainingTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
-  const list = STORE.training[id] ?? (STORE.training[id] = []);
-  const blank: Omit<TrainingRecord, "id"> = { name: "", conductedBy: "", yearFrom: "", yearTo: "", hours: "", file: "" };
-  const { state, set, reset } = useRecordForm(blank);
-  const add = () => { if (!state.name) { toast.error("Training name required"); return; } list.push({ ...state, id: uid() }); reset(); onChange(); toast.success("Saved"); };
-  const del = (rid: string) => { STORE.training[id] = list.filter((x) => x.id !== rid); onChange(); };
-
-  return (
-    <div>
-      <FormSection title="Add Training / Seminar">
-        <Field label="Training / Seminar Name" className="md:col-span-2 lg:col-span-3"><Input value={state.name} onChange={(e) => set("name", e.target.value)} /></Field>
-        <Field label="Conducted By"><Input value={state.conductedBy} onChange={(e) => set("conductedBy", e.target.value)} /></Field>
-        <Field label="Year From"><Input value={state.yearFrom} onChange={(e) => set("yearFrom", e.target.value)} /></Field>
-        <Field label="Year To"><Input value={state.yearTo} onChange={(e) => set("yearTo", e.target.value)} /></Field>
-        <Field label="No. of Hours"><Input value={state.hours} onChange={(e) => set("hours", e.target.value)} /></Field>
-        <Field label="File Upload" className="md:col-span-2">
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border hover:bg-accent cursor-pointer text-sm text-muted-foreground">
-            <Upload className="h-4 w-4" /> {state.file || "Choose certificate file"}
-            <input type="file" className="hidden" onChange={(e) => set("file", e.target.files?.[0]?.name ?? "")} />
-          </label>
-        </Field>
-      </FormSection>
-      <div className="flex justify-end gap-2 mb-4">
-        <Button variant="outline" onClick={reset}>Cancel</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">Save</Button>
-      </div>
-      <RecordTable cols={["Training", "Conducted By", "From", "To", "Hours", "File"]} rows={list.map((r) => [r.name, r.conductedBy, r.yearFrom, r.yearTo, r.hours, r.file ?? ""])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
-    </div>
-  );
-}
-
-/* ---------------- TAB 9: SALARY ---------------- */
-function SalaryTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
-  const list = STORE.salary[id] ?? (STORE.salary[id] = []);
-  const blank: Omit<SalaryRecord, "id"> = {
-    date: "", description: "", ordinance: "Annex 1", grade: 11, step: 1, tax: "ME",
-    amount: 0, gross: 0, type: "Step Increment", pera: 2000, rata: 0, cata: 0,
-  };
-  const { state, set, setState } = useRecordForm(blank);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const clear = () => {
-    setState(blank);
-    setEditingId(null);
-  };
-
-  const recompute = () => {
-    const amount = SALARY_TABLE[state.grade]?.[state.step - 1] ?? 0;
-    const gross = amount + state.pera + state.rata + state.cata;
-    setState((s) => ({ ...s, amount, gross }));
-    toast("Amounts recomputed");
-  };
-
-  const add = () => {
-    if (!state.date) { toast.error("Date increment required"); return; }
-    const amount = state.amount || (SALARY_TABLE[state.grade]?.[state.step - 1] ?? 0);
-    const gross = state.gross || amount + state.pera + state.rata + state.cata;
-    list.push({ ...state, amount, gross, id: uid() });
-    onChange(); toast.success("Salary record added");
-  };
-  const edit = (rid: string) => {
-    const row = list.find((x) => x.id === rid);
-    if (!row) return;
-    setState({
-      date: row.date,
-      description: row.description,
-      ordinance: row.ordinance,
-      grade: row.grade,
-      step: row.step,
-      tax: row.tax,
-      amount: row.amount,
-      gross: row.gross,
-      type: row.type,
-      pera: row.pera,
-      rata: row.rata,
-      cata: row.cata,
-    });
-    setEditingId(rid);
-  };
-  const update = () => {
-    if (!editingId) return;
-    const idx = list.findIndex((x) => x.id === editingId);
-    if (idx < 0) return;
-    list[idx] = { ...list[idx], ...state };
-    clear(); onChange(); toast.success("Salary record updated");
-  };
-  const del = (rid: string) => { STORE.salary[id] = list.filter((x) => x.id !== rid); onChange(); };
-
-  return (
-    <div>
-      <FormSection title="Add Salary Record">
-        <Field label="Date Increment"><Input type="date" value={state.date} onChange={(e) => set("date", e.target.value)} /></Field>
-        <Field label="Description" className="md:col-span-2"><Input value={state.description} onChange={(e) => set("description", e.target.value)} /></Field>
-        <Field label="Ordinance">
-          <Select value={state.ordinance} onValueChange={(v) => set("ordinance", v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>{["Annex 1", "Annex 2", "Annex 3", "Annex 4"].map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
-          </Select>
-        </Field>
-        <Field label="Salary Grade">
-          <Select value={String(state.grade)} onValueChange={(v) => set("grade", Number(v))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent className="max-h-[280px]">{SALARY_GRADES.map((g) => <SelectItem key={g} value={String(g)}>SG-{g}</SelectItem>)}</SelectContent>
-          </Select>
-        </Field>
-        <Field label="Salary Step">
-          <Select value={String(state.step)} onValueChange={(v) => set("step", Number(v))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>{SALARY_STEPS.map((s) => <SelectItem key={s} value={String(s)}>Step {s}</SelectItem>)}</SelectContent>
-          </Select>
-        </Field>
-        <Field label="Tax Exemption">
-          <Select value={state.tax} onValueChange={(v) => set("tax", v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>{["Z", "ME", "ME+1", "ME+2", "ME+3", "ME+4"].map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-          </Select>
-        </Field>
-        <Field label="Salary Amount"><Input value={state.amount.toLocaleString()} readOnly className="bg-muted" /></Field>
-        <Field label="Gross Amount"><Input value={state.gross.toLocaleString()} readOnly className="bg-muted" /></Field>
-        <Field label="Income Type">
-          <RadioGroup value={state.type} onValueChange={(v) => set("type", v as SalaryRecord["type"])} className="flex flex-col gap-1.5 pt-1">
-            <div className="flex items-center gap-2"><RadioGroupItem value="Step Increment" id="it-1" /><Label htmlFor="it-1" className="text-sm">Step Increment</Label></div>
-            <div className="flex items-center gap-2"><RadioGroupItem value="Not Step Increment" id="it-2" /><Label htmlFor="it-2" className="text-sm">Not Step Increment</Label></div>
-          </RadioGroup>
-        </Field>
-        <Field label="PERA"><Input type="number" value={state.pera} onChange={(e) => set("pera", Number(e.target.value))} /></Field>
-        <Field label="RATA"><Input type="number" value={state.rata} onChange={(e) => set("rata", Number(e.target.value))} /></Field>
-        <Field label="CATA"><Input type="number" value={state.cata} onChange={(e) => set("cata", Number(e.target.value))} /></Field>
-      </FormSection>
-      <div className="flex justify-end gap-2 mb-4">
-        <Button variant="outline" onClick={clear}>Cancel</Button>
-        <Button variant="outline" onClick={update} disabled={!canEdit || !editingId}>Update</Button>
-        <Button variant="outline" onClick={recompute}><RefreshCw className="h-4 w-4 mr-1.5" /> Refresh / Recompute</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button>
-      </div>
-      <RecordTable
-        cols={["Date", "Description", "Type", "Tax", "SG", "Step", "Amount", "Annual", "Gross", "PERA", "RATA", "CATA"]}
-        rows={list.map((r) => [r.date, r.description, r.type, r.tax, `SG-${r.grade}`, `Step ${r.step}`, r.amount.toLocaleString(), (r.amount * 12).toLocaleString(), r.gross.toLocaleString(), r.pera, r.rata, r.cata])}
-        onEdit={canEdit ? (i) => edit(list[i].id) : undefined}
-        onDelete={canEdit ? (i) => del(list[i].id) : undefined}
-      />
-    </div>
-  );
-}
-
-/* ---------------- TAB 10: SERVICE RECORD ---------------- */
-function ServiceTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
-  const list = STORE.service[id] ?? (STORE.service[id] = []);
-  const blank: Omit<ServiceRecord, "id"> = { from: "", to: "", status: "Permanent", salary: "", designation: "", department: "", assignment: "", branch: "", leave: "", sepDate: "", sepCause: "" };
-  const { state, set, reset } = useRecordForm(blank);
-  const add = () => { if (!state.from) { toast.error("Service from required"); return; } list.push({ ...state, id: uid() }); reset(); onChange(); toast.success("Added"); };
-  const del = (rid: string) => { STORE.service[id] = list.filter((x) => x.id !== rid); onChange(); };
-
-  return (
-    <div>
-      <FormSection title="Add Service Record">
-        <Field label="Service From"><Input type="date" value={state.from} onChange={(e) => set("from", e.target.value)} /></Field>
-        <Field label="Service To"><Input type="date" value={state.to} onChange={(e) => set("to", e.target.value)} /></Field>
-        <Field label="Status"><Select value={state.status} onValueChange={(v) => set("status", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Permanent", "Casual", "Contractual"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></Field>
-        <Field label="Salary"><Input value={state.salary} onChange={(e) => set("salary", e.target.value)} /></Field>
-        <Field label="Designation"><Select value={state.designation} onValueChange={(v) => set("designation", v)}><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger><SelectContent>{POSITIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></Field>
-        <Field label="Department"><Select value={state.department} onValueChange={(v) => set("department", v)}><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger><SelectContent>{DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></Field>
-        <Field label="Assignment"><Input value={state.assignment} onChange={(e) => set("assignment", e.target.value)} /></Field>
-        <Field label="Branch"><Input value={state.branch} onChange={(e) => set("branch", e.target.value)} /></Field>
-        <Field label="Leave With/Without Pay"><Input value={state.leave} onChange={(e) => set("leave", e.target.value)} /></Field>
-        <Field label="Separation Date"><Input type="date" value={state.sepDate} onChange={(e) => set("sepDate", e.target.value)} /></Field>
-        <Field label="Separation Cause" className="md:col-span-2"><Input value={state.sepCause} onChange={(e) => set("sepCause", e.target.value)} /></Field>
-      </FormSection>
-      <div className="flex justify-end gap-2 mb-4">
-        <Button variant="outline" onClick={reset}>Cancel</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">ADD</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">SAVE</Button>
-      </div>
-      <RecordTable cols={["ID", "Service From", "Service To", "Position", "Status", "Salary"]} rows={list.map((r) => [r.id.slice(0, 5), r.from, r.to, r.designation, r.status, r.salary])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
-    </div>
-  );
-}
-
-/* ---------------- TAB 11: LEAVE BALANCE ---------------- */
-function LeaveTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
-  const list = STORE.leave[id] ?? (STORE.leave[id] = []);
-  const blank: Omit<LeaveRecord, "id" | "employeeId"> = {
-    type: "Vacation Leave", period: "", particulars: "",
-    vlEarned: 0, vlAbsWP: 0, vlBalance: 0, vlAbsWOP: 0,
-    slEarned: 0, slAbsWP: 0, slBalance: 0, slAbsWOP: 0,
-    dateAction: "",
-  };
-  const { state, set, reset } = useRecordForm(blank);
-  const add = () => { list.push({ ...state, id: uid(), employeeId: id }); reset(); onChange(); toast.success("Added"); };
-  const del = (rid: string) => { STORE.leave[id] = list.filter((x) => x.id !== rid); onChange(); };
-
-  return (
-    <div>
-      <FormSection title="Add Leave Entry">
-        <Field label="Type of Leave">
-          <Select value={state.type} onValueChange={(v) => set("type", v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>{["Vacation Leave", "Sick Leave", "Maternity Leave", "Paternity Leave", "Special Privilege Leave"].map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
-          </Select>
-        </Field>
-        <Field label="Date Approved"><Input type="date" value={state.dateAction} onChange={(e) => set("dateAction", e.target.value)} /></Field>
-        <Field label="Period"><Input value={state.period} onChange={(e) => set("period", e.target.value)} placeholder="2025-01-01 to 2025-12-31" /></Field>
-        <Field label="Particulars" className="md:col-span-3"><Input value={state.particulars} onChange={(e) => set("particulars", e.target.value)} /></Field>
-        <Field label="VL Earned"><Input type="number" value={state.vlEarned} onChange={(e) => set("vlEarned", Number(e.target.value))} /></Field>
-        <Field label="VL Abs WP"><Input type="number" value={state.vlAbsWP} onChange={(e) => set("vlAbsWP", Number(e.target.value))} /></Field>
-        <Field label="VL Balance"><Input type="number" value={state.vlBalance} onChange={(e) => set("vlBalance", Number(e.target.value))} /></Field>
-        <Field label="VL Abs WOP"><Input type="number" value={state.vlAbsWOP} onChange={(e) => set("vlAbsWOP", Number(e.target.value))} /></Field>
-        <Field label="SL Earned"><Input type="number" value={state.slEarned} onChange={(e) => set("slEarned", Number(e.target.value))} /></Field>
-        <Field label="SL Abs WP"><Input type="number" value={state.slAbsWP} onChange={(e) => set("slAbsWP", Number(e.target.value))} /></Field>
-        <Field label="SL Balance"><Input type="number" value={state.slBalance} onChange={(e) => set("slBalance", Number(e.target.value))} /></Field>
-        <Field label="SL Abs WOP"><Input type="number" value={state.slAbsWOP} onChange={(e) => set("slAbsWOP", Number(e.target.value))} /></Field>
-      </FormSection>
-      <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
-      <RecordTable
-        cols={["ID", "Period", "Particulars", "VL Earned", "VL Abs WP", "VL Balance", "VL Abs WOP", "SL Earned", "SL Abs WP", "SL Balance", "SL Abs WOP", "Date Action"]}
-        rows={list.map((r) => [r.id.slice(0, 5), r.period, r.particulars, r.vlEarned, r.vlAbsWP, r.vlBalance, r.vlAbsWOP, r.slEarned, r.slAbsWP, r.slBalance, r.slAbsWOP, r.dateAction])}
-        onDelete={canEdit ? (i) => del(list[i].id) : undefined}
-      />
-    </div>
-  );
-}
-
-/* ---------------- TAB 12: IPCR ---------------- */
-function IPCRTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
-  const list = STORE.ipcr[id] ?? (STORE.ipcr[id] = []);
-  const blank: Omit<IPCRRecord, "id"> = { month: "", from: "", to: "", remarks: "", grades: "", file: "" };
-  const { state, set, reset } = useRecordForm(blank);
-  const add = () => { if (!state.month) { toast.error("Month required"); return; } list.push({ ...state, id: uid() }); reset(); onChange(); toast.success("Added"); };
-  const del = (rid: string) => { STORE.ipcr[id] = list.filter((x) => x.id !== rid); onChange(); };
-  const months = useMemo(() => ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"], []);
-
-  return (
-    <div>
-      <FormSection title="Add IPCR Record">
-        <Field label="Month">
-          <Select value={state.month} onValueChange={(v) => set("month", v)}>
-            <SelectTrigger><SelectValue placeholder="Select month" /></SelectTrigger>
-            <SelectContent>{months.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
-          </Select>
-        </Field>
-        <Field label="Date From"><Input type="date" value={state.from} onChange={(e) => set("from", e.target.value)} /></Field>
-        <Field label="Date To"><Input type="date" value={state.to} onChange={(e) => set("to", e.target.value)} /></Field>
-        <Field label="Grades"><Input value={state.grades} onChange={(e) => set("grades", e.target.value)} placeholder="Outstanding / Very Satisfactory" /></Field>
-        <Field label="Remarks" className="md:col-span-2"><Textarea rows={2} value={state.remarks} onChange={(e) => set("remarks", e.target.value)} /></Field>
-        <Field label="File Upload" className="md:col-span-2 lg:col-span-3">
-          <label className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border hover:bg-accent cursor-pointer text-sm text-muted-foreground">
-            <Upload className="h-4 w-4" /> {state.file || "Choose IPCR document"}
-            <input type="file" className="hidden" onChange={(e) => set("file", e.target.files?.[0]?.name ?? "")} />
-          </label>
-        </Field>
-      </FormSection>
-      <div className="flex justify-end gap-2 mb-4">
-        <Button variant="outline" onClick={reset}>Cancel</Button>
-        <Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button>
-      </div>
-      <RecordTable cols={["Month", "From", "To", "Grades", "Remarks", "File"]} rows={list.map((r) => [r.month, r.from, r.to, r.grades, r.remarks, r.file ?? ""])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
+    <div className="flex items-center gap-2">
+      <RadioGroupItem value={value} id={id} />
+      <Label htmlFor={id} className="text-sm">{label}</Label>
     </div>
   );
 }

@@ -5,18 +5,15 @@ import { z } from "zod";
 import { ShieldCheck, Loader2, User, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { type Role, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 
 const schema = z.object({
   username: z.string().trim().min(1, "Username required").max(50),
   password: z.string().min(1, "Password required").max(100),
-  role: z.enum(["Admin", "HR Officer", "Viewer"]),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -40,13 +37,13 @@ function LoginPage() {
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { username: "", password: "", role: "Viewer" },
+    defaultValues: { username: "", password: "" },
   });
 
   const onSubmit = async (data: FormData) => {
     setSubmitting(true);
     try {
-      await login(data.username, data.password, data.role as Role);
+      await login(data.username, data.password);
       toast.success("Welcome back!");
       const redirect = search.redirect || "/";
       if (redirect.startsWith("/employees/")) {
@@ -56,7 +53,16 @@ function LoginPage() {
           return;
         }
       }
-      if (redirect === "/" || redirect === "/employees" || redirect === "/leave" || redirect === "/reports" || redirect === "/settings") {
+      if (
+        redirect === "/" ||
+        redirect === "/employees" ||
+        redirect === "/attendance" ||
+        redirect === "/self-service" ||
+        redirect === "/leave" ||
+        redirect === "/reports" ||
+        redirect === "/settings" ||
+        redirect === "/admin"
+      ) {
         navigate({ to: redirect });
       } else {
         navigate({ to: "/" });
@@ -180,23 +186,6 @@ function LoginPage() {
                 </div>
                 {form.formState.errors.password && (
                   <p className="text-xs font-medium text-destructive mt-1">{form.formState.errors.password.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Access Role</Label>
-                <Select value={form.watch("role")} onValueChange={(v) => form.setValue("role", v as Role, { shouldValidate: true })}>
-                  <SelectTrigger className="h-10 bg-transparent border-t-0 border-x-0 border-b-2 border-border/60 rounded-none focus:ring-0 focus:border-b-primary transition-none shadow-none px-0.5 outline-none text-sm shadow-none">
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-none border-border shadow-2xl">
-                    <SelectItem value="Admin" className="text-sm">Admin</SelectItem>
-                    <SelectItem value="HR Officer" className="text-sm">HR Officer</SelectItem>
-                    <SelectItem value="Viewer" className="text-sm">Viewer</SelectItem>
-                  </SelectContent>
-                </Select>
-                {form.formState.errors.role && (
-                  <p className="text-xs font-medium text-destructive mt-1">{form.formState.errors.role.message}</p>
                 )}
               </div>
 

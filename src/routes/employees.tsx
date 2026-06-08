@@ -1,21 +1,37 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
-import {
-  Search, Plus, Eye, ChevronLeft, ChevronRight, X,
-  User, Briefcase, History, BookOpen, Calendar,
-} from "lucide-react";
+import { type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
-import {
-  EMPLOYEES, STRH_DEPARTMENTS, STRH_POSITIONS, LEAVE_CREDITS,
-  WORK_HISTORY, TRAININGS, type Employee, type Department,
-} from "@/lib/mock-data";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAuth } from "@/lib/auth";
+import {
+  createEmployee,
+  deleteEmployee,
+  EMPLOYMENT_STATUSES,
+  getSettingsOptions,
+  listEmployees,
+  type EmployeeRecord,
+  type SettingsOptions,
+} from "@/lib/employees-api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/employees")({
@@ -23,228 +39,450 @@ export const Route = createFileRoute("/employees")({
 });
 
 const STATUS_COLOR: Record<string, string> = {
-  "Permanent": "bg-emerald-100 text-emerald-700 border-emerald-200",
-  "Regular": "bg-blue-100 text-blue-700 border-blue-200",
+  Permanent: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  Regular: "bg-blue-100 text-blue-700 border-blue-200",
   "Job Order": "bg-amber-100 text-amber-700 border-amber-200",
-  "Casual": "bg-purple-100 text-purple-700 border-purple-200",
-  "Contractual": "bg-rose-100 text-rose-700 border-rose-200",
+  Casual: "bg-purple-100 text-purple-700 border-purple-200",
+  Contractual: "bg-rose-100 text-rose-700 border-rose-200",
 };
 
-
+const EMPTY_FORM: Partial<EmployeeRecord> = {
+  employeeId: "",
+  firstname: "",
+  middlename: "",
+  lastname: "",
+  department: "",
+  position: "",
+  status: "Permanent",
+  empStatus: "Active",
+  dateHired: "",
+  email: "",
+};
 
 function EmployeesPage() {
   const location = useLocation();
-
-  if (location.pathname !== "/employees") {
-    return <Outlet />;
-  }
-
+  const { can } = useAuth();
+  const canEdit = can("edit");
   const [q, setQ] = useState("");
   const [dept, setDept] = useState("all");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
+  const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [options, setOptions] = useState<SettingsOptions>({
+    departments: [],
+    positions: [],
+    salaryGrades: [],
+  });
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [addForm, setAddForm] = useState({ firstname: "", middlename: "", lastname: "", department: "" as Department | "", position: "", status: "Permanent" as Employee["status"] });
+  const [form, setForm] = useState<Partial<EmployeeRecord>>(EMPTY_FORM);
 
-  const filtered = useMemo(() => {
-    return EMPLOYEES.filter((e) => {
-      const name = `${e.firstname} ${e.lastname} ${e.employeeId}`.toLowerCase();
-      if (q && !name.includes(q.toLowerCase())) return false;
-      if (dept !== "all" && e.department !== dept) return false;
-      if (status !== "all" && e.status !== status) return false;
-      return true;
-    });
-  }, [q, dept, status]);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const cur = Math.min(page, totalPages);
-  const slice = filtered.slice((cur - 1) * pageSize, cur * pageSize);
+  const load = () => {
+    setLoading(true);
+    setError("");
+    listEmployees({ q, department: dept, status, page, pageSize })
+      .then((result) => {
+        setEmployees(result.employees);
+        setTotal(result.total);
+      })
+      .catch((err) => setError(err.message || "Unable to load employees"))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [q, dept, status, page, pageSize]);
+
+  useEffect(() => {
+    getSettingsOptions()
+      .then(setOptions)
+      .catch(() => setOptions({ departments: [], positions: [], salaryGrades: [] }));
+  }, []);
+
+  const departments = useMemo(
+    () => options.departments.map((department) => department.name),
+    [options.departments],
+  );
+  const positions = useMemo(
+    () => options.positions.map((position) => position.title),
+    [options.positions],
+  );
+
+  if (location.pathname !== "/employees") return <Outlet />;
+
+  const submit = async () => {
+    try {
+      const result = await createEmployee(form);
+      toast.success("Employee added");
+      setShowAddDialog(false);
+      setForm(EMPTY_FORM);
+      setPage(1);
+      load();
+      return result.employee;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to add employee");
+    }
+  };
+
+  const remove = async (employee: EmployeeRecord) => {
+    if (
+      !window.confirm(
+        `Delete ${employee.lastname}, ${employee.firstname}? This removes the 201 file and related records.`,
+      )
+    )
+      return;
+    try {
+      await deleteEmployee(employee.id);
+      toast.success("Employee deleted");
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to delete employee");
+    }
+  };
 
   return (
-    <AppShell title="Employee Management — 201 Files" subtitle={`${EMPLOYEES.length} total employees`}>
-      <div className="rounded-2xl border border-border bg-card shadow-sm">
-        {/* Filters */}
-        <div className="p-4 flex flex-col lg:flex-row lg:items-center gap-3 border-b border-border">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <AppShell
+      title="Employee Management - 201 Files"
+      subtitle={`${total} employee record${total === 1 ? "" : "s"} from MySQL`}
+    >
+      {error && (
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      <div className="rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center">
+          <div className="relative max-w-sm flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="emp-search"
-              placeholder="Search name or Employee ID…"
+              placeholder="Search name, ID, or email"
               className="pl-9"
               value={q}
-              onChange={(e) => { setQ(e.target.value); setPage(1); }}
+              onChange={(event) => {
+                setQ(event.target.value);
+                setPage(1);
+              }}
             />
           </div>
-          <Select value={dept} onValueChange={(v) => { setDept(v); setPage(1); }}>
-            <SelectTrigger className="w-full lg:w-[200px]"><SelectValue placeholder="Department" /></SelectTrigger>
+          <Select
+            value={dept}
+            onValueChange={(value) => {
+              setDept(value);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-full lg:w-[240px]">
+              <SelectValue placeholder="Department" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Departments</SelectItem>
-              {STRH_DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              {departments.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {item}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
-            <SelectTrigger className="w-full lg:w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
+          <Select
+            value={status}
+            onValueChange={(value) => {
+              setStatus(value);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-full lg:w-[170px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Permanent">Permanent</SelectItem>
-              <SelectItem value="Regular">Regular</SelectItem>
-              <SelectItem value="Job Order">Job Order</SelectItem>
-              <SelectItem value="Casual">Casual</SelectItem>
-              <SelectItem value="Contractual">Contractual</SelectItem>
+              {EMPLOYMENT_STATUSES.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {item}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          <div className="lg:ml-auto">
-            <Button id="add-employee-btn" onClick={() => setShowAddDialog(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
-              <Plus className="h-4 w-4 mr-1.5" /> Add Employee
-            </Button>
-          </div>
+          <Button
+            disabled={!canEdit}
+            onClick={() => setShowAddDialog(true)}
+            className="bg-blue-600 text-white hover:bg-blue-700 lg:ml-auto"
+          >
+            <Plus className="mr-1.5 h-4 w-4" /> Add Employee
+          </Button>
         </div>
 
-        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3 font-semibold">Employee ID</th>
                 <th className="px-4 py-3 font-semibold">Full Name</th>
-                <th className="px-4 py-3 font-semibold hidden md:table-cell">Position</th>
-                <th className="px-4 py-3 font-semibold hidden lg:table-cell">Department</th>
+                <th className="hidden px-4 py-3 font-semibold md:table-cell">Position</th>
+                <th className="hidden px-4 py-3 font-semibold lg:table-cell">Department</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold hidden xl:table-cell">Date Hired</th>
-                <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                <th className="hidden px-4 py-3 font-semibold xl:table-cell">Date Hired</th>
+                <th className="px-4 py-3 text-right font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {slice.map((e, i) => (
-                <tr
-                  key={e.id}
-                  className={cn(
-                    "border-b border-border/50 last:border-0 hover:bg-muted/40 transition-colors",
-                    i % 2 === 1 && "bg-muted/10"
-                  )}
-                >
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{e.employeeId}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8 shrink-0">
-                        <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-semibold">
-                          {e.firstname[0]}{e.lastname[0]}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium">{e.lastname}, {e.firstname} {e.middlename?.[0]}.</div>
-                        <div className="text-xs text-muted-foreground hidden sm:block">{e.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">{e.position}</td>
-                  <td className="px-4 py-3 hidden lg:table-cell text-muted-foreground">{e.department}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant="outline" className={cn("text-[11px]", STATUS_COLOR[e.status] ?? "")}>
-                      {e.status}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 hidden xl:table-cell text-muted-foreground">{e.dateHired}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      to="/employees/$id"
-                      params={{ id: e.id }}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline px-2 py-1"
-                    >
-                      <Eye className="h-3.5 w-3.5" /> View
-                    </Link>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                    Loading employees...
                   </td>
                 </tr>
-              ))}
-              {slice.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">No employees match your filters.</td></tr>
+              ) : employees.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                    No employee records found in MySQL.
+                  </td>
+                </tr>
+              ) : (
+                employees.map((employee, index) => (
+                  <tr
+                    key={employee.id}
+                    className={cn(
+                      "border-b border-border/50 last:border-0 hover:bg-muted/40",
+                      index % 2 === 1 && "bg-muted/10",
+                    )}
+                  >
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                      {employee.employeeId}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="grid h-10 w-8 shrink-0 place-items-center overflow-hidden rounded border border-border bg-muted/30">
+                          {employee.photoUrl ? (
+                            <img
+                              src={employee.photoUrl}
+                              alt={`${employee.firstname} ${employee.lastname}`}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span className="px-1 text-center text-[9px] font-medium uppercase leading-tight text-muted-foreground">
+                              No photo
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-medium">
+                            {employee.lastname}, {employee.firstname} {employee.middlename}
+                          </div>
+                          <div className="hidden text-xs text-muted-foreground sm:block">
+                            {employee.email || "No email recorded"}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
+                      {employee.position}
+                    </td>
+                    <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
+                      {employee.department}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge
+                        variant="outline"
+                        className={cn("text-[11px]", STATUS_COLOR[employee.status] ?? "")}
+                      >
+                        {employee.status}
+                      </Badge>
+                    </td>
+                    <td className="hidden px-4 py-3 text-muted-foreground xl:table-cell">
+                      {employee.dateHired || "-"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="inline-flex gap-1">
+                        <Link
+                          to="/employees/$id"
+                          params={{ id: employee.id }}
+                          className="inline-grid h-8 w-8 place-items-center rounded-md text-primary hover:bg-primary/10"
+                          title="View"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Link>
+                        <Link
+                          to="/employees/$id"
+                          params={{ id: employee.id }}
+                          className="inline-grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-accent"
+                          title="Edit"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Link>
+                        <button
+                          disabled={!canEdit}
+                          onClick={() => remove(employee)}
+                          className="inline-grid h-8 w-8 place-items-center rounded-md text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-40"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Pagination */}
-        <div className="p-4 flex items-center justify-between border-t border-border text-sm text-muted-foreground">
-          <div>Showing {slice.length} of {filtered.length} employees</div>
+        <div className="flex items-center justify-between border-t border-border p-4 text-sm text-muted-foreground">
+          <div>
+            Showing {employees.length} of {total} employees
+          </div>
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={cur === 1} className="h-8 w-8 p-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+              disabled={page === 1}
+              className="h-8 w-8 p-0"
+            >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="px-3 h-8 flex items-center bg-muted/30 rounded-md font-medium">
-              {cur} / {totalPages}
+            <div className="flex h-8 items-center rounded-md bg-muted/30 px-3 font-medium">
+              {page} / {totalPages}
             </div>
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={cur === totalPages} className="h-8 w-8 p-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+              disabled={page === totalPages}
+              className="h-8 w-8 p-0"
+            >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
       </div>
 
-
-
-      {/* Add Employee Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add New Employee</DialogTitle>
+            <DialogTitle>Add Employee</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>First Name *</Label>
-                <Input value={addForm.firstname} onChange={(e) => setAddForm({ ...addForm, firstname: e.target.value })} placeholder="First name" />
-              </div>
-              <div className="space-y-1">
-                <Label>Last Name *</Label>
-                <Input value={addForm.lastname} onChange={(e) => setAddForm({ ...addForm, lastname: e.target.value })} placeholder="Last name" />
-              </div>
-              <div className="space-y-1 col-span-2">
-                <Label>Middle Name</Label>
-                <Input value={addForm.middlename} onChange={(e) => setAddForm({ ...addForm, middlename: e.target.value })} placeholder="Middle name" />
-              </div>
-              <div className="space-y-1 col-span-2">
-                <Label>Department *</Label>
-                <Select value={addForm.department} onValueChange={(v) => setAddForm({ ...addForm, department: v as Department, position: "" })}>
-                  <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
-                  <SelectContent>{STRH_DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1 col-span-2">
-                <Label>Position *</Label>
-                <Select value={addForm.position} onValueChange={(v) => setAddForm({ ...addForm, position: v })} disabled={!addForm.department}>
-                  <SelectTrigger><SelectValue placeholder="Select position" /></SelectTrigger>
-                  <SelectContent>
-                    {(addForm.department ? STRH_POSITIONS[addForm.department as Department] : []).map((p) => (
-                      <SelectItem key={p} value={p}>{p}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1 col-span-2">
-                <Label>Employment Status *</Label>
-                <Select value={addForm.status} onValueChange={(v) => setAddForm({ ...addForm, status: v as Employee["status"] })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Permanent">Permanent</SelectItem>
-                    <SelectItem value="Regular">Regular</SelectItem>
-                    <SelectItem value="Job Order">Job Order</SelectItem>
-                    <SelectItem value="Casual">Casual</SelectItem>
-                    <SelectItem value="Contractual">Contractual</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 gap-3 py-2 md:grid-cols-2">
+            <Field label="Employee ID">
+              <Input
+                value={form.employeeId ?? ""}
+                onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
+                placeholder="Auto-generated if blank"
+              />
+            </Field>
+            <Field label="First Name *">
+              <Input
+                value={form.firstname ?? ""}
+                onChange={(e) => setForm({ ...form, firstname: e.target.value })}
+              />
+            </Field>
+            <Field label="Middle Name">
+              <Input
+                value={form.middlename ?? ""}
+                onChange={(e) => setForm({ ...form, middlename: e.target.value })}
+              />
+            </Field>
+            <Field label="Last Name *">
+              <Input
+                value={form.lastname ?? ""}
+                onChange={(e) => setForm({ ...form, lastname: e.target.value })}
+              />
+            </Field>
+            <Field label="Department *">
+              <Select
+                value={form.department ?? ""}
+                onValueChange={(value) => setForm({ ...form, department: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Position *">
+              <Select
+                value={form.position ?? ""}
+                onValueChange={(value) => setForm({ ...form, position: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select position" />
+                </SelectTrigger>
+                <SelectContent>
+                  {positions.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Employment Status">
+              <Select
+                value={form.status ?? "Permanent"}
+                onValueChange={(value) =>
+                  setForm({ ...form, status: value as EmployeeRecord["status"] })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {EMPLOYMENT_STATUSES.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Date Hired">
+              <Input
+                type="date"
+                value={form.dateHired ?? ""}
+                onChange={(e) => setForm({ ...form, dateHired: e.target.value })}
+              />
+            </Field>
+            <Field label="Email">
+              <Input
+                type="email"
+                value={form.email ?? ""}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+            </Field>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddDialog(false)}>Cancel</Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setShowAddDialog(false)}>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!canEdit}
+              onClick={submit}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
               Add Employee
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </AppShell>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <Label>{label}</Label>
+      {children}
+    </div>
   );
 }

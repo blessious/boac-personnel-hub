@@ -47,20 +47,28 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
     }
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate({ to: "/login" });
   };
 
   const isActive = (to: string, exact?: boolean) => exact ? path === to : path === to || path.startsWith(to + "/");
 
-  const NAV: { to: "/" | "/employees" | "/leave" | "/reports" | "/settings"; label: string; icon: typeof LayoutDashboard; exact?: boolean }[] = [
+  const NAV: { to: "/" | "/employees" | "/leave" | "/reports" | "/settings" | "/self-service"; label: string; icon: typeof LayoutDashboard; exact?: boolean }[] = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
     { to: "/employees", label: "Employees", icon: Users },
     { to: "/leave", label: "Leave Management", icon: CalendarDays },
+    { to: "/self-service", label: "Self-Service", icon: UserIcon },
     { to: "/reports", label: "Reports", icon: FileText },
     { to: "/settings", label: "Settings", icon: SettingsIcon },
   ];
+  const mobileNav = NAV.filter((item) => {
+    if (!user) return false;
+    if (user.role === "Admin") return true;
+    if (item.to === "/" || item.to === "/self-service") return true;
+    if (user.role === "Employee") return false;
+    return item.to !== "/settings";
+  });
 
   return (
     <>
@@ -91,7 +99,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
               </div>
               <div className="px-4 pt-4 pb-2 text-[10px] tracking-widest uppercase text-muted-foreground">Menu</div>
               <nav className="flex-1 overflow-y-auto px-4 space-y-1.5 py-2">
-                {NAV.map((item) => {
+                {mobileNav.map((item) => {
                   const active = isActive(item.to, item.exact);
                   const Icon = item.icon;
                   return (

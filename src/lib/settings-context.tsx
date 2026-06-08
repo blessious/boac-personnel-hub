@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { SETTINGS } from "./mock-data";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { api } from "@/lib/api";
 
 export interface AgencySettings {
   name: string;
@@ -14,6 +14,7 @@ export type Theme = "light" | "dark";
 interface SettingsContextType {
   agency: AgencySettings;
   updateAgency: (settings: Partial<AgencySettings>) => void;
+  loadAgencySettings: () => Promise<void>;
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
   theme: Theme;
@@ -26,19 +27,27 @@ interface SettingsContextType {
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
+const DEFAULT_AGENCY: AgencySettings = {
+  name: "STRH - HRIS",
+  tagline: "DOH Southern Tagalog Regional Hospital",
+  logoUrl: "",
+  iconUrl: "",
+  bannerUrl: "",
+};
+
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [agency, setAgency] = useState<AgencySettings>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("pmis_agency_settings");
       if (saved) {
         try {
-          return { ...SETTINGS.agency, ...JSON.parse(saved) };
+          return { ...DEFAULT_AGENCY, ...JSON.parse(saved) };
         } catch (e) {
           console.error("Failed to parse saved settings", e);
         }
       }
     }
-    return SETTINGS.agency;
+    return DEFAULT_AGENCY;
   });
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -61,6 +70,24 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       return updated;
     });
   };
+
+  const loadAgencySettings = useCallback(async () => {
+    const data = await api<{ agency: AgencySettings }>("/api/public/agency");
+    setAgency((prev) => {
+      const updated = { ...prev, ...data.agency };
+      const { logoUrl, iconUrl, bannerUrl, ...textSettings } = updated;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("pmis_agency_settings", JSON.stringify(textSettings));
+      }
+      return updated;
+    });
+  }, []);
+
+  useEffect(() => {
+    loadAgencySettings().catch((error) => {
+      console.error("Failed to load agency settings", error);
+    });
+  }, [loadAgencySettings]);
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -105,10 +132,21 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [subtitle, setSubtitle] = useState("");
 
   return (
-    <SettingsContext.Provider value={{ 
-      agency, updateAgency, sidebarCollapsed, toggleSidebar, theme, toggleTheme,
-      title, setTitle, subtitle, setSubtitle 
-    }}>
+    <SettingsContext.Provider
+      value={{
+        agency,
+        updateAgency,
+        loadAgencySettings,
+        sidebarCollapsed,
+        toggleSidebar,
+        theme,
+        toggleTheme,
+        title,
+        setTitle,
+        subtitle,
+        setSubtitle,
+      }}
+    >
       {children}
     </SettingsContext.Provider>
   );
