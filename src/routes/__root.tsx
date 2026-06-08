@@ -1,10 +1,10 @@
-import { useEffect } from "react";
-import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation, Navigate } from "@tanstack/react-router";
+import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation, useNavigate } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/lib/auth";
-import { SettingsProvider, useSettings } from "@/lib/settings-context";
+import { SettingsProvider } from "@/lib/settings-context";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { useEffect } from "react";
 
 import appCss from "../styles.css?url";
 
@@ -35,10 +35,10 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "PMIS — Personnel Management Information System" },
-      { name: "description", content: "Personnel Management Information System for government agencies and organizations." },
-      { property: "og:title", content: "PMIS" },
-      { property: "og:description", content: "Personnel records, plantilla, leave and salary management." },
+      { title: "STRH HRIS — Human Resource Information System" },
+      { name: "description", content: "Human Resource Information System for DOH Southern Tagalog Regional Hospital." },
+      { property: "og:title", content: "STRH HRIS" },
+      { property: "og:description", content: "Personnel records, attendance, leave and HR management." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -72,35 +72,25 @@ function RootComponent() {
   return (
     <AuthProvider>
       <SettingsProvider>
-        <RootWithSettings />
+        <AppLayout />
       </SettingsProvider>
     </AuthProvider>
   );
 }
 
-function RootWithSettings() {
-  const { agency, title, subtitle } = useSettings();
-  const { user } = useAuth();
+function AppLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const isLoginPage = location.pathname === "/login";
 
   useEffect(() => {
-    document.title = `${agency.name} PMIS`;
-    
-    if (agency.iconUrl) {
-      let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
-      if (!link) {
-        link = document.createElement("link");
-        link.rel = "icon";
-        document.getElementsByTagName("head")[0].appendChild(link);
-      }
-      link.href = agency.iconUrl;
+    if (!user && !isLoginPage) {
+      navigate({ to: "/login" });
     }
-  }, [agency.name, agency.iconUrl]);
+  }, [user, isLoginPage, navigate]);
 
-  if (!user && !isLoginPage) {
-    return <Navigate to="/login" search={{ redirect: location.pathname }} />;
-  }
+  if (!user && !isLoginPage) return null;
 
   return (
     <>
@@ -110,8 +100,8 @@ function RootWithSettings() {
         <div className="flex min-h-screen w-full bg-background">
           <AppSidebar />
           <div className="flex-1 flex flex-col min-w-0">
-            <AppHeader title={title} subtitle={subtitle} />
-            <main className="flex-1 p-3 sm:p-4 xl:p-5 min-w-0">
+            <AppHeader title="STRH HRIS" subtitle="" />
+            <main className="flex-1 p-4 xl:p-5 min-w-0">
               <Outlet />
             </main>
           </div>

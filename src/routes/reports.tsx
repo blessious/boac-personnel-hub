@@ -1,111 +1,112 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FileText, Download, Calendar } from "lucide-react";
-import { toast } from "sonner";
-import { useSettings } from "@/lib/settings-context";
+import { useState } from "react";
+import { Download, FileText, FileSpreadsheet } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/reports")({
   component: ReportsPage,
 });
 
-const REPORTS = [
-  { key: "plantilla", title: "Plantilla of Personnel", desc: "Approved positions, item numbers, salary grades and incumbents.", dateRange: false },
-  { key: "service", title: "Service Record", desc: "Per-employee service history with leaves, increments, designations.", dateRange: false },
-  { key: "leave", title: "Leave Card", desc: "VL / SL ledger with earned, used, and balance per employee.", dateRange: true },
-  { key: "history", title: "Employment History", desc: "Movement of personnel — appointment, promotion, transfer, separation.", dateRange: true },
-  { key: "masterlist", title: "Masterlist of Employees", desc: "Complete personnel directory with contact and demographic details.", dateRange: false },
+type ReportTab = "employee" | "attendance" | "leave";
+
+const REPORT_CATEGORIES: { key: ReportTab; label: string }[] = [
+  { key: "employee", label: "📋 Employee Reports" },
+  { key: "attendance", label: "🕐 Attendance Reports" },
+  { key: "leave", label: "📅 Leave Reports" },
 ];
 
+const REPORTS: Record<ReportTab, { key: string; title: string; desc: string; icon: string }[]> = {
+  employee: [
+    { key: "masterlist", title: "Employee Master List", desc: "Complete directory of all STRH personnel with demographic and employment details.", icon: "👥" },
+    { key: "distribution", title: "Distribution by Department/Division", desc: "Breakdown of employees per department, division, and employment status.", icon: "📊" },
+    { key: "psipop", title: "Plantilla of Personnel (PSIPOP)", desc: "Approved plantilla positions, item numbers, incumbents, and salary grades.", icon: "📑" },
+    { key: "step", title: "Employees for Step Increment", desc: "List of employees qualified for salary step increment based on service.", icon: "📈" },
+    { key: "loyalty", title: "Employees for Loyalty Award", desc: "Personnel eligible for loyalty award recognition based on years of service.", icon: "🏅" },
+  ],
+  attendance: [
+    { key: "dtr", title: "Daily Time Records (DTR)", desc: "Individual time-in/time-out records for a selected period.", icon: "🕐" },
+    { key: "perfect", title: "Employees with Perfect Attendance", desc: "List of employees with no tardiness, undertime, or absences.", icon: "⭐" },
+    { key: "tardiness", title: "Tardiness and Undertime Report", desc: "Summary of late arrivals and undertime incidents per employee.", icon: "⏱️" },
+  ],
+  leave: [
+    { key: "credit-summary", title: "Leave Credit Summary", desc: "Current vacation and sick leave balances for all employees.", icon: "💰" },
+    { key: "leave-applications", title: "Summary of Leave Applications", desc: "All filed leave requests with approval status and dates.", icon: "📋" },
+    { key: "sick-profile", title: "Sick Leave Profile", desc: "Analysis of sick leave usage patterns per employee and department.", icon: "🏥" },
+  ],
+};
+
+function ReportCard({ report }: { report: { key: string; title: string; desc: string; icon: string } }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm flex flex-col hover:shadow-md transition-shadow">
+      <div className="flex items-start gap-3 mb-3">
+        <div className="h-12 w-12 rounded-xl bg-primary/8 border border-primary/15 grid place-items-center text-2xl shrink-0">
+          {report.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-foreground text-[15px] leading-snug">{report.title}</h4>
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{report.desc}</p>
+        </div>
+      </div>
+      <div className="mt-auto pt-3 border-t border-border flex items-center gap-2">
+        <Button
+          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white gap-1.5 text-sm"
+          onClick={() => toast.success(`Generating "${report.title}"…`)}
+        >
+          <FileText className="h-4 w-4" /> Generate Report
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 text-xs"
+          onClick={() => toast.info(`Exporting "${report.title}" to PDF…`)}
+          title="Export to PDF"
+        >
+          <Download className="h-3.5 w-3.5" /> PDF
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 text-xs"
+          onClick={() => toast.info(`Exporting "${report.title}" to Excel…`)}
+          title="Export to Excel"
+        >
+          <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ReportsPage() {
-  const { agency } = useSettings();
-  const escapePdf = (text: string) => text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-
-  const createPdfBlob = (lines: string[]) => {
-    const contentLines = [
-      "BT",
-      "/F1 12 Tf",
-      "50 760 Td",
-      ...lines.map((line, i) => `${i === 0 ? "" : "0 -16 Td\n"}(${escapePdf(line)}) Tj`).join("\n").split("\n"),
-      "ET",
-    ];
-    const stream = `${contentLines.join("\n")}\n`;
-
-    const objects = [
-      "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-      "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-      "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n",
-      `4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}endstream\nendobj\n`,
-      "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
-    ];
-
-    let pdf = "%PDF-1.4\n";
-    const offsets = [0];
-    for (const obj of objects) {
-      offsets.push(pdf.length);
-      pdf += obj;
-    }
-    const xrefStart = pdf.length;
-    pdf += `xref\n0 ${objects.length + 1}\n`;
-    pdf += "0000000000 65535 f \n";
-    for (let i = 1; i <= objects.length; i++) {
-      pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
-    }
-    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
-    return new Blob([pdf], { type: "application/pdf" });
-  };
-
-  const handleGenerate = (title: string) => {
-    toast.success(`Generating ${title}…`, { description: "PDF download will start in a moment." });
-    setTimeout(() => {
-      const blob = createPdfBlob([
-        title,
-        `${agency.name} | ${agency.tagline}`,
-        `Generated: ${new Date().toLocaleString()}`,
-      ]);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = `${title.replace(/\s+/g, "_")}.pdf`; a.click();
-      URL.revokeObjectURL(url);
-    }, 600);
-  };
+  const [activeTab, setActiveTab] = useState<ReportTab>("employee");
 
   return (
-    <AppShell title="Reports" subtitle="Pre-built report templates for HR and management">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {REPORTS.map((r) => (
-          <div key={r.key} className="rounded-2xl border border-border bg-card p-5 shadow-sm flex flex-col">
-            <div className="flex items-start gap-3">
-              <div className="h-10 w-10 grid place-items-center rounded-xl bg-primary/10 text-primary">
-                <FileText className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold">{r.title}</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">{r.desc}</p>
-              </div>
-            </div>
-
-            {r.dateRange && (
-              <div className="grid grid-cols-2 gap-3 mt-4">
-                <div className="space-y-1">
-                  <Label className="text-xs">From</Label>
-                  <div className="relative"><Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="date" className="pl-8" /></div>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">To</Label>
-                  <div className="relative"><Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input type="date" className="pl-8" /></div>
-                </div>
-              </div>
+    <AppShell title="Reports & Analytics" subtitle="Generate and export HR reports">
+      {/* Tab Bar */}
+      <div className="flex gap-1 bg-muted/40 rounded-xl p-1 w-fit mb-5">
+        {REPORT_CATEGORIES.map((cat) => (
+          <button
+            key={cat.key}
+            onClick={() => setActiveTab(cat.key)}
+            className={cn(
+              "px-5 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap",
+              activeTab === cat.key
+                ? "bg-card text-foreground shadow-sm border border-border"
+                : "text-muted-foreground hover:text-foreground"
             )}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
 
-            <div className="mt-4 flex justify-end">
-              <Button onClick={() => handleGenerate(r.title)} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200">
-                <Download className="h-4 w-4 mr-1.5" /> Generate
-              </Button>
-            </div>
-          </div>
+      {/* Report Cards Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+        {REPORTS[activeTab].map((r) => (
+          <ReportCard key={r.key} report={r} />
         ))}
       </div>
     </AppShell>

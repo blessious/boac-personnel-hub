@@ -88,7 +88,7 @@ function EmployeeFile() {
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <div className="text-xs text-muted-foreground font-mono hidden sm:block">{employee.refId}</div>
+        <div className="text-xs text-muted-foreground font-mono hidden sm:block">{employee.employeeId ?? employee.id}</div>
           <div className="font-semibold truncate text-sm sm:text-base">{employee.lastname}, {employee.firstname} {employee.middlename}</div>
         </div>
         <div className="ml-auto shrink-0">
@@ -148,7 +148,7 @@ function EmployeeFile() {
 }
 
 /* ---------------- TAB 1: PERSONAL ---------------- */
-function PersonalTab({ employee, canEdit }: { employee: typeof EMPLOYEES[number]; canEdit: boolean }) {
+function PersonalTab({ employee, canEdit }: { employee: any; canEdit: boolean }) {
   const [photo, setPhoto] = useState<string | undefined>(employee.photoUrl);
 
   const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -540,7 +540,7 @@ function EducationTab({ id, canEdit, onChange }: { id: string; canEdit: boolean;
 /* ---------------- TAB 5: CIVIL SERVICE ---------------- */
 function CivilServiceTab({ id, canEdit, onChange }: { id: string; canEdit: boolean; onChange: () => void }) {
   const list = STORE.civilService[id] ?? (STORE.civilService[id] = []);
-  const blank: Omit<CivilServiceRecord, "id"> = { type: "", place: "", date: "", rating: "", license: "", dateRelease: "" };
+  const blank: Omit<CivilServiceRecord, "id"> = { type: "", place: "", date: "", rating: "", license: "", dateRelease: "", licenseValidity: "" };
   const { state, set, reset } = useRecordForm(blank);
   const add = () => { if (!state.type) { toast.error("Type required"); return; } list.push({ ...state, id: uid() }); reset(); onChange(); toast.success("Added"); };
   const del = (rid: string) => { STORE.civilService[id] = list.filter((x) => x.id !== rid); onChange(); };
@@ -548,15 +548,20 @@ function CivilServiceTab({ id, canEdit, onChange }: { id: string; canEdit: boole
   return (
     <div>
       <FormSection title="Add Eligibility">
-        <Field label="Civil Service Type"><Input value={state.type} onChange={(e) => set("type", e.target.value)} placeholder="Career Service Professional" /></Field>
+        <Field label="Civil Service / Board Exam Type" className="md:col-span-2"><Input value={state.type} onChange={(e) => set("type", e.target.value)} placeholder="e.g. Career Service Professional, Board Exam for Nurses" /></Field>
         <Field label="Place of Exam"><Input value={state.place} onChange={(e) => set("place", e.target.value)} /></Field>
         <Field label="Date of Exam"><Input type="date" value={state.date} onChange={(e) => set("date", e.target.value)} /></Field>
         <Field label="Rating %"><Input value={state.rating} onChange={(e) => set("rating", e.target.value)} /></Field>
-        <Field label="License"><Input value={state.license} onChange={(e) => set("license", e.target.value)} /></Field>
-        <Field label="Date Release"><Input type="date" value={state.dateRelease} onChange={(e) => set("dateRelease", e.target.value)} /></Field>
+        <Field label="License No."><Input value={state.license} onChange={(e) => set("license", e.target.value)} placeholder="License number" /></Field>
+        <Field label="Date Released"><Input type="date" value={state.dateRelease} onChange={(e) => set("dateRelease", e.target.value)} /></Field>
+        <Field label="License No. Validity"><Input type="date" value={state.licenseValidity} onChange={(e) => set("licenseValidity", e.target.value)} /></Field>
       </FormSection>
       <div className="flex justify-end mb-4"><Button disabled={!canEdit} onClick={add} className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-sm transition-all duration-200"><Plus className="h-4 w-4 mr-1" /> Add</Button></div>
-      <RecordTable cols={["Type", "Place", "Date", "Rating", "License", "Released"]} rows={list.map((r) => [r.type, r.place, r.date, r.rating, r.license, r.dateRelease])} onDelete={canEdit ? (i) => del(list[i].id) : undefined} />
+      <RecordTable
+        cols={["Type", "Place", "Date of Exam", "Rating", "License No.", "Date Released", "License Validity"]}
+        rows={list.map((r) => [r.type, r.place, r.date, r.rating, r.license, r.dateRelease, r.licenseValidity])}
+        onDelete={canEdit ? (i) => del(list[i].id) : undefined}
+      />
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SETTINGS } from "@/lib/mock-data";
+import { SETTINGS, DEPARTMENTS, POSITIONS, SALARY_GRADES, SALARY_STEPS, SALARY_TABLE } from "@/lib/mock-data";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { Badge } from "@/components/ui/badge";
@@ -20,9 +20,13 @@ export const Route = createFileRoute("/settings")({
 function SettingsPage() {
   const { can, user } = useAuth();
   const { agency, updateAgency } = useSettings();
-  const [depts, setDepts] = useState([...SETTINGS.departments]);
-  const [pos, setPos] = useState([...SETTINGS.positions]);
-  const [salaryGrades, setSalaryGrades] = useState([...SETTINGS.salaryGrades]);
+  const [depts, setDepts] = useState([...DEPARTMENTS]);
+  const [pos, setPos] = useState([...POSITIONS]);
+  const [salaryGrades, setSalaryGrades] = useState(() => 
+    SALARY_GRADES.flatMap((g) =>
+      SALARY_STEPS.map((s) => ({ ordinance: "Annex 1", grade: g, step: s, amount: SALARY_TABLE[g][s - 1] }))
+    )
+  );
   const [newDept, setNewDept] = useState("");
   const [newPos, setNewPos] = useState("");
   const [deptQuery, setDeptQuery] = useState("");

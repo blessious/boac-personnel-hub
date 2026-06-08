@@ -10,16 +10,24 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SelfServiceRouteImport } from './routes/self-service'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeaveRouteImport } from './routes/leave'
 import { Route as EmployeesRouteImport } from './routes/employees'
+import { Route as AttendanceRouteImport } from './routes/attendance'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EmployeesIdRouteImport } from './routes/employees.$id'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SelfServiceRoute = SelfServiceRouteImport.update({
+  id: '/self-service',
+  path: '/self-service',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReportsRoute = ReportsRouteImport.update({
@@ -42,6 +50,16 @@ const EmployeesRoute = EmployeesRouteImport.update({
   path: '/employees',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AttendanceRoute = AttendanceRouteImport.update({
+  id: '/attendance',
+  path: '/attendance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -55,29 +73,38 @@ const EmployeesIdRoute = EmployeesIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/attendance': typeof AttendanceRoute
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
+  '/self-service': typeof SelfServiceRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/attendance': typeof AttendanceRoute
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
+  '/self-service': typeof SelfServiceRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/attendance': typeof AttendanceRoute
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
+  '/self-service': typeof SelfServiceRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
 }
@@ -85,38 +112,50 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
+    | '/attendance'
     | '/employees'
     | '/leave'
     | '/login'
     | '/reports'
+    | '/self-service'
     | '/settings'
     | '/employees/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin'
+    | '/attendance'
     | '/employees'
     | '/leave'
     | '/login'
     | '/reports'
+    | '/self-service'
     | '/settings'
     | '/employees/$id'
   id:
     | '__root__'
     | '/'
+    | '/admin'
+    | '/attendance'
     | '/employees'
     | '/leave'
     | '/login'
     | '/reports'
+    | '/self-service'
     | '/settings'
     | '/employees/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
+  AttendanceRoute: typeof AttendanceRoute
   EmployeesRoute: typeof EmployeesRouteWithChildren
   LeaveRoute: typeof LeaveRoute
   LoginRoute: typeof LoginRoute
   ReportsRoute: typeof ReportsRoute
+  SelfServiceRoute: typeof SelfServiceRoute
   SettingsRoute: typeof SettingsRoute
 }
 
@@ -127,6 +166,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/self-service': {
+      id: '/self-service'
+      path: '/self-service'
+      fullPath: '/self-service'
+      preLoaderRoute: typeof SelfServiceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reports': {
@@ -155,6 +201,20 @@ declare module '@tanstack/react-router' {
       path: '/employees'
       fullPath: '/employees'
       preLoaderRoute: typeof EmployeesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/attendance': {
+      id: '/attendance'
+      path: '/attendance'
+      fullPath: '/attendance'
+      preLoaderRoute: typeof AttendanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -188,10 +248,13 @@ const EmployeesRouteWithChildren = EmployeesRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
+  AttendanceRoute: AttendanceRoute,
   EmployeesRoute: EmployeesRouteWithChildren,
   LeaveRoute: LeaveRoute,
   LoginRoute: LoginRoute,
   ReportsRoute: ReportsRoute,
+  SelfServiceRoute: SelfServiceRoute,
   SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport

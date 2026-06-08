@@ -41,22 +41,17 @@ function hasAuthCookie() {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = window.localStorage.getItem("pmis-user");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [ready] = useState(true);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!hasAuthCookie()) {
-      window.localStorage.removeItem("pmis-user");
-      setReady(true);
-      return;
-    }
-    const raw = window.localStorage.getItem("pmis-user");
-    if (raw) {
-      try { setUser(JSON.parse(raw)); } catch { /* noop */ }
-    }
-    setReady(true);
-  }, []);
+  useEffect(() => { /* no-op for static mockup */ }, []);
 
   const login = async (username: string, password: string, expectedRole?: Role) => {
     const acc = ACCOUNTS[username.toLowerCase()];
