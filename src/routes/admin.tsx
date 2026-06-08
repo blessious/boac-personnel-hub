@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { type Role, useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
+import type { EmployeeRecord } from "@/lib/employees-api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
@@ -24,6 +25,9 @@ interface AdminUser {
   username: string;
   name: string;
   role: Role;
+  employeeId: string;
+  employeeNo: string;
+  employeeName: string;
   isActive: boolean;
   mustChangePassword: boolean;
 }
@@ -62,6 +66,7 @@ function AdminPage() {
   const isAdmin = user?.role === "Admin";
   const [activeTab, setActiveTab] = useState<AdminTab>("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [employeeCandidates, setEmployeeCandidates] = useState<EmployeeRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [backups, setBackups] = useState<BackupFile[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
@@ -71,10 +76,11 @@ function AdminPage() {
   const [showEditUser, setShowEditUser] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState("");
-  const [form, setForm] = useState<{ name: string; username: string; role: Role; isActive: boolean }>({
+  const [form, setForm] = useState<{ name: string; username: string; role: Role; employeeId: string; isActive: boolean }>({
     name: "",
     username: "",
     role: "Viewer",
+    employeeId: "",
     isActive: true,
   });
 
@@ -91,6 +97,16 @@ function AdminPage() {
   useEffect(() => {
     loadUsers();
   }, [isAdmin]);
+
+  const loadEmployeeCandidates = async () => {
+    if (!isAdmin) return;
+    try {
+      const result = await api<{ employees: EmployeeRecord[] }>("/api/admin/employee-account-candidates");
+      setEmployeeCandidates(result.employees);
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
 
   const loadAuditLogs = async () => {
     if (!isAdmin) return;
@@ -125,7 +141,8 @@ function AdminPage() {
 
   const openAddUser = () => {
     setTemporaryPassword("");
-    setForm({ name: "", username: "", role: "Viewer", isActive: true });
+    setForm({ name: "", username: "", role: "Employee", employeeId: "", isActive: true });
+    loadEmployeeCandidates();
     setShowAddUser(true);
   };
 
@@ -146,7 +163,66 @@ function AdminPage() {
   const openEditUser = (item: AdminUser) => {
     setSelectedUser(item);
     setTemporaryPassword("");
-    setForm({ name: item.name, username: item.username, role: item.role, isActive: item.isActive });
+    setForm({ name: item.name, username: item.username, role: item.role, employeeId: item.employeeId || "", isActive: item.isActive });
+    loadEmployeeCandidates().then(() => {
+      if (item.employeeId) {
+        setEmployeeCandidates((current) => {
+          if (current.some((employee) => employee.id === item.employeeId)) return current;
+          return [
+            {
+              id: item.employeeId,
+              employeeId: item.employeeNo,
+              firstname: item.employeeName.split(", ")[1] || item.employeeName,
+              middlename: "",
+              lastname: item.employeeName.split(", ")[0] || "",
+              nameExt: "",
+              department: "",
+              position: "",
+              status: "Permanent",
+              level: "",
+              statusClass: "",
+              dateHired: "",
+              dateEmployed: "",
+              itemNo: "",
+              empStatus: "Active",
+              birthday: "",
+              gender: "",
+              civilStatus: "",
+              citizenship: "",
+              placeOfBirth: "",
+              height: "",
+              heightUnit: "",
+              weight: "",
+              weightUnit: "",
+              bloodType: "",
+              sss: "",
+              gsis: "",
+              pagibig: "",
+              tin: "",
+              philhealth: "",
+              ctcNo: "",
+              ctcPlaceIssued: "",
+              ctcDateIssued: "",
+              cellphoneNo: "",
+              email: "",
+              residentialAddress: "",
+              residentialZipcode: "",
+              residentialTelNo: "",
+              permanentAddress: "",
+              permanentZipcode: "",
+              permanentTelNo: "",
+              agency: "",
+              dateSeparated: "",
+              veteransCode: "",
+              bankAccountId: "",
+              cardSerialNo: "",
+              photoUrl: "",
+            },
+            ...current,
+          ];
+        });
+      }
+    });
     setShowEditUser(true);
   };
 
@@ -253,6 +329,7 @@ function AdminPage() {
                 <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
                   <th className="px-4 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Username</th>
+                  <th className="px-4 py-3 font-semibold">Employee Record</th>
                   <th className="px-4 py-3 font-semibold">Role</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold text-right">Actions</th>
@@ -263,6 +340,16 @@ function AdminPage() {
                   <tr key={item.id} className={cn("border-b border-border/50 last:border-0", index % 2 === 1 && "bg-muted/10")}>
                     <td className="px-4 py-3 font-medium">{item.name}</td>
                     <td className="px-4 py-3 font-mono text-muted-foreground text-xs">@{item.username}</td>
+                    <td className="px-4 py-3">
+                      {item.employeeId ? (
+                        <div>
+                          <div className="font-medium">{item.employeeName}</div>
+                          <div className="text-xs text-muted-foreground">{item.employeeNo}</div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No linked employee</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <Badge variant="outline" className={cn("text-[11px]", ROLE_COLORS[item.role])}>{item.role}</Badge>
                     </td>
@@ -287,7 +374,7 @@ function AdminPage() {
                 ))}
                 {users.length === 0 && (
                   <tr>
-                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>No users found.</td>
+                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>No users found.</td>
                   </tr>
                 )}
               </tbody>
@@ -404,6 +491,7 @@ function AdminPage() {
         open={showAddUser}
         mode="add"
         form={form}
+        employeeCandidates={employeeCandidates}
         temporaryPassword={temporaryPassword}
         onOpenChange={setShowAddUser}
         onChange={setForm}
@@ -413,6 +501,7 @@ function AdminPage() {
         open={showEditUser}
         mode="edit"
         form={form}
+        employeeCandidates={employeeCandidates}
         temporaryPassword={temporaryPassword}
         onOpenChange={setShowEditUser}
         onChange={setForm}
@@ -426,6 +515,7 @@ function UserDialog({
   open,
   mode,
   form,
+  employeeCandidates,
   temporaryPassword,
   onOpenChange,
   onChange,
@@ -433,10 +523,11 @@ function UserDialog({
 }: {
   open: boolean;
   mode: "add" | "edit";
-  form: { name: string; username: string; role: Role; isActive: boolean };
+  form: { name: string; username: string; role: Role; employeeId: string; isActive: boolean };
+  employeeCandidates: EmployeeRecord[];
   temporaryPassword: string;
   onOpenChange: (open: boolean) => void;
-  onChange: (form: { name: string; username: string; role: Role; isActive: boolean }) => void;
+  onChange: (form: { name: string; username: string; role: Role; employeeId: string; isActive: boolean }) => void;
   onSubmit: () => void;
 }) {
   return (
@@ -447,6 +538,30 @@ function UserDialog({
           <div className="space-y-1">
             <Label>Full Name</Label>
             <Input value={form.name} onChange={(e) => onChange({ ...form, name: e.target.value })} placeholder="Full name" />
+          </div>
+          <div className="space-y-1">
+            <Label>Linked Employee</Label>
+            <Select value={form.employeeId || "none"} onValueChange={(employeeId) => {
+              const nextEmployeeId = employeeId === "none" ? "" : employeeId;
+              const employee = employeeCandidates.find((item) => item.id === nextEmployeeId);
+              onChange({
+                ...form,
+                employeeId: nextEmployeeId,
+                name: employee ? `${employee.firstname} ${employee.lastname}` : form.name,
+                username: mode === "add" && employee ? suggestUsername(employee) : form.username,
+                role: form.role || "Employee",
+              });
+            }}>
+              <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No linked employee</SelectItem>
+                {employeeCandidates.map((employee) => (
+                  <SelectItem key={employee.id} value={employee.id}>
+                    {employee.lastname}, {employee.firstname} · {employee.employeeId}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label>Username</Label>
@@ -493,4 +608,13 @@ function UserDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function suggestUsername(employee: EmployeeRecord) {
+  const base = employee.employeeId || `${employee.firstname}.${employee.lastname}`;
+  return base
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 50);
 }

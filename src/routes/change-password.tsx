@@ -64,7 +64,7 @@ function ChangePasswordPage() {
           <Input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" required />
         </div>
         <div className="flex gap-2">
-          <Button type="button" variant="outline" className="flex-1" onClick={async () => { await logout(); navigate({ to: "/login" }); }}>
+          <Button type="button" variant="outline" className="flex-1" onClick={async () => { await logout(); navigate({ to: "/login", search: { redirect: "/" } }); }}>
             Sign out
           </Button>
           <Button type="submit" className="flex-1 bg-primary text-white" disabled={submitting}>

@@ -27,6 +27,11 @@ import {
   type SectionRow,
   type SettingsOptions,
 } from "@/lib/employees-api";
+import {
+  createLeaveAdjustment,
+  getEmployeeLeave,
+  type EmployeeLeaveResponse,
+} from "@/lib/leave-api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/employees/$id")({
@@ -273,7 +278,7 @@ function EmployeeFile() {
         {active === "PERSONAL" ? (
           <PersonalTab employee={employee} options={options} canEdit={canEdit} onSaved={(updated) => setEmployee(updated)} />
         ) : active === "LEAVE BALANCE" ? (
-          <DeferredLeaveTab />
+          <LeaveBalanceTab employeeId={employee.id} canEdit={canEdit} />
         ) : (
           <SectionTab
             employeeId={employee.id}
@@ -600,15 +605,168 @@ function RecordTable({
   );
 }
 
-function DeferredLeaveTab() {
+function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit: boolean }) {
+  const [data, setData] = useState<EmployeeLeaveResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ leaveTypeId: "", amount: "", reason: "" });
+
+  const load = () => {
+    setLoading(true);
+    getEmployeeLeave(employeeId)
+      .then(setData)
+      .catch((error) => toast.error((error as Error).message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [employeeId]);
+
+  const submitAdjustment = async () => {
+    try {
+      const result = await createLeaveAdjustment(employeeId, {
+        leaveTypeId: Number(form.leaveTypeId),
+        amount: Number(form.amount),
+        reason: form.reason,
+      });
+      setData(result);
+      setForm({ leaveTypeId: "", amount: "", reason: "" });
+      toast.success("Leave credit adjusted");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
+        Loading leave balances...
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
+        Unable to load leave balances.
+      </div>
+    );
+  }
+
   return (
-    <div className="rounded-xl border border-border bg-card p-8 text-center shadow-sm">
-      <h2 className="text-lg font-semibold text-foreground">Leave Balance is deferred</h2>
-      <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
-        Mock leave balances were removed. This tab will be connected when the Attendance & Leave module is implemented.
-      </p>
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {data.balances.map((balance) => (
+          <div key={balance.leaveTypeId} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{balance.code}</div>
+            <div className="mt-1 min-h-10 text-sm font-semibold text-foreground">{balance.name}</div>
+            <div className="mt-3 text-2xl font-semibold text-primary">{formatLeaveNumber(balance.balance)}</div>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+              <span>Earned {formatLeaveNumber(balance.earned)}</span>
+              <span>Used {formatLeaveNumber(balance.used)}</span>
+              <span>Adj {formatLeaveNumber(balance.adjusted)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Leave Credit Adjustment</h3>
+            <p className="text-xs text-muted-foreground">Use positive values to add credits and negative values to deduct corrections.</p>
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[220px_160px_minmax(0,1fr)_auto] md:items-end">
+          <Field label="Leave Type">
+            <Select value={form.leaveTypeId} onValueChange={(value) => setForm({ ...form, leaveTypeId: value })}>
+              <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+              <SelectContent>
+                {data.balances.map((balance) => (
+                  <SelectItem key={balance.leaveTypeId} value={String(balance.leaveTypeId)}>
+                    {balance.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Amount">
+            <Input type="number" step="0.001" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} />
+          </Field>
+          <Field label="Reason">
+            <Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
+          </Field>
+          <Button disabled={!canEdit} onClick={submitAdjustment} className="bg-blue-600 text-white hover:bg-blue-700">
+            <Save className="mr-1.5 h-4 w-4" /> Apply
+          </Button>
+        </div>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border px-4 py-3">
+            <h3 className="text-sm font-semibold text-foreground">Leave Applications</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-2.5 font-medium">Type</th>
+                  <th className="px-3 py-2.5 font-medium">Dates</th>
+                  <th className="px-3 py-2.5 font-medium">Days</th>
+                  <th className="px-3 py-2.5 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.applications.length === 0 ? (
+                  <tr><td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">No leave applications recorded.</td></tr>
+                ) : data.applications.map((application) => (
+                  <tr key={application.id} className="border-b border-border/50 last:border-0">
+                    <td className="px-3 py-2.5">{application.leaveName}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{application.dateFrom} to {application.dateTo}</td>
+                    <td className="px-3 py-2.5">{formatLeaveNumber(application.daysRequested)}</td>
+                    <td className="px-3 py-2.5">{application.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border px-4 py-3">
+            <h3 className="text-sm font-semibold text-foreground">Adjustment History</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-2.5 font-medium">Type</th>
+                  <th className="px-3 py-2.5 font-medium">Amount</th>
+                  <th className="px-3 py-2.5 font-medium">Reason</th>
+                  <th className="px-3 py-2.5 font-medium">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.adjustments.length === 0 ? (
+                  <tr><td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">No adjustments recorded.</td></tr>
+                ) : data.adjustments.map((adjustment) => (
+                  <tr key={adjustment.id} className="border-b border-border/50 last:border-0">
+                    <td className="px-3 py-2.5">{adjustment.name}</td>
+                    <td className="px-3 py-2.5 font-medium">{formatLeaveNumber(adjustment.amount)}</td>
+                    <td className="max-w-[220px] truncate px-3 py-2.5 text-muted-foreground">{adjustment.reason || "-"}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{new Date(adjustment.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </div>
   );
+}
+
+function formatLeaveNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function RadioItem({ id, value, label }: { id: string; value: string; label: string }) {

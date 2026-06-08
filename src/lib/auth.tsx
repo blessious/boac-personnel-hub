@@ -2,7 +2,17 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { api } from "@/lib/api";
 
 export type Role = "Admin" | "HR" | "Employee" | "Viewer";
-export interface User { id: number; username: string; name: string; role: Role; photoUrl?: string; mustChangePassword?: boolean }
+export interface User {
+  id: number;
+  username: string;
+  name: string;
+  role: Role;
+  photoUrl?: string;
+  mustChangePassword?: boolean;
+  employeeId?: string;
+  employeeNo?: string;
+  employeeName?: string;
+}
 
 interface AuthCtx {
   user: User | null;

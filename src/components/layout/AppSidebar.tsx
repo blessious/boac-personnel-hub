@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, Users, CalendarDays, MonitorSmartphone,
-  BarChart3, ShieldCheck, Settings,
+  BarChart3, ShieldCheck, Settings, ClipboardCheck,
   LogOut, ChevronLeft, ChevronRight, Stethoscope,
 } from "lucide-react";
 import { useState } from "react";
@@ -10,7 +10,7 @@ import { useSettings } from "@/lib/settings-context";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
-  to: "/" | "/employees" | "/attendance" | "/self-service" | "/reports" | "/admin" | "/settings";
+  to: "/" | "/employees" | "/attendance" | "/leave" | "/self-service" | "/reports" | "/admin" | "/settings";
   label: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
@@ -19,24 +19,33 @@ type NavItem = {
 const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/employees", label: "Employee Management", icon: Users },
-  { to: "/attendance", label: "Attendance & Leave", icon: CalendarDays },
+  { to: "/attendance", label: "Attendance", icon: CalendarDays },
+  { to: "/leave", label: "Leave Management", icon: ClipboardCheck },
   { to: "/self-service", label: "Self-Service Portal", icon: MonitorSmartphone },
   { to: "/reports", label: "Reports & Analytics", icon: BarChart3 },
   { to: "/admin", label: "System Administration", icon: ShieldCheck },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
+function navForRole(role: string | undefined) {
+  if (role === "Admin") return NAV;
+  if (role === "HR") {
+    return NAV.filter((item) => !["/admin"].includes(item.to));
+  }
+  if (role === "Viewer") {
+    return NAV.filter((item) => ["/", "/employees", "/reports", "/self-service"].includes(item.to));
+  }
+  if (role === "Employee") {
+    return NAV.filter((item) => ["/", "/self-service"].includes(item.to));
+  }
+  return [];
+}
+
 export function AppSidebar() {
   const { agency, sidebarCollapsed: collapsed, toggleSidebar } = useSettings();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { user, logout } = useAuth();
-  const nav = NAV.filter((item) => {
-    if (!user) return false;
-    if (user.role === "Admin") return true;
-    if (item.to === "/" || item.to === "/self-service") return true;
-    if (user.role === "Employee") return false;
-    return item.to !== "/admin";
-  });
+  const nav = navForRole(user?.role);
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? path === to : path === to || path.startsWith(to + "/");

@@ -1,10 +1,30 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { URL } from "node:url";
-import { createReadStream } from "node:fs";
+import { createReadStream, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import mysql from "mysql2/promise";
+
+function loadServerEnv() {
+  try {
+    const envPath = path.join(process.cwd(), "server", ".env");
+    const text = readFileSync(envPath, "utf8");
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const index = trimmed.indexOf("=");
+      if (index < 1) continue;
+      const key = trimmed.slice(0, index).trim();
+      const value = trimmed.slice(index + 1).trim().replace(/^["']|["']$/g, "");
+      if (!(key in process.env)) process.env[key] = value;
+    }
+  } catch {
+    // Environment variables can still be supplied by the host process.
+  }
+}
+
+loadServerEnv();
 
 const PORT = Number(process.env.HRIS_API_PORT || 3001);
 const DB_HOST = process.env.HRIS_DB_HOST || "localhost";
@@ -144,6 +164,17 @@ const DEFAULT_POSITIONS = [
   "Warehouseman II",
 ];
 
+const DEFAULT_LEAVE_TYPES = [
+  { code: "VL", name: "Vacation Leave", paid: true, sortOrder: 1 },
+  { code: "SL", name: "Sick Leave", paid: true, sortOrder: 2 },
+  { code: "FL", name: "Forced Leave", paid: true, sortOrder: 3 },
+  { code: "SPL", name: "Special Privilege Leave", paid: true, sortOrder: 4 },
+  { code: "ML", name: "Maternity Leave", paid: true, sortOrder: 5 },
+  { code: "PL", name: "Paternity Leave", paid: true, sortOrder: 6 },
+  { code: "SP", name: "Solo Parent Leave", paid: true, sortOrder: 7 },
+  { code: "LWOP", name: "Leave Without Pay", paid: false, sortOrder: 8 },
+];
+
 const EMPLOYEE_SECTION_TABLES = {
   family: { table: "employee_family_records", single: true },
   children: { table: "employee_child_records" },
@@ -271,6 +302,9 @@ function publicUser(row) {
     role: row.role,
     photoUrl: row.photo_url || undefined,
     mustChangePassword: Boolean(row.must_change_password),
+    employeeId: row.employee_id || "",
+    employeeNo: row.employee_no || "",
+    employeeName: row.employee_name || "",
   };
 }
 
@@ -280,6 +314,9 @@ function adminUser(row) {
     username: row.username,
     name: row.name,
     role: row.role,
+    employeeId: row.employee_id || "",
+    employeeNo: row.employee_no || "",
+    employeeName: row.employee_name || "",
     isActive: Boolean(row.is_active),
     mustChangePassword: Boolean(row.must_change_password),
     createdAt: row.created_at,
@@ -406,6 +443,112 @@ function sectionRow(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function leaveTypeRow(row) {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    isPaid: Boolean(row.is_paid),
+    isActive: Boolean(row.is_active),
+    sortOrder: Number(row.sort_order || 0),
+  };
+}
+
+function leaveBalanceRow(row) {
+  return {
+    id: row.id,
+    employeeId: row.employee_id,
+    leaveTypeId: row.leave_type_id,
+    code: row.code,
+    name: row.name,
+    balance: Number(row.balance || 0),
+    earned: Number(row.earned || 0),
+    used: Number(row.used || 0),
+    adjusted: Number(row.adjusted || 0),
+    updatedAt: row.updated_at,
+  };
+}
+
+function leaveApplicationRow(row) {
+  return {
+    id: row.id,
+    employeeId: row.employee_id,
+    employeeNo: row.employee_no,
+    employeeName: [row.lastname, row.firstname].filter(Boolean).join(", "),
+    department: row.department || "",
+    position: row.position || "",
+    leaveTypeId: row.leave_type_id,
+    leaveCode: row.leave_code,
+    leaveName: row.leave_name,
+    dateFrom: normalizeDate(row.date_from),
+    dateTo: normalizeDate(row.date_to),
+    daysRequested: Number(row.days_requested || 0),
+    reason: row.reason || "",
+    status: row.status,
+    approverName: row.approver_name || "",
+    decisionRemarks: row.decision_remarks || "",
+    decidedAt: row.decided_at,
+    createdAt: row.created_at,
+  };
+}
+
+async function requireLeaveRead(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  if (!["Admin", "HR", "Viewer"].includes(user.role)) {
+    json(res, 403, { error: "Leave Management access required" });
+    return null;
+  }
+  return user;
+}
+
+async function requireLeaveWrite(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  if (!["Admin", "HR"].includes(user.role)) {
+    json(res, 403, { error: "HR access required" });
+    return null;
+  }
+  return user;
+}
+
+async function ensureLeaveBalance(employeeId, leaveTypeId) {
+  await pool.execute(
+    `INSERT INTO leave_balances (employee_id, leave_type_id)
+     VALUES (:employeeId, :leaveTypeId)
+     ON DUPLICATE KEY UPDATE employee_id = employee_id`,
+    { employeeId, leaveTypeId },
+  );
+}
+
+async function changeLeaveBalance(employeeId, leaveTypeId, amount, column, balanceDelta = amount) {
+  if (!["earned", "used", "adjusted"].includes(column)) throw new Error("Invalid balance column");
+  await ensureLeaveBalance(employeeId, leaveTypeId);
+  await pool.execute(
+    `UPDATE leave_balances
+     SET ${column} = ${column} + :amount,
+         balance = balance + :balanceDelta
+     WHERE employee_id = :employeeId AND leave_type_id = :leaveTypeId`,
+    { employeeId, leaveTypeId, amount, balanceDelta },
+  );
+}
+
+async function readLeaveApplication(id) {
+  const [rows] = await pool.execute(
+    `SELECT la.*, lt.code AS leave_code, lt.name AS leave_name,
+            e.employee_no, e.firstname, e.lastname, e.department, e.position,
+            u.name AS approver_name
+     FROM leave_applications la
+     INNER JOIN leave_types lt ON lt.id = la.leave_type_id
+     INNER JOIN employees e ON e.id = la.employee_id
+     LEFT JOIN users u ON u.id = la.approver_id
+     WHERE la.id = :id
+     LIMIT 1`,
+    { id },
+  );
+  return rows[0] ? leaveApplicationRow(rows[0]) : null;
 }
 
 function validateSection(section) {
@@ -584,11 +727,22 @@ async function initializeDatabase() {
     ) ENGINE=InnoDB;
   `);
 
+  const employeeIdDefinition = await getEmployeeIdDefinition();
+  const nullableEmployeeIdDefinition = employeeIdDefinition.replace(/\s+NOT NULL$/i, " NULL");
+
+  await ensureColumn("users", "employee_id", nullableEmployeeIdDefinition);
+  await ensureIndex("users", "uniq_users_employee_id", "UNIQUE KEY uniq_users_employee_id (employee_id)");
+  await ensureForeignKey(
+    "users",
+    "fk_users_employee_id",
+    "FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL",
+  );
+
   for (const { table, single } of Object.values(EMPLOYEE_SECTION_TABLES)) {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS \`${table}\` (
         id CHAR(36) NOT NULL PRIMARY KEY,
-        employee_id CHAR(36) NOT NULL,
+        employee_id ${employeeIdDefinition},
         payload JSON NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -598,6 +752,78 @@ async function initializeDatabase() {
       ) ENGINE=InnoDB;
     `);
   }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leave_types (
+      id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(20) NOT NULL UNIQUE,
+      name VARCHAR(120) NOT NULL,
+      is_paid TINYINT(1) NOT NULL DEFAULT 1,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leave_balances (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      employee_id ${employeeIdDefinition},
+      leave_type_id INT UNSIGNED NOT NULL,
+      balance DECIMAL(8,3) NOT NULL DEFAULT 0,
+      earned DECIMAL(8,3) NOT NULL DEFAULT 0,
+      used DECIMAL(8,3) NOT NULL DEFAULT 0,
+      adjusted DECIMAL(8,3) NOT NULL DEFAULT 0,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_leave_balance_employee_type (employee_id, leave_type_id),
+      INDEX idx_leave_balances_employee_id (employee_id),
+      CONSTRAINT fk_leave_balances_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      CONSTRAINT fk_leave_balances_leave_type_id FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE RESTRICT
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leave_applications (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      employee_id ${employeeIdDefinition},
+      leave_type_id INT UNSIGNED NOT NULL,
+      date_from DATE NOT NULL,
+      date_to DATE NOT NULL,
+      days_requested DECIMAL(8,3) NOT NULL,
+      reason TEXT NULL,
+      status ENUM('Pending', 'Approved', 'Disapproved', 'Cancelled') NOT NULL DEFAULT 'Pending',
+      approver_id INT UNSIGNED NULL,
+      decision_remarks TEXT NULL,
+      decided_at DATETIME NULL,
+      created_by INT UNSIGNED NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_leave_applications_employee_id (employee_id),
+      INDEX idx_leave_applications_status (status),
+      INDEX idx_leave_applications_dates (date_from, date_to),
+      CONSTRAINT fk_leave_applications_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      CONSTRAINT fk_leave_applications_leave_type_id FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE RESTRICT,
+      CONSTRAINT fk_leave_applications_approver_id FOREIGN KEY (approver_id) REFERENCES users(id) ON DELETE SET NULL,
+      CONSTRAINT fk_leave_applications_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leave_adjustments (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      employee_id ${employeeIdDefinition},
+      leave_type_id INT UNSIGNED NOT NULL,
+      amount DECIMAL(8,3) NOT NULL,
+      reason TEXT NULL,
+      created_by INT UNSIGNED NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_leave_adjustments_employee_id (employee_id),
+      CONSTRAINT fk_leave_adjustments_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      CONSTRAINT fk_leave_adjustments_leave_type_id FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE RESTRICT,
+      CONSTRAINT fk_leave_adjustments_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
 
   await seedConfigTables();
 
@@ -628,6 +854,47 @@ async function ensureColumn(table, column, definition) {
   if (Number(rows[0].count) === 0) {
     await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
   }
+}
+
+async function ensureIndex(table, indexName, definition) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS count
+     FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :table AND INDEX_NAME = :indexName`,
+    { schema: DB_NAME, table, indexName },
+  );
+  if (Number(rows[0].count) === 0) {
+    await pool.query(`ALTER TABLE \`${table}\` ADD ${definition}`);
+  }
+}
+
+async function ensureForeignKey(table, constraintName, definition) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS count
+     FROM information_schema.TABLE_CONSTRAINTS
+     WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :table AND CONSTRAINT_NAME = :constraintName`,
+    { schema: DB_NAME, table, constraintName },
+  );
+  if (Number(rows[0].count) === 0) {
+    await pool.query(`ALTER TABLE \`${table}\` ADD CONSTRAINT \`${constraintName}\` ${definition}`);
+  }
+}
+
+async function getEmployeeIdDefinition() {
+  const [rows] = await pool.execute(
+    `SELECT COLUMN_TYPE, CHARACTER_SET_NAME, COLLATION_NAME
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'id'
+     LIMIT 1`,
+    { schema: DB_NAME },
+  );
+  const column = rows[0];
+  if (!column) return "CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL";
+
+  const columnType = String(column.COLUMN_TYPE || "CHAR(36)");
+  const charset = column.CHARACTER_SET_NAME ? ` CHARACTER SET ${column.CHARACTER_SET_NAME}` : "";
+  const collation = column.COLLATION_NAME ? ` COLLATE ${column.COLLATION_NAME}` : "";
+  return `${columnType}${charset}${collation} NOT NULL`;
 }
 
 async function seedConfigTables() {
@@ -669,6 +936,15 @@ async function seedConfigTables() {
       }
     }
   }
+
+  for (const leaveType of DEFAULT_LEAVE_TYPES) {
+    await pool.execute(
+      `INSERT INTO leave_types (code, name, is_paid, sort_order)
+       VALUES (:code, :name, :paid, :sortOrder)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), is_paid = VALUES(is_paid), sort_order = VALUES(sort_order)`,
+      leaveType,
+    );
+  }
 }
 
 async function getSessionUser(req) {
@@ -676,9 +952,11 @@ async function getSessionUser(req) {
   if (!token) return null;
 
   const [rows] = await pool.execute(
-    `SELECT u.id, u.username, u.name, u.role, u.photo_url, u.must_change_password
+    `SELECT u.id, u.username, u.name, u.role, u.photo_url, u.must_change_password, u.employee_id,
+            e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
      FROM sessions s
      INNER JOIN users u ON u.id = s.user_id
+     LEFT JOIN employees e ON e.id = u.employee_id
      WHERE s.id = :token AND s.expires_at > NOW() AND u.is_active = 1
      LIMIT 1`,
     { token },
@@ -736,9 +1014,11 @@ async function handleLogin(req, res) {
   }
 
   const [rows] = await pool.execute(
-    `SELECT id, username, password_hash, name, role, photo_url, must_change_password
-     FROM users
-     WHERE username = :username AND is_active = 1
+    `SELECT u.id, u.username, u.password_hash, u.name, u.role, u.photo_url, u.must_change_password, u.employee_id,
+            e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+     FROM users u
+     LEFT JOIN employees e ON e.id = u.employee_id
+     WHERE u.username = :username AND u.is_active = 1
      LIMIT 1`,
     { username },
   );
@@ -795,7 +1075,11 @@ async function handleProfileUpdate(req, res) {
   await logAudit(user.id, "users.profile_update", { fields: ["name", "photoUrl"] }, req);
 
   const [rows] = await pool.execute(
-    `SELECT id, username, name, role, photo_url, must_change_password FROM users WHERE id = :id LIMIT 1`,
+    `SELECT u.id, u.username, u.name, u.role, u.photo_url, u.must_change_password, u.employee_id,
+            e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+     FROM users u
+     LEFT JOIN employees e ON e.id = u.employee_id
+     WHERE u.id = :id LIMIT 1`,
     { id: user.id },
   );
   return json(res, 200, { user: publicUser(rows[0]) });
@@ -829,7 +1113,11 @@ async function handleChangePassword(req, res) {
   await logAudit(user.id, "auth.change_password", null, req);
 
   const [updated] = await pool.execute(
-    `SELECT id, username, name, role, photo_url, must_change_password FROM users WHERE id = :id LIMIT 1`,
+    `SELECT u.id, u.username, u.name, u.role, u.photo_url, u.must_change_password, u.employee_id,
+            e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+     FROM users u
+     LEFT JOIN employees e ON e.id = u.employee_id
+     WHERE u.id = :id LIMIT 1`,
     { id: user.id },
   );
   return json(res, 200, { user: publicUser(updated[0]) });
@@ -840,9 +1128,11 @@ async function handleListUsers(req, res) {
   if (!user) return;
 
   const [rows] = await pool.query(
-    `SELECT id, username, name, role, is_active, must_change_password, created_at, updated_at
-     FROM users
-     ORDER BY name ASC, username ASC`,
+    `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password, u.employee_id,
+            u.created_at, u.updated_at, e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+     FROM users u
+     LEFT JOIN employees e ON e.id = u.employee_id
+     ORDER BY u.name ASC, u.username ASC`,
   );
   return json(res, 200, { users: rows.map(adminUser) });
 }
@@ -857,6 +1147,7 @@ async function handleCreateUser(req, res) {
     .toLowerCase();
   const name = String(body.name || "").trim();
   const role = String(body.role || "");
+  const employeeId = body.employeeId ? String(body.employeeId).trim() : null;
   const temporaryPassword = generateTemporaryPassword();
 
   if (!username || !/^[a-z0-9._-]{3,50}$/.test(username)) {
@@ -866,17 +1157,24 @@ async function handleCreateUser(req, res) {
   }
   if (!name || name.length > 150) return json(res, 400, { error: "Full name is required" });
   if (!ROLES.includes(role)) return json(res, 400, { error: "Invalid role" });
+  if (employeeId) {
+    const employee = await readEmployeeById(employeeId);
+    if (!employee) return json(res, 400, { error: "Linked employee not found" });
+  }
 
   try {
     const [result] = await pool.execute(
-      `INSERT INTO users (username, password_hash, name, role, must_change_password)
-       VALUES (:username, :passwordHash, :name, :role, 1)`,
-      { username, passwordHash: hashPassword(temporaryPassword), name, role },
+      `INSERT INTO users (username, password_hash, name, role, employee_id, must_change_password)
+       VALUES (:username, :passwordHash, :name, :role, :employeeId, 1)`,
+      { username, passwordHash: hashPassword(temporaryPassword), name, role, employeeId },
     );
-    await logAudit(admin.id, "users.create", { userId: result.insertId, username, role }, req);
+    await logAudit(admin.id, "users.create", { userId: result.insertId, username, role, employeeId }, req);
     const [rows] = await pool.execute(
-      `SELECT id, username, name, role, is_active, must_change_password, created_at, updated_at
-       FROM users WHERE id = :id LIMIT 1`,
+      `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password, u.employee_id,
+              u.created_at, u.updated_at, e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+       FROM users u
+       LEFT JOIN employees e ON e.id = u.employee_id
+       WHERE u.id = :id LIMIT 1`,
       { id: result.insertId },
     );
     return json(res, 201, { user: adminUser(rows[0]), temporaryPassword });
@@ -893,21 +1191,29 @@ async function handleUpdateUser(req, res, id) {
   const body = await readBody(req);
   const name = String(body.name || "").trim();
   const role = String(body.role || "");
+  const employeeId = body.employeeId ? String(body.employeeId).trim() : null;
   const isActive = body.isActive === false ? 0 : 1;
 
   if (!name || name.length > 150) return json(res, 400, { error: "Full name is required" });
   if (!ROLES.includes(role)) return json(res, 400, { error: "Invalid role" });
+  if (employeeId) {
+    const employee = await readEmployeeById(employeeId);
+    if (!employee) return json(res, 400, { error: "Linked employee not found" });
+  }
   if (Number(id) === admin.id && isActive === 0)
     return json(res, 400, { error: "You cannot deactivate your own account" });
 
   await pool.execute(
-    `UPDATE users SET name = :name, role = :role, is_active = :isActive WHERE id = :id`,
-    { id, name, role, isActive },
+    `UPDATE users SET name = :name, role = :role, employee_id = :employeeId, is_active = :isActive WHERE id = :id`,
+    { id, name, role, employeeId, isActive },
   );
-  await logAudit(admin.id, "users.update", { userId: id, role, isActive: Boolean(isActive) }, req);
+  await logAudit(admin.id, "users.update", { userId: id, role, employeeId, isActive: Boolean(isActive) }, req);
   const [rows] = await pool.execute(
-    `SELECT id, username, name, role, is_active, must_change_password, created_at, updated_at
-     FROM users WHERE id = :id LIMIT 1`,
+    `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password, u.employee_id,
+            u.created_at, u.updated_at, e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+     FROM users u
+     LEFT JOIN employees e ON e.id = u.employee_id
+     WHERE u.id = :id LIMIT 1`,
     { id },
   );
   return rows[0]
@@ -965,15 +1271,15 @@ async function handleDashboard(req, res) {
   `);
 
   const [bySexLevel] = await pool.query(`
-    SELECT department,
+    SELECT COALESCE(NULLIF(TRIM(department), ''), 'Unspecified') AS department,
            SUM(level = 'First Level') AS firstLevel,
            SUM(level = 'Second Level') AS secondLevel,
            SUM(level = 'Third Level' OR level = 'Executive') AS thirdLevel,
-           SUM(gender = 'Male') AS male,
-           SUM(gender = 'Female') AS female,
+           SUM(LOWER(TRIM(gender)) = 'male') AS male,
+           SUM(LOWER(TRIM(gender)) = 'female') AS female,
            COUNT(*) AS total
     FROM employees
-    GROUP BY department
+    GROUP BY COALESCE(NULLIF(TRIM(department), ''), 'Unspecified')
     ORDER BY department ASC
   `);
 
@@ -1000,7 +1306,6 @@ async function handleDashboard(req, res) {
   const [byAgeGroup] = await pool.query(`
     SELECT
       CASE
-        WHEN birthday IS NULL THEN 'Unspecified'
         WHEN TIMESTAMPDIFF(YEAR, birthday, CURDATE()) < 30 THEN 'Under 30'
         WHEN TIMESTAMPDIFF(YEAR, birthday, CURDATE()) BETWEEN 30 AND 39 THEN '30-39'
         WHEN TIMESTAMPDIFF(YEAR, birthday, CURDATE()) BETWEEN 40 AND 49 THEN '40-49'
@@ -1009,8 +1314,9 @@ async function handleDashboard(req, res) {
       END AS ageGroup,
       COUNT(*) AS total
     FROM employees
+    WHERE birthday IS NOT NULL
     GROUP BY ageGroup
-    ORDER BY FIELD(ageGroup, 'Under 30', '30-39', '40-49', '50-59', '60+', 'Unspecified')
+    ORDER BY FIELD(ageGroup, 'Under 30', '30-39', '40-49', '50-59', '60+')
   `);
 
   const [hiringTrend] = await pool.query(`
@@ -1126,6 +1432,22 @@ async function handleListEmployees(req, res, url) {
   });
 }
 
+async function handleListEmployeeAccountCandidates(req, res) {
+  const user = await requireAdmin(req, res);
+  if (!user) return;
+
+  const [rows] = await pool.query(
+    `SELECT e.*
+     FROM employees e
+     LEFT JOIN users u ON u.employee_id = e.id
+     WHERE u.id IS NULL
+     ORDER BY e.lastname ASC, e.firstname ASC, e.employee_no ASC
+     LIMIT 500`,
+  );
+
+  return json(res, 200, { employees: rows.map(employeeRow) });
+}
+
 async function handleCreateEmployee(req, res) {
   const user = await requireEmployeeWrite(req, res);
   if (!user) return;
@@ -1163,8 +1485,11 @@ async function handleCreateEmployee(req, res) {
 }
 
 async function handleGetEmployee(req, res, id) {
-  const user = await requireEmployeeRead(req, res);
+  const user = await requireUser(req, res);
   if (!user) return;
+  if (!["Admin", "HR", "Viewer"].includes(user.role) && user.employeeId !== id) {
+    return json(res, 403, { error: "You can only view your own employee record" });
+  }
 
   const employee = await readEmployeeById(id);
   if (!employee) return json(res, 404, { error: "Employee not found" });
@@ -1308,6 +1633,247 @@ async function handleDeleteSectionRow(req, res, employeeId, section, rowId) {
   );
   if (result.affectedRows === 0) return json(res, 404, { error: "Record not found" });
   await logAudit(user.id, "employees.section_delete", { employeeId, section, rowId }, req);
+  return json(res, 200, { ok: true });
+}
+
+async function handleListLeaveTypes(req, res) {
+  const user = await requireLeaveRead(req, res);
+  if (!user) return;
+  const [rows] = await pool.query(
+    `SELECT * FROM leave_types ORDER BY sort_order ASC, name ASC`,
+  );
+  return json(res, 200, { leaveTypes: rows.map(leaveTypeRow) });
+}
+
+async function handleCreateLeaveType(req, res) {
+  const user = await requireLeaveWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const code = String(body.code || "").trim().toUpperCase();
+  const name = String(body.name || "").trim();
+  const isPaid = body.isPaid === false ? 0 : 1;
+  if (!code || !name) return json(res, 400, { error: "Code and name are required" });
+  try {
+    const [result] = await pool.execute(
+      `INSERT INTO leave_types (code, name, is_paid, sort_order)
+       VALUES (:code, :name, :isPaid, :sortOrder)`,
+      { code, name, isPaid, sortOrder: Number(body.sortOrder || 0) },
+    );
+    await logAudit(user.id, "leave.type_create", { code, name }, req);
+    return json(res, 201, {
+      leaveType: { id: result.insertId, code, name, isPaid: Boolean(isPaid), isActive: true, sortOrder: Number(body.sortOrder || 0) },
+    });
+  } catch (error) {
+    if (error?.code === "ER_DUP_ENTRY") return json(res, 409, { error: "Leave type already exists" });
+    throw error;
+  }
+}
+
+async function handleDeleteLeaveType(req, res, id) {
+  const user = await requireLeaveWrite(req, res);
+  if (!user) return;
+  await pool.execute(`UPDATE leave_types SET is_active = 0 WHERE id = :id`, { id });
+  await logAudit(user.id, "leave.type_deactivate", { id }, req);
+  return json(res, 200, { ok: true });
+}
+
+async function handleEmployeeLeave(req, res, employeeId) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (!["Admin", "HR", "Viewer"].includes(user.role) && user.employeeId !== employeeId) {
+    return json(res, 403, { error: "Leave Management access required" });
+  }
+  const employee = await readEmployeeById(employeeId);
+  if (!employee) return json(res, 404, { error: "Employee not found" });
+
+  const [types] = await pool.query(`SELECT id FROM leave_types WHERE is_active = 1`);
+  for (const type of types) {
+    await ensureLeaveBalance(employeeId, type.id);
+  }
+
+  const [balanceRows] = await pool.execute(
+    `SELECT lb.*, lt.code, lt.name
+     FROM leave_balances lb
+     INNER JOIN leave_types lt ON lt.id = lb.leave_type_id
+     WHERE lb.employee_id = :employeeId AND lt.is_active = 1
+     ORDER BY lt.sort_order ASC, lt.name ASC`,
+    { employeeId },
+  );
+  const [applicationRows] = await pool.execute(
+    `SELECT la.*, lt.code AS leave_code, lt.name AS leave_name,
+            e.employee_no, e.firstname, e.lastname, e.department, e.position,
+            u.name AS approver_name
+     FROM leave_applications la
+     INNER JOIN leave_types lt ON lt.id = la.leave_type_id
+     INNER JOIN employees e ON e.id = la.employee_id
+     LEFT JOIN users u ON u.id = la.approver_id
+     WHERE la.employee_id = :employeeId
+     ORDER BY la.date_from DESC, la.created_at DESC`,
+    { employeeId },
+  );
+  const [adjustmentRows] = await pool.execute(
+    `SELECT adj.id, adj.amount, adj.reason, adj.created_at, lt.code, lt.name, u.name AS created_by_name
+     FROM leave_adjustments adj
+     INNER JOIN leave_types lt ON lt.id = adj.leave_type_id
+     LEFT JOIN users u ON u.id = adj.created_by
+     WHERE adj.employee_id = :employeeId
+     ORDER BY adj.created_at DESC
+     LIMIT 100`,
+    { employeeId },
+  );
+
+  return json(res, 200, {
+    employee,
+    balances: balanceRows.map(leaveBalanceRow),
+    applications: applicationRows.map(leaveApplicationRow),
+    adjustments: adjustmentRows.map((row) => ({
+      id: row.id,
+      amount: Number(row.amount || 0),
+      reason: row.reason || "",
+      createdAt: row.created_at,
+      code: row.code,
+      name: row.name,
+      createdByName: row.created_by_name || "",
+    })),
+  });
+}
+
+async function handleCreateLeaveAdjustment(req, res, employeeId) {
+  const user = await requireLeaveWrite(req, res);
+  if (!user) return;
+  const employee = await readEmployeeById(employeeId);
+  if (!employee) return json(res, 404, { error: "Employee not found" });
+  const body = await readBody(req);
+  const leaveTypeId = Number(body.leaveTypeId);
+  const amount = Number(body.amount);
+  const reason = String(body.reason || "").trim();
+  if (!Number.isInteger(leaveTypeId) || !Number.isFinite(amount) || amount === 0) {
+    return json(res, 400, { error: "Leave type and non-zero amount are required" });
+  }
+  const id = crypto.randomUUID();
+  await pool.execute(
+    `INSERT INTO leave_adjustments (id, employee_id, leave_type_id, amount, reason, created_by)
+     VALUES (:id, :employeeId, :leaveTypeId, :amount, :reason, :createdBy)`,
+    { id, employeeId, leaveTypeId, amount, reason, createdBy: user.id },
+  );
+  await changeLeaveBalance(employeeId, leaveTypeId, amount, "adjusted");
+  await logAudit(user.id, "leave.adjustment_create", { employeeId, leaveTypeId, amount }, req);
+  return handleEmployeeLeave(req, res, employeeId);
+}
+
+async function handleListLeaveApplications(req, res, url) {
+  const user = await requireLeaveRead(req, res);
+  if (!user) return;
+  const status = String(url.searchParams.get("status") || "").trim();
+  const q = String(url.searchParams.get("q") || "").trim();
+  const where = [];
+  const params = {};
+  if (status && status !== "all") {
+    where.push(`la.status = :status`);
+    params.status = status;
+  }
+  if (q) {
+    where.push(`(e.employee_no LIKE :q OR e.firstname LIKE :q OR e.lastname LIKE :q OR e.department LIKE :q)`);
+    params.q = `%${q}%`;
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const [rows] = await pool.execute(
+    `SELECT la.*, lt.code AS leave_code, lt.name AS leave_name,
+            e.employee_no, e.firstname, e.lastname, e.department, e.position,
+            u.name AS approver_name
+     FROM leave_applications la
+     INNER JOIN leave_types lt ON lt.id = la.leave_type_id
+     INNER JOIN employees e ON e.id = la.employee_id
+     LEFT JOIN users u ON u.id = la.approver_id
+     ${whereSql}
+     ORDER BY FIELD(la.status, 'Pending', 'Approved', 'Disapproved', 'Cancelled'), la.created_at DESC
+     LIMIT 300`,
+    params,
+  );
+  const [[summary]] = await pool.query(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(status = 'Pending') AS pending,
+      SUM(status = 'Approved') AS approved,
+      SUM(status = 'Disapproved') AS disapproved,
+      SUM(status = 'Cancelled') AS cancelled
+    FROM leave_applications
+  `);
+  return json(res, 200, {
+    applications: rows.map(leaveApplicationRow),
+    summary: {
+      total: Number(summary.total || 0),
+      pending: Number(summary.pending || 0),
+      approved: Number(summary.approved || 0),
+      disapproved: Number(summary.disapproved || 0),
+      cancelled: Number(summary.cancelled || 0),
+    },
+  });
+}
+
+async function handleCreateLeaveApplication(req, res) {
+  const user = await requireLeaveWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const employeeId = String(body.employeeId || "").trim();
+  const leaveTypeId = Number(body.leaveTypeId);
+  const dateFrom = String(body.dateFrom || "").trim();
+  const dateTo = String(body.dateTo || "").trim();
+  const daysRequested = Number(body.daysRequested);
+  const reason = String(body.reason || "").trim();
+  if (!employeeId || !Number.isInteger(leaveTypeId) || !dateFrom || !dateTo || !Number.isFinite(daysRequested) || daysRequested <= 0) {
+    return json(res, 400, { error: "Employee, leave type, dates, and days requested are required" });
+  }
+  const employee = await readEmployeeById(employeeId);
+  if (!employee) return json(res, 404, { error: "Employee not found" });
+  const id = crypto.randomUUID();
+  await pool.execute(
+    `INSERT INTO leave_applications (id, employee_id, leave_type_id, date_from, date_to, days_requested, reason, created_by)
+     VALUES (:id, :employeeId, :leaveTypeId, :dateFrom, :dateTo, :daysRequested, :reason, :createdBy)`,
+    { id, employeeId, leaveTypeId, dateFrom, dateTo, daysRequested, reason, createdBy: user.id },
+  );
+  await ensureLeaveBalance(employeeId, leaveTypeId);
+  await logAudit(user.id, "leave.application_create", { id, employeeId, leaveTypeId }, req);
+  return json(res, 201, { application: await readLeaveApplication(id) });
+}
+
+async function handleDecideLeaveApplication(req, res, id) {
+  const user = await requireLeaveWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const status = String(body.status || "").trim();
+  const remarks = String(body.remarks || "").trim();
+  if (!["Approved", "Disapproved", "Cancelled"].includes(status)) {
+    return json(res, 400, { error: "Decision must be Approved, Disapproved, or Cancelled" });
+  }
+  const [[existing]] = await pool.execute(`SELECT * FROM leave_applications WHERE id = :id`, { id });
+  if (!existing) return json(res, 404, { error: "Leave application not found" });
+  if (existing.status === "Approved" && status !== "Approved") {
+    await changeLeaveBalance(existing.employee_id, existing.leave_type_id, -Number(existing.days_requested), "used", Number(existing.days_requested));
+  }
+  if (existing.status !== "Approved" && status === "Approved") {
+    await changeLeaveBalance(existing.employee_id, existing.leave_type_id, Number(existing.days_requested), "used", -Number(existing.days_requested));
+  }
+  await pool.execute(
+    `UPDATE leave_applications
+     SET status = :status, approver_id = :approverId, decision_remarks = :remarks, decided_at = NOW()
+     WHERE id = :id`,
+    { id, status, approverId: user.id, remarks },
+  );
+  await logAudit(user.id, "leave.application_decide", { id, status }, req);
+  return json(res, 200, { application: await readLeaveApplication(id) });
+}
+
+async function handleDeleteLeaveApplication(req, res, id) {
+  const user = await requireLeaveWrite(req, res);
+  if (!user) return;
+  const [[existing]] = await pool.execute(`SELECT * FROM leave_applications WHERE id = :id`, { id });
+  if (!existing) return json(res, 404, { error: "Leave application not found" });
+  if (existing.status === "Approved") {
+    await changeLeaveBalance(existing.employee_id, existing.leave_type_id, -Number(existing.days_requested), "used", Number(existing.days_requested));
+  }
+  await pool.execute(`DELETE FROM leave_applications WHERE id = :id`, { id });
+  await logAudit(user.id, "leave.application_delete", { id }, req);
   return json(res, 200, { ok: true });
 }
 
@@ -1532,6 +2098,10 @@ async function handleCreateBackup(req, res) {
     "salary_grades",
     "employees",
     ...Object.values(EMPLOYEE_SECTION_TABLES).map((config) => config.table),
+    "leave_types",
+    "leave_balances",
+    "leave_applications",
+    "leave_adjustments",
   ];
   const data = {};
 
@@ -1601,6 +2171,15 @@ async function route(req, res) {
   const employeeSectionRowMatch = url.pathname.match(
     /^\/api\/employees\/([A-Za-z0-9-]+)\/sections\/([A-Za-z0-9-]+)\/([A-Za-z0-9-]+)$/,
   );
+  const employeeLeaveMatch = url.pathname.match(/^\/api\/employees\/([A-Za-z0-9-]+)\/leave$/);
+  const employeeLeaveAdjustmentMatch = url.pathname.match(
+    /^\/api\/employees\/([A-Za-z0-9-]+)\/leave\/adjustments$/,
+  );
+  const leaveTypeMatch = url.pathname.match(/^\/api\/leave\/types\/(\d+)$/);
+  const leaveApplicationMatch = url.pathname.match(/^\/api\/leave\/applications\/([A-Za-z0-9-]+)$/);
+  const leaveDecisionMatch = url.pathname.match(
+    /^\/api\/leave\/applications\/([A-Za-z0-9-]+)\/decision$/,
+  );
   const departmentMatch = url.pathname.match(/^\/api\/settings\/departments\/(\d+)$/);
   const positionMatch = url.pathname.match(/^\/api\/settings\/positions\/(\d+)$/);
   const salaryGradeMatch = url.pathname.match(/^\/api\/settings\/salary-grades\/(\d+)$/);
@@ -1641,6 +2220,8 @@ async function route(req, res) {
   if (req.method === "GET" && backupDownloadMatch)
     return handleDownloadBackup(req, res, backupDownloadMatch[1]);
 
+  if (req.method === "GET" && url.pathname === "/api/admin/employee-account-candidates")
+    return handleListEmployeeAccountCandidates(req, res);
   if (req.method === "GET" && url.pathname === "/api/employees")
     return handleListEmployees(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/employees")
@@ -1670,6 +2251,25 @@ async function route(req, res) {
       employeeSectionRowMatch[3],
     );
   }
+  if (req.method === "GET" && employeeLeaveMatch)
+    return handleEmployeeLeave(req, res, employeeLeaveMatch[1]);
+  if (req.method === "POST" && employeeLeaveAdjustmentMatch)
+    return handleCreateLeaveAdjustment(req, res, employeeLeaveAdjustmentMatch[1]);
+
+  if (req.method === "GET" && url.pathname === "/api/leave/types")
+    return handleListLeaveTypes(req, res);
+  if (req.method === "POST" && url.pathname === "/api/leave/types")
+    return handleCreateLeaveType(req, res);
+  if (req.method === "DELETE" && leaveTypeMatch)
+    return handleDeleteLeaveType(req, res, leaveTypeMatch[1]);
+  if (req.method === "GET" && url.pathname === "/api/leave/applications")
+    return handleListLeaveApplications(req, res, url);
+  if (req.method === "POST" && url.pathname === "/api/leave/applications")
+    return handleCreateLeaveApplication(req, res);
+  if (req.method === "POST" && leaveDecisionMatch)
+    return handleDecideLeaveApplication(req, res, leaveDecisionMatch[1]);
+  if (req.method === "DELETE" && leaveApplicationMatch)
+    return handleDeleteLeaveApplication(req, res, leaveApplicationMatch[1]);
 
   if (req.method === "GET" && url.pathname === "/api/settings") return handleGetConfig(req, res);
   if (req.method === "PUT" && url.pathname === "/api/settings/agency")

@@ -1,4 +1,4 @@
-import { Bell, Moon, Sun, Camera, Upload, X, LogOut, User as UserIcon, Menu, LayoutDashboard, Users, FileText, CalendarDays, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
+import { Bell, Moon, Sun, Upload, X, LogOut, User as UserIcon, Menu, LayoutDashboard, Users, FileText, CalendarDays, Settings as SettingsIcon, ShieldCheck, ClipboardCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -49,25 +49,27 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
 
   const handleLogout = async () => {
     await logout();
-    navigate({ to: "/login" });
+    navigate({ to: "/login", search: { redirect: "/" } });
   };
 
   const isActive = (to: string, exact?: boolean) => exact ? path === to : path === to || path.startsWith(to + "/");
 
-  const NAV: { to: "/" | "/employees" | "/leave" | "/reports" | "/settings" | "/self-service"; label: string; icon: typeof LayoutDashboard; exact?: boolean }[] = [
+  const NAV: { to: "/" | "/employees" | "/attendance" | "/leave" | "/reports" | "/settings" | "/self-service" | "/admin"; label: string; icon: typeof LayoutDashboard; exact?: boolean }[] = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
     { to: "/employees", label: "Employees", icon: Users },
-    { to: "/leave", label: "Leave Management", icon: CalendarDays },
+    { to: "/attendance", label: "Attendance", icon: CalendarDays },
+    { to: "/leave", label: "Leave Management", icon: ClipboardCheck },
     { to: "/self-service", label: "Self-Service", icon: UserIcon },
     { to: "/reports", label: "Reports", icon: FileText },
+    { to: "/admin", label: "Administration", icon: ShieldCheck },
     { to: "/settings", label: "Settings", icon: SettingsIcon },
   ];
   const mobileNav = NAV.filter((item) => {
-    if (!user) return false;
-    if (user.role === "Admin") return true;
-    if (item.to === "/" || item.to === "/self-service") return true;
-    if (user.role === "Employee") return false;
-    return item.to !== "/settings";
+    if (user?.role === "Admin") return true;
+    if (user?.role === "HR") return item.to !== "/admin";
+    if (user?.role === "Viewer") return ["/", "/employees", "/reports", "/self-service"].includes(item.to);
+    if (user?.role === "Employee") return ["/", "/self-service"].includes(item.to);
+    return false;
   });
 
   return (

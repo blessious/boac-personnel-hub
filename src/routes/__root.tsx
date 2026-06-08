@@ -101,19 +101,23 @@ function AppLayout() {
   const { user } = useAuth();
   const isLoginPage = location.pathname === "/login";
   const isChangePasswordPage = location.pathname === "/change-password";
-  const authorized = !user || isLoginPage || canAccessPath(user.role, location.pathname);
+  const authorized =
+    !user ||
+    isLoginPage ||
+    isChangePasswordPage ||
+    canAccessPath(user.role, location.pathname, user.employeeId);
 
   useEffect(() => {
     if (!user && !isLoginPage) {
-      navigate({ to: "/login" });
+      navigate({ to: "/login", search: { redirect: "/" }, replace: true });
       return;
     }
     if (user?.mustChangePassword && !isChangePasswordPage) {
-      navigate({ to: "/change-password" });
+      navigate({ to: "/change-password", replace: true });
       return;
     }
-    if (user && !isLoginPage && !canAccessPath(user.role, location.pathname)) {
-      navigate({ to: "/" });
+    if (user && !isLoginPage && !canAccessPath(user.role, location.pathname, user.employeeId)) {
+      navigate({ to: "/", replace: true });
     }
   }, [user, isLoginPage, isChangePasswordPage, location.pathname, navigate]);
 
@@ -139,10 +143,10 @@ function AppLayout() {
   );
 }
 
-function canAccessPath(role: Role, pathname: string) {
+function canAccessPath(role: Role, pathname: string, employeeId?: string) {
   if (role === "Admin") return true;
   if (pathname === "/" || pathname.startsWith("/self-service")) return true;
-  if (role === "Employee") return false;
+  if (role === "Employee") return Boolean(employeeId && pathname === `/employees/${employeeId}`);
   if (pathname.startsWith("/admin") || pathname.startsWith("/settings")) return false;
   return role === "HR" || role === "Viewer";
 }

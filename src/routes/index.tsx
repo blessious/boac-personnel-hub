@@ -1,13 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useState } from "react";
-import { Activity, CalendarCheck, ClipboardList, Users } from "lucide-react";
+import { Activity, ClipboardList, Users } from "lucide-react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   XAxis,
@@ -20,7 +18,9 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { useAuth } from "@/lib/auth";
 import { getDashboard, type DashboardResponse } from "@/lib/employees-api";
+import { SelfServiceHome } from "@/routes/self-service";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -45,11 +45,19 @@ const pieColors = [
 ];
 
 function Dashboard() {
+  const { user } = useAuth();
+  const role = user?.role || "Employee";
   const [data, setData] = useState<DashboardResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(role !== "Employee");
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (role === "Employee") {
+      setLoading(false);
+      setError("");
+      return;
+    }
+
     let alive = true;
     setLoading(true);
     getDashboard()
@@ -65,7 +73,11 @@ function Dashboard() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [role]);
+
+  if (role === "Employee") {
+    return <SelfServiceHome />;
+  }
 
   const cards = [
     {
@@ -94,14 +106,31 @@ function Dashboard() {
     },
   ];
 
+  const sexDistribution = (data?.bySexLevel ?? []).filter((row) => row.male + row.female > 0);
+
   return (
-    <AppShell title="Dashboard" subtitle="STRH HRIS overview">
+    <AppShell title={getDashboardTitle(role)} subtitle={getDashboardSubtitle(role)}>
       {error && (
         <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
+      <div className="mb-5 rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{role} Workspace</div>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">{getWelcomeText(role)}</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{getWelcomeDescription(role)}</p>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Signed in as </span>
+            <span className="font-medium text-foreground">{user?.name}</span>
+          </div>
+        </div>
+      </div>
+
+      <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-3">
         {cards.map((card) => {
           const Icon = card.icon;
@@ -171,7 +200,7 @@ function Dashboard() {
           title="Workforce Age Profile"
           description="Age bands based on recorded birthdays."
           emptyText="No birthday data is available yet."
-          hasData={(data?.byAgeGroup ?? []).length > 0}
+          hasData={(data?.byAgeGroup ?? []).some((row) => row.total > 0)}
         >
           <ChartContainer config={chartConfig} className="h-[280px] w-full">
             <BarChart data={data?.byAgeGroup ?? []} margin={{ left: 0, right: 12, top: 12 }}>
@@ -190,22 +219,30 @@ function Dashboard() {
           title="Sex Distribution by Division"
           description="Compares recorded male and female employees per division."
           emptyText="No sex distribution data is available yet."
-          hasData={(data?.bySexLevel ?? []).length > 0}
+          hasData={sexDistribution.length > 0}
         >
           <ChartContainer config={chartConfig} className="h-[310px] w-full">
-            <BarChart data={data?.bySexLevel ?? []} margin={{ left: 0, right: 12, top: 12 }}>
+            <BarChart
+              data={sexDistribution}
+              layout="vertical"
+              margin={{ left: 12, right: 12, top: 12, bottom: 8 }}
+            >
               <CartesianGrid vertical={false} />
               <XAxis
-                dataKey="department"
+                type="number"
+                allowDecimals={false}
                 tickLine={false}
                 axisLine={false}
                 tickMargin={8}
-                interval={0}
-                angle={-20}
-                textAnchor="end"
-                height={70}
               />
-              <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+              <YAxis
+                dataKey="department"
+                type="category"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                width={150}
+              />
               <ChartTooltip content={<ChartTooltipContent />} />
               <Bar dataKey="male" fill="var(--color-male)" radius={[4, 4, 0, 0]} />
               <Bar dataKey="female" fill="var(--color-female)" radius={[4, 4, 0, 0]} />
@@ -269,8 +306,37 @@ function Dashboard() {
           ])}
         />
       </div>
+      </>
     </AppShell>
   );
+}
+
+function getDashboardTitle(role: string) {
+  if (role === "Admin") return "Administrator Dashboard";
+  if (role === "HR") return "HR Workspace";
+  if (role === "Viewer") return "Viewer Dashboard";
+  return "Employee Portal";
+}
+
+function getDashboardSubtitle(role: string) {
+  if (role === "Admin") return "System controls, HR data, audit, and configuration";
+  if (role === "HR") return "Employee records, leave, attendance, and HR operations";
+  if (role === "Viewer") return "Read-only workforce overview and reports";
+  return "Personal HR services and requests";
+}
+
+function getWelcomeText(role: string) {
+  if (role === "Admin") return "Manage the HRIS platform and keep the records healthy.";
+  if (role === "HR") return "Process personnel records, leave activity, and daily HR work.";
+  if (role === "Viewer") return "Review workforce information without changing official records.";
+  return "Access your personal HR services from one place.";
+}
+
+function getWelcomeDescription(role: string) {
+  if (role === "Admin") return "Your workspace includes user administration, backups, audit logs, setup libraries, and all HR modules.";
+  if (role === "HR") return "Your workspace focuses on 201 files, leave management, attendance preparation, and reporting.";
+  if (role === "Viewer") return "Your access is designed for monitoring and reference, with editing controls hidden.";
+  return "Use self-service for leave requests, profile updates, DTR review, and HR requests as these services are enabled.";
 }
 
 function ChartPanel({
