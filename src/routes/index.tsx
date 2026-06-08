@@ -71,32 +71,24 @@ function Dashboard() {
     {
       label: "Total Employees",
       value: data?.totalEmployees ?? 0,
-      sub: "From MySQL employee records",
+      sub: "Total registered records",
       icon: Users,
       color: "bg-blue-500/10 text-blue-600",
       border: "border-blue-200",
     },
     {
-      label: "Active Employees",
-      value: data?.activeEmployees ?? 0,
-      sub: "Employment status active",
+      label: "Regular Employees",
+      value: data?.regularEmployees ?? 0,
+      sub: "Permanent and Regular",
       icon: Activity,
       color: "bg-emerald-500/10 text-emerald-600",
       border: "border-emerald-200",
     },
     {
-      label: "Inactive Employees",
-      value: data?.inactiveEmployees ?? 0,
-      sub: "Separated or inactive records",
+      label: "Job Order / COS",
+      value: data?.jobOrderEmployees ?? 0,
+      sub: "Job Order, COS, Contractual",
       icon: ClipboardList,
-      color: "bg-rose-500/10 text-rose-600",
-      border: "border-rose-200",
-    },
-    {
-      label: "Leave Metrics",
-      value: "Deferred",
-      sub: "Attendance & Leave not connected",
-      icon: CalendarCheck,
       color: "bg-amber-500/10 text-amber-600",
       border: "border-amber-200",
     },
@@ -110,7 +102,7 @@ function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-3">
         {cards.map((card) => {
           const Icon = card.icon;
           return (
@@ -139,44 +131,7 @@ function Dashboard() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <ChartPanel
-          title="Active vs Inactive by Division"
-          description="Shows staffing concentration and inactive records per division."
-          emptyText="No division data is available yet."
-          hasData={(data?.byDivision ?? []).length > 0}
-        >
-          <ChartContainer config={chartConfig} className="h-[310px] w-full">
-            <BarChart data={data?.byDivision ?? []} margin={{ left: 0, right: 12, top: 12 }}>
-              <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey="department"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                interval={0}
-                angle={-20}
-                textAnchor="end"
-                height={70}
-              />
-              <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar
-                dataKey="filled"
-                name="active"
-                stackId="employees"
-                fill="var(--color-active)"
-                radius={[0, 0, 4, 4]}
-              />
-              <Bar
-                dataKey="unfilled"
-                name="inactive"
-                stackId="employees"
-                fill="var(--color-inactive)"
-                radius={[4, 4, 0, 0]}
-              />
-            </BarChart>
-          </ChartContainer>
-        </ChartPanel>
+
 
         <ChartPanel
           title="Employment Type Mix"
@@ -211,9 +166,7 @@ function Dashboard() {
             }))}
           />
         </ChartPanel>
-      </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
         <ChartPanel
           title="Workforce Age Profile"
           description="Age bands based on recorded birthdays."
@@ -228,30 +181,6 @@ function Dashboard() {
               <ChartTooltip content={<ChartTooltipContent />} />
               <Bar dataKey="total" fill="var(--color-total)" radius={[4, 4, 0, 0]} />
             </BarChart>
-          </ChartContainer>
-        </ChartPanel>
-
-        <ChartPanel
-          title="Hiring Trend"
-          description="Recorded hires by year from date hired or date employed."
-          emptyText="No hiring dates are available yet."
-          hasData={(data?.hiringTrend ?? []).length > 0}
-        >
-          <ChartContainer config={chartConfig} className="h-[280px] w-full">
-            <LineChart data={data?.hiringTrend ?? []} margin={{ left: 0, right: 12, top: 12 }}>
-              <CartesianGrid vertical={false} />
-              <XAxis dataKey="year" tickLine={false} axisLine={false} tickMargin={8} />
-              <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Line
-                type="monotone"
-                dataKey="hired"
-                stroke="var(--color-hired)"
-                strokeWidth={3}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
-              />
-            </LineChart>
           </ChartContainer>
         </ChartPanel>
       </div>
@@ -312,9 +241,6 @@ function Dashboard() {
             row.total,
           ])}
         />
-      </div>
-
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
         <SummaryTable
           title="Distribution by Cadre"
           emptyText="Cadre data will appear after employees are added."
@@ -327,6 +253,9 @@ function Dashboard() {
             row.total,
           ])}
         />
+      </div>
+
+      <div className="mt-6">
         <SummaryTable
           title="Distribution by Position"
           emptyText="Position data will appear after employees are added."

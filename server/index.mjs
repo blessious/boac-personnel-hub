@@ -949,8 +949,8 @@ async function handleDashboard(req, res) {
   const [[totals]] = await pool.query(`
     SELECT
       COUNT(*) AS totalEmployees,
-      SUM(emp_status = 'Active') AS activeEmployees,
-      SUM(emp_status <> 'Active') AS inactiveEmployees
+      SUM(status = 'Permanent' OR status = 'Regular') AS regularEmployees,
+      SUM(status LIKE '%Job Order%' OR status LIKE '%COS%' OR status LIKE '%Contract%') AS jobOrderEmployees
     FROM employees
   `);
 
@@ -1033,8 +1033,8 @@ async function handleDashboard(req, res) {
 
   return json(res, 200, {
     totalEmployees: Number(totals.totalEmployees || 0),
-    activeEmployees: Number(totals.activeEmployees || 0),
-    inactiveEmployees: Number(totals.inactiveEmployees || 0),
+    regularEmployees: Number(totals.regularEmployees || 0),
+    jobOrderEmployees: Number(totals.jobOrderEmployees || 0),
     byDivision: byDivision.map((row) => ({
       department: row.department,
       filled: Number(row.filled || 0),

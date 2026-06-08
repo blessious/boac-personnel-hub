@@ -87,8 +87,8 @@ export type SectionRow = {
 
 export type DashboardResponse = {
   totalEmployees: number;
-  activeEmployees: number;
-  inactiveEmployees: number;
+  regularEmployees: number;
+  jobOrderEmployees: number;
   byDivision: Array<{ department: string; filled: number; unfilled: number; total: number }>;
   bySexLevel: Array<{
     department: string;
