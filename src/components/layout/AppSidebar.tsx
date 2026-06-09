@@ -1,16 +1,35 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, Users, CalendarDays, MonitorSmartphone,
-  BarChart3, ShieldCheck, Settings, ClipboardCheck,
-  LogOut, ChevronLeft, ChevronRight, Stethoscope,
+  LayoutDashboard,
+  Users,
+  CalendarDays,
+  MonitorSmartphone,
+  BarChart3,
+  ShieldCheck,
+  Settings,
+  ClipboardCheck,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  Stethoscope,
+  UserCircle,
 } from "lucide-react";
-import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
-  to: "/" | "/employees" | "/attendance" | "/leave" | "/self-service" | "/reports" | "/admin" | "/settings";
+  to:
+    | "/"
+    | "/employees"
+    | "/attendance"
+    | "/leave"
+    | "/self-service"
+    | "/reports"
+    | "/admin"
+    | "/settings"
+    | "/my-profile"
+    | "/requests";
   label: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
@@ -18,25 +37,30 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  { to: "/my-profile", label: "My Profile", icon: UserCircle },
   { to: "/employees", label: "Employee Management", icon: Users },
   { to: "/attendance", label: "Attendance", icon: CalendarDays },
   { to: "/leave", label: "Leave Management", icon: ClipboardCheck },
   { to: "/self-service", label: "Self-Service Portal", icon: MonitorSmartphone },
+  { to: "/requests", label: "My Requests", icon: ClipboardCheck },
   { to: "/reports", label: "Reports & Analytics", icon: BarChart3 },
   { to: "/admin", label: "System Administration", icon: ShieldCheck },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 function navForRole(role: string | undefined) {
-  if (role === "Admin") return NAV;
+  const employeeOnly = ["/my-profile", "/requests"];
+  if (role === "Admin") return NAV.filter((item) => !employeeOnly.includes(item.to));
   if (role === "HR") {
-    return NAV.filter((item) => !["/admin"].includes(item.to));
+    return NAV.filter((item) => !["/admin", ...employeeOnly].includes(item.to));
   }
   if (role === "Viewer") {
     return NAV.filter((item) => ["/", "/employees", "/reports", "/self-service"].includes(item.to));
   }
   if (role === "Employee") {
-    return NAV.filter((item) => ["/", "/self-service"].includes(item.to));
+    return NAV.filter((item) =>
+      ["/", "/my-profile", "/self-service", "/attendance", "/requests"].includes(item.to),
+    );
   }
   return [];
 }
@@ -58,14 +82,18 @@ export function AppSidebar() {
       )}
     >
       {/* Logo / Header */}
-      <div className={cn(
-        "flex items-center h-16 border-b border-sidebar-border transition-all px-3 gap-2",
-        collapsed && "justify-center"
-      )}>
-        <div className={cn(
-          "grid place-items-center shrink-0 overflow-hidden transition-all",
-          collapsed ? "h-9 w-9" : "h-10 w-10"
-        )}>
+      <div
+        className={cn(
+          "flex items-center h-16 border-b border-sidebar-border transition-all px-3 gap-2",
+          collapsed && "justify-center",
+        )}
+      >
+        <div
+          className={cn(
+            "grid place-items-center shrink-0 overflow-hidden transition-all",
+            collapsed ? "h-9 w-9" : "h-10 w-10",
+          )}
+        >
           {agency.logoUrl ? (
             <img src={agency.logoUrl} alt="Logo" className="h-full w-full object-contain" />
           ) : (
@@ -74,15 +102,19 @@ export function AppSidebar() {
         </div>
         {!collapsed && (
           <div className="leading-tight overflow-hidden flex-1">
-            <div className="font-bold text-[13px] truncate text-foreground">{agency.name || "STRH — HRIS"}</div>
-            <div className="text-[10px] text-muted-foreground truncate">{agency.tagline || "DOH Southern Tagalog"}</div>
+            <div className="font-bold text-[13px] truncate text-foreground">
+              {agency.name || "STRH — HRIS"}
+            </div>
+            <div className="text-[10px] text-muted-foreground truncate">
+              {agency.tagline || "DOH Southern Tagalog"}
+            </div>
           </div>
         )}
         <button
           onClick={toggleSidebar}
           className={cn(
             "h-7 w-7 grid place-items-center rounded-md hover:bg-sidebar-accent text-muted-foreground transition-colors shrink-0",
-            collapsed && "mt-0"
+            collapsed && "mt-0",
           )}
           aria-label="Toggle sidebar"
         >
@@ -112,10 +144,13 @@ export function AppSidebar() {
                 collapsed && "justify-center px-0",
               )}
             >
-              <Icon className={cn("h-[18px] w-[18px] shrink-0", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
-              {!collapsed && (
-                <span className="truncate flex-1">{item.label}</span>
-              )}
+              <Icon
+                className={cn(
+                  "h-[18px] w-[18px] shrink-0",
+                  active ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
+                )}
+              />
+              {!collapsed && <span className="truncate flex-1">{item.label}</span>}
               {active && !collapsed && (
                 <div className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
               )}
@@ -127,7 +162,9 @@ export function AppSidebar() {
       <div className="p-3 border-t border-sidebar-border/50">
         {!collapsed && user && (
           <div className="px-3 py-2 bg-muted/30 rounded-xl mb-2">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Logged in as</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+              Logged in as
+            </div>
             <div className="text-xs text-foreground font-semibold truncate">{user.name}</div>
             <div className="text-[10px] text-muted-foreground">{user.role}</div>
           </div>

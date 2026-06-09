@@ -80,7 +80,13 @@ export function listLeaveApplications(params: { status?: string; q?: string } = 
   if (params.q) query.set("q", params.q);
   return api<{
     applications: LeaveApplication[];
-    summary: { total: number; pending: number; approved: number; disapproved: number; cancelled: number };
+    summary: {
+      total: number;
+      pending: number;
+      approved: number;
+      disapproved: number;
+      cancelled: number;
+    };
   }>(`/api/leave/applications?${query.toString()}`);
 }
 
@@ -98,7 +104,10 @@ export function createLeaveApplication(payload: {
   });
 }
 
-export function decideLeaveApplication(id: string, payload: { status: Exclude<LeaveStatus, "Pending">; remarks: string }) {
+export function decideLeaveApplication(
+  id: string,
+  payload: { status: Exclude<LeaveStatus, "Pending">; remarks: string },
+) {
   return api<{ application: LeaveApplication }>(`/api/leave/applications/${id}/decision`, {
     method: "POST",
     body: JSON.stringify(payload),

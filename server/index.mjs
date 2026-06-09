@@ -16,7 +16,10 @@ function loadServerEnv() {
       const index = trimmed.indexOf("=");
       if (index < 1) continue;
       const key = trimmed.slice(0, index).trim();
-      const value = trimmed.slice(index + 1).trim().replace(/^["']|["']$/g, "");
+      const value = trimmed
+        .slice(index + 1)
+        .trim()
+        .replace(/^["']|["']$/g, "");
       if (!(key in process.env)) process.env[key] = value;
     }
   } catch {
@@ -235,6 +238,15 @@ function sendFile(res, filePath, fileName) {
     "Cache-Control": "no-store",
   });
   createReadStream(filePath).pipe(res);
+}
+
+function sendCsv(res, fileName, csv) {
+  res.writeHead(200, {
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename="${fileName}"`,
+    "Cache-Control": "no-store",
+  });
+  res.end(csv);
 }
 
 function readBody(req) {
@@ -494,6 +506,92 @@ function leaveApplicationRow(row) {
   };
 }
 
+function formatTime(value) {
+  if (!value) return "";
+  if (value instanceof Date) return value.toISOString().slice(11, 16);
+  const text = String(value);
+  if (text === "00:00:00" || text === "00:00") return "";
+  return text.slice(0, 5);
+}
+
+function normalizeTimeInput(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text || text === "00:00" || text === "00:00:00") return null;
+  const match = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) throw new Error("Invalid time format. Use HH:mm.");
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) throw new Error("Invalid time format. Use HH:mm.");
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
+}
+
+function minutesFromTime(value) {
+  if (!value) return null;
+  const [hours, minutes] = String(value).split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
+function calculateAttendanceStats(entry) {
+  const amIn = minutesFromTime(entry.amIn);
+  const amOut = minutesFromTime(entry.amOut);
+  const pmIn = minutesFromTime(entry.pmIn);
+  const pmOut = minutesFromTime(entry.pmOut);
+  const punches = [amIn, amOut, pmIn, pmOut].filter((value) => value !== null);
+
+  let status = "Absent";
+  if (punches.length > 0 && punches.length < 4) status = "Incomplete";
+  if (punches.length === 4) status = "Present";
+
+  const lateMinutes = amIn !== null ? Math.max(0, amIn - 8 * 60) : 0;
+  const undertimeMinutes = pmOut !== null ? Math.max(0, 17 * 60 - pmOut) : 0;
+  if (status === "Present" && lateMinutes > 0) status = "Late";
+  return { status, lateMinutes, undertimeMinutes };
+}
+
+function attendanceDtrRow(row) {
+  return {
+    id: row.id,
+    employeeId: row.employee_id,
+    employeeNo: row.employee_no || "",
+    employeeName: row.employee_name || "",
+    department: row.department || "",
+    position: row.position || "",
+    workDate: normalizeDate(row.work_date),
+    amIn: formatTime(row.am_in),
+    amOut: formatTime(row.am_out),
+    pmIn: formatTime(row.pm_in),
+    pmOut: formatTime(row.pm_out),
+    status: row.status || "Incomplete",
+    lateMinutes: Number(row.late_minutes || 0),
+    undertimeMinutes: Number(row.undertime_minutes || 0),
+    source: row.source || "Imported",
+    remarks: row.remarks || "",
+    locked: Boolean(row.locked),
+    importId: row.import_id || "",
+    editedByName: row.edited_by_name || "",
+    editedAt: row.edited_at || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+  };
+}
+
+function attendanceImportRow(row) {
+  return {
+    id: row.id,
+    source: row.source,
+    fileName: row.file_name || "",
+    periodFrom: normalizeDate(row.period_from),
+    periodTo: normalizeDate(row.period_to),
+    rowCount: Number(row.row_count || 0),
+    status: row.status,
+    notes: row.notes || "",
+    importedByName: row.imported_by_name || "",
+    importedAt: row.imported_at,
+  };
+}
+
 async function requireLeaveRead(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
@@ -573,6 +671,30 @@ async function requireEmployeeWrite(req, res) {
     return null;
   }
   return user;
+}
+
+async function requireAttendanceRead(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  if (!["Admin", "HR", "Viewer", "Employee"].includes(user.role)) {
+    json(res, 403, { error: "Attendance access required" });
+    return null;
+  }
+  return user;
+}
+
+async function requireAttendanceWrite(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  if (!["Admin", "HR"].includes(user.role)) {
+    json(res, 403, { error: "HR attendance access required" });
+    return null;
+  }
+  return user;
+}
+
+function canReadEmployeeAttendance(user, employeeId) {
+  return ["Admin", "HR", "Viewer"].includes(user.role) || user.employeeId === employeeId;
 }
 
 async function readEmployeeById(id) {
@@ -731,7 +853,11 @@ async function initializeDatabase() {
   const nullableEmployeeIdDefinition = employeeIdDefinition.replace(/\s+NOT NULL$/i, " NULL");
 
   await ensureColumn("users", "employee_id", nullableEmployeeIdDefinition);
-  await ensureIndex("users", "uniq_users_employee_id", "UNIQUE KEY uniq_users_employee_id (employee_id)");
+  await ensureIndex(
+    "users",
+    "uniq_users_employee_id",
+    "UNIQUE KEY uniq_users_employee_id (employee_id)",
+  );
   await ensureForeignKey(
     "users",
     "fk_users_employee_id",
@@ -822,6 +948,90 @@ async function initializeDatabase() {
       CONSTRAINT fk_leave_adjustments_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
       CONSTRAINT fk_leave_adjustments_leave_type_id FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE RESTRICT,
       CONSTRAINT fk_leave_adjustments_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS attendance_imports (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      source ENUM('CSV', 'Manual', 'Biometric', 'Legacy') NOT NULL DEFAULT 'CSV',
+      file_name VARCHAR(255) NULL,
+      period_from DATE NULL,
+      period_to DATE NULL,
+      row_count INT UNSIGNED NOT NULL DEFAULT 0,
+      status ENUM('Processing', 'Completed', 'Failed') NOT NULL DEFAULT 'Completed',
+      notes TEXT NULL,
+      imported_by INT UNSIGNED NULL,
+      imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_attendance_imports_period (period_from, period_to),
+      CONSTRAINT fk_attendance_imports_imported_by FOREIGN KEY (imported_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS attendance_logs (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      employee_id ${employeeIdDefinition},
+      punch_at DATETIME NOT NULL,
+      punch_date DATE GENERATED ALWAYS AS (DATE(punch_at)) STORED,
+      source ENUM('CSV', 'Manual', 'Biometric', 'Legacy') NOT NULL DEFAULT 'CSV',
+      source_device VARCHAR(120) NULL,
+      import_id CHAR(36) NULL,
+      raw_payload JSON NULL,
+      created_by INT UNSIGNED NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_attendance_logs_employee_punch (employee_id, punch_at),
+      INDEX idx_attendance_logs_employee_date (employee_id, punch_date),
+      INDEX idx_attendance_logs_import_id (import_id),
+      CONSTRAINT fk_attendance_logs_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      CONSTRAINT fk_attendance_logs_import_id FOREIGN KEY (import_id) REFERENCES attendance_imports(id) ON DELETE SET NULL,
+      CONSTRAINT fk_attendance_logs_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dtr_entries (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      employee_id ${employeeIdDefinition},
+      work_date DATE NOT NULL,
+      am_in TIME NULL,
+      am_out TIME NULL,
+      pm_in TIME NULL,
+      pm_out TIME NULL,
+      status ENUM('Present', 'Late', 'Absent', 'Incomplete', 'Leave', 'Official Business', 'Rest Day', 'Holiday') NOT NULL DEFAULT 'Incomplete',
+      late_minutes INT UNSIGNED NOT NULL DEFAULT 0,
+      undertime_minutes INT UNSIGNED NOT NULL DEFAULT 0,
+      source ENUM('Imported', 'Manual', 'Adjusted') NOT NULL DEFAULT 'Imported',
+      remarks TEXT NULL,
+      locked TINYINT(1) NOT NULL DEFAULT 0,
+      import_id CHAR(36) NULL,
+      edited_by INT UNSIGNED NULL,
+      edited_at DATETIME NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_dtr_entries_employee_date (employee_id, work_date),
+      INDEX idx_dtr_entries_date (work_date),
+      INDEX idx_dtr_entries_status (status),
+      CONSTRAINT fk_dtr_entries_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      CONSTRAINT fk_dtr_entries_import_id FOREIGN KEY (import_id) REFERENCES attendance_imports(id) ON DELETE SET NULL,
+      CONSTRAINT fk_dtr_entries_edited_by FOREIGN KEY (edited_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dtr_export_jobs (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      scope ENUM('Single', 'Mass') NOT NULL,
+      employee_id ${nullableEmployeeIdDefinition},
+      period_from DATE NOT NULL,
+      period_to DATE NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      row_count INT UNSIGNED NOT NULL DEFAULT 0,
+      created_by INT UNSIGNED NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_dtr_export_jobs_period (period_from, period_to),
+      CONSTRAINT fk_dtr_export_jobs_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL,
+      CONSTRAINT fk_dtr_export_jobs_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
 
@@ -1168,7 +1378,12 @@ async function handleCreateUser(req, res) {
        VALUES (:username, :passwordHash, :name, :role, :employeeId, 1)`,
       { username, passwordHash: hashPassword(temporaryPassword), name, role, employeeId },
     );
-    await logAudit(admin.id, "users.create", { userId: result.insertId, username, role, employeeId }, req);
+    await logAudit(
+      admin.id,
+      "users.create",
+      { userId: result.insertId, username, role, employeeId },
+      req,
+    );
     const [rows] = await pool.execute(
       `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password, u.employee_id,
               u.created_at, u.updated_at, e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
@@ -1207,7 +1422,12 @@ async function handleUpdateUser(req, res, id) {
     `UPDATE users SET name = :name, role = :role, employee_id = :employeeId, is_active = :isActive WHERE id = :id`,
     { id, name, role, employeeId, isActive },
   );
-  await logAudit(admin.id, "users.update", { userId: id, role, employeeId, isActive: Boolean(isActive) }, req);
+  await logAudit(
+    admin.id,
+    "users.update",
+    { userId: id, role, employeeId, isActive: Boolean(isActive) },
+    req,
+  );
   const [rows] = await pool.execute(
     `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password, u.employee_id,
             u.created_at, u.updated_at, e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
@@ -1432,6 +1652,605 @@ async function handleListEmployees(req, res, url) {
   });
 }
 
+async function readAttendanceRows({ employeeId, from, to, q = "", limit = 500 }) {
+  const where = [];
+  const params = {};
+  if (employeeId) {
+    where.push("d.employee_id = :employeeId");
+    params.employeeId = employeeId;
+  }
+  if (from) {
+    where.push("d.work_date >= :from");
+    params.from = from;
+  }
+  if (to) {
+    where.push("d.work_date <= :to");
+    params.to = to;
+  }
+  if (q) {
+    where.push(
+      `(e.employee_no LIKE :q OR e.firstname LIKE :q OR e.lastname LIKE :q OR e.department LIKE :q)`,
+    );
+    params.q = `%${q}%`;
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const [rows] = await pool.execute(
+    `SELECT d.*, e.employee_no, e.department, e.position,
+            CONCAT(e.lastname, ', ', e.firstname) AS employee_name,
+            u.name AS edited_by_name
+     FROM dtr_entries d
+     INNER JOIN employees e ON e.id = d.employee_id
+     LEFT JOIN users u ON u.id = d.edited_by
+     ${whereSql}
+     ORDER BY d.work_date DESC, e.lastname ASC, e.firstname ASC
+     LIMIT ${Math.min(2000, Math.max(1, Number(limit || 500)))}`,
+    params,
+  );
+  return rows.map(attendanceDtrRow);
+}
+
+function defaultAttendanceRange(url) {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+  return {
+    from: String(url.searchParams.get("from") || first).slice(0, 10),
+    to: String(url.searchParams.get("to") || last).slice(0, 10),
+  };
+}
+
+function csvEscape(value) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function dtrRowsToCsv(rows) {
+  const headers = [
+    "Employee No",
+    "Employee Name",
+    "Department",
+    "Date",
+    "AM In",
+    "AM Out",
+    "PM In",
+    "PM Out",
+    "Status",
+    "Late Minutes",
+    "Undertime Minutes",
+    "Source",
+    "Remarks",
+  ];
+  const lines = [headers.map(csvEscape).join(",")];
+  for (const row of rows) {
+    lines.push(
+      [
+        row.employeeNo,
+        row.employeeName,
+        row.department,
+        row.workDate,
+        row.amIn,
+        row.amOut,
+        row.pmIn,
+        row.pmOut,
+        row.status,
+        row.lateMinutes,
+        row.undertimeMinutes,
+        row.source,
+        row.remarks,
+      ]
+        .map(csvEscape)
+        .join(","),
+    );
+  }
+  return lines.join("\r\n");
+}
+
+async function resolveAttendanceEmployee(row) {
+  const employeeDbId = String(row.employeeDbId || "").trim();
+  const employeeValue = String(row.employeeId || row.employeeNo || "").trim();
+  if (!employeeDbId && !employeeValue) throw new Error("Employee ID is required");
+
+  const [rows] = await pool.execute(
+    `SELECT id, employee_no, firstname, lastname
+     FROM employees
+     WHERE id = :employeeDbId OR employee_no = :employeeValue
+     LIMIT 1`,
+    { employeeDbId, employeeValue },
+  );
+  if (!rows[0]) throw new Error(`Employee not found: ${employeeValue || employeeDbId}`);
+  return rows[0];
+}
+
+async function insertAttendancePunches(
+  connection,
+  entry,
+  source,
+  importId,
+  userId,
+  rawPayload = null,
+) {
+  const punches = [
+    entry.amIn ? `${entry.workDate} ${entry.amIn}` : null,
+    entry.amOut ? `${entry.workDate} ${entry.amOut}` : null,
+    entry.pmIn ? `${entry.workDate} ${entry.pmIn}` : null,
+    entry.pmOut ? `${entry.workDate} ${entry.pmOut}` : null,
+  ].filter(Boolean);
+
+  for (const punchAt of punches) {
+    await connection.execute(
+      `INSERT INTO attendance_logs (id, employee_id, punch_at, source, import_id, raw_payload, created_by)
+       VALUES (:id, :employeeId, :punchAt, :source, :importId, :rawPayload, :createdBy)
+       ON DUPLICATE KEY UPDATE import_id = COALESCE(import_id, VALUES(import_id))`,
+      {
+        id: crypto.randomUUID(),
+        employeeId: entry.employeeId,
+        punchAt,
+        source,
+        importId,
+        rawPayload: rawPayload ? JSON.stringify(rawPayload) : null,
+        createdBy: userId,
+      },
+    );
+  }
+}
+
+async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true) {
+  const stats = calculateAttendanceStats(entry);
+  const source = entry.source || "Imported";
+  const params = {
+    id: entry.id || crypto.randomUUID(),
+    employeeId: entry.employeeId,
+    workDate: entry.workDate,
+    amIn: entry.amIn || null,
+    amOut: entry.amOut || null,
+    pmIn: entry.pmIn || null,
+    pmOut: entry.pmOut || null,
+    status: entry.status || stats.status,
+    lateMinutes: stats.lateMinutes,
+    undertimeMinutes: stats.undertimeMinutes,
+    source,
+    remarks: entry.remarks || null,
+    importId: entry.importId || null,
+    editedBy: source === "Imported" ? null : userId,
+  };
+  const protectedUpdate = preserveAdjusted
+    ? `am_in = IF(source = 'Imported', VALUES(am_in), am_in),
+       am_out = IF(source = 'Imported', VALUES(am_out), am_out),
+       pm_in = IF(source = 'Imported', VALUES(pm_in), pm_in),
+       pm_out = IF(source = 'Imported', VALUES(pm_out), pm_out),
+       status = IF(source = 'Imported', VALUES(status), status),
+       late_minutes = IF(source = 'Imported', VALUES(late_minutes), late_minutes),
+       undertime_minutes = IF(source = 'Imported', VALUES(undertime_minutes), undertime_minutes),
+       import_id = IF(source = 'Imported', VALUES(import_id), import_id)`
+    : `am_in = VALUES(am_in),
+       am_out = VALUES(am_out),
+       pm_in = VALUES(pm_in),
+       pm_out = VALUES(pm_out),
+       status = VALUES(status),
+       late_minutes = VALUES(late_minutes),
+       undertime_minutes = VALUES(undertime_minutes),
+       source = VALUES(source),
+       remarks = VALUES(remarks),
+       import_id = VALUES(import_id),
+       edited_by = VALUES(edited_by),
+       edited_at = NOW()`;
+
+  await connection.execute(
+    `INSERT INTO dtr_entries (
+       id, employee_id, work_date, am_in, am_out, pm_in, pm_out, status,
+       late_minutes, undertime_minutes, source, remarks, import_id, edited_by, edited_at
+     ) VALUES (
+       :id, :employeeId, :workDate, :amIn, :amOut, :pmIn, :pmOut, :status,
+       :lateMinutes, :undertimeMinutes, :source, :remarks, :importId, :editedBy,
+       IF(:editedBy IS NULL, NULL, NOW())
+     )
+     ON DUPLICATE KEY UPDATE ${protectedUpdate}`,
+    params,
+  );
+}
+
+function deriveDtrFromPunchTimes(times) {
+  const sorted = [...new Set(times)].sort();
+  const toMinutes = (value) => minutesFromTime(value);
+  const morning = [];
+  const lunch = [];
+  const afternoon = [];
+
+  for (const time of sorted) {
+    const minutes = toMinutes(time);
+    if (minutes === null) continue;
+    if (minutes < 12 * 60) morning.push(time);
+    else if (minutes < 13 * 60) lunch.push(time);
+    else afternoon.push(time);
+  }
+
+  let amIn = "";
+  let amOut = "";
+  let pmIn = "";
+  let pmOut = "";
+
+  if (morning.length) {
+    amIn = morning[0];
+    amOut = lunch[0] || (morning.length > 1 ? morning[morning.length - 1] : "");
+  }
+
+  if (morning.length) {
+    if (lunch.length > 1) pmIn = lunch[lunch.length - 1];
+    else if (afternoon.length > 1) pmIn = afternoon[0];
+    else if (afternoon.length === 1) {
+      const value = toMinutes(afternoon[0]);
+      pmIn = Math.abs(value - 13 * 60) < Math.abs(value - 17 * 60) ? afternoon[0] : "";
+      pmOut = pmIn ? "" : afternoon[0];
+    }
+  } else if (lunch.length > 1) {
+    amOut = lunch[0];
+    pmIn = lunch[lunch.length - 1];
+  } else if (lunch.length === 1) {
+    pmIn = lunch[0];
+  } else if (afternoon.length > 1) {
+    pmIn = afternoon[0];
+  } else if (afternoon.length === 1) {
+    const value = toMinutes(afternoon[0]);
+    pmIn = Math.abs(value - 13 * 60) < Math.abs(value - 17 * 60) ? afternoon[0] : "";
+    pmOut = pmIn ? "" : afternoon[0];
+  }
+
+  if (!pmOut && afternoon.length) {
+    const candidate = afternoon[afternoon.length - 1];
+    if (!pmIn || candidate > pmIn) pmOut = candidate;
+  }
+
+  return {
+    amIn: amIn ? normalizeTimeInput(amIn) : null,
+    amOut: amOut ? normalizeTimeInput(amOut) : null,
+    pmIn: pmIn ? normalizeTimeInput(pmIn) : null,
+    pmOut: pmOut ? normalizeTimeInput(pmOut) : null,
+  };
+}
+
+async function refreshDtrEntries({ employeeId, from, to, userId }) {
+  const where = [];
+  const params = {};
+  if (employeeId) {
+    where.push("employee_id = :employeeId");
+    params.employeeId = employeeId;
+  }
+  if (from) {
+    where.push("punch_date >= :from");
+    params.from = from;
+  }
+  if (to) {
+    where.push("punch_date <= :to");
+    params.to = to;
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const [logs] = await pool.execute(
+    `SELECT employee_id, DATE_FORMAT(punch_date, '%Y-%m-%d') AS work_date,
+            TIME_FORMAT(punch_at, '%H:%i:%s') AS punch_time
+     FROM attendance_logs
+     ${whereSql}
+     ORDER BY employee_id, punch_at`,
+    params,
+  );
+
+  const grouped = new Map();
+  for (const log of logs) {
+    const key = `${log.employee_id}:${log.work_date}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, { employeeId: log.employee_id, workDate: log.work_date, times: [] });
+    }
+    grouped.get(key).times.push(log.punch_time);
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    for (const group of grouped.values()) {
+      const entry = deriveDtrFromPunchTimes(group.times);
+      await upsertDtrEntry(
+        connection,
+        { employeeId: group.employeeId, workDate: group.workDate, ...entry, source: "Imported" },
+        userId,
+        true,
+      );
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  return { recordsProcessed: grouped.size, punchesProcessed: logs.length };
+}
+
+async function handleListDtrEntries(req, res, url) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  const { from, to } = defaultAttendanceRange(url);
+  let employeeId = String(url.searchParams.get("employeeId") || "").trim();
+  const q = String(url.searchParams.get("q") || "").trim();
+
+  if (user.role === "Employee") {
+    if (!user.employeeId)
+      return json(res, 400, { error: "No employee record linked to this user" });
+    employeeId = user.employeeId;
+  }
+  if (employeeId && !canReadEmployeeAttendance(user, employeeId)) {
+    return json(res, 403, { error: "You can only view your own DTR" });
+  }
+
+  const rows = await readAttendanceRows({ employeeId, from, to, q });
+  const [imports] = await pool.execute(
+    `SELECT ai.*, u.name AS imported_by_name
+     FROM attendance_imports ai
+     LEFT JOIN users u ON u.id = ai.imported_by
+     ORDER BY ai.imported_at DESC
+     LIMIT 8`,
+  );
+
+  return json(res, 200, {
+    entries: rows,
+    imports: imports.map(attendanceImportRow),
+    summary: {
+      total: rows.length,
+      present: rows.filter((row) => row.status === "Present" || row.status === "Late").length,
+      incomplete: rows.filter((row) => row.status === "Incomplete").length,
+      lateMinutes: rows.reduce((sum, row) => sum + row.lateMinutes, 0),
+    },
+  });
+}
+
+async function handleImportDtr(req, res) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const rows = Array.isArray(body.rows) ? body.rows : [];
+  if (!rows.length) return json(res, 400, { error: "No DTR rows found to import" });
+
+  const importId = crypto.randomUUID();
+  const source = ["CSV", "Legacy"].includes(body.source) ? body.source : "CSV";
+  let imported = 0;
+  const errors = [];
+  const dates = [];
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    await connection.execute(
+      `INSERT INTO attendance_imports (id, source, file_name, row_count, status, notes, imported_by)
+       VALUES (:id, :source, :fileName, 0, 'Processing', :notes, :importedBy)`,
+      {
+        id: importId,
+        source,
+        fileName: String(body.fileName || "DTR import").slice(0, 255),
+        notes: body.notes ? String(body.notes) : null,
+        importedBy: user.id,
+      },
+    );
+
+    for (const [index, row] of rows.entries()) {
+      try {
+        const employee = await resolveAttendanceEmployee(row);
+        const workDate = normalizeDate(row.workDate || row.date);
+        if (!workDate) throw new Error("Date is required");
+        const entry = {
+          employeeId: employee.id,
+          workDate,
+          amIn: normalizeTimeInput(row.amIn || row.am_in),
+          amOut: normalizeTimeInput(row.amOut || row.am_out),
+          pmIn: normalizeTimeInput(row.pmIn || row.pm_in),
+          pmOut: normalizeTimeInput(row.pmOut || row.pm_out),
+          remarks: row.remarks || "",
+          source: "Imported",
+          importId,
+        };
+        await insertAttendancePunches(connection, entry, source, importId, user.id, row);
+        await upsertDtrEntry(connection, entry, user.id, true);
+        dates.push(workDate);
+        imported++;
+      } catch (error) {
+        errors.push(`Row ${index + 1}: ${error.message}`);
+      }
+    }
+
+    await connection.execute(
+      `UPDATE attendance_imports
+       SET row_count = :rowCount,
+           status = :status,
+           period_from = :periodFrom,
+           period_to = :periodTo,
+           notes = :notes
+       WHERE id = :id`,
+      {
+        id: importId,
+        rowCount: imported,
+        status: errors.length && !imported ? "Failed" : "Completed",
+        periodFrom: dates.length ? dates.sort()[0] : null,
+        periodTo: dates.length ? dates.sort()[dates.length - 1] : null,
+        notes: errors.length ? errors.slice(0, 10).join("\n") : body.notes || null,
+      },
+    );
+
+    await connection.commit();
+    await logAudit(
+      user.id,
+      "attendance.import",
+      { importId, imported, errors: errors.length },
+      req,
+    );
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  return json(res, imported ? 200 : 400, { importId, imported, errors });
+}
+
+async function handleRefreshDtr(req, res) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const employeeId = String(body.employeeId || "").trim();
+  const from = normalizeDate(body.from);
+  const to = normalizeDate(body.to);
+  const result = await refreshDtrEntries({
+    employeeId: employeeId || "",
+    from,
+    to,
+    userId: user.id,
+  });
+  await logAudit(user.id, "attendance.refresh", { employeeId, from, to, ...result }, req);
+  return json(res, 200, result);
+}
+
+async function handleCreateDtrEntry(req, res) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const employee = await resolveAttendanceEmployee(body);
+  const workDate = normalizeDate(body.workDate || body.date);
+  if (!workDate) return json(res, 400, { error: "Date is required" });
+
+  const entry = {
+    employeeId: employee.id,
+    workDate,
+    amIn: normalizeTimeInput(body.amIn || body.am_in),
+    amOut: normalizeTimeInput(body.amOut || body.am_out),
+    pmIn: normalizeTimeInput(body.pmIn || body.pm_in),
+    pmOut: normalizeTimeInput(body.pmOut || body.pm_out),
+    status: body.status,
+    remarks: body.remarks || "",
+    source: "Manual",
+  };
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await upsertDtrEntry(connection, entry, user.id, false);
+    await insertAttendancePunches(connection, entry, "Manual", null, user.id, body);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  const [rows] = await readAttendanceRows({
+    employeeId: employee.id,
+    from: workDate,
+    to: workDate,
+    limit: 1,
+  });
+  await logAudit(user.id, "attendance.dtr.create", { employeeId: employee.id, workDate }, req);
+  return json(res, 201, { entry: rows });
+}
+
+async function handleUpdateDtrEntry(req, res, id) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const [existingRows] = await pool.execute(`SELECT * FROM dtr_entries WHERE id = :id LIMIT 1`, {
+    id,
+  });
+  if (!existingRows[0]) return json(res, 404, { error: "DTR entry not found" });
+  if (existingRows[0].locked)
+    return json(res, 409, { error: "Locked DTR entries cannot be edited" });
+
+  const existing = existingRows[0];
+  const entry = {
+    employeeId: existing.employee_id,
+    workDate: normalizeDate(body.workDate || body.date || existing.work_date),
+    amIn: normalizeTimeInput(body.amIn ?? body.am_in ?? existing.am_in),
+    amOut: normalizeTimeInput(body.amOut ?? body.am_out ?? existing.am_out),
+    pmIn: normalizeTimeInput(body.pmIn ?? body.pm_in ?? existing.pm_in),
+    pmOut: normalizeTimeInput(body.pmOut ?? body.pm_out ?? existing.pm_out),
+  };
+  const stats = calculateAttendanceStats(entry);
+  await pool.execute(
+    `UPDATE dtr_entries
+     SET work_date = :workDate, am_in = :amIn, am_out = :amOut, pm_in = :pmIn, pm_out = :pmOut,
+         status = :status, late_minutes = :lateMinutes, undertime_minutes = :undertimeMinutes,
+         source = 'Adjusted', remarks = :remarks, edited_by = :editedBy, edited_at = NOW()
+     WHERE id = :id`,
+    {
+      id,
+      ...entry,
+      status: body.status || stats.status,
+      lateMinutes: stats.lateMinutes,
+      undertimeMinutes: stats.undertimeMinutes,
+      remarks: body.remarks || "",
+      editedBy: user.id,
+    },
+  );
+  await logAudit(user.id, "attendance.dtr.update", { id }, req);
+  const [rows] = await readAttendanceRows({
+    employeeId: existing.employee_id,
+    from: entry.workDate,
+    to: entry.workDate,
+    limit: 1,
+  });
+  return json(res, 200, { entry: rows });
+}
+
+async function handleDeleteDtrEntry(req, res, id) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const [existingRows] = await pool.execute(`SELECT * FROM dtr_entries WHERE id = :id LIMIT 1`, {
+    id,
+  });
+  if (!existingRows[0]) return json(res, 404, { error: "DTR entry not found" });
+  if (existingRows[0].locked)
+    return json(res, 409, { error: "Locked DTR entries cannot be deleted" });
+  await pool.execute(`DELETE FROM dtr_entries WHERE id = :id`, { id });
+  await logAudit(user.id, "attendance.dtr.delete", { id }, req);
+  return json(res, 200, { ok: true });
+}
+
+async function handleExportDtr(req, res, url, mass = false) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  const { from, to } = defaultAttendanceRange(url);
+  let employeeId = String(url.searchParams.get("employeeId") || "").trim();
+
+  if (user.role === "Employee") {
+    if (!user.employeeId)
+      return json(res, 400, { error: "No employee record linked to this user" });
+    employeeId = user.employeeId;
+  }
+  if (mass && user.role === "Employee")
+    return json(res, 403, { error: "Mass export requires HR access" });
+  if (employeeId && !canReadEmployeeAttendance(user, employeeId)) {
+    return json(res, 403, { error: "You can only export your own DTR" });
+  }
+
+  const rows = await readAttendanceRows({
+    employeeId: mass ? "" : employeeId,
+    from,
+    to,
+    limit: 2000,
+  });
+  const fileName = `${mass ? "mass-dtr" : "dtr"}-${from}-to-${to}.csv`;
+  await pool.execute(
+    `INSERT INTO dtr_export_jobs (id, scope, employee_id, period_from, period_to, file_name, row_count, created_by)
+     VALUES (:id, :scope, :employeeId, :from, :to, :fileName, :rowCount, :createdBy)`,
+    {
+      id: crypto.randomUUID(),
+      scope: mass ? "Mass" : "Single",
+      employeeId: mass ? null : employeeId || null,
+      from,
+      to,
+      fileName,
+      rowCount: rows.length,
+      createdBy: user.id,
+    },
+  );
+  return sendCsv(res, fileName, dtrRowsToCsv(rows));
+}
+
 async function handleListEmployeeAccountCandidates(req, res) {
   const user = await requireAdmin(req, res);
   if (!user) return;
@@ -1637,11 +2456,9 @@ async function handleDeleteSectionRow(req, res, employeeId, section, rowId) {
 }
 
 async function handleListLeaveTypes(req, res) {
-  const user = await requireLeaveRead(req, res);
+  const user = await requireUser(req, res);
   if (!user) return;
-  const [rows] = await pool.query(
-    `SELECT * FROM leave_types ORDER BY sort_order ASC, name ASC`,
-  );
+  const [rows] = await pool.query(`SELECT * FROM leave_types ORDER BY sort_order ASC, name ASC`);
   return json(res, 200, { leaveTypes: rows.map(leaveTypeRow) });
 }
 
@@ -1649,7 +2466,9 @@ async function handleCreateLeaveType(req, res) {
   const user = await requireLeaveWrite(req, res);
   if (!user) return;
   const body = await readBody(req);
-  const code = String(body.code || "").trim().toUpperCase();
+  const code = String(body.code || "")
+    .trim()
+    .toUpperCase();
   const name = String(body.name || "").trim();
   const isPaid = body.isPaid === false ? 0 : 1;
   if (!code || !name) return json(res, 400, { error: "Code and name are required" });
@@ -1661,10 +2480,18 @@ async function handleCreateLeaveType(req, res) {
     );
     await logAudit(user.id, "leave.type_create", { code, name }, req);
     return json(res, 201, {
-      leaveType: { id: result.insertId, code, name, isPaid: Boolean(isPaid), isActive: true, sortOrder: Number(body.sortOrder || 0) },
+      leaveType: {
+        id: result.insertId,
+        code,
+        name,
+        isPaid: Boolean(isPaid),
+        isActive: true,
+        sortOrder: Number(body.sortOrder || 0),
+      },
     });
   } catch (error) {
-    if (error?.code === "ER_DUP_ENTRY") return json(res, 409, { error: "Leave type already exists" });
+    if (error?.code === "ER_DUP_ENTRY")
+      return json(res, 409, { error: "Leave type already exists" });
     throw error;
   }
 }
@@ -1773,7 +2600,9 @@ async function handleListLeaveApplications(req, res, url) {
     params.status = status;
   }
   if (q) {
-    where.push(`(e.employee_no LIKE :q OR e.firstname LIKE :q OR e.lastname LIKE :q OR e.department LIKE :q)`);
+    where.push(
+      `(e.employee_no LIKE :q OR e.firstname LIKE :q OR e.lastname LIKE :q OR e.department LIKE :q)`,
+    );
     params.q = `%${q}%`;
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
@@ -1812,7 +2641,7 @@ async function handleListLeaveApplications(req, res, url) {
 }
 
 async function handleCreateLeaveApplication(req, res) {
-  const user = await requireLeaveWrite(req, res);
+  const user = await requireUser(req, res);
   if (!user) return;
   const body = await readBody(req);
   const employeeId = String(body.employeeId || "").trim();
@@ -1821,8 +2650,20 @@ async function handleCreateLeaveApplication(req, res) {
   const dateTo = String(body.dateTo || "").trim();
   const daysRequested = Number(body.daysRequested);
   const reason = String(body.reason || "").trim();
-  if (!employeeId || !Number.isInteger(leaveTypeId) || !dateFrom || !dateTo || !Number.isFinite(daysRequested) || daysRequested <= 0) {
-    return json(res, 400, { error: "Employee, leave type, dates, and days requested are required" });
+  if (
+    !employeeId ||
+    !Number.isInteger(leaveTypeId) ||
+    !dateFrom ||
+    !dateTo ||
+    !Number.isFinite(daysRequested) ||
+    daysRequested <= 0
+  ) {
+    return json(res, 400, {
+      error: "Employee, leave type, dates, and days requested are required",
+    });
+  }
+  if (!["Admin", "HR"].includes(user.role) && user.employeeId !== employeeId) {
+    return json(res, 403, { error: "You can only file leave for your own employee record" });
   }
   const employee = await readEmployeeById(employeeId);
   if (!employee) return json(res, 404, { error: "Employee not found" });
@@ -1846,13 +2687,27 @@ async function handleDecideLeaveApplication(req, res, id) {
   if (!["Approved", "Disapproved", "Cancelled"].includes(status)) {
     return json(res, 400, { error: "Decision must be Approved, Disapproved, or Cancelled" });
   }
-  const [[existing]] = await pool.execute(`SELECT * FROM leave_applications WHERE id = :id`, { id });
+  const [[existing]] = await pool.execute(`SELECT * FROM leave_applications WHERE id = :id`, {
+    id,
+  });
   if (!existing) return json(res, 404, { error: "Leave application not found" });
   if (existing.status === "Approved" && status !== "Approved") {
-    await changeLeaveBalance(existing.employee_id, existing.leave_type_id, -Number(existing.days_requested), "used", Number(existing.days_requested));
+    await changeLeaveBalance(
+      existing.employee_id,
+      existing.leave_type_id,
+      -Number(existing.days_requested),
+      "used",
+      Number(existing.days_requested),
+    );
   }
   if (existing.status !== "Approved" && status === "Approved") {
-    await changeLeaveBalance(existing.employee_id, existing.leave_type_id, Number(existing.days_requested), "used", -Number(existing.days_requested));
+    await changeLeaveBalance(
+      existing.employee_id,
+      existing.leave_type_id,
+      Number(existing.days_requested),
+      "used",
+      -Number(existing.days_requested),
+    );
   }
   await pool.execute(
     `UPDATE leave_applications
@@ -1867,10 +2722,18 @@ async function handleDecideLeaveApplication(req, res, id) {
 async function handleDeleteLeaveApplication(req, res, id) {
   const user = await requireLeaveWrite(req, res);
   if (!user) return;
-  const [[existing]] = await pool.execute(`SELECT * FROM leave_applications WHERE id = :id`, { id });
+  const [[existing]] = await pool.execute(`SELECT * FROM leave_applications WHERE id = :id`, {
+    id,
+  });
   if (!existing) return json(res, 404, { error: "Leave application not found" });
   if (existing.status === "Approved") {
-    await changeLeaveBalance(existing.employee_id, existing.leave_type_id, -Number(existing.days_requested), "used", Number(existing.days_requested));
+    await changeLeaveBalance(
+      existing.employee_id,
+      existing.leave_type_id,
+      -Number(existing.days_requested),
+      "used",
+      Number(existing.days_requested),
+    );
   }
   await pool.execute(`DELETE FROM leave_applications WHERE id = :id`, { id });
   await logAudit(user.id, "leave.application_delete", { id }, req);
@@ -2180,6 +3043,7 @@ async function route(req, res) {
   const leaveDecisionMatch = url.pathname.match(
     /^\/api\/leave\/applications\/([A-Za-z0-9-]+)\/decision$/,
   );
+  const dtrEntryMatch = url.pathname.match(/^\/api\/attendance\/dtr\/([A-Za-z0-9-]+)$/);
   const departmentMatch = url.pathname.match(/^\/api\/settings\/departments\/(\d+)$/);
   const positionMatch = url.pathname.match(/^\/api\/settings\/positions\/(\d+)$/);
   const salaryGradeMatch = url.pathname.match(/^\/api\/settings\/salary-grades\/(\d+)$/);
@@ -2270,6 +3134,23 @@ async function route(req, res) {
     return handleDecideLeaveApplication(req, res, leaveDecisionMatch[1]);
   if (req.method === "DELETE" && leaveApplicationMatch)
     return handleDeleteLeaveApplication(req, res, leaveApplicationMatch[1]);
+
+  if (req.method === "GET" && url.pathname === "/api/attendance/dtr")
+    return handleListDtrEntries(req, res, url);
+  if (req.method === "POST" && url.pathname === "/api/attendance/dtr")
+    return handleCreateDtrEntry(req, res);
+  if (req.method === "PATCH" && dtrEntryMatch)
+    return handleUpdateDtrEntry(req, res, dtrEntryMatch[1]);
+  if (req.method === "DELETE" && dtrEntryMatch)
+    return handleDeleteDtrEntry(req, res, dtrEntryMatch[1]);
+  if (req.method === "POST" && url.pathname === "/api/attendance/import")
+    return handleImportDtr(req, res);
+  if (req.method === "POST" && url.pathname === "/api/attendance/refresh")
+    return handleRefreshDtr(req, res);
+  if (req.method === "GET" && url.pathname === "/api/attendance/export")
+    return handleExportDtr(req, res, url, false);
+  if (req.method === "GET" && url.pathname === "/api/attendance/export/mass")
+    return handleExportDtr(req, res, url, true);
 
   if (req.method === "GET" && url.pathname === "/api/settings") return handleGetConfig(req, res);
   if (req.method === "PUT" && url.pathname === "/api/settings/agency")

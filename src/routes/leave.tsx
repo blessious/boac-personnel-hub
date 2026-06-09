@@ -1,15 +1,27 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Check, FilePlus2, Plus, Search, X } from "lucide-react";
+import { Check, ClipboardCheck, FilePlus2, Plus, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
@@ -45,10 +57,21 @@ function LeavePage() {
   const [applications, setApplications] = useState<LeaveApplication[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
-  const [summary, setSummary] = useState({ total: 0, pending: 0, approved: 0, disapproved: 0, cancelled: 0 });
+  const [summary, setSummary] = useState({
+    total: 0,
+    pending: 0,
+    approved: 0,
+    disapproved: 0,
+    cancelled: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [showApplication, setShowApplication] = useState(false);
   const [showType, setShowType] = useState(false);
+  const [decision, setDecision] = useState<{
+    application: LeaveApplication;
+    status: Exclude<LeaveStatus, "Pending">;
+    remarks: string;
+  } | null>(null);
   const [applicationForm, setApplicationForm] = useState({
     employeeId: "",
     leaveTypeId: "",
@@ -92,7 +115,14 @@ function LeavePage() {
       });
       toast.success("Leave application recorded");
       setShowApplication(false);
-      setApplicationForm({ employeeId: "", leaveTypeId: "", dateFrom: "", dateTo: "", daysRequested: "", reason: "" });
+      setApplicationForm({
+        employeeId: "",
+        leaveTypeId: "",
+        dateFrom: "",
+        dateTo: "",
+        daysRequested: "",
+        reason: "",
+      });
       load();
     } catch (error) {
       toast.error((error as Error).message);
@@ -115,12 +145,15 @@ function LeavePage() {
     }
   };
 
-  const decide = async (application: LeaveApplication, nextStatus: Exclude<LeaveStatus, "Pending">) => {
-    const remarks = window.prompt(`${nextStatus} remarks`, application.decisionRemarks || "");
-    if (remarks === null) return;
+  const submitDecision = async () => {
+    if (!decision) return;
     try {
-      await decideLeaveApplication(application.id, { status: nextStatus, remarks });
-      toast.success(`Leave ${nextStatus.toLowerCase()}`);
+      await decideLeaveApplication(decision.application.id, {
+        status: decision.status,
+        remarks: decision.remarks,
+      });
+      toast.success(`Leave ${decision.status.toLowerCase()}`);
+      setDecision(null);
       load();
     } catch (error) {
       toast.error((error as Error).message);
@@ -128,7 +161,8 @@ function LeavePage() {
   };
 
   const remove = async (application: LeaveApplication) => {
-    if (!window.confirm("Delete this leave application? Approved leave credits will be restored.")) return;
+    if (!window.confirm("Delete this leave application? Approved leave credits will be restored."))
+      return;
     try {
       await deleteLeaveApplication(application.id);
       toast.success("Leave application deleted");
@@ -139,16 +173,16 @@ function LeavePage() {
   };
 
   return (
-    <AppShell title="Leave Management" subtitle="Leave applications, approvals, and credit libraries">
+    <AppShell title="HR Approvals" subtitle="Review, approve, and track employee leave requests">
       <div className="mb-4 grid gap-3 md:grid-cols-4">
-        <SummaryCard label="Pending" value={summary.pending} tone="amber" />
-        <SummaryCard label="Approved" value={summary.approved} tone="emerald" />
-        <SummaryCard label="Disapproved" value={summary.disapproved} tone="rose" />
-        <SummaryCard label="Total Applications" value={summary.total} tone="blue" />
+        <SummaryCard label="Pending" value={summary.pending} />
+        <SummaryCard label="Approved" value={summary.approved} />
+        <SummaryCard label="Disapproved" value={summary.disapproved} />
+        <SummaryCard label="Total" value={summary.total} />
       </div>
 
       <div className="rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center">
+        <div className="flex flex-col gap-3 border-b border-border p-4 xl:flex-row xl:items-center">
           <div className="relative max-w-sm flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -158,22 +192,30 @@ function LeavePage() {
               onChange={(event) => setQ(event.target.value)}
             />
           </div>
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-full lg:w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Pending">Pending</SelectItem>
-              <SelectItem value="Approved">Approved</SelectItem>
-              <SelectItem value="Disapproved">Disapproved</SelectItem>
-              <SelectItem value="Cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex overflow-x-auto rounded-lg bg-muted/50 p-1">
+            {(["all", "Pending", "Approved", "Disapproved", "Cancelled"] as const).map((item) => (
+              <button
+                key={item}
+                onClick={() => setStatus(item)}
+                className={cn(
+                  "whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  status === item
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {item === "all" ? "All" : item}
+              </button>
+            ))}
+          </div>
           <Button variant="outline" disabled={!canEdit} onClick={() => setShowType(true)}>
             <Plus className="mr-1.5 h-4 w-4" /> Leave Type
           </Button>
-          <Button disabled={!canEdit} onClick={() => setShowApplication(true)} className="bg-blue-600 text-white hover:bg-blue-700">
+          <Button
+            disabled={!canEdit}
+            onClick={() => setShowApplication(true)}
+            className="bg-blue-600 text-white hover:bg-blue-700"
+          >
             <FilePlus2 className="mr-1.5 h-4 w-4" /> File Leave
           </Button>
         </div>
@@ -193,40 +235,96 @@ function LeavePage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">Loading leave records...</td></tr>
-              ) : applications.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">No leave applications found.</td></tr>
-              ) : applications.map((application, index) => (
-                <tr key={application.id} className={cn("border-b border-border/50 last:border-0 hover:bg-muted/40", index % 2 === 1 && "bg-muted/10")}>
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{application.employeeName}</div>
-                    <div className="text-xs text-muted-foreground">{application.employeeNo} · {application.department}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{application.leaveName}</div>
-                    <div className="text-xs text-muted-foreground">{application.leaveCode}</div>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{application.dateFrom} to {application.dateTo}</td>
-                  <td className="px-4 py-3 font-medium">{formatNumber(application.daysRequested)}</td>
-                  <td className="max-w-[220px] truncate px-4 py-3 text-muted-foreground">{application.reason || "-"}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant="outline" className={STATUS_COLOR[application.status]}>{application.status}</Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="inline-flex gap-1">
-                      <Button size="sm" variant="outline" disabled={!canEdit || application.status === "Approved"} onClick={() => decide(application, "Approved")} className="h-8 px-2">
-                        <Check className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={!canEdit || application.status === "Disapproved"} onClick={() => decide(application, "Disapproved")} className="h-8 px-2">
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={!canEdit} onClick={() => remove(application)} className="h-8 px-2 text-destructive hover:text-destructive">
-                        Delete
-                      </Button>
-                    </div>
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                    Loading leave records...
                   </td>
                 </tr>
-              ))}
+              ) : applications.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                    No leave applications found.
+                  </td>
+                </tr>
+              ) : (
+                applications.map((application, index) => (
+                  <tr
+                    key={application.id}
+                    className={cn(
+                      "border-b border-border/50 last:border-0 hover:bg-muted/40",
+                      index % 2 === 1 && "bg-muted/10",
+                    )}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{application.employeeName}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {application.employeeNo} · {application.department}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{application.leaveName}</div>
+                      <div className="text-xs text-muted-foreground">{application.leaveCode}</div>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {application.dateFrom} to {application.dateTo}
+                    </td>
+                    <td className="px-4 py-3 font-medium">
+                      {formatNumber(application.daysRequested)}
+                    </td>
+                    <td className="max-w-[220px] truncate px-4 py-3 text-muted-foreground">
+                      {application.reason || "-"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant="outline" className={STATUS_COLOR[application.status]}>
+                        {application.status}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="inline-flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canEdit || application.status === "Approved"}
+                          onClick={() =>
+                            setDecision({
+                              application,
+                              status: "Approved",
+                              remarks: application.decisionRemarks || "",
+                            })
+                          }
+                          className="h-8 px-2"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canEdit || application.status === "Disapproved"}
+                          onClick={() =>
+                            setDecision({
+                              application,
+                              status: "Disapproved",
+                              remarks: application.decisionRemarks || "",
+                            })
+                          }
+                          className="h-8 px-2"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canEdit}
+                          onClick={() => remove(application)}
+                          className="h-8 px-2 text-destructive hover:text-destructive"
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -234,11 +332,20 @@ function LeavePage() {
 
       <Dialog open={showApplication} onOpenChange={setShowApplication}>
         <DialogContent className="sm:max-w-2xl">
-          <DialogHeader><DialogTitle>File Leave Application</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>File Leave Application</DialogTitle>
+          </DialogHeader>
           <div className="grid gap-3 py-2 md:grid-cols-2">
             <Field label="Employee">
-              <Select value={applicationForm.employeeId} onValueChange={(value) => setApplicationForm({ ...applicationForm, employeeId: value })}>
-                <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
+              <Select
+                value={applicationForm.employeeId}
+                onValueChange={(value) =>
+                  setApplicationForm({ ...applicationForm, employeeId: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select employee" />
+                </SelectTrigger>
                 <SelectContent>
                   {employees.map((employee) => (
                     <SelectItem key={employee.id} value={employee.id}>
@@ -249,36 +356,137 @@ function LeavePage() {
               </Select>
             </Field>
             <Field label="Leave Type">
-              <Select value={applicationForm.leaveTypeId} onValueChange={(value) => setApplicationForm({ ...applicationForm, leaveTypeId: value })}>
-                <SelectTrigger><SelectValue placeholder="Select leave type" /></SelectTrigger>
+              <Select
+                value={applicationForm.leaveTypeId}
+                onValueChange={(value) =>
+                  setApplicationForm({ ...applicationForm, leaveTypeId: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select leave type" />
+                </SelectTrigger>
                 <SelectContent>
-                  {activeLeaveTypes.map((type) => <SelectItem key={type.id} value={String(type.id)}>{type.name}</SelectItem>)}
+                  {activeLeaveTypes.map((type) => (
+                    <SelectItem key={type.id} value={String(type.id)}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Date From"><Input type="date" value={applicationForm.dateFrom} onChange={(e) => setApplicationForm({ ...applicationForm, dateFrom: e.target.value })} /></Field>
-            <Field label="Date To"><Input type="date" value={applicationForm.dateTo} onChange={(e) => setApplicationForm({ ...applicationForm, dateTo: e.target.value })} /></Field>
-            <Field label="Days Requested"><Input type="number" step="0.001" value={applicationForm.daysRequested} onChange={(e) => setApplicationForm({ ...applicationForm, daysRequested: e.target.value })} /></Field>
+            <Field label="Date From">
+              <Input
+                type="date"
+                value={applicationForm.dateFrom}
+                onChange={(e) =>
+                  setApplicationForm({ ...applicationForm, dateFrom: e.target.value })
+                }
+              />
+            </Field>
+            <Field label="Date To">
+              <Input
+                type="date"
+                value={applicationForm.dateTo}
+                onChange={(e) => setApplicationForm({ ...applicationForm, dateTo: e.target.value })}
+              />
+            </Field>
+            <Field label="Days Requested">
+              <Input
+                type="number"
+                step="0.001"
+                value={applicationForm.daysRequested}
+                onChange={(e) =>
+                  setApplicationForm({ ...applicationForm, daysRequested: e.target.value })
+                }
+              />
+            </Field>
             <Field label="Reason" className="md:col-span-2">
-              <Textarea rows={3} value={applicationForm.reason} onChange={(e) => setApplicationForm({ ...applicationForm, reason: e.target.value })} />
+              <Textarea
+                rows={3}
+                value={applicationForm.reason}
+                onChange={(e) => setApplicationForm({ ...applicationForm, reason: e.target.value })}
+              />
             </Field>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowApplication(false)}>Cancel</Button>
-            <Button disabled={!canEdit} onClick={submitApplication} className="bg-blue-600 text-white hover:bg-blue-700">Save Application</Button>
+            <Button variant="outline" onClick={() => setShowApplication(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!canEdit}
+              onClick={submitApplication}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Save Application
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(decision)} onOpenChange={(open) => !open && setDecision(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{decision?.status} Leave Request</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+              <div className="font-medium text-foreground">
+                {decision?.application.employeeName}
+              </div>
+              <div className="text-muted-foreground">
+                {decision?.application.leaveName} - {decision?.application.dateFrom} to{" "}
+                {decision?.application.dateTo}
+              </div>
+            </div>
+            <Field label="Remarks">
+              <Textarea
+                rows={3}
+                value={decision?.remarks || ""}
+                onChange={(event) =>
+                  decision && setDecision({ ...decision, remarks: event.target.value })
+                }
+              />
+            </Field>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDecision(null)}>
+              Cancel
+            </Button>
+            <Button onClick={submitDecision} className="bg-blue-600 text-white hover:bg-blue-700">
+              Save Decision
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={showType} onOpenChange={setShowType}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Add Leave Type</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Add Leave Type</DialogTitle>
+          </DialogHeader>
           <div className="grid gap-3 py-2">
-            <Field label="Code"><Input value={typeForm.code} onChange={(e) => setTypeForm({ ...typeForm, code: e.target.value })} placeholder="e.g. CTO" /></Field>
-            <Field label="Name"><Input value={typeForm.name} onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })} placeholder="e.g. Compensatory Time-Off" /></Field>
+            <Field label="Code">
+              <Input
+                value={typeForm.code}
+                onChange={(e) => setTypeForm({ ...typeForm, code: e.target.value })}
+                placeholder="e.g. CTO"
+              />
+            </Field>
+            <Field label="Name">
+              <Input
+                value={typeForm.name}
+                onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })}
+                placeholder="e.g. Compensatory Time-Off"
+              />
+            </Field>
             <Field label="Paid Leave">
-              <Select value={typeForm.isPaid} onValueChange={(value) => setTypeForm({ ...typeForm, isPaid: value })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={typeForm.isPaid}
+                onValueChange={(value) => setTypeForm({ ...typeForm, isPaid: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="yes">Yes</SelectItem>
                   <SelectItem value="no">No</SelectItem>
@@ -287,8 +495,12 @@ function LeavePage() {
             </Field>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowType(false)}>Cancel</Button>
-            <Button disabled={!canEdit} onClick={submitType}>Add Type</Button>
+            <Button variant="outline" onClick={() => setShowType(false)}>
+              Cancel
+            </Button>
+            <Button disabled={!canEdit} onClick={submitType}>
+              Add Type
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -296,22 +508,29 @@ function LeavePage() {
   );
 }
 
-function SummaryCard({ label, value, tone }: { label: string; value: number; tone: "amber" | "emerald" | "rose" | "blue" }) {
-  const colors = {
-    amber: "border-amber-200 bg-amber-50 text-amber-700",
-    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    rose: "border-rose-200 bg-rose-50 text-rose-700",
-    blue: "border-blue-200 bg-blue-50 text-blue-700",
-  };
+function SummaryCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className={cn("rounded-xl border p-4", colors[tone])}>
-      <div className="flex items-center gap-2 text-sm font-medium"><CalendarDays className="h-4 w-4" />{label}</div>
-      <div className="mt-2 text-2xl font-semibold">{value}</div>
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700">
+        <ClipboardCheck className="h-4 w-4" />
+      </div>
+      <div>
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        <p className="mt-1 text-lg font-semibold text-foreground">{value}</p>
+      </div>
     </div>
   );
 }
 
-function Field({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <div className={cn("space-y-1", className)}>
       <Label>{label}</Label>
@@ -321,5 +540,7 @@ function Field({ label, children, className }: { label: string; children: ReactN
 }
 
 function formatNumber(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+  return Number.isInteger(value)
+    ? String(value)
+    : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
 }

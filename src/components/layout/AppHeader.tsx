@@ -1,10 +1,39 @@
-import { Bell, Moon, Sun, Upload, X, LogOut, User as UserIcon, Menu, LayoutDashboard, Users, FileText, CalendarDays, Settings as SettingsIcon, ShieldCheck, ClipboardCheck } from "lucide-react";
+import {
+  Bell,
+  Moon,
+  Sun,
+  Upload,
+  X,
+  LogOut,
+  User as UserIcon,
+  Menu,
+  LayoutDashboard,
+  Users,
+  FileText,
+  CalendarDays,
+  Settings as SettingsIcon,
+  ShieldCheck,
+  ClipboardCheck,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +59,12 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
   }, [user]);
 
   const initials = user
-    ? user.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()
+    ? user.name
+        .split(" ")
+        .map((p) => p[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
     : "U";
 
   const handleSaveProfile = async () => {
@@ -52,23 +86,45 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
     navigate({ to: "/login", search: { redirect: "/" } });
   };
 
-  const isActive = (to: string, exact?: boolean) => exact ? path === to : path === to || path.startsWith(to + "/");
+  const isActive = (to: string, exact?: boolean) =>
+    exact ? path === to : path === to || path.startsWith(to + "/");
 
-  const NAV: { to: "/" | "/employees" | "/attendance" | "/leave" | "/reports" | "/settings" | "/self-service" | "/admin"; label: string; icon: typeof LayoutDashboard; exact?: boolean }[] = [
+  const NAV: {
+    to:
+      | "/"
+      | "/employees"
+      | "/attendance"
+      | "/leave"
+      | "/reports"
+      | "/settings"
+      | "/self-service"
+      | "/admin"
+      | "/my-profile"
+      | "/requests";
+    label: string;
+    icon: typeof LayoutDashboard;
+    exact?: boolean;
+  }[] = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
+    { to: "/my-profile", label: "My Profile", icon: UserIcon },
     { to: "/employees", label: "Employees", icon: Users },
     { to: "/attendance", label: "Attendance", icon: CalendarDays },
     { to: "/leave", label: "Leave Management", icon: ClipboardCheck },
     { to: "/self-service", label: "Self-Service", icon: UserIcon },
+    { to: "/requests", label: "My Requests", icon: ClipboardCheck },
     { to: "/reports", label: "Reports", icon: FileText },
     { to: "/admin", label: "Administration", icon: ShieldCheck },
     { to: "/settings", label: "Settings", icon: SettingsIcon },
   ];
   const mobileNav = NAV.filter((item) => {
-    if (user?.role === "Admin") return true;
-    if (user?.role === "HR") return item.to !== "/admin";
-    if (user?.role === "Viewer") return ["/", "/employees", "/reports", "/self-service"].includes(item.to);
-    if (user?.role === "Employee") return ["/", "/self-service"].includes(item.to);
+    const employeeOnly = ["/my-profile", "/requests"];
+    if (user?.role === "Admin") return !employeeOnly.includes(item.to);
+    if (user?.role === "HR") return !["/admin", ...employeeOnly].includes(item.to);
+    if (user?.role === "Viewer")
+      return ["/", "/employees", "/reports", "/self-service"].includes(item.to);
+    if (user?.role === "Employee") {
+      return ["/", "/my-profile", "/self-service", "/attendance", "/requests"].includes(item.to);
+    }
     return false;
   });
 
@@ -82,12 +138,19 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[280px] p-0 flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+            <SheetContent
+              side="left"
+              className="w-[280px] p-0 flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+            >
               <div className="flex items-center gap-2 h-16 border-b border-sidebar-border px-4 shrink-0">
-                <div className={cn(
-                  "rounded-lg grid place-items-center shrink-0 overflow-hidden h-9 w-9",
-                  agency.logoUrl ? "" : "bg-[var(--navy)] text-[var(--navy-foreground)] shadow-sm"
-                )}>
+                <div
+                  className={cn(
+                    "rounded-lg grid place-items-center shrink-0 overflow-hidden h-9 w-9",
+                    agency.logoUrl
+                      ? ""
+                      : "bg-[var(--navy)] text-[var(--navy-foreground)] shadow-sm",
+                  )}
+                >
                   {agency.logoUrl ? (
                     <img src={agency.logoUrl} alt="Logo" className="h-full w-full object-contain" />
                   ) : (
@@ -99,7 +162,9 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                   <div className="text-[11px] text-muted-foreground truncate">{agency.tagline}</div>
                 </div>
               </div>
-              <div className="px-4 pt-4 pb-2 text-[10px] tracking-widest uppercase text-muted-foreground">Menu</div>
+              <div className="px-4 pt-4 pb-2 text-[10px] tracking-widest uppercase text-muted-foreground">
+                Menu
+              </div>
               <nav className="flex-1 overflow-y-auto px-4 space-y-1.5 py-2">
                 {mobileNav.map((item) => {
                   const active = isActive(item.to, item.exact);
@@ -110,10 +175,19 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                       to={item.to}
                       className={cn(
                         "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition-all duration-200",
-                        active ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(var(--primary),0.1)]" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        active
+                          ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(var(--primary),0.1)]"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                       )}
                     >
-                      <Icon className={cn("h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
+                      <Icon
+                        className={cn(
+                          "h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110",
+                          active
+                            ? "text-primary"
+                            : "text-muted-foreground group-hover:text-foreground",
+                        )}
+                      />
                       <span className="truncate">{item.label}</span>
                     </Link>
                   );
@@ -131,8 +205,14 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
             </SheetContent>
           </Sheet>
           <div className="min-w-0">
-            <h1 className="text-[18px] font-bold tracking-tight text-foreground/90 truncate">{title}</h1>
-            {subtitle && <p className="text-[11px] text-muted-foreground/80 font-medium truncate hidden sm:block">{subtitle}</p>}
+            <h1 className="text-[18px] font-bold tracking-tight text-foreground/90 truncate">
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="text-[11px] text-muted-foreground/80 font-medium truncate hidden sm:block">
+                {subtitle}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -144,8 +224,8 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
             >
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
-            <button 
-              className="relative h-8 w-8 grid place-items-center rounded-full hover:bg-background hover:shadow-sm text-muted-foreground transition-all duration-200" 
+            <button
+              className="relative h-8 w-8 grid place-items-center rounded-full hover:bg-background hover:shadow-sm text-muted-foreground transition-all duration-200"
               aria-label="Notifications"
             >
               <Bell className="h-4 w-4" />
@@ -157,7 +237,9 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
             <div className="flex items-center gap-2.5 pl-2 py-1 border-l border-border/50">
               <div className="leading-tight text-right hidden sm:block">
                 <div className="text-xs font-semibold">{user.name}</div>
-                <div className="text-[10px] text-muted-foreground/80 uppercase tracking-wider">{user.role}</div>
+                <div className="text-[10px] text-muted-foreground/80 uppercase tracking-wider">
+                  {user.role}
+                </div>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -178,11 +260,17 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setShowProfileDialog(true)} className="cursor-pointer">
+                  <DropdownMenuItem
+                    onClick={() => setShowProfileDialog(true)}
+                    className="cursor-pointer"
+                  >
                     <UserIcon className="mr-2 h-4 w-4" />
                     <span>Edit Profile</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive">
+                  <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="cursor-pointer text-destructive focus:text-destructive"
+                  >
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Log out</span>
                   </DropdownMenuItem>
@@ -198,7 +286,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
           <DialogHeader>
             <DialogTitle>Edit Profile</DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-6 py-4">
             <div className="flex flex-col items-center gap-3">
               <div className="relative group">
@@ -209,7 +297,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                   </AvatarFallback>
                 </Avatar>
                 {formData.photoUrl ? (
-                  <button 
+                  <button
                     onClick={() => setFormData({ ...formData, photoUrl: "" })}
                     className="absolute -top-1 -right-1 h-7 w-7 rounded-full bg-destructive text-destructive-foreground grid place-items-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
                   >
@@ -217,19 +305,24 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                   </button>
                 ) : null}
               </div>
-              <Label htmlFor="profile-photo-upload" className="cursor-pointer inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline bg-primary/5 px-3 py-1.5 rounded-full border border-primary/20">
-                <Upload className="h-3.5 w-3.5" /> {formData.photoUrl ? "Change Photo" : "Upload Photo"}
+              <Label
+                htmlFor="profile-photo-upload"
+                className="cursor-pointer inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline bg-primary/5 px-3 py-1.5 rounded-full border border-primary/20"
+              >
+                <Upload className="h-3.5 w-3.5" />{" "}
+                {formData.photoUrl ? "Change Photo" : "Upload Photo"}
               </Label>
-              <input 
-                id="profile-photo-upload" 
-                type="file" 
-                accept="image/*" 
-                className="hidden" 
+              <input
+                id="profile-photo-upload"
+                type="file"
+                accept="image/*"
+                className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
                     const reader = new FileReader();
-                    reader.onloadend = () => setFormData({ ...formData, photoUrl: reader.result as string });
+                    reader.onloadend = () =>
+                      setFormData({ ...formData, photoUrl: reader.result as string });
                     reader.readAsDataURL(file);
                   }
                 }}
@@ -245,7 +338,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                 className="h-10"
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label className="text-sm font-medium">Role</Label>
               <Input
@@ -253,13 +346,22 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                 disabled
                 className="h-10 bg-muted/50 text-muted-foreground"
               />
-              <p className="text-[10px] text-muted-foreground">Your role is managed by the system administrator.</p>
+              <p className="text-[10px] text-muted-foreground">
+                Your role is managed by the system administrator.
+              </p>
             </div>
           </div>
-          
+
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowProfileDialog(false)}>Cancel</Button>
-            <Button className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]" onClick={handleSaveProfile}>Save Changes</Button>
+            <Button variant="outline" onClick={() => setShowProfileDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+              onClick={handleSaveProfile}
+            >
+              Save Changes
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

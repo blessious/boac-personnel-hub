@@ -146,7 +146,10 @@ function AppLayout() {
 function canAccessPath(role: Role, pathname: string, employeeId?: string) {
   if (role === "Admin") return true;
   if (pathname === "/" || pathname.startsWith("/self-service")) return true;
-  if (role === "Employee") return Boolean(employeeId && pathname === `/employees/${employeeId}`);
+  if (role === "Employee") {
+    if (["/my-profile", "/attendance", "/requests"].includes(pathname)) return true;
+    return Boolean(employeeId && pathname === `/employees/${employeeId}`);
+  }
   if (pathname.startsWith("/admin") || pathname.startsWith("/settings")) return false;
   return role === "HR" || role === "Viewer";
 }

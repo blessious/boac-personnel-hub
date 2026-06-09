@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SelfServiceRouteImport } from './routes/self-service'
+import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as MyProfileRouteImport } from './routes/my-profile'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeaveRouteImport } from './routes/leave'
 import { Route as EmployeesRouteImport } from './routes/employees'
@@ -31,9 +33,19 @@ const SelfServiceRoute = SelfServiceRouteImport.update({
   path: '/self-service',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RequestsRoute = RequestsRouteImport.update({
+  id: '/requests',
+  path: '/requests',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MyProfileRoute = MyProfileRouteImport.update({
+  id: '/my-profile',
+  path: '/my-profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -85,7 +97,9 @@ export interface FileRoutesByFullPath {
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
+  '/my-profile': typeof MyProfileRoute
   '/reports': typeof ReportsRoute
+  '/requests': typeof RequestsRoute
   '/self-service': typeof SelfServiceRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
@@ -98,7 +112,9 @@ export interface FileRoutesByTo {
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
+  '/my-profile': typeof MyProfileRoute
   '/reports': typeof ReportsRoute
+  '/requests': typeof RequestsRoute
   '/self-service': typeof SelfServiceRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
@@ -112,7 +128,9 @@ export interface FileRoutesById {
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
+  '/my-profile': typeof MyProfileRoute
   '/reports': typeof ReportsRoute
+  '/requests': typeof RequestsRoute
   '/self-service': typeof SelfServiceRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
@@ -127,7 +145,9 @@ export interface FileRouteTypes {
     | '/employees'
     | '/leave'
     | '/login'
+    | '/my-profile'
     | '/reports'
+    | '/requests'
     | '/self-service'
     | '/settings'
     | '/employees/$id'
@@ -140,7 +160,9 @@ export interface FileRouteTypes {
     | '/employees'
     | '/leave'
     | '/login'
+    | '/my-profile'
     | '/reports'
+    | '/requests'
     | '/self-service'
     | '/settings'
     | '/employees/$id'
@@ -153,7 +175,9 @@ export interface FileRouteTypes {
     | '/employees'
     | '/leave'
     | '/login'
+    | '/my-profile'
     | '/reports'
+    | '/requests'
     | '/self-service'
     | '/settings'
     | '/employees/$id'
@@ -167,7 +191,9 @@ export interface RootRouteChildren {
   EmployeesRoute: typeof EmployeesRouteWithChildren
   LeaveRoute: typeof LeaveRoute
   LoginRoute: typeof LoginRoute
+  MyProfileRoute: typeof MyProfileRoute
   ReportsRoute: typeof ReportsRoute
+  RequestsRoute: typeof RequestsRoute
   SelfServiceRoute: typeof SelfServiceRoute
   SettingsRoute: typeof SettingsRoute
 }
@@ -188,11 +214,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SelfServiceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/requests': {
+      id: '/requests'
+      path: '/requests'
+      fullPath: '/requests'
+      preLoaderRoute: typeof RequestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reports': {
       id: '/reports'
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/my-profile': {
+      id: '/my-profile'
+      path: '/my-profile'
+      fullPath: '/my-profile'
+      preLoaderRoute: typeof MyProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -274,7 +314,9 @@ const rootRouteChildren: RootRouteChildren = {
   EmployeesRoute: EmployeesRouteWithChildren,
   LeaveRoute: LeaveRoute,
   LoginRoute: LoginRoute,
+  MyProfileRoute: MyProfileRoute,
   ReportsRoute: ReportsRoute,
+  RequestsRoute: RequestsRoute,
   SelfServiceRoute: SelfServiceRoute,
   SettingsRoute: SettingsRoute,
 }

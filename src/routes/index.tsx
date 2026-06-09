@@ -1,16 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useState } from "react";
 import { Activity, ClipboardList, Users } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
 import { AppShell } from "@/components/layout/AppShell";
 import {
   ChartContainer,
@@ -20,7 +11,7 @@ import {
 } from "@/components/ui/chart";
 import { useAuth } from "@/lib/auth";
 import { getDashboard, type DashboardResponse } from "@/lib/employees-api";
-import { SelfServiceHome } from "@/routes/self-service";
+import { EmployeeDashboardHome } from "@/routes/self-service";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -76,7 +67,7 @@ function Dashboard() {
   }, [role]);
 
   if (role === "Employee") {
-    return <SelfServiceHome />;
+    return <EmployeeDashboardHome />;
   }
 
   const cards = [
@@ -119,9 +110,13 @@ function Dashboard() {
       <div className="mb-5 rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{role} Workspace</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {role} Workspace
+            </div>
             <h2 className="mt-1 text-lg font-semibold text-foreground">{getWelcomeText(role)}</h2>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{getWelcomeDescription(role)}</p>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              {getWelcomeDescription(role)}
+            </p>
           </div>
           <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
             <span className="text-muted-foreground">Signed in as </span>
@@ -131,181 +126,182 @@ function Dashboard() {
       </div>
 
       <>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-3">
-        {cards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <div
-              key={card.label}
-              className={cn(
-                "flex items-center gap-4 rounded-xl border bg-card p-5 shadow-sm",
-                card.border,
-              )}
-            >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-3">
+          {cards.map((card) => {
+            const Icon = card.icon;
+            return (
               <div
-                className={cn("grid h-12 w-12 shrink-0 place-items-center rounded-lg", card.color)}
+                key={card.label}
+                className={cn(
+                  "flex items-center gap-4 rounded-xl border bg-card p-5 shadow-sm",
+                  card.border,
+                )}
               >
-                <Icon className="h-6 w-6" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold tabular-nums">
-                  {loading ? "..." : card.value}
+                <div
+                  className={cn(
+                    "grid h-12 w-12 shrink-0 place-items-center rounded-lg",
+                    card.color,
+                  )}
+                >
+                  <Icon className="h-6 w-6" />
                 </div>
-                <div className="text-sm font-medium text-foreground">{card.label}</div>
-                <div className="text-xs text-muted-foreground">{card.sub}</div>
+                <div>
+                  <div className="text-2xl font-bold tabular-nums">
+                    {loading ? "..." : card.value}
+                  </div>
+                  <div className="text-sm font-medium text-foreground">{card.label}</div>
+                  <div className="text-xs text-muted-foreground">{card.sub}</div>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <ChartPanel
+            title="Employment Type Mix"
+            description="Breakdown by plantilla, regular, job order, casual, and contractual records."
+            emptyText="No employment status data is available yet."
+            hasData={(data?.byEmploymentStatus ?? []).length > 0}
+          >
+            <ChartContainer config={chartConfig} className="h-[310px] w-full">
+              <PieChart>
+                <ChartTooltip content={<ChartTooltipContent nameKey="status" hideLabel />} />
+                <Pie
+                  data={data?.byEmploymentStatus ?? []}
+                  dataKey="total"
+                  nameKey="status"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={58}
+                  outerRadius={96}
+                  paddingAngle={2}
+                >
+                  {(data?.byEmploymentStatus ?? []).map((entry, index) => (
+                    <Cell key={entry.status} fill={pieColors[index % pieColors.length]} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ChartContainer>
+            <LegendList
+              rows={(data?.byEmploymentStatus ?? []).map((row, index) => ({
+                label: row.status,
+                value: row.total,
+                color: pieColors[index % pieColors.length],
+              }))}
+            />
+          </ChartPanel>
 
+          <ChartPanel
+            title="Workforce Age Profile"
+            description="Age bands based on recorded birthdays."
+            emptyText="No birthday data is available yet."
+            hasData={(data?.byAgeGroup ?? []).some((row) => row.total > 0)}
+          >
+            <ChartContainer config={chartConfig} className="h-[280px] w-full">
+              <BarChart data={data?.byAgeGroup ?? []} margin={{ left: 0, right: 12, top: 12 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="ageGroup" tickLine={false} axisLine={false} tickMargin={8} />
+                <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="total" fill="var(--color-total)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
+          </ChartPanel>
+        </div>
 
-        <ChartPanel
-          title="Employment Type Mix"
-          description="Breakdown by plantilla, regular, job order, casual, and contractual records."
-          emptyText="No employment status data is available yet."
-          hasData={(data?.byEmploymentStatus ?? []).length > 0}
-        >
-          <ChartContainer config={chartConfig} className="h-[310px] w-full">
-            <PieChart>
-              <ChartTooltip content={<ChartTooltipContent nameKey="status" hideLabel />} />
-              <Pie
-                data={data?.byEmploymentStatus ?? []}
-                dataKey="total"
-                nameKey="status"
-                cx="50%"
-                cy="50%"
-                innerRadius={58}
-                outerRadius={96}
-                paddingAngle={2}
+        <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <ChartPanel
+            title="Sex Distribution by Division"
+            description="Compares recorded male and female employees per division."
+            emptyText="No sex distribution data is available yet."
+            hasData={sexDistribution.length > 0}
+          >
+            <ChartContainer config={chartConfig} className="h-[310px] w-full">
+              <BarChart
+                data={sexDistribution}
+                layout="vertical"
+                margin={{ left: 12, right: 12, top: 12, bottom: 8 }}
               >
-                {(data?.byEmploymentStatus ?? []).map((entry, index) => (
-                  <Cell key={entry.status} fill={pieColors[index % pieColors.length]} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ChartContainer>
-          <LegendList
-            rows={(data?.byEmploymentStatus ?? []).map((row, index) => ({
-              label: row.status,
-              value: row.total,
-              color: pieColors[index % pieColors.length],
-            }))}
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  type="number"
+                  allowDecimals={false}
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                />
+                <YAxis
+                  dataKey="department"
+                  type="category"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  width={150}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="male" fill="var(--color-male)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="female" fill="var(--color-female)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
+          </ChartPanel>
+
+          <SummaryTable
+            title="Status of Employee Records by Division"
+            emptyText="No employees are recorded in MySQL yet."
+            headers={["Division", "Active", "Inactive", "Total"]}
+            rows={(data?.byDivision ?? []).map((row) => [
+              row.department,
+              row.filled,
+              row.unfilled,
+              row.total,
+            ])}
           />
-        </ChartPanel>
+        </div>
 
-        <ChartPanel
-          title="Workforce Age Profile"
-          description="Age bands based on recorded birthdays."
-          emptyText="No birthday data is available yet."
-          hasData={(data?.byAgeGroup ?? []).some((row) => row.total > 0)}
-        >
-          <ChartContainer config={chartConfig} className="h-[280px] w-full">
-            <BarChart data={data?.byAgeGroup ?? []} margin={{ left: 0, right: 12, top: 12 }}>
-              <CartesianGrid vertical={false} />
-              <XAxis dataKey="ageGroup" tickLine={false} axisLine={false} tickMargin={8} />
-              <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="total" fill="var(--color-total)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
-        </ChartPanel>
-      </div>
+        <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <SummaryTable
+            title="Distribution by Level, Division and Sex"
+            emptyText="No employee demographic data is available yet."
+            headers={["Division", "1st", "2nd", "3rd", "Male", "Female", "Total"]}
+            rows={(data?.bySexLevel ?? []).map((row) => [
+              row.department,
+              row.firstLevel,
+              row.secondLevel,
+              row.thirdLevel,
+              row.male,
+              row.female,
+              row.total,
+            ])}
+          />
+          <SummaryTable
+            title="Distribution by Cadre"
+            emptyText="Cadre data will appear after employees are added."
+            headers={["Division", "Cadre", "Active", "Inactive", "Total"]}
+            rows={(data?.byCadre ?? []).map((row) => [
+              row.department,
+              row.cadre,
+              row.filled,
+              row.unfilled,
+              row.total,
+            ])}
+          />
+        </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <ChartPanel
-          title="Sex Distribution by Division"
-          description="Compares recorded male and female employees per division."
-          emptyText="No sex distribution data is available yet."
-          hasData={sexDistribution.length > 0}
-        >
-          <ChartContainer config={chartConfig} className="h-[310px] w-full">
-            <BarChart
-              data={sexDistribution}
-              layout="vertical"
-              margin={{ left: 12, right: 12, top: 12, bottom: 8 }}
-            >
-              <CartesianGrid vertical={false} />
-              <XAxis
-                type="number"
-                allowDecimals={false}
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-              />
-              <YAxis
-                dataKey="department"
-                type="category"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                width={150}
-              />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="male" fill="var(--color-male)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="female" fill="var(--color-female)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
-        </ChartPanel>
-
-        <SummaryTable
-          title="Status of Employee Records by Division"
-          emptyText="No employees are recorded in MySQL yet."
-          headers={["Division", "Active", "Inactive", "Total"]}
-          rows={(data?.byDivision ?? []).map((row) => [
-            row.department,
-            row.filled,
-            row.unfilled,
-            row.total,
-          ])}
-        />
-      </div>
-
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <SummaryTable
-          title="Distribution by Level, Division and Sex"
-          emptyText="No employee demographic data is available yet."
-          headers={["Division", "1st", "2nd", "3rd", "Male", "Female", "Total"]}
-          rows={(data?.bySexLevel ?? []).map((row) => [
-            row.department,
-            row.firstLevel,
-            row.secondLevel,
-            row.thirdLevel,
-            row.male,
-            row.female,
-            row.total,
-          ])}
-        />
-        <SummaryTable
-          title="Distribution by Cadre"
-          emptyText="Cadre data will appear after employees are added."
-          headers={["Division", "Cadre", "Active", "Inactive", "Total"]}
-          rows={(data?.byCadre ?? []).map((row) => [
-            row.department,
-            row.cadre,
-            row.filled,
-            row.unfilled,
-            row.total,
-          ])}
-        />
-      </div>
-
-      <div className="mt-6">
-        <SummaryTable
-          title="Distribution by Position"
-          emptyText="Position data will appear after employees are added."
-          headers={["Division", "Position", "Active", "Inactive", "Total"]}
-          rows={(data?.byPosition ?? []).map((row) => [
-            row.department,
-            row.position,
-            row.filled,
-            row.unfilled,
-            row.total,
-          ])}
-        />
-      </div>
+        <div className="mt-6">
+          <SummaryTable
+            title="Distribution by Position"
+            emptyText="Position data will appear after employees are added."
+            headers={["Division", "Position", "Active", "Inactive", "Total"]}
+            rows={(data?.byPosition ?? []).map((row) => [
+              row.department,
+              row.position,
+              row.filled,
+              row.unfilled,
+              row.total,
+            ])}
+          />
+        </div>
       </>
     </AppShell>
   );
@@ -333,9 +329,12 @@ function getWelcomeText(role: string) {
 }
 
 function getWelcomeDescription(role: string) {
-  if (role === "Admin") return "Your workspace includes user administration, backups, audit logs, setup libraries, and all HR modules.";
-  if (role === "HR") return "Your workspace focuses on 201 files, leave management, attendance preparation, and reporting.";
-  if (role === "Viewer") return "Your access is designed for monitoring and reference, with editing controls hidden.";
+  if (role === "Admin")
+    return "Your workspace includes user administration, backups, audit logs, setup libraries, and all HR modules.";
+  if (role === "HR")
+    return "Your workspace focuses on 201 files, leave management, attendance preparation, and reporting.";
+  if (role === "Viewer")
+    return "Your access is designed for monitoring and reference, with editing controls hidden.";
   return "Use self-service for leave requests, profile updates, DTR review, and HR requests as these services are enabled.";
 }
 

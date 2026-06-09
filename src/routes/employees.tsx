@@ -1,7 +1,17 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -154,8 +164,14 @@ function EmployeesPage() {
         </div>
       )}
 
+      <div className="mb-4 grid gap-3 md:grid-cols-3">
+        <SummaryCard label="Total Records" value={total} icon={Users} />
+        <SummaryCard label="Departments" value={departments.length} icon={BriefcaseBusiness} />
+        <SummaryCard label="Current Page" value={`${page} of ${totalPages}`} icon={Eye} />
+      </div>
+
       <div className="rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center">
+        <div className="flex flex-col gap-3 border-b border-border p-4 xl:flex-row xl:items-center">
           <div className="relative max-w-sm flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -483,6 +499,28 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
     <div className="space-y-1">
       <Label>{label}</Label>
       {children}
+    </div>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        <p className="mt-1 truncate text-lg font-semibold text-foreground">{value}</p>
+      </div>
     </div>
   );
 }
