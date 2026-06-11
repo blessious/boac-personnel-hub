@@ -10,7 +10,7 @@ export default defineConfig({
   vite: {
     server: {
       proxy: {
-        "/api": "http://localhost:3001",
+        "/api": "http://localhost:47101",
       },
     },
   },

@@ -2,12 +2,17 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarClock,
+  CheckCircle2,
+  ChevronDown,
   Download,
   FileDown,
+  FileSpreadsheet,
+  FileText,
   Pencil,
   Plus,
   RefreshCw,
   Search,
+  Settings2,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -15,6 +20,12 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -34,11 +45,24 @@ import {
 import {
   createDtr,
   deleteDtr,
+  bulkUpdateSchedule,
+  bulkUpdateScheduleOverrides,
+  checkBiometricStatus,
+  checkUnimportedDtrs,
+  createBiometricDevice,
+  downloadGeneratedFile,
   downloadDtrCsv,
-  importDtrRows,
+  generateDtrExcel,
+  generateDtrPdf,
+  importSingleDtr,
+  listBiometricDevices,
+  listDtrNoters,
   listDtr,
+  openGeneratedFile,
   refreshDtr,
   updateDtr,
+  type BiometricDevice,
+  type DtrNoter,
   type DtrEntry,
   type DtrPayload,
 } from "@/lib/attendance-api";
@@ -87,10 +111,49 @@ function AttendancePage() {
   const [busy, setBusy] = useState(false);
   const [showDtrDialog, setShowDtrDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showBiometricDialog, setShowBiometricDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [editing, setEditing] = useState<DtrEntry | null>(null);
   const [form, setForm] = useState<DtrPayload>(EMPTY_DTR_FORM);
-  const [importFileName, setImportFileName] = useState("");
-  const [importText, setImportText] = useState("");
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importSource, setImportSource] = useState<"biometric" | "file">("biometric");
+  const [importSearch, setImportSearch] = useState("");
+  const [selectedImportEmployeeId, setSelectedImportEmployeeId] = useState("");
+  const [biometricDevices, setBiometricDevices] = useState<BiometricDevice[]>([]);
+  const [selectedBiometricId, setSelectedBiometricId] = useState("");
+  const [deviceStatus, setDeviceStatus] = useState<Record<string, "online" | "offline">>({});
+  const [unimportedCount, setUnimportedCount] = useState<number | null>(null);
+  const [importStartDate, setImportStartDate] = useState(DEFAULT_FROM);
+  const [importEndDate, setImportEndDate] = useState(DEFAULT_TO);
+  const [deviceForm, setDeviceForm] = useState({
+    name: "",
+    ip_address: "",
+    port: "4370",
+    active: true,
+  });
+  const [noters, setNoters] = useState<DtrNoter[]>([]);
+  const [exportForm, setExportForm] = useState({
+    employeeId: "all",
+    noterSignatory: "",
+    noterPosition: "",
+    firstStartDate: DEFAULT_FROM,
+    firstEndDate: DEFAULT_TO,
+    useSecondPeriod: false,
+    secondStartDate: DEFAULT_FROM,
+    secondEndDate: DEFAULT_TO,
+  });
+  const [scheduleForm, setScheduleForm] = useState({
+    target: "override" as "default" | "override",
+    employeeIds: [] as string[],
+    startDate: DEFAULT_FROM,
+    endDate: DEFAULT_TO,
+    skipWeekends: true,
+    amIn: "08:00",
+    amOut: "12:00",
+    pmIn: "13:00",
+    pmOut: "17:00",
+  });
 
   const selectedEmployeeId = isEmployee
     ? user?.employeeId || ""
@@ -118,6 +181,50 @@ function AttendancePage() {
       .catch(() => setEmployees([]));
   }, [canManage, user?.role]);
 
+  useEffect(() => {
+    if (!canManage && !isEmployee) return;
+    listDtrNoters()
+      .then((result) => {
+        setNoters(result.noters);
+        if (result.noters[0]) {
+          setExportForm((current) => ({
+            ...current,
+            noterSignatory: current.noterSignatory || result.noters[0].signatory,
+            noterPosition: current.noterPosition || result.noters[0].position,
+          }));
+        }
+      })
+      .catch(() => setNoters([]));
+  }, [canManage, isEmployee]);
+
+  useEffect(() => {
+    if (!showImportDialog || !canManage) return;
+    listBiometricDevices()
+      .then((result) => {
+        setBiometricDevices(result.devices);
+        setSelectedBiometricId((current) => current || result.devices.find((device) => device.active)?.id || "");
+      })
+      .catch(() => setBiometricDevices([]));
+  }, [showImportDialog, canManage]);
+
+  useEffect(() => {
+    if (!showImportDialog || !selectedImportEmployeeId) {
+      setUnimportedCount(null);
+      return;
+    }
+    let cancelled = false;
+    checkUnimportedDtrs(selectedImportEmployeeId)
+      .then((result) => {
+        if (!cancelled) setUnimportedCount(result.count);
+      })
+      .catch(() => {
+        if (!cancelled) setUnimportedCount(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showImportDialog, selectedImportEmployeeId]);
+
   const employeeOptions = useMemo(
     () =>
       employees.map((employee) => ({
@@ -125,6 +232,34 @@ function AttendancePage() {
         label: `${employee.lastname}, ${employee.firstname} (${employee.employeeId})`,
       })),
     [employees],
+  );
+
+  const importEmployees = useMemo(
+    () =>
+      employees.map((employee) => ({
+        id: employee.id,
+        employeeNo: employee.employeeId,
+        name: [employee.lastname, employee.firstname].filter(Boolean).join(", "),
+        position: employee.position || "",
+        office: employee.department || "",
+      })),
+    [employees],
+  );
+
+  const filteredImportEmployees = useMemo(() => {
+    const search = importSearch.trim().toLowerCase();
+    if (!search) return importEmployees;
+    return importEmployees.filter((employee) =>
+      [employee.name, employee.employeeNo, employee.office, employee.position]
+        .join(" ")
+        .toLowerCase()
+        .includes(search),
+    );
+  }, [importEmployees, importSearch]);
+
+  const selectedImportEmployee = useMemo(
+    () => importEmployees.find((employee) => employee.id === selectedImportEmployeeId) || null,
+    [importEmployees, selectedImportEmployeeId],
   );
 
   const openAdd = () => {
@@ -208,28 +343,249 @@ function AttendancePage() {
     }
   };
 
-  const importRows = async () => {
-    const rows = parseImportRows(importText);
-    if (!rows.length) {
-      toast.error(
-        "No valid rows found. Use CSV columns: employeeNo,date,amIn,amOut,pmIn,pmOut,remarks",
+  const openImport = () => {
+    setImportSource("biometric");
+    setImportSearch("");
+    setImportFile(null);
+    setImportStartDate(from);
+    setImportEndDate(to);
+    setSelectedImportEmployeeId(employeeId === "all" ? "" : employeeId);
+    setShowImportDialog(true);
+  };
+
+  const reloadBiometricDevices = async (selectId = "") => {
+    const result = await listBiometricDevices();
+    setBiometricDevices(result.devices);
+    setSelectedBiometricId(selectId || result.devices.find((device) => device.active)?.id || "");
+  };
+
+  const checkSelectedDevice = async () => {
+    const device = biometricDevices.find((item) => item.id === selectedBiometricId);
+    if (!device) {
+      toast.error("Select a biometric device first");
+      return;
+    }
+    try {
+      const result = await checkBiometricStatus({
+        ip_address: device.ip_address,
+        port: device.port,
+      });
+      setDeviceStatus((current) => ({ ...current, [device.id]: result.status }));
+      toast[result.online ? "success" : "error"](
+        `${device.name} is ${result.online ? "online" : "offline"}`,
       );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to check device");
+    }
+  };
+
+  const saveBiometricDevice = async () => {
+    const name = deviceForm.name.trim();
+    const ipAddress = deviceForm.ip_address.trim();
+    const port = Number(deviceForm.port);
+    const ipPattern =
+      /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+    if (name.length < 2) {
+      toast.error("Device name must be at least 2 characters");
+      return;
+    }
+    if (!ipPattern.test(ipAddress)) {
+      toast.error("Enter a valid IP address");
+      return;
+    }
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      toast.error("Port must be between 1 and 65535");
       return;
     }
     setBusy(true);
     try {
-      const result = await importDtrRows({
-        fileName: importFileName || "Manual CSV import",
-        rows,
+      const result = await createBiometricDevice({
+        name,
+        ip_address: ipAddress,
+        port,
+        active: deviceForm.active,
       });
-      toast.success(`${result.imported} DTR row(s) imported`);
-      if (result.errors.length) toast.warning(`${result.errors.length} row(s) need checking`);
+      toast.success("Biometric device added");
+      setShowBiometricDialog(false);
+      setDeviceForm({ name: "", ip_address: "", port: "4370", active: true });
+      await reloadBiometricDevices(result.device.id);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to add biometric device");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const importRows = async () => {
+    if (!selectedImportEmployeeId) {
+      toast.error("Select an employee first");
+      return;
+    }
+    if (!importStartDate || !importEndDate) {
+      toast.error("Select a start date and end date");
+      return;
+    }
+    if (importSource === "file" && !importFile) {
+      toast.error("Select a DTR file first");
+      return;
+    }
+    if (importSource === "biometric" && !selectedBiometricId) {
+      toast.error("Select a biometric device first");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await importSingleDtr({
+        source: importSource,
+        employeeId: selectedImportEmployeeId,
+        biometricId: importSource === "biometric" ? selectedBiometricId : undefined,
+        fileName: importFile?.name,
+        fileBase64: importFile ? await fileToBase64(importFile) : undefined,
+        startDate: importStartDate,
+        endDate: importEndDate,
+      });
+      toast.success(
+        `Imported ${result.imported} punch(es); refreshed ${result.refreshed.recordsProcessed} DTR row(s)`,
+      );
+      if (result.errors?.length) toast.warning(`${result.errors.length} row(s) need checking`);
       setShowImportDialog(false);
-      setImportFileName("");
-      setImportText("");
+      setImportFile(null);
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to import DTR");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openExport = () => {
+    const targetEmployeeId = isEmployee ? user?.employeeId || "" : employeeId;
+    setExportForm((current) => ({
+      ...current,
+      employeeId: targetEmployeeId || "all",
+    }));
+    setShowExportDialog(true);
+  };
+
+  const buildDtrExportPayload = () => {
+    const targetEmployeeId = isEmployee
+      ? user?.employeeId || ""
+      : exportForm.employeeId === "all"
+        ? employeeId === "all"
+          ? ""
+          : employeeId
+        : exportForm.employeeId;
+    if (!targetEmployeeId) {
+      toast.error("Select one employee to view or export DTR");
+      return null;
+    }
+    if (!exportForm.noterSignatory || !exportForm.noterPosition) {
+      toast.error("Select a DTR noter first");
+      return null;
+    }
+    if (!exportForm.firstStartDate || !exportForm.firstEndDate) {
+      toast.error("Select a DTR date range first");
+      return null;
+    }
+    if (exportForm.firstStartDate > exportForm.firstEndDate) {
+      toast.error("Start date cannot be after end date");
+      return null;
+    }
+    if (exportForm.useSecondPeriod) {
+      if (!exportForm.secondStartDate || !exportForm.secondEndDate) {
+        toast.error("Select the second DTR date range");
+        return null;
+      }
+      if (exportForm.secondStartDate > exportForm.secondEndDate) {
+        toast.error("Second start date cannot be after second end date");
+        return null;
+      }
+    }
+    return {
+      employeeId: targetEmployeeId,
+      noterSignatory: exportForm.noterSignatory,
+      noterPosition: exportForm.noterPosition,
+      firstStartDate: exportForm.firstStartDate,
+      firstEndDate: exportForm.firstEndDate,
+      secondStartDate: exportForm.useSecondPeriod ? exportForm.secondStartDate : undefined,
+      secondEndDate: exportForm.useSecondPeriod ? exportForm.secondEndDate : undefined,
+      periods: [
+        { from: exportForm.firstStartDate, to: exportForm.firstEndDate },
+        ...(exportForm.useSecondPeriod
+          ? [{ from: exportForm.secondStartDate, to: exportForm.secondEndDate }]
+          : []),
+      ],
+    };
+  };
+
+  const exportExcel = async () => {
+    const payload = buildDtrExportPayload();
+    if (!payload) return;
+    setBusy(true);
+    try {
+      const result = await generateDtrExcel(payload);
+      downloadGeneratedFile(result.downloadUrl, result.fileName);
+      toast.success(`DTR Excel generated with ${result.rowCount} row(s)`);
+      setShowExportDialog(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to generate DTR Excel");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const viewPdf = async () => {
+    const payload = buildDtrExportPayload();
+    if (!payload) return;
+    setBusy(true);
+    try {
+      const result = await generateDtrPdf(payload);
+      openGeneratedFile(result.previewUrl);
+      toast.success(`DTR PDF generated with ${result.rowCount} row(s)`);
+      setShowExportDialog(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to generate DTR PDF");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveSchedule = async () => {
+    if (!scheduleForm.employeeIds.length) {
+      toast.error("Select at least one employee");
+      return;
+    }
+    setBusy(true);
+    try {
+      if (scheduleForm.target === "default") {
+        await bulkUpdateSchedule({
+          employeeIds: scheduleForm.employeeIds,
+          schedule: {
+            amIn: scheduleForm.amIn,
+            amOut: scheduleForm.amOut,
+            pmIn: scheduleForm.pmIn,
+            pmOut: scheduleForm.pmOut,
+          },
+        });
+      } else {
+        await bulkUpdateScheduleOverrides({
+          employeeIds: scheduleForm.employeeIds,
+          startDate: scheduleForm.startDate,
+          endDate: scheduleForm.endDate,
+          skipWeekends: scheduleForm.skipWeekends,
+          schedule: {
+            amIn: scheduleForm.amIn,
+            amOut: scheduleForm.amOut,
+            pmIn: scheduleForm.pmIn,
+            pmOut: scheduleForm.pmOut,
+          },
+        });
+      }
+      toast.success(`Schedule saved for ${scheduleForm.employeeIds.length} employee(s)`);
+      setShowScheduleDialog(false);
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to save schedule");
     } finally {
       setBusy(false);
     }
@@ -289,31 +645,53 @@ function AttendancePage() {
                 </div>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={load} disabled={loading}>
                 <RefreshCw className="mr-1.5 h-4 w-4" /> Reload
               </Button>
               {canManage && (
                 <>
-                  <Button variant="outline" onClick={() => setShowImportDialog(true)}>
-                    <Upload className="mr-1.5 h-4 w-4" /> Import
-                  </Button>
                   <Button variant="outline" onClick={refresh} disabled={busy}>
                     <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh DTR
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowScheduleDialog(true)} disabled={busy}>
+                    <Settings2 className="mr-1.5 h-4 w-4" /> Schedule
                   </Button>
                   <Button onClick={openAdd} className="bg-blue-600 text-white hover:bg-blue-700">
                     <Plus className="mr-1.5 h-4 w-4" /> Add DTR
                   </Button>
                 </>
               )}
-              <Button variant="outline" onClick={() => exportRows(false)}>
-                <Download className="mr-1.5 h-4 w-4" /> Export
-              </Button>
-              {!isEmployee && (
-                <Button variant="outline" onClick={() => exportRows(true)}>
-                  <FileDown className="mr-1.5 h-4 w-4" /> Mass Export
-                </Button>
-              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    Actions
+                    <ChevronDown className="ml-1.5 h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {canManage && (
+                    <DropdownMenuItem onClick={openImport}>
+                      <Upload className="h-4 w-4" />
+                      Import
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={openExport}>
+                    <FileSpreadsheet className="h-4 w-4" />
+                    View DTR Excel
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportRows(false)}>
+                    <Download className="h-4 w-4" />
+                    Quick CSV
+                  </DropdownMenuItem>
+                  {!isEmployee && (
+                    <DropdownMenuItem onClick={() => exportRows(true)}>
+                      <FileDown className="h-4 w-4" />
+                      Mass Export
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </section>
@@ -337,10 +715,10 @@ function AttendancePage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left text-sm">
+            <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
               <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                 <tr>
-                  {!isEmployee && <th className="px-4 py-3 font-semibold">Employee</th>}
+                  {!isEmployee && <th className="w-[220px] px-4 py-3 font-semibold">Employee</th>}
                   <th className="px-4 py-3 font-semibold">Date</th>
                   <th className="px-4 py-3 font-semibold">AM In</th>
                   <th className="px-4 py-3 font-semibold">AM Out</th>
@@ -357,8 +735,15 @@ function AttendancePage() {
                   <tr key={entry.id} className="border-t border-border">
                     {!isEmployee && (
                       <td className="px-4 py-3">
-                        <p className="font-medium text-foreground">{entry.employeeName}</p>
-                        <p className="text-xs text-muted-foreground">{entry.employeeNo}</p>
+                        <p
+                          className="truncate font-medium text-foreground"
+                          title={entry.employeeName}
+                        >
+                          {entry.employeeName}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {entry.employeeNo}
+                        </p>
                       </td>
                     )}
                     <td className="px-4 py-3 font-medium text-foreground">{entry.workDate}</td>
@@ -491,35 +876,178 @@ function AttendancePage() {
       </Dialog>
 
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Import DTR</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>CSV File</Label>
-              <Input
-                type="file"
-                accept=".csv,.txt"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  setImportFileName(file.name);
-                  file.text().then(setImportText);
-                }}
-              />
+          <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Select Employee</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={importSearch}
+                    onChange={(event) => setImportSearch(event.target.value)}
+                    placeholder="Search by name, ID, or office"
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+              <div className="max-h-80 overflow-y-auto rounded-md border border-border">
+                {filteredImportEmployees.map((employee) => {
+                  const selected = employee.id === selectedImportEmployeeId;
+                  return (
+                    <button
+                      key={employee.id}
+                      type="button"
+                      onClick={() => setSelectedImportEmployeeId(employee.id)}
+                      className={`flex w-full items-center justify-between gap-3 border-b border-border px-3 py-2 text-left text-sm last:border-b-0 hover:bg-muted ${
+                        selected ? "bg-blue-50" : ""
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium text-foreground">
+                          {employee.name || employee.employeeNo}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {employee.employeeNo} {employee.office ? `- ${employee.office}` : ""}
+                        </span>
+                        {employee.position && (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {employee.position}
+                          </span>
+                        )}
+                      </span>
+                      {selected && <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-700" />}
+                    </button>
+                  );
+                })}
+                {!filteredImportEmployees.length && (
+                  <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+                    No employees found.
+                  </p>
+                )}
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Rows</Label>
-              <textarea
-                value={importText}
-                onChange={(event) => setImportText(event.target.value)}
-                className="min-h-52 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="employeeNo,date,amIn,amOut,pmIn,pmOut,remarks&#10;EMP-001,2026-06-09,08:01,12:00,13:00,17:02,"
-              />
-              <p className="text-xs text-muted-foreground">
-                Accepted columns: employeeNo, date, amIn, amOut, pmIn, pmOut, remarks.
-              </p>
+
+            <div className="space-y-4">
+              {selectedImportEmployee && (
+                <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium">Unimported Records Check</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        checkUnimportedDtrs(selectedImportEmployee.id)
+                          .then((result) => setUnimportedCount(result.count))
+                          .catch(() => setUnimportedCount(null))
+                      }
+                    >
+                      <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                      Refresh
+                    </Button>
+                  </div>
+                  <p className="mt-1 text-xs">
+                    {unimportedCount === null
+                      ? "Checking records..."
+                      : `${unimportedCount} unimported record(s) found for ${selectedImportEmployee.name}`}
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label>Import Source</Label>
+                <Select value={importSource} onValueChange={(value: "biometric" | "file") => setImportSource(value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="biometric">Biometric</SelectItem>
+                    <SelectItem value="file">File</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {importSource === "biometric" ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Biometric Device</Label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowBiometricDialog(true)}
+                    >
+                      <Plus className="mr-1.5 h-3.5 w-3.5" />
+                      Add Device
+                    </Button>
+                  </div>
+                  <Select value={selectedBiometricId} onValueChange={setSelectedBiometricId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select biometric device" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {biometricDevices.map((device) => (
+                        <SelectItem key={device.id} value={device.id} disabled={!device.active}>
+                          {device.name} - {device.ip_address}:{device.port}
+                          {!device.active ? " (Inactive)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span>
+                      {selectedBiometricId && deviceStatus[selectedBiometricId]
+                        ? `Status: ${deviceStatus[selectedBiometricId]}`
+                        : "Select a device or add one first."}
+                    </span>
+                    <Button type="button" size="sm" variant="outline" onClick={checkSelectedDevice}>
+                      Check
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Label>DTR File</Label>
+                  <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-border bg-muted/30 px-4 py-6 text-center hover:bg-muted/50">
+                    <Upload className="mb-2 h-7 w-7 text-muted-foreground" />
+                    <span className="text-sm font-medium text-foreground">
+                      {importFile ? importFile.name : "Click to upload DTR file"}
+                    </span>
+                    <span className="mt-1 text-xs text-muted-foreground">
+                      TXT, XLSX, or DAT files only. Maximum size 10MB.
+                    </span>
+                    <Input
+                      type="file"
+                      accept=".txt,.xlsx,.xls,.dat"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (!file) return;
+                        if (!/\.(txt|xlsx|xls|dat)$/i.test(file.name)) {
+                          toast.error("Only TXT, XLSX, XLS, and DAT files are supported");
+                          event.target.value = "";
+                          return;
+                        }
+                        if (file.size > 10 * 1024 * 1024) {
+                          toast.error("File size must not exceed 10MB");
+                          event.target.value = "";
+                          return;
+                        }
+                        setImportFile(file);
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Start Date" type="date" value={importStartDate} onChange={setImportStartDate} />
+                <Field label="End Date" type="date" value={importEndDate} onChange={setImportEndDate} />
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -531,7 +1059,306 @@ function AttendancePage() {
               disabled={busy}
               className="bg-blue-600 text-white hover:bg-blue-700"
             >
-              Import DTR
+              Import Single DTR
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showBiometricDialog} onOpenChange={setShowBiometricDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Biometric Device</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Field
+              label="Device Name"
+              type="text"
+              value={deviceForm.name}
+              onChange={(name) => setDeviceForm({ ...deviceForm, name })}
+            />
+            <Field
+              label="IP Address"
+              type="text"
+              value={deviceForm.ip_address}
+              onChange={(ip_address) => setDeviceForm({ ...deviceForm, ip_address })}
+            />
+            <Field
+              label="Port"
+              type="number"
+              value={deviceForm.port}
+              onChange={(port) => setDeviceForm({ ...deviceForm, port })}
+            />
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={deviceForm.active}
+                onChange={(event) =>
+                  setDeviceForm({ ...deviceForm, active: event.target.checked })
+                }
+              />
+              Active
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBiometricDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={saveBiometricDevice}
+              disabled={busy}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Add Device
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>View DTR Excel</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            {!isEmployee && (
+              <div className="space-y-1.5">
+                <Label>Employee</Label>
+                <Select
+                  value={exportForm.employeeId}
+                  onValueChange={(value) => setExportForm({ ...exportForm, employeeId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select employee" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Current selected employee</SelectItem>
+                    {employeeOptions.map((employee) => (
+                      <SelectItem key={employee.id} value={employee.id}>
+                        {employee.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Noter Signatory</Label>
+                <Select
+                  value={noters.find((item) => item.signatory === exportForm.noterSignatory)?.id || ""}
+                  onValueChange={(value) => {
+                    const noter = noters.find((item) => item.id === value);
+                    setExportForm({
+                      ...exportForm,
+                      noterSignatory: noter?.signatory || "",
+                      noterPosition: noter?.position || exportForm.noterPosition,
+                    });
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select noter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {noters.map((noter) => (
+                      <SelectItem key={noter.id} value={noter.id}>
+                        {noter.signatory} - {noter.position}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Noter Position</Label>
+                <Input
+                  value={exportForm.noterPosition}
+                  onChange={(event) =>
+                    setExportForm({ ...exportForm, noterPosition: event.target.value })
+                  }
+                  placeholder="Position title"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field
+                label="Start Date"
+                type="date"
+                value={exportForm.firstStartDate}
+                onChange={(firstStartDate) => setExportForm({ ...exportForm, firstStartDate })}
+              />
+              <Field
+                label="End Date"
+                type="date"
+                value={exportForm.firstEndDate}
+                onChange={(firstEndDate) => setExportForm({ ...exportForm, firstEndDate })}
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={exportForm.useSecondPeriod}
+                onChange={(event) =>
+                  setExportForm({ ...exportForm, useSecondPeriod: event.target.checked })
+                }
+              />
+              Include second period
+            </label>
+
+            {exportForm.useSecondPeriod && (
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field
+                  label="Second Start Date"
+                  type="date"
+                  value={exportForm.secondStartDate}
+                  onChange={(secondStartDate) => setExportForm({ ...exportForm, secondStartDate })}
+                />
+                <Field
+                  label="Second End Date"
+                  type="date"
+                  value={exportForm.secondEndDate}
+                  onChange={(secondEndDate) => setExportForm({ ...exportForm, secondEndDate })}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExportDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={viewPdf}
+              disabled={busy}
+              variant="outline"
+            >
+              <FileText className="mr-1.5 h-4 w-4" />
+              View PDF
+            </Button>
+            <Button
+              onClick={exportExcel}
+              disabled={busy}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              <FileSpreadsheet className="mr-1.5 h-4 w-4" />
+              Generate Excel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showScheduleDialog} onOpenChange={setShowScheduleDialog}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Bulk Edit Schedule</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-5 md:grid-cols-[1fr_1.2fr]">
+            <div className="space-y-3">
+              <Label>Employees</Label>
+              <div className="max-h-80 overflow-y-auto rounded-md border border-border p-2">
+                <label className="mb-2 flex items-center gap-2 rounded px-2 py-1 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={
+                      employeeOptions.length > 0 &&
+                      scheduleForm.employeeIds.length === employeeOptions.length
+                    }
+                    onChange={(event) =>
+                      setScheduleForm({
+                        ...scheduleForm,
+                        employeeIds: event.target.checked
+                          ? employeeOptions.map((item) => item.id)
+                          : [],
+                      })
+                    }
+                  />
+                  Select all
+                </label>
+                {employeeOptions.map((employee) => (
+                  <label
+                    key={employee.id}
+                    className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={scheduleForm.employeeIds.includes(employee.id)}
+                      onChange={(event) => {
+                        setScheduleForm({
+                          ...scheduleForm,
+                          employeeIds: event.target.checked
+                            ? [...scheduleForm.employeeIds, employee.id]
+                            : scheduleForm.employeeIds.filter((id) => id !== employee.id),
+                        });
+                      }}
+                    />
+                    <span className="truncate">{employee.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Edit Target</Label>
+                <Select
+                  value={scheduleForm.target}
+                  onValueChange={(value: "default" | "override") =>
+                    setScheduleForm({ ...scheduleForm, target: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="override">Specific Date Override</SelectItem>
+                    <SelectItem value="default">Employee Default Schedule</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {scheduleForm.target === "override" && (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field
+                    label="Start Date"
+                    type="date"
+                    value={scheduleForm.startDate}
+                    onChange={(startDate) => setScheduleForm({ ...scheduleForm, startDate })}
+                  />
+                  <Field
+                    label="End Date"
+                    type="date"
+                    value={scheduleForm.endDate}
+                    onChange={(endDate) => setScheduleForm({ ...scheduleForm, endDate })}
+                  />
+                  <label className="flex items-center gap-2 text-sm md:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={scheduleForm.skipWeekends}
+                      onChange={(event) =>
+                        setScheduleForm({ ...scheduleForm, skipWeekends: event.target.checked })
+                      }
+                    />
+                    Skip weekends
+                  </label>
+                </div>
+              )}
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="AM In" type="time" value={scheduleForm.amIn} onChange={(amIn) => setScheduleForm({ ...scheduleForm, amIn })} />
+                <Field label="AM Out" type="time" value={scheduleForm.amOut} onChange={(amOut) => setScheduleForm({ ...scheduleForm, amOut })} />
+                <Field label="PM In" type="time" value={scheduleForm.pmIn} onChange={(pmIn) => setScheduleForm({ ...scheduleForm, pmIn })} />
+                <Field label="PM Out" type="time" value={scheduleForm.pmOut} onChange={(pmOut) => setScheduleForm({ ...scheduleForm, pmOut })} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowScheduleDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={saveSchedule}
+              disabled={busy}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Save Schedule
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -568,63 +1395,14 @@ function Field({
   );
 }
 
-function parseImportRows(text: string): DtrPayload[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (!lines.length) return [];
-
-  const first = splitCsvLine(lines[0]).map((column) => column.trim().toLowerCase());
-  const hasHeader = first.some((column) =>
-    ["employeeno", "employeeid", "date", "workdate"].includes(column),
-  );
-  const headers = hasHeader
-    ? first
-    : ["employeeNo", "date", "amIn", "amOut", "pmIn", "pmOut", "remarks"].map((column) =>
-        column.toLowerCase(),
-      );
-  const dataLines = hasHeader ? lines.slice(1) : lines;
-
-  return dataLines
-    .map((line) => {
-      const values = splitCsvLine(line);
-      const row: Record<string, string> = {};
-      headers.forEach((header, index) => {
-        row[header] = values[index]?.trim() || "";
-      });
-      return {
-        employeeNo: row.employeeno || row.employeeid || row.employee_no,
-        workDate: row.date || row.workdate || row.work_date,
-        amIn: row.amin || row.am_in,
-        amOut: row.amout || row.am_out,
-        pmIn: row.pmin || row.pm_in,
-        pmOut: row.pmout || row.pm_out,
-        remarks: row.remarks || "",
-      };
-    })
-    .filter((row) => row.employeeNo && row.workDate);
-}
-
-function splitCsvLine(line: string) {
-  const values: string[] = [];
-  let current = "";
-  let quoted = false;
-  for (let index = 0; index < line.length; index++) {
-    const char = line[index];
-    const next = line[index + 1];
-    if (char === '"' && quoted && next === '"') {
-      current += '"';
-      index++;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === "," && !quoted) {
-      values.push(current);
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  values.push(current);
-  return values;
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      resolve(result.includes(",") ? result.split(",")[1] : result);
+    };
+    reader.onerror = () => reject(reader.error || new Error("Unable to read file"));
+    reader.readAsDataURL(file);
+  });
 }

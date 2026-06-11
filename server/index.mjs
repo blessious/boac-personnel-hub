@@ -1,5 +1,7 @@
 import http from "node:http";
 import crypto from "node:crypto";
+import net from "node:net";
+import { spawn } from "node:child_process";
 import { URL } from "node:url";
 import { createReadStream, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
@@ -29,7 +31,7 @@ function loadServerEnv() {
 
 loadServerEnv();
 
-const PORT = Number(process.env.HRIS_API_PORT || 3001);
+const PORT = Number(process.env.HRIS_API_PORT || 47101);
 const DB_HOST = process.env.HRIS_DB_HOST || "localhost";
 const DB_USER = process.env.HRIS_DB_USER || "root";
 const DB_PASSWORD = process.env.HRIS_DB_PASSWORD || "";
@@ -37,6 +39,17 @@ const DB_NAME = process.env.HRIS_DB_NAME || "hris_db";
 const SESSION_COOKIE = "hris_session";
 const SESSION_HOURS = 8;
 const BACKUP_DIR = path.join(process.cwd(), "server", "backups");
+const EXPORT_DIR = path.join(process.cwd(), "server", "exports");
+const PREVIEW_DIR = path.join(EXPORT_DIR, "previews");
+const TEMPLATE_DIR = path.join(process.cwd(), "server", "templates");
+const DTR_TEMPLATE_XLSX = path.join(TEMPLATE_DIR, "format.xlsx");
+const DTR_EXCEL_SCRIPT = path.join(process.cwd(), "server", "dtr_excel.py");
+const DTR_PDF_SCRIPT = path.join(process.cwd(), "server", "dtr_pdf.py");
+const DTR_PARSE_SCRIPT = path.join(process.cwd(), "server", "dtr_parse.py");
+const PREVIEW_FILE_MAX_AGE_MS = 30 * 60 * 1000;
+const PYTHON_EXE =
+  process.env.HRIS_PYTHON_EXE ||
+  "C:\\Users\\admin\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe";
 
 const ROLES = ["Admin", "HR", "Employee", "Viewer"];
 const DEFAULT_AGENCY = {
@@ -232,12 +245,51 @@ function json(res, status, body, headers = {}) {
 }
 
 function sendFile(res, filePath, fileName) {
+  const extension = path.extname(fileName).toLowerCase();
+  const contentType =
+    extension === ".xlsx"
+      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      : extension === ".pdf"
+        ? "application/pdf"
+        : "application/octet-stream";
   res.writeHead(200, {
-    "Content-Type": "application/json",
+    "Content-Type": contentType,
     "Content-Disposition": `attachment; filename="${fileName}"`,
     "Cache-Control": "no-store",
   });
   createReadStream(filePath).pipe(res);
+}
+
+function sendInlinePdfAndDelete(res, filePath, fileName, deleteAfterMs = 5000) {
+  res.writeHead(200, {
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `inline; filename="${fileName}"`,
+    "Cache-Control": "no-store",
+  });
+  const stream = createReadStream(filePath);
+  stream.on("end", () => {
+    setTimeout(() => fs.rm(filePath, { force: true }).catch(() => {}), deleteAfterMs);
+  });
+  stream.on("error", () => {
+    if (!res.headersSent) json(res, 500, { error: "Failed to read DTR PDF" });
+  });
+  stream.pipe(res);
+}
+
+async function cleanupPreviewFiles(maxAgeMs = PREVIEW_FILE_MAX_AGE_MS) {
+  await fs.mkdir(PREVIEW_DIR, { recursive: true });
+  const files = await fs.readdir(PREVIEW_DIR, { withFileTypes: true });
+  const cutoff = Date.now() - maxAgeMs;
+  await Promise.all(
+    files
+      .filter((file) => file.isFile())
+      .filter((file) => [".pdf", ".json"].includes(path.extname(file.name).toLowerCase()))
+      .map(async (file) => {
+        const filePath = path.join(PREVIEW_DIR, file.name);
+        const stats = await fs.stat(filePath).catch(() => null);
+        if (stats && stats.mtimeMs < cutoff) await fs.rm(filePath, { force: true }).catch(() => {});
+      }),
+  );
 }
 
 function sendCsv(res, fileName, csv) {
@@ -254,7 +306,7 @@ function readBody(req) {
     let raw = "";
     req.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 1024 * 1024) {
+      if (raw.length > 15 * 1024 * 1024) {
         req.destroy();
         reject(new Error("Request body too large"));
       }
@@ -357,6 +409,7 @@ function employeeRow(row) {
   return {
     id: row.id,
     employeeId: row.employee_no,
+    biometricId: row.biometric_id || "",
     firstname: row.firstname || "",
     middlename: row.middlename || "",
     lastname: row.lastname || "",
@@ -376,6 +429,14 @@ function employeeRow(row) {
     email: row.email || "",
     cellphoneNo: row.cellphone_no || "",
     photoUrl: row.photo_url || "",
+    scheduleAmIn: formatTime(row.schedule_am_in) || "08:00",
+    scheduleAmOut: formatTime(row.schedule_am_out) || "12:00",
+    schedulePmIn: formatTime(row.schedule_pm_in) || "13:00",
+    schedulePmOut: formatTime(row.schedule_pm_out) || "17:00",
+    dtrSignatory: row.dtr_signatory || "",
+    dtrNoterId: row.dtr_noter_id ? String(row.dtr_noter_id) : "",
+    isDtrNoter: Boolean(row.is_dtr_noter),
+    regular: row.regular === null || row.regular === undefined ? row.status !== "Job Order" : Boolean(row.regular),
     citizenship: profile.citizenship || "",
     placeOfBirth: profile.placeOfBirth || "",
     height: profile.height || "",
@@ -444,6 +505,17 @@ function employeeDbPayload(body, existing = {}) {
     email: String(body.email ?? existing.email ?? "").trim(),
     cellphoneNo: String(body.cellphoneNo ?? existing.cellphoneNo ?? "").trim(),
     photoUrl: body.photoUrl ? String(body.photoUrl) : existing.photoUrl || "",
+    scheduleAmIn: normalizeTimeInput(body.scheduleAmIn ?? body.schedule_am_in ?? existing.scheduleAmIn ?? "08:00"),
+    scheduleAmOut: normalizeTimeInput(body.scheduleAmOut ?? body.schedule_am_out ?? existing.scheduleAmOut ?? "12:00"),
+    schedulePmIn: normalizeTimeInput(body.schedulePmIn ?? body.schedule_pm_in ?? existing.schedulePmIn ?? "13:00"),
+    schedulePmOut: normalizeTimeInput(body.schedulePmOut ?? body.schedule_pm_out ?? existing.schedulePmOut ?? "17:00"),
+    dtrSignatory: String(body.dtrSignatory ?? body.dtr_signatory ?? existing.dtrSignatory ?? "").trim(),
+    dtrNoterId: body.dtrNoterId || body.dtr_noter_id || existing.dtrNoterId || null,
+    isDtrNoter: Boolean(body.isDtrNoter ?? body.is_dtr_noter ?? existing.isDtrNoter ?? false),
+    regular:
+      body.regular === undefined && existing.regular === undefined
+        ? status !== "Job Order"
+        : Boolean(body.regular ?? existing.regular),
     profileJson: JSON.stringify(profile),
   };
 }
@@ -538,14 +610,17 @@ function calculateAttendanceStats(entry) {
   const amOut = minutesFromTime(entry.amOut);
   const pmIn = minutesFromTime(entry.pmIn);
   const pmOut = minutesFromTime(entry.pmOut);
+  const scheduledAmIn = minutesFromTime(entry.scheduleAmIn || "08:00");
+  const scheduledPmOut = minutesFromTime(entry.schedulePmOut || "17:00");
   const punches = [amIn, amOut, pmIn, pmOut].filter((value) => value !== null);
 
   let status = "Absent";
   if (punches.length > 0 && punches.length < 4) status = "Incomplete";
   if (punches.length === 4) status = "Present";
 
-  const lateMinutes = amIn !== null ? Math.max(0, amIn - 8 * 60) : 0;
-  const undertimeMinutes = pmOut !== null ? Math.max(0, 17 * 60 - pmOut) : 0;
+  const lateMinutes = amIn !== null && scheduledAmIn !== null ? Math.max(0, amIn - scheduledAmIn) : 0;
+  const undertimeMinutes =
+    pmOut !== null && scheduledPmOut !== null ? Math.max(0, scheduledPmOut - pmOut) : 0;
   if (status === "Present" && lateMinutes > 0) status = "Late";
   return { status, lateMinutes, undertimeMinutes };
 }
@@ -849,6 +924,21 @@ async function initializeDatabase() {
     ) ENGINE=InnoDB;
   `);
 
+  await ensureColumn("employees", "schedule_am_in", "TIME NULL DEFAULT '08:00:00'");
+  await ensureColumn("employees", "schedule_am_out", "TIME NULL DEFAULT '12:00:00'");
+  await ensureColumn("employees", "schedule_pm_in", "TIME NULL DEFAULT '13:00:00'");
+  await ensureColumn("employees", "schedule_pm_out", "TIME NULL DEFAULT '17:00:00'");
+  await ensureColumn("employees", "biometric_id", "VARCHAR(80) NULL");
+  await ensureColumn("employees", "dtr_signatory", "VARCHAR(200) NULL");
+  await ensureColumn("employees", "dtr_noter_id", "BIGINT UNSIGNED NULL");
+  await ensureColumn("employees", "is_dtr_noter", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureColumn("employees", "regular", "TINYINT(1) NOT NULL DEFAULT 1");
+  await ensureIndex(
+    "employees",
+    "idx_employees_biometric_id",
+    "INDEX idx_employees_biometric_id (biometric_id)",
+  );
+
   const employeeIdDefinition = await getEmployeeIdDefinition();
   const nullableEmployeeIdDefinition = employeeIdDefinition.replace(/\s+NOT NULL$/i, " NULL");
 
@@ -965,6 +1055,52 @@ async function initializeDatabase() {
       imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_attendance_imports_period (period_from, period_to),
       CONSTRAINT fk_attendance_imports_imported_by FOREIGN KEY (imported_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dtr_noters (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(200) NOT NULL,
+      position VARCHAR(200) NOT NULL,
+      office VARCHAR(200) NULL,
+      signatory VARCHAR(200) NOT NULL,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_dtr_noters_active (is_active),
+      INDEX idx_dtr_noters_office (office)
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS biometric_devices (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(120) NOT NULL,
+      ip_address VARCHAR(80) NOT NULL,
+      port INT UNSIGNED NOT NULL DEFAULT 4370,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS employee_schedule_overrides (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      employee_id ${employeeIdDefinition},
+      work_date DATE NOT NULL,
+      am_in TIME NULL,
+      am_out TIME NULL,
+      pm_in TIME NULL,
+      pm_out TIME NULL,
+      created_by INT UNSIGNED NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_employee_schedule_date (employee_id, work_date),
+      INDEX idx_employee_schedule_work_date (work_date),
+      CONSTRAINT fk_employee_schedule_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      CONSTRAINT fk_employee_schedule_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
 
@@ -1704,6 +1840,29 @@ function csvEscape(value) {
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+function splitCsvLine(line) {
+  const values = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index++;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      values.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  values.push(current);
+  return values;
+}
+
 function dtrRowsToCsv(rows) {
   const headers = [
     "Employee No",
@@ -1753,7 +1912,7 @@ async function resolveAttendanceEmployee(row) {
   const [rows] = await pool.execute(
     `SELECT id, employee_no, firstname, lastname
      FROM employees
-     WHERE id = :employeeDbId OR employee_no = :employeeValue
+     WHERE id = :employeeDbId OR employee_no = :employeeValue OR biometric_id = :employeeValue
      LIMIT 1`,
     { employeeDbId, employeeValue },
   );
@@ -1925,11 +2084,18 @@ async function refreshDtrEntries({ employeeId, from, to, userId }) {
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const [logs] = await pool.execute(
-    `SELECT employee_id, DATE_FORMAT(punch_date, '%Y-%m-%d') AS work_date,
-            TIME_FORMAT(punch_at, '%H:%i:%s') AS punch_time
-     FROM attendance_logs
-     ${whereSql}
-     ORDER BY employee_id, punch_at`,
+    `SELECT al.employee_id, DATE_FORMAT(al.punch_date, '%Y-%m-%d') AS work_date,
+            TIME_FORMAT(al.punch_at, '%H:%i:%s') AS punch_time,
+            TIME_FORMAT(COALESCE(eso.am_in, e.schedule_am_in), '%H:%i:%s') AS schedule_am_in,
+            TIME_FORMAT(COALESCE(eso.am_out, e.schedule_am_out), '%H:%i:%s') AS schedule_am_out,
+            TIME_FORMAT(COALESCE(eso.pm_in, e.schedule_pm_in), '%H:%i:%s') AS schedule_pm_in,
+            TIME_FORMAT(COALESCE(eso.pm_out, e.schedule_pm_out), '%H:%i:%s') AS schedule_pm_out
+     FROM attendance_logs al
+     INNER JOIN employees e ON e.id = al.employee_id
+     LEFT JOIN employee_schedule_overrides eso
+       ON eso.employee_id = al.employee_id AND eso.work_date = al.punch_date
+     ${whereSql.replaceAll("employee_id", "al.employee_id").replaceAll("punch_date", "al.punch_date")}
+     ORDER BY al.employee_id, al.punch_at`,
     params,
   );
 
@@ -1937,7 +2103,15 @@ async function refreshDtrEntries({ employeeId, from, to, userId }) {
   for (const log of logs) {
     const key = `${log.employee_id}:${log.work_date}`;
     if (!grouped.has(key)) {
-      grouped.set(key, { employeeId: log.employee_id, workDate: log.work_date, times: [] });
+      grouped.set(key, {
+        employeeId: log.employee_id,
+        workDate: log.work_date,
+        scheduleAmIn: log.schedule_am_in,
+        scheduleAmOut: log.schedule_am_out,
+        schedulePmIn: log.schedule_pm_in,
+        schedulePmOut: log.schedule_pm_out,
+        times: [],
+      });
     }
     grouped.get(key).times.push(log.punch_time);
   }
@@ -1949,7 +2123,7 @@ async function refreshDtrEntries({ employeeId, from, to, userId }) {
       const entry = deriveDtrFromPunchTimes(group.times);
       await upsertDtrEntry(
         connection,
-        { employeeId: group.employeeId, workDate: group.workDate, ...entry, source: "Imported" },
+        { employeeId: group.employeeId, workDate: group.workDate, ...entry, ...group, source: "Imported" },
         userId,
         true,
       );
@@ -1999,6 +2173,517 @@ async function handleListDtrEntries(req, res, url) {
       incomplete: rows.filter((row) => row.status === "Incomplete").length,
       lateMinutes: rows.reduce((sum, row) => sum + row.lateMinutes, 0),
     },
+  });
+}
+
+function dtrNoterRow(row) {
+  return {
+    id: String(row.id ?? row.noter_id),
+    name: row.name || "",
+    position: row.position || "",
+    office: row.office || "",
+    signatory: row.signatory || row.name || "",
+    isActive: row.is_active === undefined ? true : Boolean(row.is_active),
+  };
+}
+
+async function handleListDtrNoters(req, res) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  const [rows] = await pool.query(
+    `SELECT
+       CONCAT('noter-', id) AS id,
+       name,
+       position,
+       COALESCE(office, '') AS office,
+       signatory,
+       is_active
+     FROM dtr_noters
+     WHERE is_active = 1
+     UNION ALL
+     SELECT
+       CONCAT('employee-', id) AS id,
+       TRIM(CONCAT_WS(' ', firstname, middlename, lastname, name_ext)) AS name,
+       position,
+       department AS office,
+       COALESCE(NULLIF(dtr_signatory, ''), TRIM(CONCAT_WS(' ', firstname, middlename, lastname, name_ext))) AS signatory,
+       1 AS is_active
+     FROM employees
+     WHERE is_dtr_noter = 1 AND emp_status = 'Active'
+     ORDER BY office ASC, signatory ASC, name ASC`,
+  );
+  return json(res, 200, { noters: rows.map(dtrNoterRow) });
+}
+
+async function handleCreateDtrNoter(req, res) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const name = String(body.name || body.signatory || "").trim();
+  const position = String(body.position || "").trim();
+  const office = String(body.office || "").trim();
+  const signatory = String(body.signatory || name).trim();
+  if (!name || !position || !signatory) {
+    return json(res, 400, { error: "Name, signatory, and position are required" });
+  }
+  const [result] = await pool.execute(
+    `INSERT INTO dtr_noters (name, position, office, signatory)
+     VALUES (:name, :position, :office, :signatory)`,
+    { name, position, office: office || null, signatory },
+  );
+  await logAudit(user.id, "attendance.noter_create", { id: result.insertId }, req);
+  return json(res, 201, {
+    noter: dtrNoterRow({ id: result.insertId, name, position, office, signatory, is_active: 1 }),
+  });
+}
+
+async function handleDeleteDtrNoter(req, res, id) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  await pool.execute(`UPDATE dtr_noters SET is_active = 0 WHERE id = :id`, { id });
+  await logAudit(user.id, "attendance.noter_delete", { id }, req);
+  return json(res, 200, { ok: true });
+}
+
+function biometricDeviceRow(row) {
+  return {
+    id: String(row.id),
+    biometric_id: Number(row.id),
+    name: row.name || "",
+    ip_address: row.ip_address || "",
+    port: Number(row.port || 4370),
+    active: Boolean(row.is_active),
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+  };
+}
+
+function validateBiometricDevicePayload(body, existing = {}) {
+  const name = String(body.name ?? existing.name ?? "").trim();
+  const ipAddress = String(body.ip_address ?? body.ipAddress ?? existing.ip_address ?? "").trim();
+  const port = Number(body.port ?? existing.port ?? 4370);
+  const active =
+    body.active === undefined && body.is_active === undefined
+      ? existing.is_active === undefined
+        ? true
+        : Boolean(existing.is_active)
+      : Boolean(body.active ?? body.is_active);
+  const ipPattern =
+    /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+
+  if (!name || name.length < 2) throw new Error("Device name must be at least 2 characters");
+  if (!ipAddress) throw new Error("IP address is required");
+  if (!ipPattern.test(ipAddress)) throw new Error("Invalid IP address format");
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("Port must be between 1 and 65535");
+  }
+
+  return { name, ipAddress, port, active };
+}
+
+async function handleListBiometricDevices(req, res) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  const [rows] = await pool.query(`SELECT * FROM biometric_devices ORDER BY name ASC`);
+  return json(res, 200, { devices: rows.map(biometricDeviceRow) });
+}
+
+async function handleCreateBiometricDevice(req, res) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  let payload;
+  try {
+    payload = validateBiometricDevicePayload(body);
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+  const [result] = await pool.execute(
+    `INSERT INTO biometric_devices (name, ip_address, port, is_active)
+     VALUES (:name, :ipAddress, :port, :active)`,
+    { ...payload, active: payload.active ? 1 : 0 },
+  );
+  await logAudit(user.id, "attendance.biometric_create", { id: result.insertId }, req);
+  return json(res, 201, {
+    device: biometricDeviceRow({
+      id: result.insertId,
+      name: payload.name,
+      ip_address: payload.ipAddress,
+      port: payload.port,
+      is_active: payload.active ? 1 : 0,
+    }),
+  });
+}
+
+async function handleUpdateBiometricDevice(req, res, id) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const [[existing]] = await pool.execute(`SELECT * FROM biometric_devices WHERE id = :id LIMIT 1`, {
+    id,
+  });
+  if (!existing) return json(res, 404, { error: "Biometric device not found" });
+  const body = await readBody(req);
+  let payload;
+  try {
+    payload = validateBiometricDevicePayload(body, existing);
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+  await pool.execute(
+    `UPDATE biometric_devices
+     SET name = :name, ip_address = :ipAddress, port = :port, is_active = :active
+     WHERE id = :id`,
+    { id, ...payload, active: payload.active ? 1 : 0 },
+  );
+  await logAudit(user.id, "attendance.biometric_update", { id }, req);
+  return json(res, 200, {
+    device: biometricDeviceRow({
+      id,
+      name: payload.name,
+      ip_address: payload.ipAddress,
+      port: payload.port,
+      is_active: payload.active ? 1 : 0,
+    }),
+  });
+}
+
+async function handleDeleteBiometricDevice(req, res, id) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  await pool.execute(`DELETE FROM biometric_devices WHERE id = :id`, { id });
+  await logAudit(user.id, "attendance.biometric_delete", { id }, req);
+  return json(res, 200, { ok: true });
+}
+
+function checkTcpDevice(ipAddress, port, timeout = 1500) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: ipAddress, port, timeout }, () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on("error", () => resolve(false));
+  });
+}
+
+async function handleCheckBiometricStatus(req, res) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const ipAddress = String(body.ip_address || body.ipAddress || "").trim();
+  const port = Number(body.port || 4370);
+  if (!ipAddress || !Number.isInteger(port)) {
+    return json(res, 400, { error: "IP address and port are required" });
+  }
+  const online = await checkTcpDevice(ipAddress, port);
+  return json(res, 200, { online, status: online ? "online" : "offline" });
+}
+
+async function handleCheckUnimportedDtrs(req, res, employeeId) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  if (!canReadEmployeeAttendance(user, employeeId)) {
+    return json(res, 403, { error: "You can only view your own DTR" });
+  }
+  const [[row]] = await pool.execute(
+    `SELECT COUNT(*) AS count
+     FROM attendance_logs al
+     LEFT JOIN dtr_entries d ON d.employee_id = al.employee_id AND d.work_date = al.punch_date
+     WHERE al.employee_id = :employeeId AND d.id IS NULL`,
+    { employeeId },
+  );
+  return json(res, 200, { count: Number(row?.count || 0) });
+}
+
+function parseDateTimeText(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})[ T]+(\d{1,2}:\d{2}(?::\d{2})?)$/);
+  if (!match) return null;
+  return `${match[1]} ${normalizeTimeInput(match[2])}`;
+}
+
+function dateInRange(date, from, to) {
+  if (!date) return false;
+  if (from && date < from) return false;
+  if (to && date > to) return false;
+  return true;
+}
+
+function parseLegacyAttendanceText(text, fileName) {
+  const extension = path.extname(fileName).toLowerCase();
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const punches = [];
+
+  if (extension === ".dat") {
+    for (const line of lines) {
+      const parts = line.split(/\s+/);
+      const punchAt = parseDateTimeText(`${parts[1] || ""} ${parts[2] || ""}`);
+      if (parts[0] && punchAt) punches.push({ employeeNo: parts[0], punchAt, raw: line });
+    }
+    return punches;
+  }
+
+  if (extension === ".csv") {
+    const first = splitCsvLine(lines[0] || "").map((item) => item.trim().toLowerCase());
+    const hasHeader = first.some((item) =>
+      ["employee", "employeeno", "employeeid", "date", "datetime", "time"].includes(item),
+    );
+    const headers = hasHeader ? first : ["employeeNo", "date", "time", "amIn", "amOut", "pmIn", "pmOut"].map((item) => item.toLowerCase());
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+    for (const line of dataLines) {
+      const values = splitCsvLine(line);
+      const row = {};
+      headers.forEach((header, index) => {
+        row[header.replace(/[^a-z0-9]/g, "")] = values[index]?.trim() || "";
+      });
+      const employeeNo = row.employeeno || row.employeeid || row.employee || row.id;
+      const date = normalizeDate(row.date || row.workdate);
+      const direct = parseDateTimeText(row.datetime || row.punchat || row.createdat);
+      if (employeeNo && direct) punches.push({ employeeNo, punchAt: direct, raw: line });
+      for (const key of ["amin", "amout", "pmin", "pmout", "time"]) {
+        if (employeeNo && date && row[key]) {
+          punches.push({ employeeNo, punchAt: `${date} ${normalizeTimeInput(row[key])}`, raw: line });
+        }
+      }
+    }
+    return punches;
+  }
+
+  for (const [index, line] of lines.entries()) {
+    if (index === 0 && /employee|userid|date/i.test(line)) continue;
+    const parts = line.split(/\s+/);
+    if (parts.length >= 7) {
+      const punchAt = parseDateTimeText(`${parts[5]} ${parts[6]}`);
+      if (parts[2] && punchAt) punches.push({ employeeNo: parts[2], punchAt, raw: line });
+      continue;
+    }
+    if (parts.length >= 3) {
+      const punchAt = parseDateTimeText(`${parts[1]} ${parts[2]}`);
+      if (parts[0] && punchAt) punches.push({ employeeNo: parts[0], punchAt, raw: line });
+    }
+  }
+  return punches;
+}
+
+async function parseUploadedDtrFile(fileName, fileBase64) {
+  const extension = path.extname(fileName).toLowerCase();
+  const buffer = Buffer.from(fileBase64, "base64");
+  if ([".txt", ".csv", ".dat"].includes(extension)) {
+    return parseLegacyAttendanceText(buffer.toString("utf8"), fileName);
+  }
+  if (extension === ".xlsx") {
+    await fs.mkdir(PREVIEW_DIR, { recursive: true });
+    const tempPath = path.join(PREVIEW_DIR, `dtr-import-${crypto.randomUUID()}.xlsx`);
+    await fs.writeFile(tempPath, buffer);
+    try {
+      const output = await runPython([DTR_PARSE_SCRIPT, tempPath]);
+      return JSON.parse(output || "[]");
+    } finally {
+      await fs.unlink(tempPath).catch(() => {});
+    }
+  }
+  if (extension === ".xls") {
+    throw new Error("Legacy .xls files must be saved as .xlsx before import");
+  }
+  throw new Error("Only .txt, .csv, .dat, and .xlsx DTR files are supported for import");
+}
+
+async function importParsedPunches({ user, req, body, fileName, parsed, employeeId, from, to, source, sourceDevice }) {
+  let employeeNoOverride = "";
+  if (employeeId) {
+    const [[employee]] = await pool.execute(`SELECT id, employee_no FROM employees WHERE id = :employeeId`, {
+      employeeId,
+    });
+    if (!employee) return json(res, 404, { error: "Employee not found" });
+    employeeNoOverride = employee.employee_no;
+  }
+
+  const importId = crypto.randomUUID();
+  let imported = 0;
+  const errors = [];
+  const dates = [];
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute(
+      `INSERT INTO attendance_imports (id, source, file_name, row_count, status, notes, imported_by)
+       VALUES (:id, :source, :fileName, 0, 'Processing', :notes, :importedBy)`,
+      {
+        id: importId,
+        source,
+        fileName: fileName.slice(0, 255),
+        notes: body.notes || null,
+        importedBy: user.id,
+      },
+    );
+
+    for (const [index, punch] of parsed.entries()) {
+      try {
+        const employeeNo = employeeNoOverride || punch.employeeNo;
+        const [[employee]] = await connection.execute(
+          `SELECT id FROM employees WHERE employee_no = :employeeNo OR biometric_id = :employeeNo LIMIT 1`,
+          { employeeNo },
+        );
+        if (!employee) throw new Error(`Employee not found: ${employeeNo}`);
+        await connection.execute(
+          `INSERT INTO attendance_logs (id, employee_id, punch_at, source, source_device, import_id, raw_payload, created_by)
+           VALUES (:id, :employeeId, :punchAt, :source, :sourceDevice, :importId, :rawPayload, :createdBy)
+           ON DUPLICATE KEY UPDATE import_id = COALESCE(import_id, VALUES(import_id))`,
+          {
+            id: crypto.randomUUID(),
+            employeeId: employee.id,
+            punchAt: punch.punchAt,
+            source,
+            sourceDevice,
+            importId,
+            rawPayload: JSON.stringify({ fileName, raw: punch.raw }),
+            createdBy: user.id,
+          },
+        );
+        dates.push(punch.punchAt.slice(0, 10));
+        imported++;
+      } catch (error) {
+        errors.push(`Row ${index + 1}: ${error.message}`);
+      }
+    }
+
+    await connection.execute(
+      `UPDATE attendance_imports
+       SET row_count = :rowCount, status = :status, period_from = :periodFrom, period_to = :periodTo, notes = :notes
+       WHERE id = :id`,
+      {
+        id: importId,
+        rowCount: imported,
+        status: imported ? "Completed" : "Failed",
+        periodFrom: dates.length ? dates.sort()[0] : null,
+        periodTo: dates.length ? dates.sort()[dates.length - 1] : null,
+        notes: errors.length ? errors.slice(0, 10).join("\n") : body.notes || null,
+      },
+    );
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  const refreshed = await refreshDtrEntries({
+    employeeId: employeeId || "",
+    from: from || (dates.length ? dates.sort()[0] : ""),
+    to: to || (dates.length ? dates.sort()[dates.length - 1] : ""),
+    userId: user.id,
+  });
+  await logAudit(user.id, "attendance.import_file", { importId, imported, errors: errors.length }, req);
+  return { importId, imported, errors, refreshed, dates };
+}
+
+async function handleImportDtrFile(req, res) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const fileName = String(body.fileName || "DTR import").trim();
+  const fileBase64 = String(body.fileBase64 || "");
+  const employeeId = String(body.employeeId || "").trim();
+  const from = normalizeDate(body.from || body.startDate);
+  const to = normalizeDate(body.to || body.endDate);
+  if (!fileBase64) return json(res, 400, { error: "A DTR file is required" });
+
+  let parsed;
+  try {
+    parsed = (await parseUploadedDtrFile(fileName, fileBase64)).filter((punch) =>
+      dateInRange(String(punch.punchAt || "").slice(0, 10), from, to),
+    );
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+  if (!parsed.length) return json(res, 400, { error: "No valid DTR punches found in the selected range" });
+
+  const result = await importParsedPunches({
+    user,
+    req,
+    body,
+    fileName,
+    parsed,
+    employeeId,
+    from,
+    to,
+    source: "Legacy",
+    sourceDevice: String(body.origin || body.source || "File").slice(0, 120),
+  });
+  return json(res, result.imported ? 200 : 400, result);
+}
+
+async function handleImportSingleDtr(req, res) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const source = String(body.source || "file").toLowerCase();
+  const employeeId = String(body.employeeId || body.employee_id || "").trim();
+  const from = normalizeDate(body.from || body.startDate || body.start_date);
+  const to = normalizeDate(body.to || body.endDate || body.end_date);
+  if (!employeeId) return json(res, 400, { error: "Select an employee first" });
+  if (!from || !to) return json(res, 400, { error: "Start date and end date are required" });
+  const [[employee]] = await pool.execute(`SELECT id FROM employees WHERE id = :employeeId LIMIT 1`, {
+    employeeId,
+  });
+  if (!employee) return json(res, 404, { error: "Employee not found" });
+
+  if (source === "biometric") {
+    const biometricId = String(body.biometricId || body.biometric_id || "").trim();
+    const [[device]] = await pool.execute(`SELECT * FROM biometric_devices WHERE id = :id LIMIT 1`, {
+      id: biometricId,
+    });
+    if (!device) return json(res, 404, { error: "Biometric device not found" });
+    if (!device.is_active) return json(res, 400, { error: "Selected biometric device is inactive" });
+    const online = await checkTcpDevice(device.ip_address, Number(device.port || 4370));
+    if (!online) return json(res, 400, { error: "Biometric device is offline or unreachable" });
+    return json(res, 501, {
+      error: "Live biometric import requires the ZK device connector setup from MuniWeb before HRIS can pull punches directly",
+    });
+  }
+
+  const fileName = String(body.fileName || "DTR import").trim();
+  const fileBase64 = String(body.fileBase64 || "");
+  if (!fileBase64) return json(res, 400, { error: "A DTR file is required" });
+  let parsed;
+  try {
+    parsed = (await parseUploadedDtrFile(fileName, fileBase64)).filter((punch) =>
+      dateInRange(String(punch.punchAt || "").slice(0, 10), from, to),
+    );
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+  if (!parsed.length) return json(res, 400, { error: "No valid DTR punches found in the selected range" });
+
+  const result = await importParsedPunches({
+    user,
+    req,
+    body,
+    fileName,
+    parsed,
+    employeeId,
+    from,
+    to,
+    source: "Legacy",
+    sourceDevice: "File",
+  });
+  return json(res, result.imported ? 200 : 400, {
+    message: `Imported ${result.imported} DTR punch(es)`,
+    importId: result.importId,
+    records_imported: result.imported,
+    imported: result.imported,
+    errors: result.errors,
+    refreshed: result.refreshed,
+    source: "file",
+    file_type: path.extname(fileName).replace(".", "").toLowerCase(),
+    origin: "File",
+    employee_id: employeeId,
+    start_date: from,
+    end_date: to,
   });
 }
 
@@ -2105,6 +2790,351 @@ async function handleRefreshDtr(req, res) {
   });
   await logAudit(user.id, "attendance.refresh", { employeeId, from, to, ...result }, req);
   return json(res, 200, result);
+}
+
+async function handleBulkEmployeeSchedule(req, res, overrides = false) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const employeeIds = Array.isArray(body.employeeIds) ? body.employeeIds.map(String).filter(Boolean) : [];
+  const schedule = body.schedule || {};
+  if (!employeeIds.length) return json(res, 400, { error: "Select at least one employee" });
+  const values = {
+    amIn: normalizeTimeInput(schedule.amIn || schedule.am_in || "08:00"),
+    amOut: normalizeTimeInput(schedule.amOut || schedule.am_out || "12:00"),
+    pmIn: normalizeTimeInput(schedule.pmIn || schedule.pm_in || "13:00"),
+    pmOut: normalizeTimeInput(schedule.pmOut || schedule.pm_out || "17:00"),
+  };
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    if (!overrides) {
+      for (const employeeId of employeeIds) {
+        await connection.execute(
+          `UPDATE employees
+           SET schedule_am_in = :amIn, schedule_am_out = :amOut, schedule_pm_in = :pmIn, schedule_pm_out = :pmOut
+           WHERE id = :employeeId`,
+          { employeeId, ...values },
+        );
+      }
+    } else {
+      const startDate = normalizeDate(body.startDate || body.from);
+      const endDate = normalizeDate(body.endDate || body.to);
+      if (!startDate || !endDate) throw new Error("Start and end dates are required");
+      const skipWeekends = body.skipWeekends !== false;
+      const cursor = new Date(`${startDate}T00:00:00`);
+      const end = new Date(`${endDate}T00:00:00`);
+      for (; cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+        const day = cursor.getDay();
+        if (skipWeekends && (day === 0 || day === 6)) continue;
+        const workDate = cursor.toISOString().slice(0, 10);
+        for (const employeeId of employeeIds) {
+          await connection.execute(
+            `INSERT INTO employee_schedule_overrides
+             (employee_id, work_date, am_in, am_out, pm_in, pm_out, created_by)
+             VALUES (:employeeId, :workDate, :amIn, :amOut, :pmIn, :pmOut, :createdBy)
+             ON DUPLICATE KEY UPDATE
+               am_in = VALUES(am_in), am_out = VALUES(am_out), pm_in = VALUES(pm_in), pm_out = VALUES(pm_out),
+               created_by = VALUES(created_by)`,
+            { employeeId, workDate, ...values, createdBy: user.id },
+          );
+        }
+      }
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    return json(res, 400, { error: error.message });
+  } finally {
+    connection.release();
+  }
+  await logAudit(
+    user.id,
+    overrides ? "attendance.schedule_override_bulk" : "attendance.schedule_bulk",
+    { employeeIds: employeeIds.length },
+    req,
+  );
+  return json(res, 200, { ok: true, updated: employeeIds.length });
+}
+
+function monthPeriodBounds(period) {
+  const from = normalizeDate(period.from || period.startDate || period.dateFrom);
+  const to = normalizeDate(period.to || period.endDate || period.dateTo);
+  if (from || to) {
+    if (!from || !to) throw new Error("Start and end dates are required");
+    if (from > to) throw new Error("Start date cannot be after end date");
+    return { from, to };
+  }
+  const month = Number(period.month);
+  const year = Number(period.year);
+  const cut = String(period.cut || "full");
+  if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year)) {
+    throw new Error("Month and year are required");
+  }
+  const last = new Date(year, month, 0).getDate();
+  if (cut === "first") return { from: `${year}-${String(month).padStart(2, "0")}-01`, to: `${year}-${String(month).padStart(2, "0")}-15` };
+  if (cut === "last") return { from: `${year}-${String(month).padStart(2, "0")}-16`, to: `${year}-${String(month).padStart(2, "0")}-${last}` };
+  return { from: `${year}-${String(month).padStart(2, "0")}-01`, to: `${year}-${String(month).padStart(2, "0")}-${last}` };
+}
+
+function splitSameMonthDtrRange(period) {
+  const from = normalizeDate(period.from || period.startDate || period.dateFrom);
+  const to = normalizeDate(period.to || period.endDate || period.dateTo);
+  if (!from || !to) return [period];
+  const [fromYear, fromMonth, fromDay] = from.split("-").map(Number);
+  const [toYear, toMonth, toDay] = to.split("-").map(Number);
+  if (fromYear === toYear && fromMonth === toMonth && fromDay <= 15 && toDay > 15) {
+    const monthPrefix = `${fromYear}-${String(fromMonth).padStart(2, "0")}`;
+    return [
+      { from, to: `${monthPrefix}-15` },
+      { from: `${monthPrefix}-16`, to },
+    ];
+  }
+  return [{ from, to }];
+}
+
+function normalizeDtrExportPeriods(periods) {
+  if (periods.length !== 1) return periods;
+  return splitSameMonthDtrRange(periods[0]);
+}
+
+function dtrExportPeriodsFromBody(body) {
+  if (Array.isArray(body.periods) && body.periods.length) return normalizeDtrExportPeriods(body.periods);
+
+  const firstFrom = body.firstStartDate || body.first_start_date || body.startDate || body.from;
+  const firstTo = body.firstEndDate || body.first_end_date || body.endDate || body.to;
+  if (firstFrom || firstTo) {
+    const periods = [{ from: firstFrom, to: firstTo }];
+    const secondFrom = body.secondStartDate || body.second_start_date;
+    const secondTo = body.secondEndDate || body.second_end_date;
+    if (secondFrom || secondTo) periods.push({ from: secondFrom, to: secondTo });
+    return normalizeDtrExportPeriods(periods);
+  }
+
+  const periods = [
+    {
+      month: Number(body.firstMonth || body.month),
+      year: Number(body.firstYear || body.year),
+      cut: String(body.firstCut || body.cut || "full"),
+    },
+  ];
+  if (body.secondMonth && Number(body.secondMonth) > 0) {
+    periods.push({
+      month: Number(body.secondMonth),
+      year: Number(body.secondYear || body.firstYear || body.year),
+      cut: String(body.secondCut || "full"),
+    });
+  }
+  return periods;
+}
+
+async function runPython(args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(PYTHON_EXE, args, { cwd: process.cwd(), windowsHide: true });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(stderr.trim() || stdout.trim() || `Python exited with code ${code}`));
+    });
+  });
+}
+
+async function prepareDtrExport(req, res) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return null;
+  const body = await readBody(req);
+  let employeeId = String(body.employeeId || "").trim();
+  if (user.role === "Employee") employeeId = user.employeeId || "";
+  if (!employeeId) {
+    json(res, 400, { error: "Employee is required" });
+    return null;
+  }
+  if (!canReadEmployeeAttendance(user, employeeId)) {
+    json(res, 403, { error: "You can only export your own DTR" });
+    return null;
+  }
+
+  const periods = dtrExportPeriodsFromBody(body);
+  let bounds;
+  let ranges;
+  try {
+    ranges = periods.map(monthPeriodBounds);
+    bounds = {
+      from: ranges.map((range) => range.from).sort()[0],
+      to: ranges.map((range) => range.to).sort().at(-1),
+    };
+  } catch (error) {
+    json(res, 400, { error: error.message });
+    return null;
+  }
+
+  const [[employeeRowData]] = await pool.execute(
+    `SELECT * FROM employees WHERE id = :employeeId LIMIT 1`,
+    { employeeId },
+  );
+  if (!employeeRowData) {
+    json(res, 404, { error: "Employee not found" });
+    return null;
+  }
+  const employee = employeeRow(employeeRowData);
+  const rows = await readAttendanceRows({ employeeId, from: bounds.from, to: bounds.to, limit: 1000 });
+  const noter = {
+    signatory: String(body.noterSignatory || body.noter_signatory || employee.dtrSignatory || employee.lastname || "").trim(),
+    position: String(body.noterPosition || body.noter_position || "Immediate Supervisor").trim(),
+  };
+  const payload = {
+    employee: {
+      id: employee.id,
+      name: [employee.firstname, employee.middlename, employee.lastname, employee.nameExt].filter(Boolean).join(" "),
+      position: employee.position,
+      department: employee.department,
+      signatory: employee.dtrSignatory || [employee.firstname, employee.middlename, employee.lastname, employee.nameExt].filter(Boolean).join(" "),
+      scheduleAmIn: employee.scheduleAmIn,
+      scheduleAmOut: employee.scheduleAmOut,
+      schedulePmIn: employee.schedulePmIn,
+      schedulePmOut: employee.schedulePmOut,
+    },
+    noter,
+    periods: periods.map((period, index) => ({
+      ...ranges[index],
+      month: period.month ? Number(period.month) : undefined,
+      year: period.year ? Number(period.year) : undefined,
+      cut: period.cut ? String(period.cut) : undefined,
+    })),
+    entries: rows,
+  };
+
+  return { user, employeeId, employee, rows, bounds, payload };
+}
+
+async function handleGenerateDtrExcel(req, res) {
+  const exportData = await prepareDtrExport(req, res);
+  if (!exportData) return;
+  const { user, employeeId, employee, rows, bounds, payload } = exportData;
+
+  await fs.mkdir(PREVIEW_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safeName = `${employee.lastname || "employee"}-${employee.firstname || ""}`.replace(/[^A-Za-z0-9_-]+/g, "-");
+  const fileName = `dtr-${safeName}-${stamp}.xlsx`;
+  const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
+  const outputPath = path.join(PREVIEW_DIR, fileName);
+  await fs.writeFile(inputPath, JSON.stringify(payload), "utf8");
+  try {
+    await runPython([DTR_EXCEL_SCRIPT, inputPath, outputPath, DTR_TEMPLATE_XLSX]);
+  } catch (error) {
+    return json(res, 500, { error: error.message });
+  } finally {
+    await fs.rm(inputPath, { force: true }).catch(() => {});
+  }
+
+  await pool.execute(
+    `INSERT INTO dtr_export_jobs (id, scope, employee_id, period_from, period_to, file_name, row_count, created_by)
+     VALUES (:id, 'Single', :employeeId, :from, :to, :fileName, :rowCount, :createdBy)`,
+    {
+      id: crypto.randomUUID(),
+      employeeId,
+      from: bounds.from,
+      to: bounds.to,
+      fileName,
+      rowCount: rows.length,
+      createdBy: user.id,
+    },
+  );
+  return json(res, 200, {
+    fileName,
+    downloadUrl: `/api/attendance/dtr/excel/${encodeURIComponent(fileName)}`,
+    rowCount: rows.length,
+  });
+}
+
+async function handleDownloadDtrExcel(req, res, fileName) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  const decoded = decodeURIComponent(fileName);
+  if (!/^dtr-[A-Za-z0-9_.-]+\.xlsx$/.test(decoded)) {
+    return json(res, 400, { error: "Invalid DTR Excel file name" });
+  }
+  const resolved = path.resolve(PREVIEW_DIR, decoded);
+  if (!resolved.startsWith(path.resolve(PREVIEW_DIR))) {
+    return json(res, 400, { error: "Invalid DTR Excel path" });
+  }
+  try {
+    await fs.access(resolved);
+  } catch {
+    return json(res, 404, { error: "DTR Excel file not found" });
+  }
+  return sendFile(res, resolved, decoded);
+}
+
+async function handleGenerateDtrPdf(req, res) {
+  const exportData = await prepareDtrExport(req, res);
+  if (!exportData) return;
+  const { user, employeeId, employee, rows, bounds, payload } = exportData;
+
+  await cleanupPreviewFiles().catch(() => {});
+  await fs.mkdir(PREVIEW_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safeName = `${employee.lastname || "employee"}-${employee.firstname || ""}`.replace(/[^A-Za-z0-9_-]+/g, "-");
+  const fileName = `dtr-${safeName}-${stamp}.pdf`;
+  const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
+  const outputPath = path.join(PREVIEW_DIR, fileName);
+
+  await fs.writeFile(inputPath, JSON.stringify(payload), "utf8");
+  try {
+    await runPython([DTR_PDF_SCRIPT, inputPath, outputPath, TEMPLATE_DIR]);
+  } catch (error) {
+    return json(res, 500, { error: error.message });
+  } finally {
+    await fs.rm(inputPath, { force: true }).catch(() => {});
+  }
+
+  await pool.execute(
+    `INSERT INTO dtr_export_jobs (id, scope, employee_id, period_from, period_to, file_name, row_count, created_by)
+     VALUES (:id, 'Single', :employeeId, :from, :to, :fileName, :rowCount, :createdBy)`,
+    {
+      id: crypto.randomUUID(),
+      employeeId,
+      from: bounds.from,
+      to: bounds.to,
+      fileName,
+      rowCount: rows.length,
+      createdBy: user.id,
+    },
+  );
+
+  return json(res, 200, {
+    fileName,
+    previewUrl: `/api/attendance/dtr/pdf/${encodeURIComponent(fileName)}`,
+    rowCount: rows.length,
+  });
+}
+
+async function handlePreviewDtrPdf(req, res, fileName) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  const decoded = decodeURIComponent(fileName);
+  if (!/^dtr-[A-Za-z0-9_.-]+\.pdf$/.test(decoded)) {
+    return json(res, 400, { error: "Invalid DTR PDF file name" });
+  }
+  const resolved = path.resolve(PREVIEW_DIR, decoded);
+  if (!resolved.startsWith(path.resolve(PREVIEW_DIR))) {
+    return json(res, 400, { error: "Invalid DTR PDF path" });
+  }
+  try {
+    await fs.access(resolved);
+  } catch {
+    return json(res, 404, { error: "DTR PDF file not found" });
+  }
+  return sendInlinePdfAndDelete(res, resolved, decoded);
 }
 
 async function handleCreateDtrEntry(req, res) {
@@ -2286,11 +3316,13 @@ async function handleCreateEmployee(req, res) {
       `INSERT INTO employees (
         id, employee_no, firstname, middlename, lastname, name_ext, department, position, status, level,
         status_class, date_hired, date_employed, item_no, emp_status, birthday, gender, civil_status,
-        email, cellphone_no, photo_url, profile_json
+        email, cellphone_no, photo_url, schedule_am_in, schedule_am_out, schedule_pm_in, schedule_pm_out,
+        dtr_signatory, dtr_noter_id, is_dtr_noter, regular, profile_json
       ) VALUES (
         :id, :employeeNo, :firstname, :middlename, :lastname, :nameExt, :department, :position, :status, :level,
         :statusClass, :dateHired, :dateEmployed, :itemNo, :empStatus, :birthday, :gender, :civilStatus,
-        :email, :cellphoneNo, :photoUrl, :profileJson
+        :email, :cellphoneNo, :photoUrl, :scheduleAmIn, :scheduleAmOut, :schedulePmIn, :schedulePmOut,
+        :dtrSignatory, :dtrNoterId, :isDtrNoter, :regular, :profileJson
       )`,
       { id, ...data, employeeNo },
     );
@@ -2363,6 +3395,14 @@ async function handleUpdateEmployee(req, res, id) {
         email = :email,
         cellphone_no = :cellphoneNo,
         photo_url = :photoUrl,
+        schedule_am_in = :scheduleAmIn,
+        schedule_am_out = :scheduleAmOut,
+        schedule_pm_in = :schedulePmIn,
+        schedule_pm_out = :schedulePmOut,
+        dtr_signatory = :dtrSignatory,
+        dtr_noter_id = :dtrNoterId,
+        is_dtr_noter = :isDtrNoter,
+        regular = :regular,
         profile_json = :profileJson
        WHERE id = :id`,
       { id, ...data, employeeNo },
@@ -3044,6 +4084,11 @@ async function route(req, res) {
     /^\/api\/leave\/applications\/([A-Za-z0-9-]+)\/decision$/,
   );
   const dtrEntryMatch = url.pathname.match(/^\/api\/attendance\/dtr\/([A-Za-z0-9-]+)$/);
+  const dtrExcelMatch = url.pathname.match(/^\/api\/attendance\/dtr\/excel\/([^/]+)$/);
+  const dtrPdfMatch = url.pathname.match(/^\/api\/attendance\/dtr\/pdf\/([^/]+)$/);
+  const dtrNoterMatch = url.pathname.match(/^\/api\/attendance\/noters\/(\d+)$/);
+  const biometricDeviceMatch = url.pathname.match(/^\/api\/attendance\/biometrics\/(\d+)$/);
+  const unimportedDtrMatch = url.pathname.match(/^\/api\/attendance\/check-unimported-dtrs\/([A-Za-z0-9-]+)$/);
   const departmentMatch = url.pathname.match(/^\/api\/settings\/departments\/(\d+)$/);
   const positionMatch = url.pathname.match(/^\/api\/settings\/positions\/(\d+)$/);
   const salaryGradeMatch = url.pathname.match(/^\/api\/settings\/salary-grades\/(\d+)$/);
@@ -3145,8 +4190,44 @@ async function route(req, res) {
     return handleDeleteDtrEntry(req, res, dtrEntryMatch[1]);
   if (req.method === "POST" && url.pathname === "/api/attendance/import")
     return handleImportDtr(req, res);
+  if (req.method === "POST" && url.pathname === "/api/attendance/import-file")
+    return handleImportDtrFile(req, res);
+  if (req.method === "POST" && url.pathname === "/api/attendance/import-single-dtr")
+    return handleImportSingleDtr(req, res);
+  if (req.method === "GET" && unimportedDtrMatch)
+    return handleCheckUnimportedDtrs(req, res, unimportedDtrMatch[1]);
   if (req.method === "POST" && url.pathname === "/api/attendance/refresh")
     return handleRefreshDtr(req, res);
+  if (req.method === "POST" && url.pathname === "/api/attendance/schedule/bulk")
+    return handleBulkEmployeeSchedule(req, res, false);
+  if (req.method === "POST" && url.pathname === "/api/attendance/schedule/overrides")
+    return handleBulkEmployeeSchedule(req, res, true);
+  if (req.method === "GET" && url.pathname === "/api/attendance/noters")
+    return handleListDtrNoters(req, res);
+  if (req.method === "POST" && url.pathname === "/api/attendance/noters")
+    return handleCreateDtrNoter(req, res);
+  if (req.method === "DELETE" && dtrNoterMatch)
+    return handleDeleteDtrNoter(req, res, dtrNoterMatch[1]);
+  if (req.method === "GET" && url.pathname === "/api/attendance/biometrics")
+    return handleListBiometricDevices(req, res);
+  if (req.method === "POST" && url.pathname === "/api/attendance/biometrics")
+    return handleCreateBiometricDevice(req, res);
+  if (req.method === "PUT" && biometricDeviceMatch)
+    return handleUpdateBiometricDevice(req, res, biometricDeviceMatch[1]);
+  if (req.method === "PATCH" && biometricDeviceMatch)
+    return handleUpdateBiometricDevice(req, res, biometricDeviceMatch[1]);
+  if (req.method === "DELETE" && biometricDeviceMatch)
+    return handleDeleteBiometricDevice(req, res, biometricDeviceMatch[1]);
+  if (req.method === "POST" && url.pathname === "/api/attendance/biometrics/check-status")
+    return handleCheckBiometricStatus(req, res);
+  if (req.method === "POST" && url.pathname === "/api/attendance/dtr/excel")
+    return handleGenerateDtrExcel(req, res);
+  if (req.method === "GET" && dtrExcelMatch)
+    return handleDownloadDtrExcel(req, res, dtrExcelMatch[1]);
+  if (req.method === "POST" && url.pathname === "/api/attendance/dtr/pdf")
+    return handleGenerateDtrPdf(req, res);
+  if (req.method === "GET" && dtrPdfMatch)
+    return handlePreviewDtrPdf(req, res, dtrPdfMatch[1]);
   if (req.method === "GET" && url.pathname === "/api/attendance/export")
     return handleExportDtr(req, res, url, false);
   if (req.method === "GET" && url.pathname === "/api/attendance/export/mass")
@@ -3172,6 +4253,8 @@ async function route(req, res) {
 }
 
 await initializeDatabase();
+await cleanupPreviewFiles().catch(() => {});
+setInterval(() => cleanupPreviewFiles().catch(() => {}), 10 * 60 * 1000).unref();
 
 const server = http.createServer(async (req, res) => {
   try {

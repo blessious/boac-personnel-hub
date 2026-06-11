@@ -309,7 +309,8 @@ function PersonalTab({
   const departments = options.departments.map((department) => department.name);
   const positions = options.positions.map((position) => position.title);
 
-  const set = (key: keyof EmployeeRecord, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof EmployeeRecord, value: EmployeeRecord[keyof EmployeeRecord]) =>
+    setForm((current) => ({ ...current, [key]: value }));
 
   const save = async () => {
     try {
@@ -362,6 +363,23 @@ function PersonalTab({
             <RadioItem id="emp-active" value="Active" label="Active" />
             <RadioItem id="emp-inactive" value="Inactive" label="Inactive" />
           </RadioGroup>
+        </Field>
+        <Field label="DTR Noter">
+          <RadioGroup
+            value={form.isDtrNoter ? "yes" : "no"}
+            onValueChange={(value) => set("isDtrNoter", value === "yes")}
+            className="flex gap-4 pt-1"
+          >
+            <RadioItem id="dtr-noter-yes" value="yes" label="Yes" />
+            <RadioItem id="dtr-noter-no" value="no" label="No" />
+          </RadioGroup>
+        </Field>
+        <Field label="DTR Signatory">
+          <Input
+            value={form.dtrSignatory}
+            onChange={(e) => set("dtrSignatory", e.target.value)}
+            placeholder={`${form.firstname} ${form.lastname}`.trim()}
+          />
         </Field>
         <Field label="Agency"><Input value={form.agency} onChange={(e) => set("agency", e.target.value)} /></Field>
         <Field label="Date Separated"><Input type="date" value={form.dateSeparated} onChange={(e) => set("dateSeparated", e.target.value)} /></Field>

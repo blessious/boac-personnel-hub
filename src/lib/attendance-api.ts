@@ -63,6 +63,24 @@ export type DtrPayload = {
   remarks?: string;
 };
 
+export type DtrNoter = {
+  id: string;
+  name: string;
+  position: string;
+  office: string;
+  signatory: string;
+  isActive: boolean;
+};
+
+export type BiometricDevice = {
+  id: string;
+  biometric_id: number;
+  name: string;
+  ip_address: string;
+  port: number;
+  active: boolean;
+};
+
 export function listDtr(params: { employeeId?: string; from?: string; to?: string; q?: string }) {
   const query = new URLSearchParams();
   if (params.employeeId) query.set("employeeId", params.employeeId);
@@ -102,11 +120,181 @@ export function importDtrRows(payload: {
   });
 }
 
+export function importDtrFile(payload: {
+  fileName: string;
+  fileBase64: string;
+  employeeId?: string;
+  from?: string;
+  to?: string;
+  origin?: string;
+  notes?: string;
+}) {
+  return api<{
+    importId: string;
+    imported: number;
+    errors: string[];
+    refreshed: { recordsProcessed: number; punchesProcessed: number };
+  }>("/api/attendance/import-file", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function importSingleDtr(payload: {
+  source: "file" | "biometric";
+  employeeId: string;
+  biometricId?: string;
+  fileName?: string;
+  fileBase64?: string;
+  startDate: string;
+  endDate: string;
+}) {
+  return api<{
+    message: string;
+    importId: string;
+    records_imported: number;
+    imported: number;
+    errors: string[];
+    refreshed: { recordsProcessed: number; punchesProcessed: number };
+  }>("/api/attendance/import-single-dtr", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function refreshDtr(params: { employeeId?: string; from?: string; to?: string }) {
   return api<{ recordsProcessed: number; punchesProcessed: number }>("/api/attendance/refresh", {
     method: "POST",
     body: JSON.stringify(params),
   });
+}
+
+export function listDtrNoters() {
+  return api<{ noters: DtrNoter[] }>("/api/attendance/noters");
+}
+
+export function createDtrNoter(payload: {
+  name: string;
+  position: string;
+  office?: string;
+  signatory: string;
+}) {
+  return api<{ noter: DtrNoter }>("/api/attendance/noters", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listBiometricDevices() {
+  return api<{ devices: BiometricDevice[] }>("/api/attendance/biometrics");
+}
+
+export function createBiometricDevice(payload: {
+  name: string;
+  ip_address: string;
+  port: number;
+  active: boolean;
+}) {
+  return api<{ device: BiometricDevice }>("/api/attendance/biometrics", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateBiometricDevice(
+  id: string,
+  payload: { name: string; ip_address: string; port: number; active: boolean },
+) {
+  return api<{ device: BiometricDevice }>(`/api/attendance/biometrics/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteBiometricDevice(id: string) {
+  return api<{ ok: boolean }>(`/api/attendance/biometrics/${id}`, { method: "DELETE" });
+}
+
+export function checkBiometricStatus(payload: { ip_address: string; port: number }) {
+  return api<{ online: boolean; status: "online" | "offline" }>(
+    "/api/attendance/biometrics/check-status",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function checkUnimportedDtrs(employeeId: string) {
+  return api<{ count: number }>(`/api/attendance/check-unimported-dtrs/${employeeId}`);
+}
+
+export function bulkUpdateSchedule(payload: {
+  employeeIds: string[];
+  schedule: { amIn: string; amOut: string; pmIn: string; pmOut: string };
+}) {
+  return api<{ ok: boolean; updated: number }>("/api/attendance/schedule/bulk", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function bulkUpdateScheduleOverrides(payload: {
+  employeeIds: string[];
+  startDate: string;
+  endDate: string;
+  skipWeekends: boolean;
+  schedule: { amIn: string; amOut: string; pmIn: string; pmOut: string };
+}) {
+  return api<{ ok: boolean; updated: number }>("/api/attendance/schedule/overrides", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function generateDtrExcel(payload: {
+  employeeId: string;
+  noterSignatory: string;
+  noterPosition: string;
+  periods: Array<{ from: string; to: string }>;
+  firstStartDate?: string;
+  firstEndDate?: string;
+  secondStartDate?: string;
+  secondEndDate?: string;
+}) {
+  return api<{ fileName: string; downloadUrl: string; rowCount: number }>("/api/attendance/dtr/excel", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function generateDtrPdf(payload: {
+  employeeId: string;
+  noterSignatory: string;
+  noterPosition: string;
+  periods: Array<{ from: string; to: string }>;
+  firstStartDate?: string;
+  firstEndDate?: string;
+  secondStartDate?: string;
+  secondEndDate?: string;
+}) {
+  return api<{ fileName: string; previewUrl: string; rowCount: number }>("/api/attendance/dtr/pdf", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function openGeneratedFile(url: string) {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+export function downloadGeneratedFile(downloadUrl: string, fileName: string) {
+  const anchor = document.createElement("a");
+  anchor.href = downloadUrl;
+  anchor.download = fileName;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  anchor.click();
 }
 
 export async function downloadDtrCsv(params: {

@@ -29,7 +29,7 @@ if not exist "node_modules\" (
 
 echo.
 echo [INFO] Starting development server...
-echo [INFO] The application will be available at http://localhost:1001
+echo [INFO] The application will be available at http://localhost:47100
 echo.
 echo Press Ctrl+C to stop the server.
 echo.

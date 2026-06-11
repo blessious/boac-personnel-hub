@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useState } from "react";
-import { Activity, ClipboardList, Users } from "lucide-react";
+import { Activity, CalendarX, ClipboardList, Users } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -107,19 +107,21 @@ function Dashboard() {
         </div>
       )}
 
-      <div className="mb-5 rounded-xl border border-border bg-card p-4 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="mb-4 rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               {role} Workspace
             </div>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">{getWelcomeText(role)}</h2>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            <h2 className="mt-0.5 truncate text-base font-semibold text-foreground">
+              {getWelcomeText(role)}
+            </h2>
+            <p className="mt-0.5 max-w-3xl truncate text-xs text-slate-600 dark:text-slate-300">
               {getWelcomeDescription(role)}
             </p>
           </div>
-          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Signed in as </span>
+          <div className="flex shrink-0 items-center rounded-md border border-border bg-muted/30 px-3 py-1.5 text-xs">
+            <span className="mr-1 text-muted-foreground">Signed in as</span>
             <span className="font-medium text-foreground">{user?.name}</span>
           </div>
         </div>
@@ -132,26 +134,21 @@ function Dashboard() {
             return (
               <div
                 key={card.label}
-                className={cn(
-                  "flex items-center gap-4 rounded-xl border bg-card p-5 shadow-sm",
-                  card.border,
-                )}
+                className="rounded-xl border border-border bg-card p-4 shadow-sm"
               >
                 <div
                   className={cn(
-                    "grid h-12 w-12 shrink-0 place-items-center rounded-lg",
+                    "mb-4 grid h-10 w-10 shrink-0 place-items-center rounded-lg",
                     card.color,
                   )}
                 >
-                  <Icon className="h-6 w-6" />
+                  <Icon className="h-5 w-5" />
                 </div>
-                <div>
-                  <div className="text-2xl font-bold tabular-nums">
-                    {loading ? "..." : card.value}
-                  </div>
-                  <div className="text-sm font-medium text-foreground">{card.label}</div>
-                  <div className="text-xs text-muted-foreground">{card.sub}</div>
+                <div className="text-3xl font-bold leading-none tabular-nums text-foreground">
+                  {loading ? "..." : card.value}
                 </div>
+                <div className="mt-2 text-sm font-semibold text-foreground">{card.label}</div>
+                <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">{card.sub}</div>
               </div>
             );
           })}
@@ -173,7 +170,7 @@ function Dashboard() {
                   nameKey="status"
                   cx="50%"
                   cy="50%"
-                  innerRadius={58}
+                  innerRadius={72}
                   outerRadius={96}
                   paddingAngle={2}
                 >
@@ -197,6 +194,7 @@ function Dashboard() {
             description="Age bands based on recorded birthdays."
             emptyText="No birthday data is available yet."
             hasData={(data?.byAgeGroup ?? []).some((row) => row.total > 0)}
+            emptyIcon={CalendarX}
           >
             <ChartContainer config={chartConfig} className="h-[280px] w-full">
               <BarChart data={data?.byAgeGroup ?? []} margin={{ left: 0, right: 12, top: 12 }}>
@@ -210,7 +208,7 @@ function Dashboard() {
           </ChartPanel>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="mt-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-2">
           <ChartPanel
             title="Sex Distribution by Division"
             description="Compares recorded male and female employees per division."
@@ -259,7 +257,7 @@ function Dashboard() {
           />
         </div>
 
-        <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="mt-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-2">
           <SummaryTable
             title="Distribution by Level, Division and Sex"
             emptyText="No employee demographic data is available yet."
@@ -343,25 +341,45 @@ function ChartPanel({
   description,
   emptyText,
   hasData,
+  emptyIcon: EmptyIcon,
   children,
 }: {
   title: string;
   description: string;
   emptyText: string;
   hasData: boolean;
+  emptyIcon?: React.ComponentType<{ className?: string }>;
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+    <div className="self-start rounded-xl border border-border bg-card p-4 shadow-sm">
       <div className="mb-3">
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <p className="text-xs text-slate-600 dark:text-slate-300">{description}</p>
       </div>
       {hasData ? (
         children
       ) : (
         <div className="grid h-[280px] place-items-center text-sm text-muted-foreground">
-          {emptyText}
+          <div className="w-full max-w-md px-4 text-center">
+            {EmptyIcon ? (
+              <div className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-border bg-muted/30 text-muted-foreground">
+                <EmptyIcon className="h-7 w-7" />
+              </div>
+            ) : (
+              <div className="flex h-44 items-end gap-3 border-b border-l border-border px-4 pb-3">
+                {[58, 92, 70, 118, 84, 104].map((height) => (
+                  <div
+                    key={height}
+                    className="flex-1 rounded-t border border-border bg-muted/30"
+                    style={{ height }}
+                    aria-hidden="true"
+                  />
+                ))}
+              </div>
+            )}
+            <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">{emptyText}</p>
+          </div>
         </div>
       )}
     </div>
@@ -394,13 +412,13 @@ function SummaryTable({
   emptyText: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+    <div className="self-start overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       <div className="border-b border-border bg-muted/20 p-4">
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-border bg-muted/30 text-xs uppercase text-muted-foreground">
+          <thead className="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
             <tr>
               {headers.map((header) => (
                 <th key={header} className="px-4 py-3 font-medium">
@@ -428,14 +446,24 @@ function SummaryTable({
                     index % 2 === 1 && "bg-muted/10",
                   )}
                 >
-                  {row.map((cell, cellIndex) => (
-                    <td
-                      key={`${cell}-${cellIndex}`}
-                      className={cn("px-4 py-3", cellIndex > 0 && "text-center tabular-nums")}
-                    >
-                      {cell}
-                    </td>
-                  ))}
+                  {row.map((cell, cellIndex) => {
+                    const isTextColumn = typeof cell === "string" && cellIndex < 2;
+                    return (
+                      <td
+                        key={`${cell}-${cellIndex}`}
+                        className={cn(
+                          "px-4 py-3",
+                          cellIndex > 0 && !isTextColumn && "text-center tabular-nums",
+                          isTextColumn && "max-w-[260px]",
+                          cellIndex === 0 && "min-w-[220px]",
+                          cellIndex === 1 && headers.length > 4 && "min-w-[180px]",
+                        )}
+                        title={isTextColumn ? String(cell) : undefined}
+                      >
+                        {isTextColumn ? <span className="block truncate">{cell}</span> : cell}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))
             )}

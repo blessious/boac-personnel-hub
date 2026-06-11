@@ -379,9 +379,24 @@ function EmployeeServicesHome() {
         <Tabs defaultValue="requests" className="space-y-4">
           <div className="overflow-x-auto">
             <TabsList className="h-auto justify-start gap-1 bg-muted/50 p-1">
-              <TabsTrigger value="requests">Requests</TabsTrigger>
-              <TabsTrigger value="attendance">Attendance</TabsTrigger>
-              <TabsTrigger value="records">Records</TabsTrigger>
+              <TabsTrigger
+                value="requests"
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+              >
+                Requests
+              </TabsTrigger>
+              <TabsTrigger
+                value="attendance"
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+              >
+                Attendance
+              </TabsTrigger>
+              <TabsTrigger
+                value="records"
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+              >
+                Records
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -830,13 +845,14 @@ function ActionButton({
   return (
     <button
       onClick={onClick}
-      className="flex min-h-24 items-start gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-muted/30"
+      className="group relative flex min-h-24 items-start gap-3 rounded-lg border border-border bg-card p-4 pr-10 text-left transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted/30 hover:shadow-md"
     >
       <Icon className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
       <span>
         <span className="block text-sm font-semibold text-foreground">{title}</span>
         <span className="mt-1 block text-sm leading-6 text-muted-foreground">{description}</span>
       </span>
+      <ChevronRight className="absolute right-3 top-3 h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" />
     </button>
   );
 }

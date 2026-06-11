@@ -2,20 +2,29 @@ import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-rout
 import { type ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
-  BriefcaseBusiness,
+  Activity,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Eye,
+  MoreVertical,
   Pencil,
   Plus,
   Search,
   Trash2,
+  User,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +44,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import {
   createEmployee,
+  getDashboard,
   deleteEmployee,
   EMPLOYMENT_STATUSES,
   getSettingsOptions,
@@ -49,11 +59,16 @@ export const Route = createFileRoute("/employees")({
 });
 
 const STATUS_COLOR: Record<string, string> = {
-  Permanent: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  Regular: "bg-blue-100 text-blue-700 border-blue-200",
-  "Job Order": "bg-amber-100 text-amber-700 border-amber-200",
-  Casual: "bg-purple-100 text-purple-700 border-purple-200",
-  Contractual: "bg-rose-100 text-rose-700 border-rose-200",
+  Permanent:
+    "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
+  Regular:
+    "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800",
+  "Job Order":
+    "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+  Casual:
+    "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800",
+  Contractual:
+    "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800",
 };
 
 const EMPTY_FORM: Partial<EmployeeRecord> = {
@@ -67,6 +82,8 @@ const EMPTY_FORM: Partial<EmployeeRecord> = {
   empStatus: "Active",
   dateHired: "",
   email: "",
+  dtrSignatory: "",
+  isDtrNoter: false,
 };
 
 function EmployeesPage() {
@@ -86,6 +103,10 @@ function EmployeesPage() {
     departments: [],
     positions: [],
     salaryGrades: [],
+  });
+  const [summary, setSummary] = useState({
+    regularEmployees: 0,
+    jobOrderEmployees: 0,
   });
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [form, setForm] = useState<Partial<EmployeeRecord>>(EMPTY_FORM);
@@ -110,6 +131,22 @@ function EmployeesPage() {
     getSettingsOptions()
       .then(setOptions)
       .catch(() => setOptions({ departments: [], positions: [], salaryGrades: [] }));
+  }, []);
+
+  useEffect(() => {
+    getDashboard()
+      .then((result) =>
+        setSummary({
+          regularEmployees: result.regularEmployees,
+          jobOrderEmployees: result.jobOrderEmployees,
+        }),
+      )
+      .catch(() =>
+        setSummary({
+          regularEmployees: 0,
+          jobOrderEmployees: 0,
+        }),
+      );
   }, []);
 
   const departments = useMemo(
@@ -166,8 +203,16 @@ function EmployeesPage() {
 
       <div className="mb-4 grid gap-3 md:grid-cols-3">
         <SummaryCard label="Total Records" value={total} icon={Users} />
-        <SummaryCard label="Departments" value={departments.length} icon={BriefcaseBusiness} />
-        <SummaryCard label="Current Page" value={`${page} of ${totalPages}`} icon={Eye} />
+        <SummaryCard
+          label="Regular Employees"
+          value={summary.regularEmployees}
+          icon={Activity}
+        />
+        <SummaryCard
+          label="Job Order / COS"
+          value={summary.jobOrderEmployees}
+          icon={ClipboardList}
+        />
       </div>
 
       <div className="rounded-xl border border-border bg-card shadow-sm">
@@ -235,7 +280,7 @@ function EmployeesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3 font-semibold">Employee ID</th>
                 <th className="px-4 py-3 font-semibold">Full Name</th>
                 <th className="hidden px-4 py-3 font-semibold md:table-cell">Position</th>
@@ -280,9 +325,7 @@ function EmployeesPage() {
                               className="h-full w-full object-cover"
                             />
                           ) : (
-                            <span className="px-1 text-center text-[9px] font-medium uppercase leading-tight text-muted-foreground">
-                              No photo
-                            </span>
+                            <User className="h-4 w-4 text-muted-foreground" />
                           )}
                         </div>
                         <div>
@@ -295,11 +338,17 @@ function EmployeesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
-                      {employee.position}
+                    <td
+                      className="hidden max-w-[240px] px-4 py-3 text-muted-foreground md:table-cell"
+                      title={employee.position}
+                    >
+                      <span className="block truncate">{employee.position}</span>
                     </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
-                      {employee.department}
+                    <td
+                      className="hidden max-w-[260px] px-4 py-3 text-muted-foreground lg:table-cell"
+                      title={employee.department}
+                    >
+                      <span className="block truncate">{employee.department}</span>
                     </td>
                     <td className="px-4 py-3">
                       <Badge
@@ -313,7 +362,7 @@ function EmployeesPage() {
                       {employee.dateHired || "-"}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="inline-flex gap-1">
+                      <div className="inline-flex items-center gap-1">
                         <Link
                           to="/employees/$id"
                           params={{ id: employee.id }}
@@ -322,22 +371,32 @@ function EmployeesPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </Link>
-                        <Link
-                          to="/employees/$id"
-                          params={{ id: employee.id }}
-                          className="inline-grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-accent"
-                          title="Edit"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Link>
-                        <button
-                          disabled={!canEdit}
-                          onClick={() => remove(employee)}
-                          className="inline-grid h-8 w-8 place-items-center rounded-md text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-40"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              className="inline-grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-accent"
+                              title="More actions"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-36">
+                            <DropdownMenuItem asChild>
+                              <Link to="/employees/$id" params={{ id: employee.id }}>
+                                <Pencil className="h-4 w-4" />
+                                Edit
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!canEdit}
+                              onClick={() => remove(employee)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>
@@ -460,6 +519,27 @@ function EmployeesPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </Field>
+            <Field label="DTR Noter">
+              <Select
+                value={form.isDtrNoter ? "yes" : "no"}
+                onValueChange={(value) => setForm({ ...form, isDtrNoter: value === "yes" })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no">No</SelectItem>
+                  <SelectItem value="yes">Yes</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="DTR Signatory">
+              <Input
+                value={form.dtrSignatory ?? ""}
+                onChange={(e) => setForm({ ...form, dtrSignatory: e.target.value })}
+                placeholder={`${form.firstname ?? ""} ${form.lastname ?? ""}`.trim()}
+              />
             </Field>
             <Field label="Date Hired">
               <Input

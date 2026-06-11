@@ -1,5 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BarChart3, CalendarDays, Download, FileSpreadsheet, FileText, PieChart, Printer, Users } from "lucide-react";
+import {
+  BarChart3,
+  CalendarDays,
+  ChevronRight,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  PieChart,
+  Printer,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -76,7 +86,13 @@ function ReportsPage() {
                 <Icon className="h-5 w-5" />
               </div>
               <h3 className="text-sm font-semibold text-foreground">{report.title}</h3>
-              <p className="mt-2 min-h-14 text-sm leading-6 text-muted-foreground">{report.description}</p>
+              <p className="mt-2 min-h-14 text-sm leading-6 text-muted-foreground">
+                {report.description}
+              </p>
+              <span className="mt-4 inline-flex items-center text-sm font-medium text-blue-700">
+                Generate Report
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </span>
             </button>
           );
         })}

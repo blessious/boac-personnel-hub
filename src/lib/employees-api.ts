@@ -52,6 +52,14 @@ export type EmployeeRecord = {
   ctcDateIssued: string;
   cellphoneNo: string;
   email: string;
+  scheduleAmIn: string;
+  scheduleAmOut: string;
+  schedulePmIn: string;
+  schedulePmOut: string;
+  dtrSignatory: string;
+  dtrNoterId: string;
+  isDtrNoter: boolean;
+  regular: boolean;
   residentialAddress: string;
   residentialZipcode: string;
   residentialTelNo: string;

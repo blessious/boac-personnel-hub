@@ -208,7 +208,12 @@ function LeavePage() {
               </button>
             ))}
           </div>
-          <Button variant="outline" disabled={!canEdit} onClick={() => setShowType(true)}>
+          <Button
+            variant="outline"
+            disabled={!canEdit}
+            onClick={() => setShowType(true)}
+            className="border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-border dark:text-slate-300 dark:hover:bg-muted/40"
+          >
             <Plus className="mr-1.5 h-4 w-4" /> Leave Type
           </Button>
           <Button
@@ -223,7 +228,7 @@ function LeavePage() {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3 font-semibold">Employee</th>
                 <th className="px-4 py-3 font-semibold">Leave Type</th>
                 <th className="px-4 py-3 font-semibold">Dates</th>
