@@ -722,6 +722,9 @@ function AttendancePage() {
                   <Button variant="outline" onClick={() => setShowScheduleDialog(true)} disabled={busy}>
                     <Settings2 className="mr-1.5 h-4 w-4" /> Schedule
                   </Button>
+                  <Button onClick={openImportAll} disabled={busy} className="bg-blue-600 text-white hover:bg-blue-700">
+                    <Upload className="mr-1.5 h-4 w-4" /> Import DTR
+                  </Button>
                   <Button onClick={openAdd} className="bg-blue-600 text-white hover:bg-blue-700">
                     <Plus className="mr-1.5 h-4 w-4" /> Add DTR
                   </Button>
@@ -738,7 +741,7 @@ function AttendancePage() {
                   {canManage && (
                     <DropdownMenuItem onClick={openImport}>
                       <Upload className="h-4 w-4" />
-                      Import
+                      Import Single DTR
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem onClick={openExport}>
@@ -785,7 +788,7 @@ function AttendancePage() {
                 <tr>
                   <th className="px-4 py-3 font-semibold">Biometric ID</th>
                   <th className="w-[260px] px-4 py-3 font-semibold">Name</th>
-                  <th className="w-[180px] px-4 py-3 font-semibold">Office</th>
+                  <th className="w-[360px] px-4 py-3 font-semibold">Office</th>
                   <th className="px-4 py-3 font-semibold">Date</th>
                   <th className="px-4 py-3 font-semibold">AM In</th>
                   <th className="px-4 py-3 font-semibold">AM Out</th>
