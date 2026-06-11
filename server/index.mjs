@@ -46,10 +46,12 @@ const DTR_TEMPLATE_XLSX = path.join(TEMPLATE_DIR, "format.xlsx");
 const DTR_EXCEL_SCRIPT = path.join(process.cwd(), "server", "dtr_excel.py");
 const DTR_PDF_SCRIPT = path.join(process.cwd(), "server", "dtr_pdf.py");
 const DTR_PARSE_SCRIPT = path.join(process.cwd(), "server", "dtr_parse.py");
+const BIOMETRIC_FETCH_SCRIPT = path.join(process.cwd(), "server", "fetch_biometric.py");
 const PREVIEW_FILE_MAX_AGE_MS = 30 * 60 * 1000;
 const PYTHON_EXE =
   process.env.HRIS_PYTHON_EXE ||
   "C:\\Users\\admin\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe";
+const BIOMETRIC_PYTHON_EXE = process.env.HRIS_BIOMETRIC_PYTHON_EXE || process.env.PYTHON_EXE || "python";
 
 const ROLES = ["Admin", "HR", "Employee", "Viewer"];
 const DEFAULT_AGENCY = {
@@ -1973,14 +1975,14 @@ async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true
     editedBy: source === "Imported" ? null : userId,
   };
   const protectedUpdate = preserveAdjusted
-    ? `am_in = IF(source = 'Imported', VALUES(am_in), am_in),
-       am_out = IF(source = 'Imported', VALUES(am_out), am_out),
-       pm_in = IF(source = 'Imported', VALUES(pm_in), pm_in),
-       pm_out = IF(source = 'Imported', VALUES(pm_out), pm_out),
-       status = IF(source = 'Imported', VALUES(status), status),
-       late_minutes = IF(source = 'Imported', VALUES(late_minutes), late_minutes),
-       undertime_minutes = IF(source = 'Imported', VALUES(undertime_minutes), undertime_minutes),
-       import_id = IF(source = 'Imported', VALUES(import_id), import_id)`
+    ? `am_in = IF(source = 'Imported' AND locked = 0, VALUES(am_in), am_in),
+       am_out = IF(source = 'Imported' AND locked = 0, VALUES(am_out), am_out),
+       pm_in = IF(source = 'Imported' AND locked = 0, VALUES(pm_in), pm_in),
+       pm_out = IF(source = 'Imported' AND locked = 0, VALUES(pm_out), pm_out),
+       status = IF(source = 'Imported' AND locked = 0, VALUES(status), status),
+       late_minutes = IF(source = 'Imported' AND locked = 0, VALUES(late_minutes), late_minutes),
+       undertime_minutes = IF(source = 'Imported' AND locked = 0, VALUES(undertime_minutes), undertime_minutes),
+       import_id = IF(source = 'Imported' AND locked = 0, VALUES(import_id), import_id)`
     : `am_in = VALUES(am_in),
        am_out = VALUES(am_out),
        pm_in = VALUES(pm_in),
@@ -2008,9 +2010,12 @@ async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true
   );
 }
 
-function deriveDtrFromPunchTimes(times) {
+function deriveDtrFromPunchTimes(times, schedule = {}) {
   const sorted = [...new Set(times)].sort();
   const toMinutes = (value) => minutesFromTime(value);
+  const scheduleAmOut = toMinutes(schedule.scheduleAmOut || "12:00") ?? 12 * 60;
+  const schedulePmIn = toMinutes(schedule.schedulePmIn || "13:00") ?? 13 * 60;
+  const schedulePmOut = toMinutes(schedule.schedulePmOut || "17:00") ?? 17 * 60;
   const morning = [];
   const lunch = [];
   const afternoon = [];
@@ -2018,8 +2023,8 @@ function deriveDtrFromPunchTimes(times) {
   for (const time of sorted) {
     const minutes = toMinutes(time);
     if (minutes === null) continue;
-    if (minutes < 12 * 60) morning.push(time);
-    else if (minutes < 13 * 60) lunch.push(time);
+    if (minutes < scheduleAmOut) morning.push(time);
+    else if (minutes < schedulePmIn) lunch.push(time);
     else afternoon.push(time);
   }
 
@@ -2030,7 +2035,16 @@ function deriveDtrFromPunchTimes(times) {
 
   if (morning.length) {
     amIn = morning[0];
-    amOut = lunch[0] || (morning.length > 1 ? morning[morning.length - 1] : "");
+    if (lunch.length) {
+      amOut = lunch[0];
+    } else if (morning.length > 1) {
+      for (const scan of [...morning].reverse()) {
+        if (toMinutes(scan) - toMinutes(amIn) > 1) {
+          amOut = scan;
+          break;
+        }
+      }
+    }
   }
 
   if (morning.length) {
@@ -2038,7 +2052,7 @@ function deriveDtrFromPunchTimes(times) {
     else if (afternoon.length > 1) pmIn = afternoon[0];
     else if (afternoon.length === 1) {
       const value = toMinutes(afternoon[0]);
-      pmIn = Math.abs(value - 13 * 60) < Math.abs(value - 17 * 60) ? afternoon[0] : "";
+      pmIn = Math.abs(value - schedulePmIn) < Math.abs(value - schedulePmOut) ? afternoon[0] : "";
       pmOut = pmIn ? "" : afternoon[0];
     }
   } else if (lunch.length > 1) {
@@ -2050,7 +2064,9 @@ function deriveDtrFromPunchTimes(times) {
     pmIn = afternoon[0];
   } else if (afternoon.length === 1) {
     const value = toMinutes(afternoon[0]);
-    pmIn = Math.abs(value - 13 * 60) < Math.abs(value - 17 * 60) ? afternoon[0] : "";
+    const distanceToIn = Math.abs(value - schedulePmIn);
+    const distanceToOut = Math.abs(value - schedulePmOut);
+    pmIn = distanceToIn <= 4 * 60 && distanceToIn < distanceToOut ? afternoon[0] : "";
     pmOut = pmIn ? "" : afternoon[0];
   }
 
@@ -2058,6 +2074,7 @@ function deriveDtrFromPunchTimes(times) {
     const candidate = afternoon[afternoon.length - 1];
     if (!pmIn || candidate > pmIn) pmOut = candidate;
   }
+  if (pmIn && pmOut && pmIn === pmOut && sorted.length > 1) pmOut = "";
 
   return {
     amIn: amIn ? normalizeTimeInput(amIn) : null,
@@ -2120,7 +2137,7 @@ async function refreshDtrEntries({ employeeId, from, to, userId }) {
   try {
     await connection.beginTransaction();
     for (const group of grouped.values()) {
-      const entry = deriveDtrFromPunchTimes(group.times);
+      const entry = deriveDtrFromPunchTimes(group.times, group);
       await upsertDtrEntry(
         connection,
         { employeeId: group.employeeId, workDate: group.workDate, ...entry, ...group, source: "Imported" },
@@ -2627,7 +2644,7 @@ async function handleImportSingleDtr(req, res) {
   const to = normalizeDate(body.to || body.endDate || body.end_date);
   if (!employeeId) return json(res, 400, { error: "Select an employee first" });
   if (!from || !to) return json(res, 400, { error: "Start date and end date are required" });
-  const [[employee]] = await pool.execute(`SELECT id FROM employees WHERE id = :employeeId LIMIT 1`, {
+  const [[employee]] = await pool.execute(`SELECT id, employee_no, biometric_id FROM employees WHERE id = :employeeId LIMIT 1`, {
     employeeId,
   });
   if (!employee) return json(res, 404, { error: "Employee not found" });
@@ -2641,8 +2658,46 @@ async function handleImportSingleDtr(req, res) {
     if (!device.is_active) return json(res, 400, { error: "Selected biometric device is inactive" });
     const online = await checkTcpDevice(device.ip_address, Number(device.port || 4370));
     if (!online) return json(res, 400, { error: "Biometric device is offline or unreachable" });
-    return json(res, 501, {
-      error: "Live biometric import requires the ZK device connector setup from MuniWeb before HRIS can pull punches directly",
+
+    let parsed;
+    try {
+      const employeeKeys = new Set(
+        [employee.employee_no, employee.biometric_id].map((value) => String(value || "").trim()).filter(Boolean),
+      );
+      parsed = (await fetchBiometricPunches(device, from, to)).filter((punch) =>
+        employeeKeys.has(String(punch.employeeNo || "").trim()),
+      );
+    } catch (error) {
+      return json(res, 500, { error: `Failed to fetch biometric data: ${error.message}` });
+    }
+    if (!parsed.length) {
+      return json(res, 400, { error: "No biometric punches found for the selected employee and date range" });
+    }
+
+    const result = await importParsedPunches({
+      user,
+      req,
+      body,
+      fileName: `Biometric ${device.name || device.ip_address}`,
+      parsed,
+      employeeId,
+      from,
+      to,
+      source: "Biometric",
+      sourceDevice: String(device.name || device.ip_address || "Biometric").slice(0, 120),
+    });
+    return json(res, result.imported ? 200 : 400, {
+      message: `Imported ${result.imported} biometric punch(es)`,
+      importId: result.importId,
+      records_imported: result.imported,
+      imported: result.imported,
+      errors: result.errors,
+      refreshed: result.refreshed,
+      source: "biometric",
+      origin: device.ip_address,
+      employee_id: employeeId,
+      start_date: from,
+      end_date: to,
     });
   }
 
@@ -2930,8 +2985,12 @@ function dtrExportPeriodsFromBody(body) {
 }
 
 async function runPython(args) {
+  return runPythonWith(PYTHON_EXE, args);
+}
+
+async function runPythonWith(executable, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(PYTHON_EXE, args, { cwd: process.cwd(), windowsHide: true });
+    const child = spawn(executable, args, { cwd: process.cwd(), windowsHide: true });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => {
@@ -2946,6 +3005,39 @@ async function runPython(args) {
       else reject(new Error(stderr.trim() || stdout.trim() || `Python exited with code ${code}`));
     });
   });
+}
+
+function truncateTimestampToMinute(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})[ T]+(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return "";
+  return `${match[1]} ${String(match[2]).padStart(2, "0")}:${match[3]}:00`;
+}
+
+async function fetchBiometricPunches(device, from, to) {
+  const output = await runPythonWith(BIOMETRIC_PYTHON_EXE, [
+    BIOMETRIC_FETCH_SCRIPT,
+    device.ip_address,
+    String(device.port || 4370),
+    from || "",
+    to || "",
+  ]);
+  const rows = JSON.parse(output || "[]");
+  const seen = new Set();
+  return rows
+    .map((row) => ({
+      employeeNo: String(row.user_id || row.employee_id || "").trim(),
+      punchAt: truncateTimestampToMinute(row.timestamp || `${row.date || ""} ${row.time || ""}`),
+      raw: row,
+    }))
+    .filter((row) => {
+      if (!row.employeeNo || !row.punchAt) return false;
+      const key = `${row.employeeNo}|${row.punchAt}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return dateInRange(row.punchAt.slice(0, 10), from, to);
+    })
+    .sort((a, b) => a.punchAt.localeCompare(b.punchAt));
 }
 
 async function prepareDtrExport(req, res) {
