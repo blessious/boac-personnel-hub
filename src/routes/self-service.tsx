@@ -55,6 +55,7 @@ import {
   type LeaveType,
   listLeaveTypes,
 } from "@/lib/leave-api";
+import { listDtr } from "@/lib/attendance-api";
 import { submitLeaveRequest } from "@/lib/requests-api";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +76,7 @@ export function EmployeeDashboardHome() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<EmployeeDetailResponse | null>(null);
   const [leave, setLeave] = useState<EmployeeLeaveResponse | null>(null);
+  const [todayStatus, setTodayStatus] = useState<string>("Loading...");
   const [loading, setLoading] = useState(Boolean(user?.employeeId));
   const [error, setError] = useState("");
 
@@ -86,10 +88,23 @@ export function EmployeeDashboardHome() {
 
     setLoading(true);
     setError("");
-    Promise.all([getEmployee(user.employeeId), getEmployeeLeave(user.employeeId)])
-      .then(([employeeResult, leaveResult]) => {
+    Promise.all([
+      getEmployee(user.employeeId),
+      getEmployeeLeave(user.employeeId),
+      listDtr({
+        employeeId: user.employeeId,
+        from: new Date().toLocaleDateString('en-CA'),
+        to: new Date().toLocaleDateString('en-CA'),
+      }).catch(() => null),
+    ])
+      .then(([employeeResult, leaveResult, dtrResult]) => {
         setProfile(employeeResult);
         setLeave(leaveResult);
+        if (dtrResult && dtrResult.entries && dtrResult.entries.length > 0) {
+          setTodayStatus(dtrResult.entries[0].status);
+        } else {
+          setTodayStatus("No Record");
+        }
       })
       .catch((err) => setError(err.message || "Unable to load your dashboard"))
       .finally(() => setLoading(false));
@@ -150,7 +165,7 @@ export function EmployeeDashboardHome() {
           </section>
 
           <div className="grid gap-3 md:grid-cols-3">
-            <CleanStat label="Attendance" value="Pending" icon={Clock} />
+            <CleanStat label="Attendance" value={todayStatus} icon={Clock} />
             <CleanStat
               label={primaryLeave?.code || "Leave Balance"}
               value={primaryLeave ? formatNumber(primaryLeave.balance) : "-"}
@@ -207,6 +222,7 @@ export function EmployeeProfileHome() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<EmployeeDetailResponse | null>(null);
   const [leave, setLeave] = useState<EmployeeLeaveResponse | null>(null);
+  const [todayStatus, setTodayStatus] = useState<string>("Loading...");
   const [loading, setLoading] = useState(Boolean(user?.employeeId));
   const [error, setError] = useState("");
 
@@ -218,10 +234,23 @@ export function EmployeeProfileHome() {
 
     setLoading(true);
     setError("");
-    Promise.all([getEmployee(user.employeeId), getEmployeeLeave(user.employeeId)])
-      .then(([employeeResult, leaveResult]) => {
+    Promise.all([
+      getEmployee(user.employeeId),
+      getEmployeeLeave(user.employeeId),
+      listDtr({
+        employeeId: user.employeeId,
+        from: new Date().toLocaleDateString('en-CA'),
+        to: new Date().toLocaleDateString('en-CA'),
+      }).catch(() => null),
+    ])
+      .then(([employeeResult, leaveResult, dtrResult]) => {
         setProfile(employeeResult);
         setLeave(leaveResult);
+        if (dtrResult && dtrResult.entries && dtrResult.entries.length > 0) {
+          setTodayStatus(dtrResult.entries[0].status);
+        } else {
+          setTodayStatus("No Record");
+        }
       })
       .catch((err) => setError(err.message || "Unable to load your profile"))
       .finally(() => setLoading(false));
@@ -278,6 +307,7 @@ function EmployeeServicesHome() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [leave, setLeave] = useState<EmployeeLeaveResponse | null>(null);
+  const [todayStatus, setTodayStatus] = useState<string>("Loading...");
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [leaveTypesLoading, setLeaveTypesLoading] = useState(true);
   const [leaveTypesError, setLeaveTypesError] = useState("");

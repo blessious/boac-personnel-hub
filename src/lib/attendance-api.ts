@@ -1,9 +1,10 @@
-import { api } from "@/lib/api";
+﻿import { api } from "@/lib/api";
 
 export type DtrEntry = {
   id: string;
   employeeId: string;
   employeeNo: string;
+  biometricId: string;
   employeeName: string;
   department: string;
   position: string;
@@ -135,6 +136,27 @@ export function importDtrFile(payload: {
     errors: string[];
     refreshed: { recordsProcessed: number; punchesProcessed: number };
   }>("/api/attendance/import-file", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function importAllDtr(payload: {
+  source: "file" | "biometric";
+  biometricId?: string;
+  fileName?: string;
+  fileBase64?: string;
+  startDate: string;
+  endDate: string;
+}) {
+  return api<{
+    message: string;
+    importId: string;
+    records_imported: number;
+    imported: number;
+    errors: string[];
+    refreshed: { recordsProcessed: number; punchesProcessed: number };
+  }>("/api/attendance/import-all", {
     method: "POST",
     body: JSON.stringify(payload),
   });

@@ -1,4 +1,4 @@
-import http from "node:http";
+﻿import http from "node:http";
 import crypto from "node:crypto";
 import net from "node:net";
 import { spawn } from "node:child_process";
@@ -370,6 +370,7 @@ function publicUser(row) {
     mustChangePassword: Boolean(row.must_change_password),
     employeeId: row.employee_id || "",
     employeeNo: row.employee_no || "",
+    biometricId: row.biometric_id || "",
     employeeName: row.employee_name || "",
   };
 }
@@ -382,6 +383,7 @@ function adminUser(row) {
     role: row.role,
     employeeId: row.employee_id || "",
     employeeNo: row.employee_no || "",
+    biometricId: row.biometric_id || "",
     employeeName: row.employee_name || "",
     isActive: Boolean(row.is_active),
     mustChangePassword: Boolean(row.must_change_password),
@@ -632,6 +634,7 @@ function attendanceDtrRow(row) {
     id: row.id,
     employeeId: row.employee_id,
     employeeNo: row.employee_no || "",
+    biometricId: row.biometric_id || "",
     employeeName: row.employee_name || "",
     department: row.department || "",
     position: row.position || "",
@@ -1813,7 +1816,7 @@ async function readAttendanceRows({ employeeId, from, to, q = "", limit = 500 })
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const [rows] = await pool.execute(
-    `SELECT d.*, e.employee_no, e.department, e.position,
+    `SELECT d.*, e.employee_no, e.biometric_id, e.department, e.position,
             CONCAT(e.lastname, ', ', e.firstname) AS employee_name,
             u.name AS edited_by_name
      FROM dtr_entries d
@@ -2372,7 +2375,7 @@ async function handleDeleteBiometricDevice(req, res, id) {
   return json(res, 200, { ok: true });
 }
 
-function checkTcpDevice(ipAddress, port, timeout = 1500) {
+function checkTcpDevice(ipAddress, port, timeout = 5000) {
   return new Promise((resolve) => {
     const socket = net.createConnection({ host: ipAddress, port, timeout }, () => {
       socket.destroy();
@@ -2656,8 +2659,9 @@ async function handleImportSingleDtr(req, res) {
     });
     if (!device) return json(res, 404, { error: "Biometric device not found" });
     if (!device.is_active) return json(res, 400, { error: "Selected biometric device is inactive" });
-    const online = await checkTcpDevice(device.ip_address, Number(device.port || 4370));
-    if (!online) return json(res, 400, { error: "Biometric device is offline or unreachable" });
+    // NOTE: Skipping TCP pre-check â€” ZK devices often ignore raw TCP socket probes
+    // on port 4370 even when fully reachable via the ZK protocol. The Python script
+    // handles connectivity and will throw a clear error if the device is truly offline.
 
     let parsed;
     try {
@@ -2737,6 +2741,103 @@ async function handleImportSingleDtr(req, res) {
     file_type: path.extname(fileName).replace(".", "").toLowerCase(),
     origin: "File",
     employee_id: employeeId,
+    start_date: from,
+    end_date: to,
+  });
+}
+
+async function handleImportAllDtr(req, res) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const source = String(body.source || "file").toLowerCase();
+  const from = normalizeDate(body.from || body.startDate || body.start_date);
+  const to = normalizeDate(body.to || body.endDate || body.end_date);
+  if (!from || !to) return json(res, 400, { error: "Start date and end date are required" });
+
+  if (source === "biometric") {
+    const biometricId = String(body.biometricId || body.biometric_id || "").trim();
+    if (!biometricId) return json(res, 400, { error: "Select a biometric device first" });
+    const [[device]] = await pool.execute(`SELECT * FROM biometric_devices WHERE id = :id LIMIT 1`, { id: biometricId });
+    if (!device) return json(res, 404, { error: "Biometric device not found" });
+    if (!device.is_active) return json(res, 400, { error: "Selected biometric device is inactive" });
+    // NOTE: Skipping TCP pre-check â€” ZK devices often ignore raw TCP socket probes
+    // on port 4370 even when fully reachable via the ZK protocol. The Python script
+    // handles connectivity and will throw a clear error if the device is truly offline.
+
+    let parsed;
+    try {
+      // Fetch ALL punches (no employee filter â€” mass import for all employees)
+      parsed = (await fetchBiometricPunches(device, from, to)).filter((punch) =>
+        dateInRange(String(punch.punchAt || "").slice(0, 10), from, to),
+      );
+    } catch (error) {
+      return json(res, 500, { error: `Failed to fetch biometric data: ${error.message}` });
+    }
+    if (!parsed.length) {
+      return json(res, 400, { error: "No biometric punches found for the selected date range" });
+    }
+
+    const result = await importParsedPunches({
+      user,
+      req,
+      body,
+      fileName: `Biometric ${device.name || device.ip_address}`,
+      parsed,
+      employeeId: "", // empty = all employees
+      from,
+      to,
+      source: "Biometric",
+      sourceDevice: String(device.name || device.ip_address || "Biometric").slice(0, 120),
+    });
+    return json(res, result.imported ? 200 : 400, {
+      message: `Mass import: ${result.imported} biometric punch(es) imported and DTR refreshed`,
+      importId: result.importId,
+      imported: result.imported,
+      errors: result.errors,
+      refreshed: result.refreshed,
+      source: "biometric",
+      origin: device.ip_address,
+      start_date: from,
+      end_date: to,
+    });
+  }
+
+  // File source
+  const fileName = String(body.fileName || "DTR import").trim();
+  const fileBase64 = String(body.fileBase64 || "");
+  if (!fileBase64) return json(res, 400, { error: "A DTR file is required" });
+  let parsed;
+  try {
+    parsed = (await parseUploadedDtrFile(fileName, fileBase64)).filter((punch) =>
+      dateInRange(String(punch.punchAt || "").slice(0, 10), from, to),
+    );
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+  if (!parsed.length) return json(res, 400, { error: "No valid DTR punches found in the selected range" });
+
+  const result = await importParsedPunches({
+    user,
+    req,
+    body,
+    fileName,
+    parsed,
+    employeeId: "", // empty = all employees
+    from,
+    to,
+    source: "Legacy",
+    sourceDevice: "File",
+  });
+  return json(res, result.imported ? 200 : 400, {
+    message: `Mass import: ${result.imported} DTR punch(es) imported and DTR refreshed`,
+    importId: result.importId,
+    imported: result.imported,
+    errors: result.errors,
+    refreshed: result.refreshed,
+    source: "file",
+    file_type: path.extname(fileName).replace(".", "").toLowerCase(),
+    origin: "File",
     start_date: from,
     end_date: to,
   });
@@ -4286,6 +4387,8 @@ async function route(req, res) {
     return handleImportDtrFile(req, res);
   if (req.method === "POST" && url.pathname === "/api/attendance/import-single-dtr")
     return handleImportSingleDtr(req, res);
+  if (req.method === "POST" && url.pathname === "/api/attendance/import-all-dtr")
+    return handleImportAllDtr(req, res);
   if (req.method === "GET" && unimportedDtrMatch)
     return handleCheckUnimportedDtrs(req, res, unimportedDtrMatch[1]);
   if (req.method === "POST" && url.pathname === "/api/attendance/refresh")
