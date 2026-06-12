@@ -84,11 +84,30 @@ export type LeaveAdjustment = {
   createdByName: string;
 };
 
+export type LeaveCreditLedgerEntry = {
+  id: string;
+  employeeId: string;
+  leaveTypeId: number;
+  code: string;
+  name: string;
+  entryType: string;
+  columnChanged: string;
+  amount: number;
+  balanceDelta: number;
+  balanceAfter: number;
+  sourceType: string;
+  sourceId: string;
+  description: string;
+  createdByName: string;
+  createdAt: string;
+};
+
 export type EmployeeLeaveResponse = {
   employee: EmployeeRecord;
   balances: LeaveBalance[];
   applications: LeaveApplication[];
   adjustments: LeaveAdjustment[];
+  ledger: LeaveCreditLedgerEntry[];
 };
 
 export type CreateLeaveApplicationPayload = {

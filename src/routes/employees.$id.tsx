@@ -686,6 +686,45 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
         ))}
       </div>
 
+      <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="text-sm font-semibold text-foreground">Leave Credit Ledger</h3>
+          <p className="text-xs text-muted-foreground">Every credit addition, deduction, adjustment, and reversal is recorded here.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-3 py-2.5 font-medium">Date</th>
+                <th className="px-3 py-2.5 font-medium">Type</th>
+                <th className="px-3 py-2.5 font-medium">Entry</th>
+                <th className="px-3 py-2.5 font-medium">Amount</th>
+                <th className="px-3 py-2.5 font-medium">Balance Change</th>
+                <th className="px-3 py-2.5 font-medium">Balance After</th>
+                <th className="px-3 py-2.5 font-medium">Description</th>
+                <th className="px-3 py-2.5 font-medium">By</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.ledger.length === 0 ? (
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">No ledger entries recorded yet.</td></tr>
+              ) : data.ledger.map((entry) => (
+                <tr key={entry.id} className="border-b border-border/50 last:border-0">
+                  <td className="px-3 py-2.5 text-muted-foreground">{new Date(entry.createdAt).toLocaleDateString()}</td>
+                  <td className="px-3 py-2.5">{entry.name}</td>
+                  <td className="px-3 py-2.5">{formatLedgerType(entry.entryType)}</td>
+                  <td className="px-3 py-2.5 font-medium">{formatLeaveNumber(entry.amount)}</td>
+                  <td className="px-3 py-2.5 font-medium">{formatLeaveNumber(entry.balanceDelta)}</td>
+                  <td className="px-3 py-2.5 font-semibold text-primary">{formatLeaveNumber(entry.balanceAfter)}</td>
+                  <td className="max-w-[260px] truncate px-3 py-2.5 text-muted-foreground">{entry.description || "-"}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">{entry.createdByName || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
@@ -785,6 +824,13 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
 
 function formatLeaveNumber(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatLedgerType(value: string) {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .trim();
 }
 
 function RadioItem({ id, value, label }: { id: string; value: string; label: string }) {

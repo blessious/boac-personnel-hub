@@ -424,6 +424,51 @@ Suggested table: `leave_credit_certifications`
 - `certified_by INT UNSIGNED NULL`
 - `certified_at DATETIME NULL`
 
+### Leave Credit Ledger
+
+Implemented as `leave_credit_ledger`.
+
+Purpose:
+
+- Preserve a traceable accounting history for every leave credit change.
+- Keep `leave_balances` as the fast current summary.
+- Record the source and reason for manual adjustments, approved leave deductions, reversals, and delete reversals.
+
+Current ledger fields:
+
+- `employee_id`
+- `leave_type_id`
+- `entry_type`
+- `column_changed`
+- `amount`
+- `balance_delta`
+- `balance_after`
+- `source_type`
+- `source_id`
+- `description`
+- `created_by`
+- `created_at`
+
+Current ledger events:
+
+- `ManualAdjustment`
+- `LeaveApproval`
+- `ApprovalReversal`
+- `DeleteReversal`
+
+Current UI placement:
+
+- Main HR leave module: `Credit Ledger` view beside `Applications`, with employee selector, current balances, and ledger table.
+- Employee 201 file: `Leave Balance` tab also shows the selected employee's ledger for employee-level audit context.
+
+Later ledger events to add:
+
+- `MonthlyEarned`
+- `Monetization`
+- `TerminalLeave`
+- `MigrationOpeningBalance`
+- `Correction`
+
 ## Recommended API Changes
 
 ### Leave Types

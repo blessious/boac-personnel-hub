@@ -868,6 +868,26 @@ function leaveBalanceRow(row) {
   };
 }
 
+function leaveCreditLedgerRow(row) {
+  return {
+    id: row.id,
+    employeeId: row.employee_id,
+    leaveTypeId: row.leave_type_id,
+    code: row.code,
+    name: row.name,
+    entryType: row.entry_type,
+    columnChanged: row.column_changed || "",
+    amount: Number(row.amount || 0),
+    balanceDelta: Number(row.balance_delta || 0),
+    balanceAfter: Number(row.balance_after || 0),
+    sourceType: row.source_type || "",
+    sourceId: row.source_id || "",
+    description: row.description || "",
+    createdByName: row.created_by_name || "",
+    createdAt: row.created_at,
+  };
+}
+
 function leaveApplicationRow(row) {
   return {
     id: row.id,
@@ -1042,7 +1062,14 @@ async function ensureLeaveBalance(employeeId, leaveTypeId) {
   );
 }
 
-async function changeLeaveBalance(employeeId, leaveTypeId, amount, column, balanceDelta = amount) {
+async function changeLeaveBalance(
+  employeeId,
+  leaveTypeId,
+  amount,
+  column,
+  balanceDelta = amount,
+  ledger = null,
+) {
   if (!["earned", "used", "adjusted"].includes(column)) throw new Error("Invalid balance column");
   await ensureLeaveBalance(employeeId, leaveTypeId);
   await pool.execute(
@@ -1052,6 +1079,38 @@ async function changeLeaveBalance(employeeId, leaveTypeId, amount, column, balan
      WHERE employee_id = :employeeId AND leave_type_id = :leaveTypeId`,
     { employeeId, leaveTypeId, amount, balanceDelta },
   );
+  if (ledger) {
+    const [[balance]] = await pool.execute(
+      `SELECT balance FROM leave_balances
+       WHERE employee_id = :employeeId AND leave_type_id = :leaveTypeId
+       LIMIT 1`,
+      { employeeId, leaveTypeId },
+    );
+    await pool.execute(
+      `INSERT INTO leave_credit_ledger (
+         id, employee_id, leave_type_id, entry_type, column_changed, amount, balance_delta,
+         balance_after, source_type, source_id, description, created_by
+       )
+       VALUES (
+         :id, :employeeId, :leaveTypeId, :entryType, :columnChanged, :amount, :balanceDelta,
+         :balanceAfter, :sourceType, :sourceId, :description, :createdBy
+       )`,
+      {
+        id: crypto.randomUUID(),
+        employeeId,
+        leaveTypeId,
+        entryType: ledger.entryType || "Adjustment",
+        columnChanged: column,
+        amount,
+        balanceDelta,
+        balanceAfter: Number(balance?.balance || 0),
+        sourceType: ledger.sourceType || "",
+        sourceId: ledger.sourceId || "",
+        description: ledger.description || "",
+        createdBy: ledger.createdBy || null,
+      },
+    );
+  }
 }
 
 async function readLeaveApplication(id) {
@@ -1452,6 +1511,30 @@ async function initializeDatabase() {
       CONSTRAINT fk_leave_adjustments_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
       CONSTRAINT fk_leave_adjustments_leave_type_id FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE RESTRICT,
       CONSTRAINT fk_leave_adjustments_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leave_credit_ledger (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      employee_id ${employeeIdDefinition},
+      leave_type_id INT UNSIGNED NOT NULL,
+      entry_type VARCHAR(40) NOT NULL,
+      column_changed VARCHAR(20) NULL,
+      amount DECIMAL(8,3) NOT NULL,
+      balance_delta DECIMAL(8,3) NOT NULL,
+      balance_after DECIMAL(8,3) NOT NULL,
+      source_type VARCHAR(60) NULL,
+      source_id CHAR(36) NULL,
+      description TEXT NULL,
+      created_by INT UNSIGNED NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_leave_credit_ledger_employee_id (employee_id),
+      INDEX idx_leave_credit_ledger_type_date (leave_type_id, created_at),
+      INDEX idx_leave_credit_ledger_source (source_type, source_id),
+      CONSTRAINT fk_leave_credit_ledger_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      CONSTRAINT fk_leave_credit_ledger_leave_type_id FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE RESTRICT,
+      CONSTRAINT fk_leave_credit_ledger_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
 
@@ -4265,6 +4348,16 @@ async function handleEmployeeLeave(req, res, employeeId) {
      LIMIT 100`,
     { employeeId },
   );
+  const [ledgerRows] = await pool.execute(
+    `SELECT l.*, lt.code, lt.name, u.name AS created_by_name
+     FROM leave_credit_ledger l
+     INNER JOIN leave_types lt ON lt.id = l.leave_type_id
+     LEFT JOIN users u ON u.id = l.created_by
+     WHERE l.employee_id = :employeeId
+     ORDER BY l.created_at DESC
+     LIMIT 200`,
+    { employeeId },
+  );
 
   return json(res, 200, {
     employee,
@@ -4279,6 +4372,7 @@ async function handleEmployeeLeave(req, res, employeeId) {
       name: row.name,
       createdByName: row.created_by_name || "",
     })),
+    ledger: ledgerRows.map(leaveCreditLedgerRow),
   });
 }
 
@@ -4300,7 +4394,13 @@ async function handleCreateLeaveAdjustment(req, res, employeeId) {
      VALUES (:id, :employeeId, :leaveTypeId, :amount, :reason, :createdBy)`,
     { id, employeeId, leaveTypeId, amount, reason, createdBy: user.id },
   );
-  await changeLeaveBalance(employeeId, leaveTypeId, amount, "adjusted");
+  await changeLeaveBalance(employeeId, leaveTypeId, amount, "adjusted", amount, {
+    entryType: "ManualAdjustment",
+    sourceType: "leave_adjustment",
+    sourceId: id,
+    description: reason || "Manual leave credit adjustment",
+    createdBy: user.id,
+  });
   await logAudit(user.id, "leave.adjustment_create", { employeeId, leaveTypeId, amount }, req);
   return handleEmployeeLeave(req, res, employeeId);
 }
@@ -4528,6 +4628,13 @@ async function handleDecideLeaveApplication(req, res, id) {
       -Number(existing.days_requested),
       "used",
       Number(existing.days_requested),
+      {
+        entryType: "ApprovalReversal",
+        sourceType: "leave_application",
+        sourceId: id,
+        description: `Reversed approved leave because status changed to ${status}`,
+        createdBy: user.id,
+      },
     );
   }
   if (existing.status !== "Approved" && status === "Approved") {
@@ -4537,6 +4644,13 @@ async function handleDecideLeaveApplication(req, res, id) {
       Number(existing.days_requested),
       "used",
       -Number(existing.days_requested),
+      {
+        entryType: "LeaveApproval",
+        sourceType: "leave_application",
+        sourceId: id,
+        description: "Approved leave application",
+        createdBy: user.id,
+      },
     );
   }
   await pool.execute(
@@ -4581,6 +4695,13 @@ async function handleDeleteLeaveApplication(req, res, id) {
       -Number(existing.days_requested),
       "used",
       Number(existing.days_requested),
+      {
+        entryType: "DeleteReversal",
+        sourceType: "leave_application",
+        sourceId: id,
+        description: "Reversed approved leave because application was deleted",
+        createdBy: user.id,
+      },
     );
   }
   await pool.execute(`DELETE FROM leave_applications WHERE id = :id`, { id });
@@ -5016,6 +5137,7 @@ async function handleCreateBackup(req, res) {
     "leave_balances",
     "leave_applications",
     "leave_adjustments",
+    "leave_credit_ledger",
   ];
   const data = {};
 

@@ -33,8 +33,10 @@ import {
   deleteLeaveApplication,
   generateLeaveForm6Excel,
   generateLeaveForm6Pdf,
+  getEmployeeLeave,
   listLeaveApplications,
   listLeaveTypes,
+  type EmployeeLeaveResponse,
   type LeaveApplication,
   type LeaveStatus,
   type LeaveType,
@@ -60,6 +62,10 @@ function LeavePage() {
   const [applications, setApplications] = useState<LeaveApplication[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
+  const [view, setView] = useState<"applications" | "ledger">("applications");
+  const [ledgerEmployeeId, setLedgerEmployeeId] = useState("");
+  const [ledgerData, setLedgerData] = useState<EmployeeLeaveResponse | null>(null);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
   const [summary, setSummary] = useState({
     total: 0,
     pending: 0,
@@ -104,12 +110,23 @@ function LeavePage() {
         setSummary(leaveResult.summary);
         setLeaveTypes(typeResult.leaveTypes);
         setEmployees(employeeResult.employees);
+        setLedgerEmployeeId((current) => current || employeeResult.employees[0]?.id || "");
       })
       .catch((error) => toast.error((error as Error).message))
       .finally(() => setLoading(false));
   };
 
   useEffect(load, [status, q]);
+
+  useEffect(() => {
+    if (view !== "ledger" || !ledgerEmployeeId) return;
+    setLedgerLoading(true);
+    setLedgerData(null);
+    getEmployeeLeave(ledgerEmployeeId)
+      .then(setLedgerData)
+      .catch((error) => toast.error((error as Error).message))
+      .finally(() => setLedgerLoading(false));
+  }, [ledgerEmployeeId, view]);
 
   const submitApplication = async () => {
     try {
@@ -227,6 +244,35 @@ function LeavePage() {
         <SummaryCard label="Total" value={summary.total} />
       </div>
 
+      <div className="mb-4 inline-flex rounded-lg bg-muted/50 p-1">
+        {[
+          { value: "applications", label: "Applications" },
+          { value: "ledger", label: "Credit Ledger" },
+        ].map((item) => (
+          <button
+            key={item.value}
+            onClick={() => setView(item.value as "applications" | "ledger")}
+            className={cn(
+              "whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              view === item.value
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {view === "ledger" ? (
+        <CreditLedgerPanel
+          employees={employees}
+          selectedEmployeeId={ledgerEmployeeId}
+          onEmployeeChange={setLedgerEmployeeId}
+          data={ledgerData}
+          loading={ledgerLoading}
+        />
+      ) : (
       <div className="rounded-xl border border-border bg-card shadow-sm">
         <div className="flex flex-col gap-3 border-b border-border p-4 xl:flex-row xl:items-center">
           <div className="relative max-w-sm flex-1">
@@ -416,6 +462,7 @@ function LeavePage() {
           </table>
         </div>
       </div>
+      )}
 
       <Dialog open={showApplication} onOpenChange={setShowApplication}>
         <DialogContent className="sm:max-w-2xl">
@@ -825,6 +872,138 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
   );
 }
 
+function CreditLedgerPanel({
+  employees,
+  selectedEmployeeId,
+  onEmployeeChange,
+  data,
+  loading,
+}: {
+  employees: EmployeeRecord[];
+  selectedEmployeeId: string;
+  onEmployeeChange: (value: string) => void;
+  data: EmployeeLeaveResponse | null;
+  loading: boolean;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-[minmax(260px,420px)_1fr] md:items-end">
+          <Field label="Employee">
+            <Select value={selectedEmployeeId} onValueChange={onEmployeeChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select employee" />
+              </SelectTrigger>
+              <SelectContent>
+                {employees.map((employee) => (
+                  <SelectItem key={employee.id} value={employee.id}>
+                    {employee.lastname}, {employee.firstname} - {employee.employeeId}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          {data ? (
+            <div className="text-sm text-muted-foreground">
+              {data.employee.position} - {data.employee.department}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
+          Loading leave credit ledger...
+        </div>
+      ) : !data ? (
+        <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
+          Select an employee to view leave credits.
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {data.balances.map((balance) => (
+              <div key={balance.leaveTypeId} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {balance.code}
+                </div>
+                <div className="mt-1 min-h-10 text-sm font-semibold text-foreground">
+                  {balance.name}
+                </div>
+                <div className="mt-3 text-2xl font-semibold text-primary">
+                  {formatNumber(balance.balance)}
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                  <span>Earned {formatNumber(balance.earned)}</span>
+                  <span>Used {formatNumber(balance.used)}</span>
+                  <span>Adj {formatNumber(balance.adjusted)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <div className="border-b border-border px-4 py-3">
+              <h3 className="text-sm font-semibold text-foreground">Leave Credit Ledger</h3>
+              <p className="text-xs text-muted-foreground">
+                Credit additions, deductions, adjustments, and reversals for the selected employee.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="px-3 py-2.5 font-medium">Date</th>
+                    <th className="px-3 py-2.5 font-medium">Type</th>
+                    <th className="px-3 py-2.5 font-medium">Entry</th>
+                    <th className="px-3 py-2.5 font-medium">Amount</th>
+                    <th className="px-3 py-2.5 font-medium">Change</th>
+                    <th className="px-3 py-2.5 font-medium">Balance After</th>
+                    <th className="px-3 py-2.5 font-medium">Description</th>
+                    <th className="px-3 py-2.5 font-medium">By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.ledger.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                        No ledger entries recorded yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    data.ledger.map((entry) => (
+                      <tr key={entry.id} className="border-b border-border/50 last:border-0">
+                        <td className="px-3 py-2.5 text-muted-foreground">
+                          {new Date(entry.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-3 py-2.5">{entry.name}</td>
+                        <td className="px-3 py-2.5">{formatLedgerType(entry.entryType)}</td>
+                        <td className="px-3 py-2.5 font-medium">{formatNumber(entry.amount)}</td>
+                        <td className="px-3 py-2.5 font-medium">
+                          {formatNumber(entry.balanceDelta)}
+                        </td>
+                        <td className="px-3 py-2.5 font-semibold text-primary">
+                          {formatNumber(entry.balanceAfter)}
+                        </td>
+                        <td className="max-w-[260px] truncate px-3 py-2.5 text-muted-foreground">
+                          {entry.description || "-"}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground">
+                          {entry.createdByName || "-"}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Field({
   label,
   children,
@@ -963,4 +1142,11 @@ function formatNumber(value: number) {
   return Number.isInteger(value)
     ? String(value)
     : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatLedgerType(value: string) {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .trim();
 }
