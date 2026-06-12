@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Check, ClipboardCheck, FilePlus2, Plus, Search, X } from "lucide-react";
+import { Check, ClipboardCheck, Download, FilePlus2, FileText, Plus, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,8 @@ import {
   createLeaveType,
   decideLeaveApplication,
   deleteLeaveApplication,
+  generateLeaveForm6Excel,
+  generateLeaveForm6Pdf,
   listLeaveApplications,
   listLeaveTypes,
   type LeaveApplication,
@@ -191,6 +193,26 @@ function LeavePage() {
       await deleteLeaveApplication(application.id);
       toast.success("Leave application deleted");
       load();
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
+
+  const downloadForm6 = async (application: LeaveApplication) => {
+    try {
+      const result = await generateLeaveForm6Excel(application.id);
+      downloadGeneratedFile(result.downloadUrl, result.fileName);
+      toast.success("CS Form No. 6 generated");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
+
+  const previewForm6Pdf = async (application: LeaveApplication) => {
+    try {
+      const result = await generateLeaveForm6Pdf(application.id);
+      window.open(result.previewUrl, "_blank", "noopener,noreferrer");
+      toast.success("CS Form No. 6 PDF generated");
     } catch (error) {
       toast.error((error as Error).message);
     }
@@ -357,6 +379,24 @@ function LeavePage() {
                           className="h-8 px-2"
                         >
                           <X className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => downloadForm6(application)}
+                          className="h-8 px-2"
+                          title="Download CS Form No. 6 Excel"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => previewForm6Pdf(application)}
+                          className="h-8 px-2"
+                          title="Preview CS Form No. 6 PDF"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           size="sm"
@@ -908,6 +948,15 @@ function getMinimumLeaveDate(leaveType: LeaveType | null) {
   const date = new Date();
   date.setDate(date.getDate() + days);
   return date.toLocaleDateString("en-CA");
+}
+
+function downloadGeneratedFile(downloadUrl: string, fileName: string) {
+  const anchor = document.createElement("a");
+  anchor.href = downloadUrl;
+  anchor.download = fileName;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  anchor.click();
 }
 
 function formatNumber(value: number) {

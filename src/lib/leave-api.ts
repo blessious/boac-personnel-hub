@@ -167,6 +167,20 @@ export function deleteLeaveApplication(id: string) {
   return api<{ ok: boolean }>(`/api/leave/applications/${id}`, { method: "DELETE" });
 }
 
+export function generateLeaveForm6Excel(id: string) {
+  return api<{ fileName: string; downloadUrl: string }>(
+    `/api/leave/applications/${id}/form6/excel`,
+    { method: "POST" },
+  );
+}
+
+export function generateLeaveForm6Pdf(id: string) {
+  return api<{ fileName: string; previewUrl: string }>(
+    `/api/leave/applications/${id}/form6/pdf`,
+    { method: "POST" },
+  );
+}
+
 export function getEmployeeLeave(employeeId: string) {
   return api<EmployeeLeaveResponse>(`/api/employees/${employeeId}/leave`);
 }

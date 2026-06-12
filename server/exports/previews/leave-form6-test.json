@@ -1,0 +1,22 @@
+﻿{
+  "agency": {"name":"DOH Southern Tagalog Regional Hospital", "tagline":"Boac, Marinduque"},
+  "employee": {"firstname":"Juan", "middlename":"Santos", "lastname":"Dela Cruz", "department":"Administrative Division", "position":"Administrative Aide"},
+  "application": {
+    "id":"test",
+    "employeeName":"Dela Cruz, Juan",
+    "department":"Administrative Division",
+    "position":"Administrative Aide",
+    "leaveCode":"VL",
+    "leaveName":"Vacation Leave",
+    "dateFrom":"2026-06-22",
+    "dateTo":"2026-06-26",
+    "daysRequested":5,
+    "createdAt":"2026-06-12T00:00:00.000Z",
+    "salarySnapshot":25000,
+    "detailLocationType":"Philippines",
+    "commutationRequested":false,
+    "status":"Pending"
+  },
+  "balances": {"VL":{"earned":10,"less":5,"balance":5}, "SL":{"earned":8,"less":0,"balance":8}},
+  "asOfDate":"2026-06-12"
+}

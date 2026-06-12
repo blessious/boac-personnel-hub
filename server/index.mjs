@@ -46,11 +46,35 @@ const DTR_TEMPLATE_XLSX = path.join(TEMPLATE_DIR, "format.xlsx");
 const DTR_EXCEL_SCRIPT = path.join(process.cwd(), "server", "dtr_excel.py");
 const DTR_PDF_SCRIPT = path.join(process.cwd(), "server", "dtr_pdf.py");
 const DTR_PARSE_SCRIPT = path.join(process.cwd(), "server", "dtr_parse.py");
+const LEAVE_FORM6_TEMPLATE_XLSX = path.join(
+  process.cwd(),
+  "leave application",
+  "CS Form No. 6, Revised 2020 (Application for Leave) (Fillable).xlsx",
+);
+const LEAVE_FORM6_EXCEL_SCRIPT = path.join(process.cwd(), "server", "leave_form6_excel.py");
 const BIOMETRIC_FETCH_SCRIPT = path.join(process.cwd(), "server", "fetch_biometric.py");
+const LIBREOFFICE_EXE =
+  process.env.HRIS_LIBREOFFICE_EXE ||
+  "C:\\Program Files\\LibreOffice\\program\\soffice.com";
+const LIBREOFFICE_PROFILE_DIR = path.join(EXPORT_DIR, "lo-profile");
 const PREVIEW_FILE_MAX_AGE_MS = 30 * 60 * 1000;
-const PYTHON_EXE =
-  process.env.HRIS_PYTHON_EXE ||
-  "C:\\Users\\admin\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe";
+const PYTHON_CANDIDATES = [
+  process.env.HRIS_PYTHON_EXE,
+  process.env.PYTHON_EXE,
+  process.env.USERPROFILE
+    ? path.join(
+        process.env.USERPROFILE,
+        ".cache",
+        "codex-runtimes",
+        "codex-primary-runtime",
+        "dependencies",
+        "python",
+        "python.exe",
+      )
+    : "",
+  "python",
+].filter(Boolean);
+const PYTHON_EXE = PYTHON_CANDIDATES[0];
 const BIOMETRIC_PYTHON_EXE = process.env.HRIS_BIOMETRIC_PYTHON_EXE || process.env.PYTHON_EXE || "python";
 
 const ROLES = ["Admin", "HR", "Employee", "Viewer"];
@@ -3492,7 +3516,16 @@ function dtrExportPeriodsFromBody(body) {
 }
 
 async function runPython(args) {
-  return runPythonWith(PYTHON_EXE, args);
+  let lastError = null;
+  for (const executable of PYTHON_CANDIDATES) {
+    try {
+      return await runPythonWith(executable, args);
+    } catch (error) {
+      lastError = error;
+      if (error?.code !== "ENOENT") throw error;
+    }
+  }
+  throw lastError || new Error("Python executable not found");
 }
 
 async function runPythonWith(executable, args) {
@@ -4555,6 +4588,209 @@ async function handleDeleteLeaveApplication(req, res, id) {
   return json(res, 200, { ok: true });
 }
 
+async function handleGenerateLeaveForm6Excel(req, res, id) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  try {
+    const { fileName } = await generateLeaveForm6ExcelFile(id, user, req);
+    return json(res, 200, {
+      fileName,
+      downloadUrl: `/api/leave/forms/form6/excel/${encodeURIComponent(fileName)}`,
+    });
+  } catch (error) {
+    const status = error.statusCode || 500;
+    return json(res, status, { error: error.message });
+  }
+}
+
+function httpError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+async function buildLeaveForm6Payload(id, user) {
+  const application = await readLeaveApplication(id);
+  if (!application) throw httpError(404, "Leave application not found");
+  if (!["Admin", "HR", "Viewer"].includes(user.role) && user.employeeId !== application.employeeId) {
+    throw httpError(403, "You can only export your own leave application");
+  }
+  try {
+    await fs.access(LEAVE_FORM6_TEMPLATE_XLSX);
+  } catch {
+    throw httpError(500, "CS Form No. 6 Excel template was not found");
+  }
+
+  const employee = await readEmployeeById(application.employeeId);
+  const [[agency]] = await pool.query(
+    `SELECT name, tagline FROM agency_settings WHERE id = 1 LIMIT 1`,
+  );
+  const [balanceRows] = await pool.execute(
+    `SELECT lt.code, lb.balance, lb.earned, lb.used, lb.adjusted
+     FROM leave_balances lb
+     INNER JOIN leave_types lt ON lt.id = lb.leave_type_id
+     WHERE lb.employee_id = :employeeId AND lt.code IN ('VL', 'SL')`,
+    { employeeId: application.employeeId },
+  );
+  const balances = {};
+  for (const row of balanceRows) {
+    const currentBalance = Number(row.balance || 0);
+    const less =
+      (application.status !== "Approved" && application.leaveCode === row.code) ||
+      (application.status !== "Approved" && application.leaveCode === "FL" && row.code === "VL")
+        ? application.daysRequested
+        : 0;
+    balances[row.code] = {
+      earned: Number(row.earned || 0) + Number(row.adjusted || 0),
+      less,
+      balance: currentBalance - less,
+    };
+  }
+
+  return {
+    agency: agency || {},
+    employee: employee || {},
+    application,
+    balances,
+    asOfDate: new Date().toLocaleDateString("en-CA"),
+  };
+}
+
+async function generateLeaveForm6ExcelFile(id, user, req) {
+  const payload = await buildLeaveForm6Payload(id, user);
+  await fs.mkdir(PREVIEW_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safeName = `${payload.application.employeeName || "employee"}`.replace(
+    /[^A-Za-z0-9_-]+/g,
+    "-",
+  );
+  const fileName = `leave-form6-${safeName}-${stamp}.xlsx`;
+  const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
+  const outputPath = path.join(PREVIEW_DIR, fileName);
+
+  await fs.writeFile(inputPath, JSON.stringify(payload), "utf8");
+  try {
+    await runPython([LEAVE_FORM6_EXCEL_SCRIPT, inputPath, outputPath, LEAVE_FORM6_TEMPLATE_XLSX]);
+  } finally {
+    await fs.rm(inputPath, { force: true }).catch(() => {});
+  }
+
+  await logAudit(user.id, "leave.form6_excel_generate", { id, fileName }, req);
+  return { fileName, outputPath, payload };
+}
+
+async function convertSpreadsheetToPdf(inputPath) {
+  await fs.access(LIBREOFFICE_EXE);
+  await fs.mkdir(LIBREOFFICE_PROFILE_DIR, { recursive: true });
+  const profileUri = `file:///${LIBREOFFICE_PROFILE_DIR.replace(/\\/g, "/")}`;
+  await runProcess(LIBREOFFICE_EXE, [
+    "--headless",
+    "--nologo",
+    "--nofirststartwizard",
+    "--norestore",
+    `-env:UserInstallation=${profileUri}`,
+    "--convert-to",
+    "pdf",
+    "--outdir",
+    PREVIEW_DIR,
+    inputPath,
+  ]);
+  const pdfPath = inputPath.replace(/\.xlsx$/i, ".pdf");
+  await fs.access(pdfPath);
+  return pdfPath;
+}
+
+async function runProcess(executable, args, timeoutMs = 60000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, args, { cwd: process.cwd(), windowsHide: true });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      child.kill();
+      reject(new Error("External process timed out"));
+    }, timeoutMs);
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(stderr.trim() || stdout.trim() || `Process exited with code ${code}`));
+    });
+  });
+}
+
+async function handleGenerateLeaveForm6Pdf(req, res, id) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  try {
+    const { fileName, outputPath } = await generateLeaveForm6ExcelFile(id, user, req);
+    const pdfPath = await convertSpreadsheetToPdf(outputPath);
+    const pdfFileName = fileName.replace(/\.xlsx$/i, ".pdf");
+    await logAudit(user.id, "leave.form6_pdf_generate", { id, fileName: pdfFileName }, req);
+    return json(res, 200, {
+      fileName: pdfFileName,
+      previewUrl: `/api/leave/forms/form6/pdf/${encodeURIComponent(pdfFileName)}`,
+    });
+  } catch (error) {
+    const status = error.statusCode || 500;
+    return json(res, status, { error: error.message });
+  }
+}
+
+async function handleDownloadLeaveForm6Excel(req, res, fileName) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const decoded = decodeURIComponent(fileName);
+  if (!/^leave-form6-[A-Za-z0-9_.-]+\.xlsx$/.test(decoded)) {
+    return json(res, 400, { error: "Invalid leave form file name" });
+  }
+  const resolved = path.resolve(PREVIEW_DIR, decoded);
+  if (!resolved.startsWith(path.resolve(PREVIEW_DIR))) {
+    return json(res, 400, { error: "Invalid leave form path" });
+  }
+  try {
+    await fs.access(resolved);
+  } catch {
+    return json(res, 404, { error: "Leave form file not found" });
+  }
+  await logAudit(user.id, "leave.form6_excel_download", { fileName: decoded }, req);
+  return sendFile(res, resolved, decoded);
+}
+
+async function handlePreviewLeaveForm6Pdf(req, res, fileName) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const decoded = decodeURIComponent(fileName);
+  if (!/^leave-form6-[A-Za-z0-9_.-]+\.pdf$/.test(decoded)) {
+    return json(res, 400, { error: "Invalid leave form PDF file name" });
+  }
+  const resolved = path.resolve(PREVIEW_DIR, decoded);
+  if (!resolved.startsWith(path.resolve(PREVIEW_DIR))) {
+    return json(res, 400, { error: "Invalid leave form PDF path" });
+  }
+  try {
+    await fs.access(resolved);
+  } catch {
+    return json(res, 404, { error: "Leave form PDF not found" });
+  }
+  await logAudit(user.id, "leave.form6_pdf_preview", { fileName: decoded }, req);
+  return sendInlinePdfAndDelete(res, resolved, decoded);
+}
+
 async function handleGetConfig(req, res) {
   const user = await requireUser(req, res);
   if (!user) return;
@@ -4858,6 +5094,18 @@ async function route(req, res) {
   const leaveDecisionMatch = url.pathname.match(
     /^\/api\/leave\/applications\/([A-Za-z0-9-]+)\/decision$/,
   );
+  const leaveForm6ExcelGenerateMatch = url.pathname.match(
+    /^\/api\/leave\/applications\/([A-Za-z0-9-]+)\/form6\/excel$/,
+  );
+  const leaveForm6ExcelDownloadMatch = url.pathname.match(
+    /^\/api\/leave\/forms\/form6\/excel\/([^/]+)$/,
+  );
+  const leaveForm6PdfGenerateMatch = url.pathname.match(
+    /^\/api\/leave\/applications\/([A-Za-z0-9-]+)\/form6\/pdf$/,
+  );
+  const leaveForm6PdfPreviewMatch = url.pathname.match(
+    /^\/api\/leave\/forms\/form6\/pdf\/([^/]+)$/,
+  );
   const dtrEntryMatch = url.pathname.match(/^\/api\/attendance\/dtr\/([A-Za-z0-9-]+)$/);
   const dtrExcelMatch = url.pathname.match(/^\/api\/attendance\/dtr\/excel\/([^/]+)$/);
   const dtrPdfMatch = url.pathname.match(/^\/api\/attendance\/dtr\/pdf\/([^/]+)$/);
@@ -4952,6 +5200,14 @@ async function route(req, res) {
     return handleCreateLeaveApplication(req, res);
   if (req.method === "POST" && leaveDecisionMatch)
     return handleDecideLeaveApplication(req, res, leaveDecisionMatch[1]);
+  if (req.method === "POST" && leaveForm6ExcelGenerateMatch)
+    return handleGenerateLeaveForm6Excel(req, res, leaveForm6ExcelGenerateMatch[1]);
+  if (req.method === "GET" && leaveForm6ExcelDownloadMatch)
+    return handleDownloadLeaveForm6Excel(req, res, leaveForm6ExcelDownloadMatch[1]);
+  if (req.method === "POST" && leaveForm6PdfGenerateMatch)
+    return handleGenerateLeaveForm6Pdf(req, res, leaveForm6PdfGenerateMatch[1]);
+  if (req.method === "GET" && leaveForm6PdfPreviewMatch)
+    return handlePreviewLeaveForm6Pdf(req, res, leaveForm6PdfPreviewMatch[1]);
   if (req.method === "DELETE" && leaveApplicationMatch)
     return handleDeleteLeaveApplication(req, res, leaveApplicationMatch[1]);
 

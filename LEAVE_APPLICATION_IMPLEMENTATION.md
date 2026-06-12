@@ -506,15 +506,23 @@ Keep credit adjustment for HR/Admin only.
 
 The fillable XLSX contains real VML checkbox controls on page 1. It can be used as a template, but editing VML checkboxes directly is fragile.
 
-Recommended phases:
+Current implementation:
 
-1. First pass: store complete Form 6 data and render the application in-app.
-2. Second pass: generate a filled printable document.
-3. Export option:
-   - Generate XLSX using the official fillable template, writing values into target cells and updating checkbox states.
-   - Or generate PDF directly using a controlled server-side layout that matches CS Form No. 6.
+- A first Form 6 Excel export is implemented using the official fillable workbook in `leave application/CS Form No. 6, Revised 2020 (Application for Leave) (Fillable).xlsx`.
+- The server edits the workbook XML directly so the official template, instruction sheet, printer settings, and VML checkbox controls are preserved.
+- HR can generate/download the Excel form from the Leave Management table.
+- The generated Excel is printable and can be saved as PDF from Excel.
+- Direct PDF generation is also implemented through LibreOffice/`soffice`. The server uses `HRIS_LIBREOFFICE_EXE` when set, otherwise defaults to `C:\Program Files\LibreOffice\program\soffice.com`.
+- LibreOffice conversion uses an isolated profile under `server/exports/lo-profile`; this avoids headless conversion hanging when a normal LibreOffice desktop profile is locked.
 
-For reliability, prefer a server-generated PDF after the data model is stable. Keep the official XLSX as a visual/layout reference.
+Recommended next phases:
+
+1. Confirm LibreOffice path on the office PC/server and set `HRIS_LIBREOFFICE_EXE` in `server/.env` if it differs. Prefer `soffice.com` on Windows for command-line conversion.
+2. Add export history if HR wants to retain generated files instead of regenerating from current database state.
+3. Add draft auto-save for partially completed leave forms.
+4. If LibreOffice output ever differs from the official print layout, build a dedicated PDF overlay using the secured PDF template as the background.
+
+For reliability, keep both generated XLSX and LibreOffice-generated PDF available. The XLSX remains the source export because it preserves the fillable official form.
 
 ## Validation Rules To Implement
 
