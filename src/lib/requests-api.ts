@@ -1,4 +1,9 @@
-import { createLeaveApplication, type LeaveApplication, type LeaveStatus } from "@/lib/leave-api";
+import {
+  createLeaveApplication,
+  type CreateLeaveApplicationPayload,
+  type LeaveApplication,
+  type LeaveStatus,
+} from "@/lib/leave-api";
 
 export type RequestKind = "Leave";
 
@@ -36,13 +41,6 @@ export function requestsFromLeave(applications: LeaveApplication[]) {
   return applications.map(requestFromLeave);
 }
 
-export function submitLeaveRequest(payload: {
-  employeeId: string;
-  leaveTypeId: number;
-  dateFrom: string;
-  dateTo: string;
-  daysRequested: number;
-  reason: string;
-}) {
+export function submitLeaveRequest(payload: CreateLeaveApplicationPayload) {
   return createLeaveApplication(payload);
 }

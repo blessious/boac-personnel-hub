@@ -183,14 +183,288 @@ const DEFAULT_POSITIONS = [
 ];
 
 const DEFAULT_LEAVE_TYPES = [
-  { code: "VL", name: "Vacation Leave", paid: true, sortOrder: 1 },
-  { code: "SL", name: "Sick Leave", paid: true, sortOrder: 2 },
-  { code: "FL", name: "Forced Leave", paid: true, sortOrder: 3 },
-  { code: "SPL", name: "Special Privilege Leave", paid: true, sortOrder: 4 },
-  { code: "ML", name: "Maternity Leave", paid: true, sortOrder: 5 },
-  { code: "PL", name: "Paternity Leave", paid: true, sortOrder: 6 },
-  { code: "SP", name: "Solo Parent Leave", paid: true, sortOrder: 7 },
-  { code: "LWOP", name: "Leave Without Pay", paid: false, sortOrder: 8 },
+  {
+    code: "VL",
+    name: "Vacation Leave",
+    paid: true,
+    creditBased: true,
+    creditGroup: "VL",
+    maxDays: null,
+    advanceNoticeDays: 5,
+    legalBasis: "Sec. 51, Rule XVI, Omnibus Rules Implementing E.O. No. 292",
+    filingRule: "File five days in advance whenever possible.",
+    requirements: [
+      "Indicate whether leave is within the Philippines or abroad.",
+      "Secure travel authority and clearance from money/work accountabilities when applicable.",
+    ],
+    detailSchema: ["location", "commutation"],
+    sortOrder: 1,
+  },
+  {
+    code: "FL",
+    name: "Mandatory/Forced Leave",
+    paid: true,
+    creditBased: true,
+    creditGroup: "VL",
+    maxDays: 5,
+    advanceNoticeDays: null,
+    legalBasis: "Sec. 25, Rule XVI, Omnibus Rules Implementing E.O. No. 292",
+    filingRule:
+      "Annual five-day vacation leave is forfeited if not taken during the year unless cancelled due to exigency of service.",
+    requirements: [
+      "One day or more Vacation Leave may count toward mandatory/forced leave compliance, subject to rules.",
+    ],
+    detailSchema: ["commutation"],
+    sortOrder: 2,
+  },
+  {
+    code: "SL",
+    name: "Sick Leave",
+    paid: true,
+    creditBased: true,
+    creditGroup: "SL",
+    maxDays: null,
+    advanceNoticeDays: null,
+    legalBasis: "Sec. 43, Rule XVI, Omnibus Rules Implementing E.O. No. 292",
+    filingRule:
+      "File immediately upon return. If filed in advance or exceeding five days, attach medical certificate or affidavit if no consultation was availed of.",
+    requirements: [
+      "Medical certificate if filed in advance or exceeding five days.",
+      "Applicant affidavit if medical consultation was not availed of.",
+    ],
+    detailSchema: ["sick", "commutation"],
+    sortOrder: 3,
+  },
+  {
+    code: "ML",
+    name: "Maternity Leave",
+    paid: true,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: 105,
+    advanceNoticeDays: null,
+    legalBasis: "R.A. No. 11210 / IRR issued by CSC, DOLE and SSS",
+    filingRule: "105 days, with proof of pregnancy and CS Form No. 6a if needed.",
+    requirements: [
+      "Proof of pregnancy, such as ultrasound or doctor's certificate on expected delivery date.",
+      "Accomplished Notice of Allocation of Maternity Leave Credits (CS Form No. 6a), if needed.",
+    ],
+    detailSchema: ["commutation"],
+    sortOrder: 4,
+  },
+  {
+    code: "PL",
+    name: "Paternity Leave",
+    paid: true,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: 7,
+    advanceNoticeDays: null,
+    legalBasis: "R.A. No. 8187 / CSC MC No. 71, s. 1998, as amended",
+    filingRule: "Seven days with proof of child's delivery and marriage contract.",
+    requirements: [
+      "Proof of child's delivery, such as birth certificate or medical certificate.",
+      "Marriage contract.",
+    ],
+    detailSchema: ["commutation"],
+    sortOrder: 5,
+  },
+  {
+    code: "SPL",
+    name: "Special Privilege Leave",
+    paid: true,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: 3,
+    advanceNoticeDays: 7,
+    legalBasis: "Sec. 21, Rule XVI, Omnibus Rules Implementing E.O. No. 292",
+    filingRule: "File/approve at least one week before availment, except emergency cases.",
+    requirements: [
+      "Indicate whether leave is within the Philippines or abroad.",
+      "Secure travel authority and clearance from money/work accountabilities when applicable.",
+    ],
+    detailSchema: ["location", "commutation"],
+    sortOrder: 6,
+  },
+  {
+    code: "SP",
+    name: "Solo Parent Leave",
+    paid: true,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: 7,
+    advanceNoticeDays: 5,
+    legalBasis: "RA No. 8972 / CSC MC No. 8, s. 2004",
+    filingRule: "File in advance or whenever possible five days before leave.",
+    requirements: ["Updated Solo Parent Identification Card."],
+    detailSchema: ["commutation"],
+    sortOrder: 7,
+  },
+  {
+    code: "STUDY",
+    name: "Study Leave",
+    paid: true,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: 132,
+    advanceNoticeDays: null,
+    legalBasis: "Sec. 68, Rule XVI, Omnibus Rules Implementing E.O. No. 292",
+    filingRule: "Up to six months, subject to agency internal requirements and contract.",
+    requirements: [
+      "Agency internal requirements, if any.",
+      "Contract between agency head or authorized representative and employee.",
+    ],
+    detailSchema: ["study", "commutation"],
+    sortOrder: 8,
+  },
+  {
+    code: "VAWC",
+    name: "10-Day VAWC Leave",
+    paid: true,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: 10,
+    advanceNoticeDays: null,
+    legalBasis: "RA No. 9262 / CSC MC No. 15, s. 2005",
+    filingRule: "File in advance or immediately upon return.",
+    requirements: [
+      "Barangay Protection Order, Temporary/Permanent Protection Order, filing certification, or police report with medical certificate as allowed.",
+    ],
+    detailSchema: ["commutation"],
+    sortOrder: 9,
+  },
+  {
+    code: "REHAB",
+    name: "Rehabilitation Privilege",
+    paid: true,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: 132,
+    advanceNoticeDays: 7,
+    legalBasis: "Sec. 55, Rule XVI, Omnibus Rules Implementing E.O. No. 292",
+    filingRule: "Apply within one week from accident except when a longer period is warranted.",
+    requirements: [
+      "Letter request supported by relevant reports, such as police report if any.",
+      "Medical certificate on injuries, treatment, and need for rest, recuperation, and rehabilitation.",
+      "Government physician concurrence if attending physician is private, especially on duration.",
+    ],
+    detailSchema: ["commutation"],
+    sortOrder: 10,
+  },
+  {
+    code: "SLBW",
+    name: "Special Leave Benefits for Women",
+    paid: true,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: 44,
+    advanceNoticeDays: 5,
+    legalBasis: "RA No. 9710 / CSC MC No. 25, s. 2010",
+    filingRule:
+      "May be filed at least five days before gynecological surgery; emergency cases are filed upon return with agency notification during confinement.",
+    requirements: [
+      "Medical certificate and clinical summary from proper medical authorities.",
+      "Histopathological report.",
+      "Operative technique used, surgery duration, peri-operative period, and estimated recuperation period.",
+    ],
+    detailSchema: ["women", "commutation"],
+    sortOrder: 11,
+  },
+  {
+    code: "CALAMITY",
+    name: "Special Emergency (Calamity) Leave",
+    paid: true,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: 5,
+    advanceNoticeDays: null,
+    legalBasis: "CSC MC No. 2, s. 2012, as amended",
+    filingRule:
+      "Maximum of five straight working days or staggered basis within thirty days from actual calamity/disaster; once per year.",
+    requirements: [
+      "Verification of residence based on latest records.",
+      "Verification that residence is covered by calamity area declaration.",
+      "Other proofs as necessary.",
+    ],
+    detailSchema: ["commutation"],
+    sortOrder: 12,
+  },
+  {
+    code: "ADOPTION",
+    name: "Adoption Leave",
+    paid: true,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: null,
+    advanceNoticeDays: null,
+    legalBasis: "R.A. No. 8552",
+    filingRule: "File with authenticated Pre-Adoptive Placement Authority issued by DSWD.",
+    requirements: ["Authenticated Pre-Adoptive Placement Authority issued by DSWD."],
+    detailSchema: ["commutation"],
+    sortOrder: 13,
+  },
+  {
+    code: "MONETIZATION",
+    name: "Monetization of Leave Credits",
+    paid: true,
+    creditBased: true,
+    creditGroup: "VL_SL",
+    maxDays: null,
+    advanceNoticeDays: null,
+    legalBasis: "",
+    filingRule:
+      "Application for monetization of 50% or more of accumulated leave credits requires a letter request stating valid and justifiable reasons.",
+    requirements: [
+      "Letter request to the head of agency stating valid and justifiable reasons when monetizing 50% or more.",
+    ],
+    detailSchema: ["otherPurpose"],
+    sortOrder: 14,
+  },
+  {
+    code: "TERMINAL",
+    name: "Terminal Leave",
+    paid: true,
+    creditBased: true,
+    creditGroup: "VL_SL",
+    maxDays: null,
+    advanceNoticeDays: null,
+    legalBasis: "",
+    filingRule: "Requires proof of resignation, retirement, or separation from service.",
+    requirements: [
+      "Proof of resignation, retirement, or separation from service.",
+      "Clearance from money, property, and work-related accountabilities.",
+    ],
+    detailSchema: ["otherPurpose"],
+    sortOrder: 15,
+  },
+  {
+    code: "OTHERS",
+    name: "Others",
+    paid: true,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: null,
+    advanceNoticeDays: null,
+    legalBasis: "",
+    filingRule: "Use only when the leave purpose does not match the standard CS Form No. 6 options.",
+    requirements: ["Specify the leave purpose and attach supporting documents required by HR."],
+    detailSchema: ["otherPurpose", "commutation"],
+    sortOrder: 16,
+  },
+  {
+    code: "LWOP",
+    name: "Leave Without Pay",
+    paid: false,
+    creditBased: false,
+    creditGroup: null,
+    maxDays: null,
+    advanceNoticeDays: null,
+    legalBasis: "",
+    filingRule: "Internal unpaid leave tracking type.",
+    requirements: [],
+    detailSchema: ["commutation"],
+    sortOrder: 99,
+  },
 ];
 
 const EMPLOYEE_SECTION_TABLES = {
@@ -539,6 +813,17 @@ function leaveTypeRow(row) {
     code: row.code,
     name: row.name,
     isPaid: Boolean(row.is_paid),
+    isCreditBased: Boolean(row.is_credit_based),
+    creditGroup: row.credit_group || "",
+    maxDays: row.max_days === null || row.max_days === undefined ? null : Number(row.max_days),
+    advanceNoticeDays:
+      row.advance_notice_days === null || row.advance_notice_days === undefined
+        ? null
+        : Number(row.advance_notice_days),
+    legalBasis: row.legal_basis || "",
+    filingRule: row.filing_rule || "",
+    requirements: parseJson(row.requirements_json, []),
+    detailSchema: parseJson(row.detail_schema_json, []),
     isActive: Boolean(row.is_active),
     sortOrder: Number(row.sort_order || 0),
   };
@@ -574,6 +859,38 @@ function leaveApplicationRow(row) {
     dateTo: normalizeDate(row.date_to),
     daysRequested: Number(row.days_requested || 0),
     reason: row.reason || "",
+    salarySnapshot:
+      row.salary_snapshot === null || row.salary_snapshot === undefined
+        ? null
+        : Number(row.salary_snapshot),
+    detailLocationType: row.detail_location_type || "",
+    detailLocationText: row.detail_location_text || "",
+    detailSickType: row.detail_sick_type || "",
+    detailIllness: row.detail_illness || "",
+    detailStudyPurpose: row.detail_study_purpose || "",
+    detailOtherPurpose: row.detail_other_purpose || "",
+    detailOtherText: row.detail_other_text || "",
+    commutationRequested: Boolean(row.commutation_requested),
+    requirementsPayload: parseJson(row.requirements_payload, {}),
+    formPayload: parseJson(row.form_payload, {}),
+    recommendationStatus: row.recommendation_status || "",
+    recommendationReason: row.recommendation_reason || "",
+    recommendedByName: row.recommended_by_name || "",
+    recommendedAt: row.recommended_at,
+    approvedDaysWithPay:
+      row.approved_days_with_pay === null || row.approved_days_with_pay === undefined
+        ? null
+        : Number(row.approved_days_with_pay),
+    approvedDaysWithoutPay:
+      row.approved_days_without_pay === null || row.approved_days_without_pay === undefined
+        ? null
+        : Number(row.approved_days_without_pay),
+    approvedDaysOther:
+      row.approved_days_other === null || row.approved_days_other === undefined
+        ? null
+        : Number(row.approved_days_other),
+    approvedDaysOtherText: row.approved_days_other_text || "",
+    finalDisapprovalReason: row.final_disapproval_reason || "",
     status: row.status,
     approverName: row.approver_name || "",
     decisionRemarks: row.decision_remarks || "",
@@ -717,11 +1034,13 @@ async function readLeaveApplication(id) {
   const [rows] = await pool.execute(
     `SELECT la.*, lt.code AS leave_code, lt.name AS leave_name,
             e.employee_no, e.firstname, e.lastname, e.department, e.position,
-            u.name AS approver_name
+            u.name AS approver_name,
+            ru.name AS recommended_by_name
      FROM leave_applications la
      INNER JOIN leave_types lt ON lt.id = la.leave_type_id
      INNER JOIN employees e ON e.id = la.employee_id
      LEFT JOIN users u ON u.id = la.approver_id
+     LEFT JOIN users ru ON ru.id = la.recommended_by
      WHERE la.id = :id
      LIMIT 1`,
     { id },
@@ -980,12 +1299,28 @@ async function initializeDatabase() {
       code VARCHAR(20) NOT NULL UNIQUE,
       name VARCHAR(120) NOT NULL,
       is_paid TINYINT(1) NOT NULL DEFAULT 1,
+      is_credit_based TINYINT(1) NOT NULL DEFAULT 1,
+      credit_group VARCHAR(30) NULL,
+      max_days DECIMAL(8,3) NULL,
+      advance_notice_days INT NULL,
+      legal_basis TEXT NULL,
+      filing_rule TEXT NULL,
+      requirements_json JSON NULL,
+      detail_schema_json JSON NULL,
       is_active TINYINT(1) NOT NULL DEFAULT 1,
       sort_order INT UNSIGNED NOT NULL DEFAULT 0,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB;
   `);
+  await ensureColumn("leave_types", "is_credit_based", "TINYINT(1) NOT NULL DEFAULT 1");
+  await ensureColumn("leave_types", "credit_group", "VARCHAR(30) NULL");
+  await ensureColumn("leave_types", "max_days", "DECIMAL(8,3) NULL");
+  await ensureColumn("leave_types", "advance_notice_days", "INT NULL");
+  await ensureColumn("leave_types", "legal_basis", "TEXT NULL");
+  await ensureColumn("leave_types", "filing_rule", "TEXT NULL");
+  await ensureColumn("leave_types", "requirements_json", "JSON NULL");
+  await ensureColumn("leave_types", "detail_schema_json", "JSON NULL");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS leave_balances (
@@ -1013,6 +1348,26 @@ async function initializeDatabase() {
       date_to DATE NOT NULL,
       days_requested DECIMAL(8,3) NOT NULL,
       reason TEXT NULL,
+      salary_snapshot DECIMAL(12,2) NULL,
+      detail_location_type VARCHAR(30) NULL,
+      detail_location_text VARCHAR(255) NULL,
+      detail_sick_type VARCHAR(30) NULL,
+      detail_illness TEXT NULL,
+      detail_study_purpose VARCHAR(50) NULL,
+      detail_other_purpose VARCHAR(50) NULL,
+      detail_other_text TEXT NULL,
+      commutation_requested TINYINT(1) NOT NULL DEFAULT 0,
+      requirements_payload JSON NULL,
+      form_payload JSON NULL,
+      recommendation_status VARCHAR(30) NULL,
+      recommendation_reason TEXT NULL,
+      recommended_by INT UNSIGNED NULL,
+      recommended_at DATETIME NULL,
+      approved_days_with_pay DECIMAL(8,3) NULL,
+      approved_days_without_pay DECIMAL(8,3) NULL,
+      approved_days_other DECIMAL(8,3) NULL,
+      approved_days_other_text TEXT NULL,
+      final_disapproval_reason TEXT NULL,
       status ENUM('Pending', 'Approved', 'Disapproved', 'Cancelled') NOT NULL DEFAULT 'Pending',
       approver_id INT UNSIGNED NULL,
       decision_remarks TEXT NULL,
@@ -1026,9 +1381,39 @@ async function initializeDatabase() {
       CONSTRAINT fk_leave_applications_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
       CONSTRAINT fk_leave_applications_leave_type_id FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE RESTRICT,
       CONSTRAINT fk_leave_applications_approver_id FOREIGN KEY (approver_id) REFERENCES users(id) ON DELETE SET NULL,
+      CONSTRAINT fk_leave_applications_recommended_by FOREIGN KEY (recommended_by) REFERENCES users(id) ON DELETE SET NULL,
       CONSTRAINT fk_leave_applications_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
+  await ensureColumn("leave_applications", "salary_snapshot", "DECIMAL(12,2) NULL");
+  await ensureColumn("leave_applications", "detail_location_type", "VARCHAR(30) NULL");
+  await ensureColumn("leave_applications", "detail_location_text", "VARCHAR(255) NULL");
+  await ensureColumn("leave_applications", "detail_sick_type", "VARCHAR(30) NULL");
+  await ensureColumn("leave_applications", "detail_illness", "TEXT NULL");
+  await ensureColumn("leave_applications", "detail_study_purpose", "VARCHAR(50) NULL");
+  await ensureColumn("leave_applications", "detail_other_purpose", "VARCHAR(50) NULL");
+  await ensureColumn("leave_applications", "detail_other_text", "TEXT NULL");
+  await ensureColumn(
+    "leave_applications",
+    "commutation_requested",
+    "TINYINT(1) NOT NULL DEFAULT 0",
+  );
+  await ensureColumn("leave_applications", "requirements_payload", "JSON NULL");
+  await ensureColumn("leave_applications", "form_payload", "JSON NULL");
+  await ensureColumn("leave_applications", "recommendation_status", "VARCHAR(30) NULL");
+  await ensureColumn("leave_applications", "recommendation_reason", "TEXT NULL");
+  await ensureColumn("leave_applications", "recommended_by", "INT UNSIGNED NULL");
+  await ensureColumn("leave_applications", "recommended_at", "DATETIME NULL");
+  await ensureColumn("leave_applications", "approved_days_with_pay", "DECIMAL(8,3) NULL");
+  await ensureColumn("leave_applications", "approved_days_without_pay", "DECIMAL(8,3) NULL");
+  await ensureColumn("leave_applications", "approved_days_other", "DECIMAL(8,3) NULL");
+  await ensureColumn("leave_applications", "approved_days_other_text", "TEXT NULL");
+  await ensureColumn("leave_applications", "final_disapproval_reason", "TEXT NULL");
+  await ensureForeignKey(
+    "leave_applications",
+    "fk_leave_applications_recommended_by",
+    "FOREIGN KEY (recommended_by) REFERENCES users(id) ON DELETE SET NULL",
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS leave_adjustments (
@@ -1290,10 +1675,31 @@ async function seedConfigTables() {
 
   for (const leaveType of DEFAULT_LEAVE_TYPES) {
     await pool.execute(
-      `INSERT INTO leave_types (code, name, is_paid, sort_order)
-       VALUES (:code, :name, :paid, :sortOrder)
-       ON DUPLICATE KEY UPDATE name = VALUES(name), is_paid = VALUES(is_paid), sort_order = VALUES(sort_order)`,
-      leaveType,
+      `INSERT INTO leave_types (
+         code, name, is_paid, is_credit_based, credit_group, max_days, advance_notice_days,
+         legal_basis, filing_rule, requirements_json, detail_schema_json, sort_order
+       )
+       VALUES (
+         :code, :name, :paid, :creditBased, :creditGroup, :maxDays, :advanceNoticeDays,
+         :legalBasis, :filingRule, :requirementsJson, :detailSchemaJson, :sortOrder
+       )
+       ON DUPLICATE KEY UPDATE
+         name = VALUES(name),
+         is_paid = VALUES(is_paid),
+         is_credit_based = VALUES(is_credit_based),
+         credit_group = VALUES(credit_group),
+         max_days = VALUES(max_days),
+         advance_notice_days = VALUES(advance_notice_days),
+         legal_basis = VALUES(legal_basis),
+         filing_rule = VALUES(filing_rule),
+         requirements_json = VALUES(requirements_json),
+         detail_schema_json = VALUES(detail_schema_json),
+         sort_order = VALUES(sort_order)`,
+      {
+        ...leaveType,
+        requirementsJson: JSON.stringify(leaveType.requirements || []),
+        detailSchemaJson: JSON.stringify(leaveType.detailSchema || []),
+      },
     );
   }
 }
@@ -3704,12 +4110,47 @@ async function handleCreateLeaveType(req, res) {
     .toUpperCase();
   const name = String(body.name || "").trim();
   const isPaid = body.isPaid === false ? 0 : 1;
+  const isCreditBased = body.isCreditBased === false ? 0 : 1;
+  const creditGroup = String(body.creditGroup || "").trim() || null;
+  const maxDays =
+    body.maxDays === null || body.maxDays === undefined || body.maxDays === ""
+      ? null
+      : Number(body.maxDays);
+  const advanceNoticeDays =
+    body.advanceNoticeDays === null ||
+    body.advanceNoticeDays === undefined ||
+    body.advanceNoticeDays === ""
+      ? null
+      : Number(body.advanceNoticeDays);
+  const legalBasis = String(body.legalBasis || "").trim();
+  const filingRule = String(body.filingRule || "").trim();
+  const requirements = Array.isArray(body.requirements) ? body.requirements : [];
+  const detailSchema = Array.isArray(body.detailSchema) ? body.detailSchema : [];
   if (!code || !name) return json(res, 400, { error: "Code and name are required" });
   try {
     const [result] = await pool.execute(
-      `INSERT INTO leave_types (code, name, is_paid, sort_order)
-       VALUES (:code, :name, :isPaid, :sortOrder)`,
-      { code, name, isPaid, sortOrder: Number(body.sortOrder || 0) },
+      `INSERT INTO leave_types (
+         code, name, is_paid, is_credit_based, credit_group, max_days, advance_notice_days,
+         legal_basis, filing_rule, requirements_json, detail_schema_json, sort_order
+       )
+       VALUES (
+         :code, :name, :isPaid, :isCreditBased, :creditGroup, :maxDays, :advanceNoticeDays,
+         :legalBasis, :filingRule, :requirementsJson, :detailSchemaJson, :sortOrder
+       )`,
+      {
+        code,
+        name,
+        isPaid,
+        isCreditBased,
+        creditGroup,
+        maxDays,
+        advanceNoticeDays,
+        legalBasis,
+        filingRule,
+        requirementsJson: JSON.stringify(requirements),
+        detailSchemaJson: JSON.stringify(detailSchema),
+        sortOrder: Number(body.sortOrder || 0),
+      },
     );
     await logAudit(user.id, "leave.type_create", { code, name }, req);
     return json(res, 201, {
@@ -3718,6 +4159,14 @@ async function handleCreateLeaveType(req, res) {
         code,
         name,
         isPaid: Boolean(isPaid),
+        isCreditBased: Boolean(isCreditBased),
+        creditGroup: creditGroup || "",
+        maxDays,
+        advanceNoticeDays,
+        legalBasis,
+        filingRule,
+        requirements,
+        detailSchema,
         isActive: true,
         sortOrder: Number(body.sortOrder || 0),
       },
@@ -3762,11 +4211,13 @@ async function handleEmployeeLeave(req, res, employeeId) {
   const [applicationRows] = await pool.execute(
     `SELECT la.*, lt.code AS leave_code, lt.name AS leave_name,
             e.employee_no, e.firstname, e.lastname, e.department, e.position,
-            u.name AS approver_name
+            u.name AS approver_name,
+            ru.name AS recommended_by_name
      FROM leave_applications la
      INNER JOIN leave_types lt ON lt.id = la.leave_type_id
      INNER JOIN employees e ON e.id = la.employee_id
      LEFT JOIN users u ON u.id = la.approver_id
+     LEFT JOIN users ru ON ru.id = la.recommended_by
      WHERE la.employee_id = :employeeId
      ORDER BY la.date_from DESC, la.created_at DESC`,
     { employeeId },
@@ -3821,6 +4272,17 @@ async function handleCreateLeaveAdjustment(req, res, employeeId) {
   return handleEmployeeLeave(req, res, employeeId);
 }
 
+function normalizeOptionalNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizeChoice(value, allowed) {
+  const text = String(value || "").trim();
+  return allowed.includes(text) ? text : "";
+}
+
 async function handleListLeaveApplications(req, res, url) {
   const user = await requireLeaveRead(req, res);
   if (!user) return;
@@ -3842,11 +4304,13 @@ async function handleListLeaveApplications(req, res, url) {
   const [rows] = await pool.execute(
     `SELECT la.*, lt.code AS leave_code, lt.name AS leave_name,
             e.employee_no, e.firstname, e.lastname, e.department, e.position,
-            u.name AS approver_name
+            u.name AS approver_name,
+            ru.name AS recommended_by_name
      FROM leave_applications la
      INNER JOIN leave_types lt ON lt.id = la.leave_type_id
      INNER JOIN employees e ON e.id = la.employee_id
      LEFT JOIN users u ON u.id = la.approver_id
+     LEFT JOIN users ru ON ru.id = la.recommended_by
      ${whereSql}
      ORDER BY FIELD(la.status, 'Pending', 'Approved', 'Disapproved', 'Cancelled'), la.created_at DESC
      LIMIT 300`,
@@ -3883,6 +4347,37 @@ async function handleCreateLeaveApplication(req, res) {
   const dateTo = String(body.dateTo || "").trim();
   const daysRequested = Number(body.daysRequested);
   const reason = String(body.reason || "").trim();
+  const salarySnapshot = normalizeOptionalNumber(body.salarySnapshot);
+  const detailLocationType = normalizeChoice(body.detailLocationType, [
+    "Philippines",
+    "Abroad",
+    "NotApplicable",
+  ]);
+  const detailLocationText = String(body.detailLocationText || "").trim();
+  const detailSickType = normalizeChoice(body.detailSickType, [
+    "Hospital",
+    "OutPatient",
+    "NotApplicable",
+  ]);
+  const detailIllness = String(body.detailIllness || "").trim();
+  const detailStudyPurpose = normalizeChoice(body.detailStudyPurpose, [
+    "MastersDegree",
+    "BarBoardReview",
+    "NotApplicable",
+  ]);
+  const detailOtherPurpose = normalizeChoice(body.detailOtherPurpose, [
+    "Monetization",
+    "TerminalLeave",
+    "Other",
+    "NotApplicable",
+  ]);
+  const detailOtherText = String(body.detailOtherText || "").trim();
+  const commutationRequested = body.commutationRequested ? 1 : 0;
+  const requirementsPayload =
+    body.requirementsPayload && typeof body.requirementsPayload === "object"
+      ? body.requirementsPayload
+      : {};
+  const formPayload = body.formPayload && typeof body.formPayload === "object" ? body.formPayload : {};
   if (
     !employeeId ||
     !Number.isInteger(leaveTypeId) ||
@@ -3900,11 +4395,75 @@ async function handleCreateLeaveApplication(req, res) {
   }
   const employee = await readEmployeeById(employeeId);
   if (!employee) return json(res, 404, { error: "Employee not found" });
+  const [[leaveType]] = await pool.execute(`SELECT * FROM leave_types WHERE id = :leaveTypeId`, {
+    leaveTypeId,
+  });
+  if (!leaveType) return json(res, 404, { error: "Leave type not found" });
+
+  const leaveCode = String(leaveType.code || "");
+  const requiresLocation = ["VL", "SPL"].includes(leaveCode);
+  if (requiresLocation && !["Philippines", "Abroad"].includes(detailLocationType)) {
+    return json(res, 400, { error: "Please indicate whether the leave is local or abroad" });
+  }
+  if (detailLocationType === "Abroad" && !detailLocationText) {
+    return json(res, 400, { error: "Please specify the abroad location" });
+  }
+  if (leaveCode === "SL" && !["Hospital", "OutPatient"].includes(detailSickType)) {
+    return json(res, 400, { error: "Please indicate whether sick leave is in hospital or outpatient" });
+  }
+  if ((leaveCode === "SL" || leaveCode === "SLBW") && !detailIllness) {
+    return json(res, 400, { error: "Please specify the illness or medical detail" });
+  }
+  if (leaveCode === "STUDY" && !["MastersDegree", "BarBoardReview"].includes(detailStudyPurpose)) {
+    return json(res, 400, { error: "Please select the study leave purpose" });
+  }
+  if (["MONETIZATION", "TERMINAL", "OTHERS"].includes(leaveCode)) {
+    const validOtherPurpose = ["Monetization", "TerminalLeave", "Other"].includes(detailOtherPurpose);
+    if (!validOtherPurpose || (detailOtherPurpose === "Other" && !detailOtherText)) {
+      return json(res, 400, { error: "Please specify the other leave purpose" });
+    }
+  }
+  if (leaveType.max_days !== null && Number(leaveType.max_days) > 0 && daysRequested > Number(leaveType.max_days)) {
+    return json(res, 400, {
+      error: `${leaveType.name} can be filed for up to ${Number(leaveType.max_days)} days`,
+    });
+  }
+
   const id = crypto.randomUUID();
   await pool.execute(
-    `INSERT INTO leave_applications (id, employee_id, leave_type_id, date_from, date_to, days_requested, reason, created_by)
-     VALUES (:id, :employeeId, :leaveTypeId, :dateFrom, :dateTo, :daysRequested, :reason, :createdBy)`,
-    { id, employeeId, leaveTypeId, dateFrom, dateTo, daysRequested, reason, createdBy: user.id },
+    `INSERT INTO leave_applications (
+       id, employee_id, leave_type_id, date_from, date_to, days_requested, reason,
+       salary_snapshot, detail_location_type, detail_location_text, detail_sick_type,
+       detail_illness, detail_study_purpose, detail_other_purpose, detail_other_text,
+       commutation_requested, requirements_payload, form_payload, created_by
+     )
+     VALUES (
+       :id, :employeeId, :leaveTypeId, :dateFrom, :dateTo, :daysRequested, :reason,
+       :salarySnapshot, :detailLocationType, :detailLocationText, :detailSickType,
+       :detailIllness, :detailStudyPurpose, :detailOtherPurpose, :detailOtherText,
+       :commutationRequested, :requirementsPayload, :formPayload, :createdBy
+     )`,
+    {
+      id,
+      employeeId,
+      leaveTypeId,
+      dateFrom,
+      dateTo,
+      daysRequested,
+      reason,
+      salarySnapshot,
+      detailLocationType: detailLocationType || null,
+      detailLocationText,
+      detailSickType: detailSickType || null,
+      detailIllness,
+      detailStudyPurpose: detailStudyPurpose || null,
+      detailOtherPurpose: detailOtherPurpose || null,
+      detailOtherText,
+      commutationRequested,
+      requirementsPayload: JSON.stringify(requirementsPayload),
+      formPayload: JSON.stringify(formPayload),
+      createdBy: user.id,
+    },
   );
   await ensureLeaveBalance(employeeId, leaveTypeId);
   await logAudit(user.id, "leave.application_create", { id, employeeId, leaveTypeId }, req);
@@ -3917,6 +4476,11 @@ async function handleDecideLeaveApplication(req, res, id) {
   const body = await readBody(req);
   const status = String(body.status || "").trim();
   const remarks = String(body.remarks || "").trim();
+  const approvedDaysWithPay = normalizeOptionalNumber(body.approvedDaysWithPay);
+  const approvedDaysWithoutPay = normalizeOptionalNumber(body.approvedDaysWithoutPay);
+  const approvedDaysOther = normalizeOptionalNumber(body.approvedDaysOther);
+  const approvedDaysOtherText = String(body.approvedDaysOtherText || "").trim();
+  const finalDisapprovalReason = String(body.finalDisapprovalReason || "").trim();
   if (!["Approved", "Disapproved", "Cancelled"].includes(status)) {
     return json(res, 400, { error: "Decision must be Approved, Disapproved, or Cancelled" });
   }
@@ -3944,9 +4508,27 @@ async function handleDecideLeaveApplication(req, res, id) {
   }
   await pool.execute(
     `UPDATE leave_applications
-     SET status = :status, approver_id = :approverId, decision_remarks = :remarks, decided_at = NOW()
+     SET status = :status,
+         approver_id = :approverId,
+         decision_remarks = :remarks,
+         approved_days_with_pay = :approvedDaysWithPay,
+         approved_days_without_pay = :approvedDaysWithoutPay,
+         approved_days_other = :approvedDaysOther,
+         approved_days_other_text = :approvedDaysOtherText,
+         final_disapproval_reason = :finalDisapprovalReason,
+         decided_at = NOW()
      WHERE id = :id`,
-    { id, status, approverId: user.id, remarks },
+    {
+      id,
+      status,
+      approverId: user.id,
+      remarks,
+      approvedDaysWithPay,
+      approvedDaysWithoutPay,
+      approvedDaysOther,
+      approvedDaysOtherText,
+      finalDisapprovalReason,
+    },
   );
   await logAudit(user.id, "leave.application_decide", { id, status }, req);
   return json(res, 200, { application: await readLeaveApplication(id) });

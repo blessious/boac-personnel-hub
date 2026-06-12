@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
@@ -71,18 +72,23 @@ function LeavePage() {
     application: LeaveApplication;
     status: Exclude<LeaveStatus, "Pending">;
     remarks: string;
+    approvedDaysWithPay: string;
+    approvedDaysWithoutPay: string;
+    approvedDaysOther: string;
+    approvedDaysOtherText: string;
+    finalDisapprovalReason: string;
   } | null>(null);
-  const [applicationForm, setApplicationForm] = useState({
-    employeeId: "",
-    leaveTypeId: "",
-    dateFrom: "",
-    dateTo: "",
-    daysRequested: "",
-    reason: "",
-  });
+  const [applicationForm, setApplicationForm] = useState(emptyLeaveForm());
   const [typeForm, setTypeForm] = useState({ code: "", name: "", isPaid: "yes" });
 
   const activeLeaveTypes = useMemo(() => leaveTypes.filter((item) => item.isActive), [leaveTypes]);
+  const selectedLeaveType =
+    activeLeaveTypes.find((type) => String(type.id) === applicationForm.leaveTypeId) || null;
+  const minimumLeaveDate = getMinimumLeaveDate(selectedLeaveType);
+  const calculatedDays = calculateWeekdayLeaveDays(applicationForm.dateFrom, applicationForm.dateTo);
+  const daysRequested = applicationForm.overrideDays
+    ? Number(applicationForm.daysRequested)
+    : calculatedDays;
 
   const load = () => {
     setLoading(true);
@@ -105,24 +111,37 @@ function LeavePage() {
 
   const submitApplication = async () => {
     try {
+      if (!Number.isFinite(daysRequested) || daysRequested <= 0) {
+        toast.error("Please select a valid date range or enter a valid day override");
+        return;
+      }
       await createLeaveApplication({
         employeeId: applicationForm.employeeId,
         leaveTypeId: Number(applicationForm.leaveTypeId),
         dateFrom: applicationForm.dateFrom,
         dateTo: applicationForm.dateTo,
-        daysRequested: Number(applicationForm.daysRequested),
+        daysRequested,
         reason: applicationForm.reason,
+        salarySnapshot: applicationForm.salarySnapshot
+          ? Number(applicationForm.salarySnapshot)
+          : null,
+        detailLocationType: applicationForm.detailLocationType,
+        detailLocationText: applicationForm.detailLocationText,
+        detailSickType: applicationForm.detailSickType,
+        detailIllness: applicationForm.detailIllness,
+        detailStudyPurpose: applicationForm.detailStudyPurpose,
+        detailOtherPurpose: applicationForm.detailOtherPurpose,
+        detailOtherText: applicationForm.detailOtherText,
+        commutationRequested: applicationForm.commutationRequested === "yes",
+        formPayload: {
+          clearanceRequired:
+            selectedLeaveType?.code === "TERMINAL" ||
+            calendarDaySpan(applicationForm.dateFrom, applicationForm.dateTo) >= 30,
+        },
       });
       toast.success("Leave application recorded");
       setShowApplication(false);
-      setApplicationForm({
-        employeeId: "",
-        leaveTypeId: "",
-        dateFrom: "",
-        dateTo: "",
-        daysRequested: "",
-        reason: "",
-      });
+      setApplicationForm(emptyLeaveForm());
       load();
     } catch (error) {
       toast.error((error as Error).message);
@@ -151,6 +170,11 @@ function LeavePage() {
       await decideLeaveApplication(decision.application.id, {
         status: decision.status,
         remarks: decision.remarks,
+        approvedDaysWithPay: numberOrNull(decision.approvedDaysWithPay),
+        approvedDaysWithoutPay: numberOrNull(decision.approvedDaysWithoutPay),
+        approvedDaysOther: numberOrNull(decision.approvedDaysOther),
+        approvedDaysOtherText: decision.approvedDaysOtherText,
+        finalDisapprovalReason: decision.finalDisapprovalReason,
       });
       toast.success(`Leave ${decision.status.toLowerCase()}`);
       setDecision(null);
@@ -295,6 +319,14 @@ function LeavePage() {
                               application,
                               status: "Approved",
                               remarks: application.decisionRemarks || "",
+                              approvedDaysWithPay:
+                                application.approvedDaysWithPay?.toString() ||
+                                application.daysRequested.toString(),
+                              approvedDaysWithoutPay:
+                                application.approvedDaysWithoutPay?.toString() || "",
+                              approvedDaysOther: application.approvedDaysOther?.toString() || "",
+                              approvedDaysOtherText: application.approvedDaysOtherText || "",
+                              finalDisapprovalReason: application.finalDisapprovalReason || "",
                             })
                           }
                           className="h-8 px-2"
@@ -310,6 +342,16 @@ function LeavePage() {
                               application,
                               status: "Disapproved",
                               remarks: application.decisionRemarks || "",
+                              approvedDaysWithPay:
+                                application.approvedDaysWithPay?.toString() || "",
+                              approvedDaysWithoutPay:
+                                application.approvedDaysWithoutPay?.toString() || "",
+                              approvedDaysOther: application.approvedDaysOther?.toString() || "",
+                              approvedDaysOtherText: application.approvedDaysOtherText || "",
+                              finalDisapprovalReason:
+                                application.finalDisapprovalReason ||
+                                application.decisionRemarks ||
+                                "",
                             })
                           }
                           className="h-8 px-2"
@@ -364,7 +406,11 @@ function LeavePage() {
               <Select
                 value={applicationForm.leaveTypeId}
                 onValueChange={(value) =>
-                  setApplicationForm({ ...applicationForm, leaveTypeId: value })
+                  setApplicationForm({
+                    ...emptyLeaveForm(),
+                    employeeId: applicationForm.employeeId,
+                    leaveTypeId: value,
+                  })
                 }
               >
                 <SelectTrigger>
@@ -382,6 +428,7 @@ function LeavePage() {
             <Field label="Date From">
               <Input
                 type="date"
+                min={minimumLeaveDate}
                 value={applicationForm.dateFrom}
                 onChange={(e) =>
                   setApplicationForm({ ...applicationForm, dateFrom: e.target.value })
@@ -391,18 +438,55 @@ function LeavePage() {
             <Field label="Date To">
               <Input
                 type="date"
+                min={applicationForm.dateFrom || minimumLeaveDate}
                 value={applicationForm.dateTo}
                 onChange={(e) => setApplicationForm({ ...applicationForm, dateTo: e.target.value })}
               />
             </Field>
             <Field label="Days Requested">
               <Input
-                type="number"
+                type={applicationForm.overrideDays ? "number" : "text"}
                 step="0.001"
-                value={applicationForm.daysRequested}
+                value={
+                  applicationForm.overrideDays
+                    ? applicationForm.daysRequested
+                    : calculatedDays > 0
+                      ? formatNumber(calculatedDays)
+                      : ""
+                }
+                readOnly={!applicationForm.overrideDays}
+                placeholder="Auto-calculated"
                 onChange={(e) =>
                   setApplicationForm({ ...applicationForm, daysRequested: e.target.value })
                 }
+              />
+              <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={applicationForm.overrideDays}
+                  onChange={(event) =>
+                    setApplicationForm({
+                      ...applicationForm,
+                      overrideDays: event.target.checked,
+                      daysRequested: event.target.checked
+                        ? applicationForm.daysRequested || String(calculatedDays || "")
+                        : "",
+                    })
+                  }
+                  className="h-4 w-4 rounded border-border"
+                />
+                Override for half-day, shift, holiday, or special HR cases
+              </label>
+            </Field>
+            <Field label="Salary" className="md:col-span-2">
+              <Input
+                type="number"
+                step="0.01"
+                value={applicationForm.salarySnapshot}
+                onChange={(e) =>
+                  setApplicationForm({ ...applicationForm, salarySnapshot: e.target.value })
+                }
+                placeholder="Optional snapshot for CS Form No. 6"
               />
             </Field>
             <Field label="Reason" className="md:col-span-2">
@@ -412,6 +496,127 @@ function LeavePage() {
                 onChange={(e) => setApplicationForm({ ...applicationForm, reason: e.target.value })}
               />
             </Field>
+            {selectedLeaveType ? (
+              <LeaveTypeGuidance leaveType={selectedLeaveType} className="md:col-span-2" />
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("location") ? (
+              <>
+                <Field label="Location" className="md:col-span-2">
+                  <RadioGroup
+                    value={applicationForm.detailLocationType}
+                    onValueChange={(value) =>
+                      setApplicationForm({ ...applicationForm, detailLocationType: value })
+                    }
+                    className="grid gap-2 md:grid-cols-2"
+                  >
+                    <RadioChoice value="Philippines" label="Within the Philippines" />
+                    <RadioChoice value="Abroad" label="Abroad" />
+                  </RadioGroup>
+                </Field>
+                {applicationForm.detailLocationType === "Abroad" ? (
+                  <Field label="Specify Abroad Location" className="md:col-span-2">
+                    <Input
+                      value={applicationForm.detailLocationText}
+                      onChange={(e) =>
+                        setApplicationForm({
+                          ...applicationForm,
+                          detailLocationText: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                ) : null}
+              </>
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("sick") ? (
+              <>
+                <Field label="Sick Leave Detail" className="md:col-span-2">
+                  <RadioGroup
+                    value={applicationForm.detailSickType}
+                    onValueChange={(value) =>
+                      setApplicationForm({ ...applicationForm, detailSickType: value })
+                    }
+                    className="grid gap-2 md:grid-cols-2"
+                  >
+                    <RadioChoice value="Hospital" label="In hospital" />
+                    <RadioChoice value="OutPatient" label="Out patient" />
+                  </RadioGroup>
+                </Field>
+                <Field label="Specify Illness" className="md:col-span-2">
+                  <Input
+                    value={applicationForm.detailIllness}
+                    onChange={(e) =>
+                      setApplicationForm({ ...applicationForm, detailIllness: e.target.value })
+                    }
+                  />
+                </Field>
+              </>
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("women") ? (
+              <Field label="Specify Illness / Surgery Detail" className="md:col-span-2">
+                <Input
+                  value={applicationForm.detailIllness}
+                  onChange={(e) =>
+                    setApplicationForm({ ...applicationForm, detailIllness: e.target.value })
+                  }
+                />
+              </Field>
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("study") ? (
+              <Field label="Study Leave Purpose" className="md:col-span-2">
+                <RadioGroup
+                  value={applicationForm.detailStudyPurpose}
+                  onValueChange={(value) =>
+                    setApplicationForm({ ...applicationForm, detailStudyPurpose: value })
+                  }
+                  className="grid gap-2 md:grid-cols-2"
+                >
+                  <RadioChoice value="MastersDegree" label="Completion of Master's Degree" />
+                  <RadioChoice value="BarBoardReview" label="BAR / Board Examination Review" />
+                </RadioGroup>
+              </Field>
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("otherPurpose") ? (
+              <>
+                <Field label="Other Purpose" className="md:col-span-2">
+                  <RadioGroup
+                    value={applicationForm.detailOtherPurpose}
+                    onValueChange={(value) =>
+                      setApplicationForm({ ...applicationForm, detailOtherPurpose: value })
+                    }
+                    className="grid gap-2 md:grid-cols-3"
+                  >
+                    <RadioChoice value="Monetization" label="Monetization" />
+                    <RadioChoice value="TerminalLeave" label="Terminal Leave" />
+                    <RadioChoice value="Other" label="Others" />
+                  </RadioGroup>
+                </Field>
+                {applicationForm.detailOtherPurpose === "Other" ? (
+                  <Field label="Specify Other Purpose" className="md:col-span-2">
+                    <Input
+                      value={applicationForm.detailOtherText}
+                      onChange={(e) =>
+                        setApplicationForm({ ...applicationForm, detailOtherText: e.target.value })
+                      }
+                    />
+                  </Field>
+                ) : null}
+              </>
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("commutation") ? (
+              <Field label="Commutation" className="md:col-span-2">
+                <RadioGroup
+                  value={applicationForm.commutationRequested}
+                  onValueChange={(value) =>
+                    setApplicationForm({ ...applicationForm, commutationRequested: value })
+                  }
+                  className="grid gap-2 md:grid-cols-2"
+                >
+                  <RadioChoice value="no" label="Not requested" />
+                  <RadioChoice value="yes" label="Requested" />
+                </RadioGroup>
+              </Field>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowApplication(false)}>
@@ -452,6 +657,59 @@ function LeavePage() {
                 }
               />
             </Field>
+            {decision?.status === "Approved" ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Field label="Days With Pay">
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={decision.approvedDaysWithPay}
+                    onChange={(event) =>
+                      setDecision({ ...decision, approvedDaysWithPay: event.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Days Without Pay">
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={decision.approvedDaysWithoutPay}
+                    onChange={(event) =>
+                      setDecision({ ...decision, approvedDaysWithoutPay: event.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Other Days">
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={decision.approvedDaysOther}
+                    onChange={(event) =>
+                      setDecision({ ...decision, approvedDaysOther: event.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Other Days Details" className="sm:col-span-3">
+                  <Input
+                    value={decision.approvedDaysOtherText}
+                    onChange={(event) =>
+                      setDecision({ ...decision, approvedDaysOtherText: event.target.value })
+                    }
+                  />
+                </Field>
+              </div>
+            ) : null}
+            {decision?.status === "Disapproved" ? (
+              <Field label="Disapproved Due To">
+                <Textarea
+                  rows={3}
+                  value={decision.finalDisapprovalReason}
+                  onChange={(event) =>
+                    setDecision({ ...decision, finalDisapprovalReason: event.target.value })
+                  }
+                />
+              </Field>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDecision(null)}>
@@ -542,6 +800,114 @@ function Field({
       {children}
     </div>
   );
+}
+
+function RadioChoice({ value, label }: { value: string; label: string }) {
+  const id = `hr-leave-${value}`;
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+      <RadioGroupItem value={value} id={id} />
+      <Label htmlFor={id} className="text-sm font-normal">
+        {label}
+      </Label>
+    </div>
+  );
+}
+
+function LeaveTypeGuidance({
+  leaveType,
+  className,
+}: {
+  leaveType: LeaveType;
+  className?: string;
+}) {
+  return (
+    <div className={cn("rounded-lg border border-blue-100 bg-blue-50/60 p-3", className)}>
+      <div className="flex flex-wrap gap-2">
+        {leaveType.maxDays ? (
+          <Badge variant="outline" className="border-blue-200 bg-white text-blue-700">
+            Up to {formatNumber(leaveType.maxDays)} days
+          </Badge>
+        ) : null}
+        {leaveType.advanceNoticeDays ? (
+          <Badge variant="outline" className="border-blue-200 bg-white text-blue-700">
+            File {leaveType.advanceNoticeDays} days ahead
+          </Badge>
+        ) : null}
+      </div>
+      {leaveType.legalBasis ? (
+        <p className="mt-2 text-xs font-medium text-blue-900">{leaveType.legalBasis}</p>
+      ) : null}
+      {leaveType.filingRule ? (
+        <p className="mt-1 text-xs leading-5 text-blue-900/80">{leaveType.filingRule}</p>
+      ) : null}
+      {leaveType.requirements.length ? (
+        <ul className="mt-2 space-y-1 text-xs leading-5 text-blue-900/80">
+          {leaveType.requirements.map((requirement) => (
+            <li key={requirement}>- {requirement}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function emptyLeaveForm() {
+  return {
+    employeeId: "",
+    leaveTypeId: "",
+    dateFrom: "",
+    dateTo: "",
+    daysRequested: "",
+    overrideDays: false,
+    salarySnapshot: "",
+    reason: "",
+    detailLocationType: "",
+    detailLocationText: "",
+    detailSickType: "",
+    detailIllness: "",
+    detailStudyPurpose: "",
+    detailOtherPurpose: "",
+    detailOtherText: "",
+    commutationRequested: "no",
+  };
+}
+
+function numberOrNull(value: string) {
+  if (!value.trim()) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function calendarDaySpan(from: string, to: string) {
+  if (!from || !to) return 0;
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+  return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+}
+
+function calculateWeekdayLeaveDays(from: string, to: string) {
+  if (!from || !to) return 0;
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
+  let days = 0;
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) days += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+function getMinimumLeaveDate(leaveType: LeaveType | null) {
+  const days = leaveType?.advanceNoticeDays || 0;
+  if (days <= 0) return undefined;
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toLocaleDateString("en-CA");
 }
 
 function formatNumber(value: number) {

@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -320,7 +321,19 @@ function EmployeeServicesHome() {
     dateTo: "",
     daysRequested: "",
     reason: "",
+    detailLocationType: "",
+    detailLocationText: "",
+    detailSickType: "",
+    detailIllness: "",
+    detailStudyPurpose: "",
+    detailOtherPurpose: "",
+    detailOtherText: "",
+    commutationRequested: "no",
   });
+  const selectedLeaveType =
+    leaveTypes.find((type) => String(type.id) === leaveForm.leaveTypeId) || null;
+  const minimumLeaveDate = getMinimumLeaveDate(selectedLeaveType);
+  const calculatedDays = calculateWeekdayLeaveDays(leaveForm.dateFrom, leaveForm.dateTo);
 
   useEffect(() => {
     if (!user?.employeeId) {
@@ -362,10 +375,9 @@ function EmployeeServicesHome() {
       !leaveForm.leaveTypeId ||
       !leaveForm.dateFrom ||
       !leaveForm.dateTo ||
-      !Number.isFinite(Number(leaveForm.daysRequested)) ||
-      Number(leaveForm.daysRequested) <= 0
+      calculatedDays <= 0
     ) {
-      toast.error("Leave type, dates, and days are required");
+      toast.error("Leave type and valid inclusive dates are required");
       return;
     }
     try {
@@ -375,12 +387,25 @@ function EmployeeServicesHome() {
         leaveTypeId: Number(leaveForm.leaveTypeId),
         dateFrom: leaveForm.dateFrom,
         dateTo: leaveForm.dateTo,
-        daysRequested: Number(leaveForm.daysRequested),
+        daysRequested: calculatedDays,
         reason: leaveForm.reason,
+        detailLocationType: leaveForm.detailLocationType,
+        detailLocationText: leaveForm.detailLocationText,
+        detailSickType: leaveForm.detailSickType,
+        detailIllness: leaveForm.detailIllness,
+        detailStudyPurpose: leaveForm.detailStudyPurpose,
+        detailOtherPurpose: leaveForm.detailOtherPurpose,
+        detailOtherText: leaveForm.detailOtherText,
+        commutationRequested: leaveForm.commutationRequested === "yes",
+        formPayload: {
+          clearanceRequired:
+            selectedLeaveType?.code === "TERMINAL" ||
+            calendarDaySpan(leaveForm.dateFrom, leaveForm.dateTo) >= 30,
+        },
       });
       toast.success("Leave request submitted");
       setShowLeaveForm(false);
-      setLeaveForm({ leaveTypeId: "", dateFrom: "", dateTo: "", daysRequested: "", reason: "" });
+      setLeaveForm(emptyLeaveForm());
       reloadLeave();
     } catch (error) {
       toast.error((error as Error).message);
@@ -506,7 +531,9 @@ function EmployeeServicesHome() {
             <FormField label="Leave Type">
               <Select
                 value={leaveForm.leaveTypeId}
-                onValueChange={(value) => setLeaveForm({ ...leaveForm, leaveTypeId: value })}
+                onValueChange={(value) =>
+                  setLeaveForm({ ...emptyLeaveForm(), leaveTypeId: value })
+                }
                 disabled={leaveTypesLoading || leaveTypes.length === 0}
               >
                 <SelectTrigger>
@@ -533,18 +560,18 @@ function EmployeeServicesHome() {
             </FormField>
             <FormField label="Days">
               <Input
-                type="number"
-                min="0.5"
-                step="0.5"
-                value={leaveForm.daysRequested}
-                onChange={(event) =>
-                  setLeaveForm({ ...leaveForm, daysRequested: event.target.value })
-                }
+                value={calculatedDays > 0 ? formatNumber(calculatedDays) : ""}
+                readOnly
+                placeholder="Auto-calculated"
               />
+              <p className="text-xs text-muted-foreground">
+                Counted automatically from weekdays in the selected range.
+              </p>
             </FormField>
             <FormField label="From">
               <Input
                 type="date"
+                min={minimumLeaveDate}
                 value={leaveForm.dateFrom}
                 onChange={(event) => setLeaveForm({ ...leaveForm, dateFrom: event.target.value })}
               />
@@ -552,6 +579,7 @@ function EmployeeServicesHome() {
             <FormField label="To">
               <Input
                 type="date"
+                min={leaveForm.dateFrom || minimumLeaveDate}
                 value={leaveForm.dateTo}
                 onChange={(event) => setLeaveForm({ ...leaveForm, dateTo: event.target.value })}
               />
@@ -563,6 +591,124 @@ function EmployeeServicesHome() {
                 onChange={(event) => setLeaveForm({ ...leaveForm, reason: event.target.value })}
               />
             </FormField>
+            {selectedLeaveType ? (
+              <LeaveTypeGuidance leaveType={selectedLeaveType} className="sm:col-span-2" />
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("location") ? (
+              <>
+                <FormField label="Location" className="sm:col-span-2">
+                  <RadioGroup
+                    value={leaveForm.detailLocationType}
+                    onValueChange={(value) =>
+                      setLeaveForm({ ...leaveForm, detailLocationType: value })
+                    }
+                    className="grid gap-2 sm:grid-cols-2"
+                  >
+                    <RadioChoice value="Philippines" label="Within the Philippines" />
+                    <RadioChoice value="Abroad" label="Abroad" />
+                  </RadioGroup>
+                </FormField>
+                {leaveForm.detailLocationType === "Abroad" ? (
+                  <FormField label="Specify Abroad Location" className="sm:col-span-2">
+                    <Input
+                      value={leaveForm.detailLocationText}
+                      onChange={(event) =>
+                        setLeaveForm({ ...leaveForm, detailLocationText: event.target.value })
+                      }
+                    />
+                  </FormField>
+                ) : null}
+              </>
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("sick") ? (
+              <>
+                <FormField label="Sick Leave Detail" className="sm:col-span-2">
+                  <RadioGroup
+                    value={leaveForm.detailSickType}
+                    onValueChange={(value) =>
+                      setLeaveForm({ ...leaveForm, detailSickType: value })
+                    }
+                    className="grid gap-2 sm:grid-cols-2"
+                  >
+                    <RadioChoice value="Hospital" label="In hospital" />
+                    <RadioChoice value="OutPatient" label="Out patient" />
+                  </RadioGroup>
+                </FormField>
+                <FormField label="Specify Illness" className="sm:col-span-2">
+                  <Input
+                    value={leaveForm.detailIllness}
+                    onChange={(event) =>
+                      setLeaveForm({ ...leaveForm, detailIllness: event.target.value })
+                    }
+                  />
+                </FormField>
+              </>
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("women") ? (
+              <FormField label="Specify Illness / Surgery Detail" className="sm:col-span-2">
+                <Input
+                  value={leaveForm.detailIllness}
+                  onChange={(event) =>
+                    setLeaveForm({ ...leaveForm, detailIllness: event.target.value })
+                  }
+                />
+              </FormField>
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("study") ? (
+              <FormField label="Study Leave Purpose" className="sm:col-span-2">
+                <RadioGroup
+                  value={leaveForm.detailStudyPurpose}
+                  onValueChange={(value) =>
+                    setLeaveForm({ ...leaveForm, detailStudyPurpose: value })
+                  }
+                  className="grid gap-2 sm:grid-cols-2"
+                >
+                  <RadioChoice value="MastersDegree" label="Completion of Master's Degree" />
+                  <RadioChoice value="BarBoardReview" label="BAR / Board Examination Review" />
+                </RadioGroup>
+              </FormField>
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("otherPurpose") ? (
+              <>
+                <FormField label="Other Purpose" className="sm:col-span-2">
+                  <RadioGroup
+                    value={leaveForm.detailOtherPurpose}
+                    onValueChange={(value) =>
+                      setLeaveForm({ ...leaveForm, detailOtherPurpose: value })
+                    }
+                    className="grid gap-2 sm:grid-cols-3"
+                  >
+                    <RadioChoice value="Monetization" label="Monetization" />
+                    <RadioChoice value="TerminalLeave" label="Terminal Leave" />
+                    <RadioChoice value="Other" label="Others" />
+                  </RadioGroup>
+                </FormField>
+                {leaveForm.detailOtherPurpose === "Other" ? (
+                  <FormField label="Specify Other Purpose" className="sm:col-span-2">
+                    <Input
+                      value={leaveForm.detailOtherText}
+                      onChange={(event) =>
+                        setLeaveForm({ ...leaveForm, detailOtherText: event.target.value })
+                      }
+                    />
+                  </FormField>
+                ) : null}
+              </>
+            ) : null}
+            {selectedLeaveType?.detailSchema.includes("commutation") ? (
+              <FormField label="Commutation" className="sm:col-span-2">
+                <RadioGroup
+                  value={leaveForm.commutationRequested}
+                  onValueChange={(value) =>
+                    setLeaveForm({ ...leaveForm, commutationRequested: value })
+                  }
+                  className="grid gap-2 sm:grid-cols-2"
+                >
+                  <RadioChoice value="no" label="Not requested" />
+                  <RadioChoice value="yes" label="Requested" />
+                </RadioGroup>
+              </FormField>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLeaveForm(false)}>
@@ -850,6 +996,105 @@ function FormField({
       {children}
     </div>
   );
+}
+
+function RadioChoice({ value, label }: { value: string; label: string }) {
+  const id = `leave-${value}`;
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+      <RadioGroupItem value={value} id={id} />
+      <Label htmlFor={id} className="text-sm font-normal">
+        {label}
+      </Label>
+    </div>
+  );
+}
+
+function LeaveTypeGuidance({
+  leaveType,
+  className,
+}: {
+  leaveType: LeaveType;
+  className?: string;
+}) {
+  return (
+    <div className={cn("rounded-lg border border-blue-100 bg-blue-50/60 p-3", className)}>
+      <div className="flex flex-wrap gap-2">
+        {leaveType.maxDays ? (
+          <Badge variant="outline" className="border-blue-200 bg-white text-blue-700">
+            Up to {formatNumber(leaveType.maxDays)} days
+          </Badge>
+        ) : null}
+        {leaveType.advanceNoticeDays ? (
+          <Badge variant="outline" className="border-blue-200 bg-white text-blue-700">
+            File {leaveType.advanceNoticeDays} days ahead
+          </Badge>
+        ) : null}
+      </div>
+      {leaveType.legalBasis ? (
+        <p className="mt-2 text-xs font-medium text-blue-900">{leaveType.legalBasis}</p>
+      ) : null}
+      {leaveType.filingRule ? (
+        <p className="mt-1 text-xs leading-5 text-blue-900/80">{leaveType.filingRule}</p>
+      ) : null}
+      {leaveType.requirements.length ? (
+        <ul className="mt-2 space-y-1 text-xs leading-5 text-blue-900/80">
+          {leaveType.requirements.map((requirement) => (
+            <li key={requirement}>- {requirement}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function emptyLeaveForm() {
+  return {
+    leaveTypeId: "",
+    dateFrom: "",
+    dateTo: "",
+    daysRequested: "",
+    reason: "",
+    detailLocationType: "",
+    detailLocationText: "",
+    detailSickType: "",
+    detailIllness: "",
+    detailStudyPurpose: "",
+    detailOtherPurpose: "",
+    detailOtherText: "",
+    commutationRequested: "no",
+  };
+}
+
+function calendarDaySpan(from: string, to: string) {
+  if (!from || !to) return 0;
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+  return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+}
+
+function calculateWeekdayLeaveDays(from: string, to: string) {
+  if (!from || !to) return 0;
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
+  let days = 0;
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) days += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+function getMinimumLeaveDate(leaveType: LeaveType | null) {
+  const days = leaveType?.advanceNoticeDays || 0;
+  if (days <= 0) return undefined;
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toLocaleDateString("en-CA");
 }
 
 function RecordCount({ label, value }: { label: string; value: number }) {

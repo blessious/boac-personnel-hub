@@ -8,6 +8,14 @@ export type LeaveType = {
   code: string;
   name: string;
   isPaid: boolean;
+  isCreditBased: boolean;
+  creditGroup: string;
+  maxDays: number | null;
+  advanceNoticeDays: number | null;
+  legalBasis: string;
+  filingRule: string;
+  requirements: string[];
+  detailSchema: string[];
   isActive: boolean;
   sortOrder: number;
 };
@@ -39,6 +47,26 @@ export type LeaveApplication = {
   dateTo: string;
   daysRequested: number;
   reason: string;
+  salarySnapshot: number | null;
+  detailLocationType: string;
+  detailLocationText: string;
+  detailSickType: string;
+  detailIllness: string;
+  detailStudyPurpose: string;
+  detailOtherPurpose: string;
+  detailOtherText: string;
+  commutationRequested: boolean;
+  requirementsPayload: Record<string, unknown>;
+  formPayload: Record<string, unknown>;
+  recommendationStatus: string;
+  recommendationReason: string;
+  recommendedByName: string;
+  recommendedAt: string | null;
+  approvedDaysWithPay: number | null;
+  approvedDaysWithoutPay: number | null;
+  approvedDaysOther: number | null;
+  approvedDaysOtherText: string;
+  finalDisapprovalReason: string;
   status: LeaveStatus;
   approverName: string;
   decisionRemarks: string;
@@ -61,6 +89,26 @@ export type EmployeeLeaveResponse = {
   balances: LeaveBalance[];
   applications: LeaveApplication[];
   adjustments: LeaveAdjustment[];
+};
+
+export type CreateLeaveApplicationPayload = {
+  employeeId: string;
+  leaveTypeId: number;
+  dateFrom: string;
+  dateTo: string;
+  daysRequested: number;
+  reason: string;
+  salarySnapshot?: number | null;
+  detailLocationType?: string;
+  detailLocationText?: string;
+  detailSickType?: string;
+  detailIllness?: string;
+  detailStudyPurpose?: string;
+  detailOtherPurpose?: string;
+  detailOtherText?: string;
+  commutationRequested?: boolean;
+  requirementsPayload?: Record<string, unknown>;
+  formPayload?: Record<string, unknown>;
 };
 
 export function listLeaveTypes() {
@@ -90,14 +138,7 @@ export function listLeaveApplications(params: { status?: string; q?: string } = 
   }>(`/api/leave/applications?${query.toString()}`);
 }
 
-export function createLeaveApplication(payload: {
-  employeeId: string;
-  leaveTypeId: number;
-  dateFrom: string;
-  dateTo: string;
-  daysRequested: number;
-  reason: string;
-}) {
+export function createLeaveApplication(payload: CreateLeaveApplicationPayload) {
   return api<{ application: LeaveApplication }>("/api/leave/applications", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -106,7 +147,15 @@ export function createLeaveApplication(payload: {
 
 export function decideLeaveApplication(
   id: string,
-  payload: { status: Exclude<LeaveStatus, "Pending">; remarks: string },
+  payload: {
+    status: Exclude<LeaveStatus, "Pending">;
+    remarks: string;
+    approvedDaysWithPay?: number | null;
+    approvedDaysWithoutPay?: number | null;
+    approvedDaysOther?: number | null;
+    approvedDaysOtherText?: string;
+    finalDisapprovalReason?: string;
+  },
 ) {
   return api<{ application: LeaveApplication }>(`/api/leave/applications/${id}/decision`, {
     method: "POST",
