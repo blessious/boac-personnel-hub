@@ -127,37 +127,37 @@ function LoginPage() {
       </div>
 
       {/* Right Side: Login Form */}
-      <div className="flex flex-1 flex-col justify-center px-4 py-12 sm:px-6 lg:flex-none lg:px-20 xl:px-24 bg-card shadow-2xl z-10">
-        <div className="mx-auto w-full max-w-sm lg:w-96">
+      <div className="flex flex-1 flex-col justify-center px-4 py-12 sm:px-6 lg:flex-none lg:px-24 xl:px-32 bg-background z-10 border-l border-border/50 shadow-[-20px_0_40px_-15px_rgba(0,0,0,0.1)]">
+        <div className="mx-auto w-full max-w-sm">
           <div className="text-center lg:text-left">
-            <div className="lg:hidden flex justify-center mb-6">
-              <div className="h-16 w-16 flex items-center justify-center">
+            <div className="lg:hidden flex justify-center mb-8">
+              <div className="h-16 w-16 flex items-center justify-center bg-[#0033a0] rounded-2xl shadow-lg p-3">
                 {agency.logoUrl ? (
-                  <img src={agency.logoUrl} alt="Logo" className="h-full w-full object-contain drop-shadow-md" />
+                  <img src={agency.logoUrl} alt="Logo" className="h-full w-full object-contain" />
                 ) : (
-                  <ShieldCheck className="h-12 w-12 text-primary" />
+                  <ShieldCheck className="h-10 w-10 text-white" />
                 )}
               </div>
             </div>
             <h2 className="text-3xl font-extrabold tracking-tight text-foreground">Sign in</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Please enter your credentials to access your account
+            <p className="mt-2 text-sm text-muted-foreground font-medium">
+              Enter your official credentials to continue
             </p>
           </div>
 
           <div className="mt-10">
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="username" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Username</Label>
+                <Label htmlFor="username" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Username</Label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none">
-                    <User className="h-4 w-4 text-muted-foreground/40" />
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+                    <User className="h-4 w-4 text-muted-foreground/50" />
                   </div>
                   <Input
                     id="username"
                     autoComplete="username"
-                    placeholder="Enter username"
-                    className="h-10 pl-8 bg-transparent border-t-0 border-x-0 border-b-2 border-border/60 rounded-none focus-visible:ring-0 focus:border-t-0 focus:border-x-0 focus:border-b-primary transition-none placeholder:text-muted-foreground/40 text-sm shadow-none"
+                    placeholder="e.g. jdelacruz"
+                    className="h-12 pl-10 bg-card border-border/60 rounded-xl focus-visible:ring-1 focus-visible:ring-[#0033a0] focus-visible:border-[#0033a0] transition-colors shadow-sm text-sm"
                     {...form.register("username")}
                   />
                 </div>
@@ -168,19 +168,19 @@ function LoginPage() {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Password</Label>
-                  <a href="#" className="text-xs font-semibold text-primary hover:underline">Forgot Password?</a>
+                  <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Password</Label>
+                  <a href="#" className="text-xs font-bold text-[#0033a0] dark:text-[#6699ff] hover:text-[#002270] dark:hover:text-[#99bbff] transition-colors hover:underline">Forgot Password?</a>
                 </div>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none">
-                    <Lock className="h-4 w-4 text-muted-foreground/40" />
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+                    <Lock className="h-4 w-4 text-muted-foreground/50" />
                   </div>
                   <Input
                     id="password"
                     type="password"
                     autoComplete="current-password"
                     placeholder="••••••••"
-                    className="h-10 pl-8 bg-transparent border-t-0 border-x-0 border-b-2 border-border/60 rounded-none focus-visible:ring-0 focus:border-t-0 focus:border-x-0 focus:border-b-primary transition-none placeholder:text-muted-foreground/40 text-sm shadow-none"
+                    className="h-12 pl-10 bg-card border-border/60 rounded-xl focus-visible:ring-1 focus-visible:ring-[#0033a0] focus-visible:border-[#0033a0] transition-colors shadow-sm text-sm"
                     {...form.register("password")}
                   />
                 </div>
@@ -191,7 +191,7 @@ function LoginPage() {
 
               <Button
                 type="submit"
-                className="w-full h-12 bg-primary text-white hover:bg-primary/90 shadow-none transition-all duration-300 font-bold uppercase tracking-widest text-xs rounded-xl mt-4 active:scale-[0.98]"
+                className="w-full h-12 bg-[#0033a0] text-white hover:bg-[#002270] shadow-md hover:shadow-lg transition-all duration-200 font-bold uppercase tracking-widest text-xs rounded-xl mt-6"
                 disabled={submitting}
               >
                 {submitting ? (
@@ -202,11 +202,9 @@ function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-8 pt-8 border-t border-muted">
-              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-medium tracking-widest">
-                <span>© {new Date().getFullYear()}</span>
-                <span className="h-1 w-1 rounded-full bg-muted-foreground/30" />
-                <span></span>
+            <div className="mt-10 pt-6 border-t border-border/60 flex items-center justify-center">
+              <div className="text-xs text-muted-foreground/60 font-semibold tracking-wider uppercase">
+                Department of Health © {new Date().getFullYear()}
               </div>
             </div>
           </div>
