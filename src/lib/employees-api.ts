@@ -3,9 +3,8 @@ import { api } from "@/lib/api";
 export const EMPLOYMENT_STATUSES = [
   "Permanent",
   "Regular",
-  "Job Order",
   "Casual",
-  "Contractual",
+  "JO/COS",
 ] as const;
 export const EMPLOYEE_LEVELS = ["First Level", "Second Level", "Third Level", "Executive"] as const;
 export const GENDERS = ["Male", "Female"] as const;

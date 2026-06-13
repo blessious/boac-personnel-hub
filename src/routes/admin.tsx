@@ -688,7 +688,7 @@ function UserDialog({
         <DialogHeader>
           <DialogTitle>{mode === "add" ? "Add System User" : "Edit System User"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 py-2">
+        <div className="space-y-3 py-2 min-w-0">
           <div className="space-y-1">
             <Label>Full Name</Label>
             <Input
@@ -714,7 +714,7 @@ function UserDialog({
               }}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select employee" />
+                <SelectValue placeholder="Select employee" className="w-full truncate text-left" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No linked employee</SelectItem>

@@ -90,7 +90,7 @@ function Dashboard() {
     {
       label: "Job Order / COS",
       value: data?.jobOrderEmployees ?? 0,
-      sub: "Job Order, COS, Contractual",
+      sub: "JO/COS Personnel",
       icon: ClipboardList,
       color: "bg-amber-500/10 text-amber-600",
       border: "border-amber-200",

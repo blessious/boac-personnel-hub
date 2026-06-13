@@ -85,13 +85,19 @@ function RootShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+const queryClient = new QueryClient();
+
 function RootComponent() {
   return (
-    <AuthProvider>
-      <SettingsProvider>
-        <AppLayout />
-      </SettingsProvider>
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <SettingsProvider>
+          <AppLayout />
+        </SettingsProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
 
