@@ -30,7 +30,11 @@ export function StatCard({ label, value, delta, footnote, action }: StatCardProp
               delta.positive ? "text-success" : "text-destructive",
             )}
           >
-            {delta.positive ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+            {delta.positive ? (
+              <ArrowUpRight className="h-3 w-3" />
+            ) : (
+              <ArrowDownRight className="h-3 w-3" />
+            )}
             {delta.value}
           </span>
         )}

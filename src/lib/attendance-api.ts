@@ -284,10 +284,13 @@ export async function generateDtrExcel(payload: {
   secondStartDate?: string;
   secondEndDate?: string;
 }) {
-  return api<{ fileName: string; downloadUrl: string; rowCount: number }>("/api/attendance/dtr/excel", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return api<{ fileName: string; downloadUrl: string; rowCount: number }>(
+    "/api/attendance/dtr/excel",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export async function generateDtrPdf(payload: {
@@ -300,10 +303,13 @@ export async function generateDtrPdf(payload: {
   secondStartDate?: string;
   secondEndDate?: string;
 }) {
-  return api<{ fileName: string; previewUrl: string; rowCount: number }>("/api/attendance/dtr/pdf", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return api<{ fileName: string; previewUrl: string; rowCount: number }>(
+    "/api/attendance/dtr/pdf",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function openGeneratedFile(url: string) {

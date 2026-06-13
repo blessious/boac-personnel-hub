@@ -54,8 +54,7 @@ const LEAVE_FORM6_TEMPLATE_XLSX = path.join(
 const LEAVE_FORM6_EXCEL_SCRIPT = path.join(process.cwd(), "server", "leave_form6_excel.py");
 const BIOMETRIC_FETCH_SCRIPT = path.join(process.cwd(), "server", "fetch_biometric.py");
 const LIBREOFFICE_EXE =
-  process.env.HRIS_LIBREOFFICE_EXE ||
-  "C:\\Program Files\\LibreOffice\\program\\soffice.com";
+  process.env.HRIS_LIBREOFFICE_EXE || "C:\\Program Files\\LibreOffice\\program\\soffice.com";
 const LIBREOFFICE_PROFILE_DIR = path.join(EXPORT_DIR, "lo-profile");
 const PREVIEW_FILE_MAX_AGE_MS = 30 * 60 * 1000;
 const PYTHON_CANDIDATES = [
@@ -75,7 +74,8 @@ const PYTHON_CANDIDATES = [
   "python",
 ].filter(Boolean);
 const PYTHON_EXE = PYTHON_CANDIDATES[0];
-const BIOMETRIC_PYTHON_EXE = process.env.HRIS_BIOMETRIC_PYTHON_EXE || process.env.PYTHON_EXE || "python";
+const BIOMETRIC_PYTHON_EXE =
+  process.env.HRIS_BIOMETRIC_PYTHON_EXE || process.env.PYTHON_EXE || "python";
 
 const ROLES = ["Admin", "HR", "Employee", "Viewer"];
 const DEFAULT_AGENCY = {
@@ -470,7 +470,8 @@ const DEFAULT_LEAVE_TYPES = [
     maxDays: null,
     advanceNoticeDays: null,
     legalBasis: "",
-    filingRule: "Use only when the leave purpose does not match the standard CS Form No. 6 options.",
+    filingRule:
+      "Use only when the leave purpose does not match the standard CS Form No. 6 options.",
     requirements: ["Specify the leave purpose and attach supporting documents required by HR."],
     detailSchema: ["otherPurpose", "commutation"],
     sortOrder: 16,
@@ -738,7 +739,10 @@ function employeeRow(row) {
     dtrSignatory: row.dtr_signatory || "",
     dtrNoterId: row.dtr_noter_id ? String(row.dtr_noter_id) : "",
     isDtrNoter: Boolean(row.is_dtr_noter),
-    regular: row.regular === null || row.regular === undefined ? row.status !== "Job Order" : Boolean(row.regular),
+    regular:
+      row.regular === null || row.regular === undefined
+        ? row.status !== "Job Order"
+        : Boolean(row.regular),
     citizenship: profile.citizenship || "",
     placeOfBirth: profile.placeOfBirth || "",
     height: profile.height || "",
@@ -807,11 +811,21 @@ function employeeDbPayload(body, existing = {}) {
     email: String(body.email ?? existing.email ?? "").trim(),
     cellphoneNo: String(body.cellphoneNo ?? existing.cellphoneNo ?? "").trim(),
     photoUrl: body.photoUrl ? String(body.photoUrl) : existing.photoUrl || "",
-    scheduleAmIn: normalizeTimeInput(body.scheduleAmIn ?? body.schedule_am_in ?? existing.scheduleAmIn ?? "08:00"),
-    scheduleAmOut: normalizeTimeInput(body.scheduleAmOut ?? body.schedule_am_out ?? existing.scheduleAmOut ?? "12:00"),
-    schedulePmIn: normalizeTimeInput(body.schedulePmIn ?? body.schedule_pm_in ?? existing.schedulePmIn ?? "13:00"),
-    schedulePmOut: normalizeTimeInput(body.schedulePmOut ?? body.schedule_pm_out ?? existing.schedulePmOut ?? "17:00"),
-    dtrSignatory: String(body.dtrSignatory ?? body.dtr_signatory ?? existing.dtrSignatory ?? "").trim(),
+    scheduleAmIn: normalizeTimeInput(
+      body.scheduleAmIn ?? body.schedule_am_in ?? existing.scheduleAmIn ?? "08:00",
+    ),
+    scheduleAmOut: normalizeTimeInput(
+      body.scheduleAmOut ?? body.schedule_am_out ?? existing.scheduleAmOut ?? "12:00",
+    ),
+    schedulePmIn: normalizeTimeInput(
+      body.schedulePmIn ?? body.schedule_pm_in ?? existing.schedulePmIn ?? "13:00",
+    ),
+    schedulePmOut: normalizeTimeInput(
+      body.schedulePmOut ?? body.schedule_pm_out ?? existing.schedulePmOut ?? "17:00",
+    ),
+    dtrSignatory: String(
+      body.dtrSignatory ?? body.dtr_signatory ?? existing.dtrSignatory ?? "",
+    ).trim(),
     dtrNoterId: body.dtrNoterId || body.dtr_noter_id || existing.dtrNoterId || null,
     isDtrNoter: Boolean(body.isDtrNoter ?? body.is_dtr_noter ?? existing.isDtrNoter ?? false),
     regular:
@@ -983,7 +997,8 @@ function calculateAttendanceStats(entry) {
   if (punches.length > 0 && punches.length < 4) status = "Incomplete";
   if (punches.length === 4) status = "Present";
 
-  const lateMinutes = amIn !== null && scheduledAmIn !== null ? Math.max(0, amIn - scheduledAmIn) : 0;
+  const lateMinutes =
+    amIn !== null && scheduledAmIn !== null ? Math.max(0, amIn - scheduledAmIn) : 0;
   const undertimeMinutes =
     pmOut !== null && scheduledPmOut !== null ? Math.max(0, scheduledPmOut - pmOut) : 0;
   if (status === "Present" && lateMinutes > 0) status = "Late";
@@ -2656,7 +2671,13 @@ async function refreshDtrEntries({ employeeId, from, to, userId }) {
       const entry = deriveDtrFromPunchTimes(group.times, group);
       await upsertDtrEntry(
         connection,
-        { employeeId: group.employeeId, workDate: group.workDate, ...entry, ...group, source: "Imported" },
+        {
+          employeeId: group.employeeId,
+          workDate: group.workDate,
+          ...entry,
+          ...group,
+          source: "Imported",
+        },
         userId,
         true,
       );
@@ -2851,9 +2872,12 @@ async function handleCreateBiometricDevice(req, res) {
 async function handleUpdateBiometricDevice(req, res, id) {
   const user = await requireAttendanceWrite(req, res);
   if (!user) return;
-  const [[existing]] = await pool.execute(`SELECT * FROM biometric_devices WHERE id = :id LIMIT 1`, {
-    id,
-  });
+  const [[existing]] = await pool.execute(
+    `SELECT * FROM biometric_devices WHERE id = :id LIMIT 1`,
+    {
+      id,
+    },
+  );
   if (!existing) return json(res, 404, { error: "Biometric device not found" });
   const body = await readBody(req);
   let payload;
@@ -2947,7 +2971,10 @@ function dateInRange(date, from, to) {
 
 function parseLegacyAttendanceText(text, fileName) {
   const extension = path.extname(fileName).toLowerCase();
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
   const punches = [];
 
   if (extension === ".dat") {
@@ -2964,7 +2991,11 @@ function parseLegacyAttendanceText(text, fileName) {
     const hasHeader = first.some((item) =>
       ["employee", "employeeno", "employeeid", "date", "datetime", "time"].includes(item),
     );
-    const headers = hasHeader ? first : ["employeeNo", "date", "time", "amIn", "amOut", "pmIn", "pmOut"].map((item) => item.toLowerCase());
+    const headers = hasHeader
+      ? first
+      : ["employeeNo", "date", "time", "amIn", "amOut", "pmIn", "pmOut"].map((item) =>
+          item.toLowerCase(),
+        );
     const dataLines = hasHeader ? lines.slice(1) : lines;
     for (const line of dataLines) {
       const values = splitCsvLine(line);
@@ -2978,7 +3009,11 @@ function parseLegacyAttendanceText(text, fileName) {
       if (employeeNo && direct) punches.push({ employeeNo, punchAt: direct, raw: line });
       for (const key of ["amin", "amout", "pmin", "pmout", "time"]) {
         if (employeeNo && date && row[key]) {
-          punches.push({ employeeNo, punchAt: `${date} ${normalizeTimeInput(row[key])}`, raw: line });
+          punches.push({
+            employeeNo,
+            punchAt: `${date} ${normalizeTimeInput(row[key])}`,
+            raw: line,
+          });
         }
       }
     }
@@ -3024,12 +3059,26 @@ async function parseUploadedDtrFile(fileName, fileBase64) {
   throw new Error("Only .txt, .csv, .dat, and .xlsx DTR files are supported for import");
 }
 
-async function importParsedPunches({ user, req, body, fileName, parsed, employeeId, from, to, source, sourceDevice }) {
+async function importParsedPunches({
+  user,
+  req,
+  body,
+  fileName,
+  parsed,
+  employeeId,
+  from,
+  to,
+  source,
+  sourceDevice,
+}) {
   let employeeNoOverride = "";
   if (employeeId) {
-    const [[employee]] = await pool.execute(`SELECT id, employee_no FROM employees WHERE id = :employeeId`, {
-      employeeId,
-    });
+    const [[employee]] = await pool.execute(
+      `SELECT id, employee_no FROM employees WHERE id = :employeeId`,
+      {
+        employeeId,
+      },
+    );
     if (!employee) return json(res, 404, { error: "Employee not found" });
     employeeNoOverride = employee.employee_no;
   }
@@ -3110,7 +3159,12 @@ async function importParsedPunches({ user, req, body, fileName, parsed, employee
     to: to || (dates.length ? dates.sort()[dates.length - 1] : ""),
     userId: user.id,
   });
-  await logAudit(user.id, "attendance.import_file", { importId, imported, errors: errors.length }, req);
+  await logAudit(
+    user.id,
+    "attendance.import_file",
+    { importId, imported, errors: errors.length },
+    req,
+  );
   return { importId, imported, errors, refreshed, dates };
 }
 
@@ -3133,7 +3187,8 @@ async function handleImportDtrFile(req, res) {
   } catch (error) {
     return json(res, 400, { error: error.message });
   }
-  if (!parsed.length) return json(res, 400, { error: "No valid DTR punches found in the selected range" });
+  if (!parsed.length)
+    return json(res, 400, { error: "No valid DTR punches found in the selected range" });
 
   const result = await importParsedPunches({
     user,
@@ -3160,18 +3215,25 @@ async function handleImportSingleDtr(req, res) {
   const to = normalizeDate(body.to || body.endDate || body.end_date);
   if (!employeeId) return json(res, 400, { error: "Select an employee first" });
   if (!from || !to) return json(res, 400, { error: "Start date and end date are required" });
-  const [[employee]] = await pool.execute(`SELECT id, employee_no, biometric_id FROM employees WHERE id = :employeeId LIMIT 1`, {
-    employeeId,
-  });
+  const [[employee]] = await pool.execute(
+    `SELECT id, employee_no, biometric_id FROM employees WHERE id = :employeeId LIMIT 1`,
+    {
+      employeeId,
+    },
+  );
   if (!employee) return json(res, 404, { error: "Employee not found" });
 
   if (source === "biometric") {
     const biometricId = String(body.biometricId || body.biometric_id || "").trim();
-    const [[device]] = await pool.execute(`SELECT * FROM biometric_devices WHERE id = :id LIMIT 1`, {
-      id: biometricId,
-    });
+    const [[device]] = await pool.execute(
+      `SELECT * FROM biometric_devices WHERE id = :id LIMIT 1`,
+      {
+        id: biometricId,
+      },
+    );
     if (!device) return json(res, 404, { error: "Biometric device not found" });
-    if (!device.is_active) return json(res, 400, { error: "Selected biometric device is inactive" });
+    if (!device.is_active)
+      return json(res, 400, { error: "Selected biometric device is inactive" });
     // NOTE: Skipping TCP pre-check â€” ZK devices often ignore raw TCP socket probes
     // on port 4370 even when fully reachable via the ZK protocol. The Python script
     // handles connectivity and will throw a clear error if the device is truly offline.
@@ -3179,7 +3241,9 @@ async function handleImportSingleDtr(req, res) {
     let parsed;
     try {
       const employeeKeys = new Set(
-        [employee.employee_no, employee.biometric_id].map((value) => String(value || "").trim()).filter(Boolean),
+        [employee.employee_no, employee.biometric_id]
+          .map((value) => String(value || "").trim())
+          .filter(Boolean),
       );
       parsed = (await fetchBiometricPunches(device, from, to)).filter((punch) =>
         employeeKeys.has(String(punch.employeeNo || "").trim()),
@@ -3188,7 +3252,9 @@ async function handleImportSingleDtr(req, res) {
       return json(res, 500, { error: `Failed to fetch biometric data: ${error.message}` });
     }
     if (!parsed.length) {
-      return json(res, 400, { error: "No biometric punches found for the selected employee and date range" });
+      return json(res, 400, {
+        error: "No biometric punches found for the selected employee and date range",
+      });
     }
 
     const result = await importParsedPunches({
@@ -3229,7 +3295,8 @@ async function handleImportSingleDtr(req, res) {
   } catch (error) {
     return json(res, 400, { error: error.message });
   }
-  if (!parsed.length) return json(res, 400, { error: "No valid DTR punches found in the selected range" });
+  if (!parsed.length)
+    return json(res, 400, { error: "No valid DTR punches found in the selected range" });
 
   const result = await importParsedPunches({
     user,
@@ -3271,9 +3338,13 @@ async function handleImportAllDtr(req, res) {
   if (source === "biometric") {
     const biometricId = String(body.biometricId || body.biometric_id || "").trim();
     if (!biometricId) return json(res, 400, { error: "Select a biometric device first" });
-    const [[device]] = await pool.execute(`SELECT * FROM biometric_devices WHERE id = :id LIMIT 1`, { id: biometricId });
+    const [[device]] = await pool.execute(
+      `SELECT * FROM biometric_devices WHERE id = :id LIMIT 1`,
+      { id: biometricId },
+    );
     if (!device) return json(res, 404, { error: "Biometric device not found" });
-    if (!device.is_active) return json(res, 400, { error: "Selected biometric device is inactive" });
+    if (!device.is_active)
+      return json(res, 400, { error: "Selected biometric device is inactive" });
     // NOTE: Skipping TCP pre-check â€” ZK devices often ignore raw TCP socket probes
     // on port 4370 even when fully reachable via the ZK protocol. The Python script
     // handles connectivity and will throw a clear error if the device is truly offline.
@@ -3328,7 +3399,8 @@ async function handleImportAllDtr(req, res) {
   } catch (error) {
     return json(res, 400, { error: error.message });
   }
-  if (!parsed.length) return json(res, 400, { error: "No valid DTR punches found in the selected range" });
+  if (!parsed.length)
+    return json(res, 400, { error: "No valid DTR punches found in the selected range" });
 
   const result = await importParsedPunches({
     user,
@@ -3465,7 +3537,9 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
   const user = await requireAttendanceWrite(req, res);
   if (!user) return;
   const body = await readBody(req);
-  const employeeIds = Array.isArray(body.employeeIds) ? body.employeeIds.map(String).filter(Boolean) : [];
+  const employeeIds = Array.isArray(body.employeeIds)
+    ? body.employeeIds.map(String).filter(Boolean)
+    : [];
   const schedule = body.schedule || {};
   if (!employeeIds.length) return json(res, 400, { error: "Select at least one employee" });
   const values = {
@@ -3542,9 +3616,20 @@ function monthPeriodBounds(period) {
     throw new Error("Month and year are required");
   }
   const last = new Date(year, month, 0).getDate();
-  if (cut === "first") return { from: `${year}-${String(month).padStart(2, "0")}-01`, to: `${year}-${String(month).padStart(2, "0")}-15` };
-  if (cut === "last") return { from: `${year}-${String(month).padStart(2, "0")}-16`, to: `${year}-${String(month).padStart(2, "0")}-${last}` };
-  return { from: `${year}-${String(month).padStart(2, "0")}-01`, to: `${year}-${String(month).padStart(2, "0")}-${last}` };
+  if (cut === "first")
+    return {
+      from: `${year}-${String(month).padStart(2, "0")}-01`,
+      to: `${year}-${String(month).padStart(2, "0")}-15`,
+    };
+  if (cut === "last")
+    return {
+      from: `${year}-${String(month).padStart(2, "0")}-16`,
+      to: `${year}-${String(month).padStart(2, "0")}-${last}`,
+    };
+  return {
+    from: `${year}-${String(month).padStart(2, "0")}-01`,
+    to: `${year}-${String(month).padStart(2, "0")}-${last}`,
+  };
 }
 
 function splitSameMonthDtrRange(period) {
@@ -3569,7 +3654,8 @@ function normalizeDtrExportPeriods(periods) {
 }
 
 function dtrExportPeriodsFromBody(body) {
-  if (Array.isArray(body.periods) && body.periods.length) return normalizeDtrExportPeriods(body.periods);
+  if (Array.isArray(body.periods) && body.periods.length)
+    return normalizeDtrExportPeriods(body.periods);
 
   const firstFrom = body.firstStartDate || body.first_start_date || body.startDate || body.from;
   const firstTo = body.firstEndDate || body.first_end_date || body.endDate || body.to;
@@ -3685,7 +3771,10 @@ async function prepareDtrExport(req, res) {
     ranges = periods.map(monthPeriodBounds);
     bounds = {
       from: ranges.map((range) => range.from).sort()[0],
-      to: ranges.map((range) => range.to).sort().at(-1),
+      to: ranges
+        .map((range) => range.to)
+        .sort()
+        .at(-1),
     };
   } catch (error) {
     json(res, 400, { error: error.message });
@@ -3701,18 +3790,35 @@ async function prepareDtrExport(req, res) {
     return null;
   }
   const employee = employeeRow(employeeRowData);
-  const rows = await readAttendanceRows({ employeeId, from: bounds.from, to: bounds.to, limit: 1000 });
+  const rows = await readAttendanceRows({
+    employeeId,
+    from: bounds.from,
+    to: bounds.to,
+    limit: 1000,
+  });
   const noter = {
-    signatory: String(body.noterSignatory || body.noter_signatory || employee.dtrSignatory || employee.lastname || "").trim(),
+    signatory: String(
+      body.noterSignatory ||
+        body.noter_signatory ||
+        employee.dtrSignatory ||
+        employee.lastname ||
+        "",
+    ).trim(),
     position: String(body.noterPosition || body.noter_position || "Immediate Supervisor").trim(),
   };
   const payload = {
     employee: {
       id: employee.id,
-      name: [employee.firstname, employee.middlename, employee.lastname, employee.nameExt].filter(Boolean).join(" "),
+      name: [employee.firstname, employee.middlename, employee.lastname, employee.nameExt]
+        .filter(Boolean)
+        .join(" "),
       position: employee.position,
       department: employee.department,
-      signatory: employee.dtrSignatory || [employee.firstname, employee.middlename, employee.lastname, employee.nameExt].filter(Boolean).join(" "),
+      signatory:
+        employee.dtrSignatory ||
+        [employee.firstname, employee.middlename, employee.lastname, employee.nameExt]
+          .filter(Boolean)
+          .join(" "),
       scheduleAmIn: employee.scheduleAmIn,
       scheduleAmOut: employee.scheduleAmOut,
       schedulePmIn: employee.schedulePmIn,
@@ -3738,7 +3844,10 @@ async function handleGenerateDtrExcel(req, res) {
 
   await fs.mkdir(PREVIEW_DIR, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const safeName = `${employee.lastname || "employee"}-${employee.firstname || ""}`.replace(/[^A-Za-z0-9_-]+/g, "-");
+  const safeName = `${employee.lastname || "employee"}-${employee.firstname || ""}`.replace(
+    /[^A-Za-z0-9_-]+/g,
+    "-",
+  );
   const fileName = `dtr-${safeName}-${stamp}.xlsx`;
   const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
   const outputPath = path.join(PREVIEW_DIR, fileName);
@@ -3798,7 +3907,10 @@ async function handleGenerateDtrPdf(req, res) {
   await cleanupPreviewFiles().catch(() => {});
   await fs.mkdir(PREVIEW_DIR, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const safeName = `${employee.lastname || "employee"}-${employee.firstname || ""}`.replace(/[^A-Za-z0-9_-]+/g, "-");
+  const safeName = `${employee.lastname || "employee"}-${employee.firstname || ""}`.replace(
+    /[^A-Za-z0-9_-]+/g,
+    "-",
+  );
   const fileName = `dtr-${safeName}-${stamp}.pdf`;
   const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
   const outputPath = path.join(PREVIEW_DIR, fileName);
@@ -4510,7 +4622,8 @@ async function handleCreateLeaveApplication(req, res) {
     body.requirementsPayload && typeof body.requirementsPayload === "object"
       ? body.requirementsPayload
       : {};
-  const formPayload = body.formPayload && typeof body.formPayload === "object" ? body.formPayload : {};
+  const formPayload =
+    body.formPayload && typeof body.formPayload === "object" ? body.formPayload : {};
   if (
     !employeeId ||
     !Number.isInteger(leaveTypeId) ||
@@ -4542,7 +4655,9 @@ async function handleCreateLeaveApplication(req, res) {
     return json(res, 400, { error: "Please specify the abroad location" });
   }
   if (leaveCode === "SL" && !["Hospital", "OutPatient"].includes(detailSickType)) {
-    return json(res, 400, { error: "Please indicate whether sick leave is in hospital or outpatient" });
+    return json(res, 400, {
+      error: "Please indicate whether sick leave is in hospital or outpatient",
+    });
   }
   if ((leaveCode === "SL" || leaveCode === "SLBW") && !detailIllness) {
     return json(res, 400, { error: "Please specify the illness or medical detail" });
@@ -4551,12 +4666,18 @@ async function handleCreateLeaveApplication(req, res) {
     return json(res, 400, { error: "Please select the study leave purpose" });
   }
   if (["MONETIZATION", "TERMINAL", "OTHERS"].includes(leaveCode)) {
-    const validOtherPurpose = ["Monetization", "TerminalLeave", "Other"].includes(detailOtherPurpose);
+    const validOtherPurpose = ["Monetization", "TerminalLeave", "Other"].includes(
+      detailOtherPurpose,
+    );
     if (!validOtherPurpose || (detailOtherPurpose === "Other" && !detailOtherText)) {
       return json(res, 400, { error: "Please specify the other leave purpose" });
     }
   }
-  if (leaveType.max_days !== null && Number(leaveType.max_days) > 0 && daysRequested > Number(leaveType.max_days)) {
+  if (
+    leaveType.max_days !== null &&
+    Number(leaveType.max_days) > 0 &&
+    daysRequested > Number(leaveType.max_days)
+  ) {
     return json(res, 400, {
       error: `${leaveType.name} can be filed for up to ${Number(leaveType.max_days)} days`,
     });
@@ -4733,7 +4854,10 @@ function httpError(statusCode, message) {
 async function buildLeaveForm6Payload(id, user) {
   const application = await readLeaveApplication(id);
   if (!application) throw httpError(404, "Leave application not found");
-  if (!["Admin", "HR", "Viewer"].includes(user.role) && user.employeeId !== application.employeeId) {
+  if (
+    !["Admin", "HR", "Viewer"].includes(user.role) &&
+    user.employeeId !== application.employeeId
+  ) {
     throw httpError(403, "You can only export your own leave application");
   }
   try {
@@ -5233,7 +5357,9 @@ async function route(req, res) {
   const dtrPdfMatch = url.pathname.match(/^\/api\/attendance\/dtr\/pdf\/([^/]+)$/);
   const dtrNoterMatch = url.pathname.match(/^\/api\/attendance\/noters\/(\d+)$/);
   const biometricDeviceMatch = url.pathname.match(/^\/api\/attendance\/biometrics\/(\d+)$/);
-  const unimportedDtrMatch = url.pathname.match(/^\/api\/attendance\/check-unimported-dtrs\/([A-Za-z0-9-]+)$/);
+  const unimportedDtrMatch = url.pathname.match(
+    /^\/api\/attendance\/check-unimported-dtrs\/([A-Za-z0-9-]+)$/,
+  );
   const departmentMatch = url.pathname.match(/^\/api\/settings\/departments\/(\d+)$/);
   const positionMatch = url.pathname.match(/^\/api\/settings\/positions\/(\d+)$/);
   const salaryGradeMatch = url.pathname.match(/^\/api\/settings\/salary-grades\/(\d+)$/);
@@ -5381,8 +5507,7 @@ async function route(req, res) {
     return handleDownloadDtrExcel(req, res, dtrExcelMatch[1]);
   if (req.method === "POST" && url.pathname === "/api/attendance/dtr/pdf")
     return handleGenerateDtrPdf(req, res);
-  if (req.method === "GET" && dtrPdfMatch)
-    return handlePreviewDtrPdf(req, res, dtrPdfMatch[1]);
+  if (req.method === "GET" && dtrPdfMatch) return handlePreviewDtrPdf(req, res, dtrPdfMatch[1]);
   if (req.method === "GET" && url.pathname === "/api/attendance/export")
     return handleExportDtr(req, res, url, false);
   if (req.method === "GET" && url.pathname === "/api/attendance/export/mass")

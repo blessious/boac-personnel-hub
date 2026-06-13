@@ -69,7 +69,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) throw new Error("Not logged in");
     const result = await api<{ user: User }>("/api/users/me", {
       method: "PATCH",
-      body: JSON.stringify({ name: updates.name ?? user.name, photoUrl: updates.photoUrl ?? user.photoUrl ?? "" }),
+      body: JSON.stringify({
+        name: updates.name ?? user.name,
+        photoUrl: updates.photoUrl ?? user.photoUrl ?? "",
+      }),
     });
     setUser(result.user);
     return result.user;
@@ -92,7 +95,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   if (!ready) return null;
-  return <Ctx.Provider value={{ user, login, logout, updateProfile, changePassword, can, ready }}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={{ user, login, logout, updateProfile, changePassword, can, ready }}>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export function useAuth() {

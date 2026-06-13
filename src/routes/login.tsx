@@ -81,17 +81,27 @@ function LoginPage() {
         <div
           className="absolute inset-0 bg-cover bg-center transition-all duration-1000"
           style={{
-            backgroundImage: agency.bannerUrl ? `url(${agency.bannerUrl})` : `url('https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=2029&auto=format&fit=crop')`,
+            backgroundImage: agency.bannerUrl
+              ? `url(${agency.bannerUrl})`
+              : `url('https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=2029&auto=format&fit=crop')`,
           }}
         >
           {!agency.bannerUrl && (
             <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-primary/80 flex items-center justify-center">
-              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
+              <div
+                className="absolute inset-0 opacity-20"
+                style={{
+                  backgroundImage: "radial-gradient(circle at 2px 2px, white 1px, transparent 0)",
+                  backgroundSize: "40px 40px",
+                }}
+              />
               <div className="relative z-10 text-center">
                 <div className="mx-auto h-32 w-32 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 flex items-center justify-center mb-6 shadow-2xl animate-pulse">
                   <ShieldCheck className="h-16 w-16 text-white" />
                 </div>
-                <div className="text-white/40 text-sm font-bold uppercase tracking-[0.3em]">Agency Branding Placeholder</div>
+                <div className="text-white/40 text-sm font-bold uppercase tracking-[0.3em]">
+                  Agency Branding Placeholder
+                </div>
               </div>
             </div>
           )}
@@ -103,14 +113,20 @@ function LoginPage() {
             <div className="flex items-center gap-4 mb-8">
               <div className="h-16 w-16 flex items-center justify-center">
                 {agency.logoUrl ? (
-                  <img src={agency.logoUrl} alt="Logo" className="h-full w-full object-contain drop-shadow-lg" />
+                  <img
+                    src={agency.logoUrl}
+                    alt="Logo"
+                    className="h-full w-full object-contain drop-shadow-lg"
+                  />
                 ) : (
                   <ShieldCheck className="h-14 w-14 text-white drop-shadow-md" />
                 )}
               </div>
               <div>
                 <h2 className="text-3xl font-bold tracking-tight">{agency.name || "HRPMIS"}</h2>
-                <p className="text-white/70 font-medium uppercase tracking-widest text-xs mt-1">{agency.tagline}</p>
+                <p className="text-white/70 font-medium uppercase tracking-widest text-xs mt-1">
+                  {agency.tagline}
+                </p>
               </div>
             </div>
 
@@ -119,11 +135,11 @@ function LoginPage() {
               <span className="text-white">Human Resources</span>
             </h1>
             <p className="mt-6 text-xl text-white/80 max-w-md font-light leading-relaxed">
-              Personnel Management Information System. A secure and efficient platform for modern government administration.
+              Personnel Management Information System. A secure and efficient platform for modern
+              government administration.
             </p>
           </div>
         </div>
-
       </div>
 
       {/* Right Side: Login Form */}
@@ -148,7 +164,12 @@ function LoginPage() {
           <div className="mt-10">
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="username" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Username</Label>
+                <Label
+                  htmlFor="username"
+                  className="text-xs font-bold uppercase tracking-wider text-muted-foreground"
+                >
+                  Username
+                </Label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
                     <User className="h-4 w-4 text-muted-foreground/50" />
@@ -162,14 +183,26 @@ function LoginPage() {
                   />
                 </div>
                 {form.formState.errors.username && (
-                  <p className="text-xs font-medium text-destructive mt-1">{form.formState.errors.username.message}</p>
+                  <p className="text-xs font-medium text-destructive mt-1">
+                    {form.formState.errors.username.message}
+                  </p>
                 )}
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Password</Label>
-                  <a href="#" className="text-xs font-bold text-[#0033a0] dark:text-[#6699ff] hover:text-[#002270] dark:hover:text-[#99bbff] transition-colors hover:underline">Forgot Password?</a>
+                  <Label
+                    htmlFor="password"
+                    className="text-xs font-bold uppercase tracking-wider text-muted-foreground"
+                  >
+                    Password
+                  </Label>
+                  <a
+                    href="#"
+                    className="text-xs font-bold text-[#0033a0] dark:text-[#6699ff] hover:text-[#002270] dark:hover:text-[#99bbff] transition-colors hover:underline"
+                  >
+                    Forgot Password?
+                  </a>
                 </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
@@ -185,7 +218,9 @@ function LoginPage() {
                   />
                 </div>
                 {form.formState.errors.password && (
-                  <p className="text-xs font-medium text-destructive mt-1">{form.formState.errors.password.message}</p>
+                  <p className="text-xs font-medium text-destructive mt-1">
+                    {form.formState.errors.password.message}
+                  </p>
                 )}
               </div>
 
@@ -194,11 +229,7 @@ function LoginPage() {
                 className="w-full h-12 bg-[#0033a0] text-white hover:bg-[#002270] shadow-md hover:shadow-lg transition-all duration-200 font-bold uppercase tracking-widest text-xs rounded-xl mt-6"
                 disabled={submitting}
               >
-                {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Sign In"
-                )}
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign In"}
               </Button>
             </form>
 

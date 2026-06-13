@@ -43,28 +43,62 @@ function ChangePasswordPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <form onSubmit={submit} className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-sm space-y-5"
+      >
         <div className="space-y-2">
           <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary grid place-items-center">
             <Lock className="h-5 w-5" />
           </div>
           <h1 className="text-xl font-bold">Change temporary password</h1>
-          <p className="text-sm text-muted-foreground">Your account is using a temporary password. Set a new password before continuing.</p>
+          <p className="text-sm text-muted-foreground">
+            Your account is using a temporary password. Set a new password before continuing.
+          </p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="current-password">Temporary password</Label>
-          <Input id="current-password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} autoComplete="current-password" required />
+          <Input
+            id="current-password"
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="new-password">New password</Label>
-          <Input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" required />
+          <Input
+            id="new-password"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+            required
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="confirm-password">Confirm new password</Label>
-          <Input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" required />
+          <Input
+            id="confirm-password"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            autoComplete="new-password"
+            required
+          />
         </div>
         <div className="flex gap-2">
-          <Button type="button" variant="outline" className="flex-1" onClick={async () => { await logout(); navigate({ to: "/login", search: { redirect: "/" } }); }}>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={async () => {
+              await logout();
+              navigate({ to: "/login", search: { redirect: "/" } });
+            }}
+          >
             Sign out
           </Button>
           <Button type="submit" className="flex-1 bg-primary text-white" disabled={submitting}>

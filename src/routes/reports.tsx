@@ -21,22 +21,26 @@ export const Route = createFileRoute("/reports")({
 const REPORTS = [
   {
     title: "Employee Master List",
-    description: "Complete employee listing by division, position, status, item number, and employment category.",
+    description:
+      "Complete employee listing by division, position, status, item number, and employment category.",
     icon: Users,
   },
   {
     title: "Personnel Statistics",
-    description: "Workforce distribution by age, sex, civil status, education, division, cadre, and plantilla status.",
+    description:
+      "Workforce distribution by age, sex, civil status, education, division, cadre, and plantilla status.",
     icon: PieChart,
   },
   {
     title: "Leave Summary",
-    description: "Leave balances, approved leave, pending applications, late filing, and leave without pay.",
+    description:
+      "Leave balances, approved leave, pending applications, late filing, and leave without pay.",
     icon: CalendarDays,
   },
   {
     title: "Attendance Summary",
-    description: "Absences, tardiness, undertime, official business, overtime, and perfect attendance.",
+    description:
+      "Absences, tardiness, undertime, official business, overtime, and perfect attendance.",
     icon: BarChart3,
   },
   {
@@ -46,20 +50,25 @@ const REPORTS = [
   },
   {
     title: "Certifications",
-    description: "Certificate of employment, service record, leave credit certification, and related documents.",
+    description:
+      "Certificate of employment, service record, leave credit certification, and related documents.",
     icon: FileText,
   },
 ];
 
 function ReportsPage() {
   return (
-    <AppShell title="Reports & Analytics" subtitle="HR statistics, summaries, and export-ready reports">
+    <AppShell
+      title="Reports & Analytics"
+      subtitle="HR statistics, summaries, and export-ready reports"
+    >
       <div className="mb-5 rounded-xl border border-border bg-card p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Report Center</h2>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Standard HR reports and export actions will be connected here as the remaining attendance, leave, and form templates are finalized.
+              Standard HR reports and export actions will be connected here as the remaining
+              attendance, leave, and form templates are finalized.
             </p>
           </div>
           <div className="flex gap-2">

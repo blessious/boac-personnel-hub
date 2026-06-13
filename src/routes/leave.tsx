@@ -1,7 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Check, ClipboardCheck, Download, FilePlus2, FileText, Plus, Search, X } from "lucide-react";
+import {
+  Check,
+  ClipboardCheck,
+  Download,
+  FilePlus2,
+  FileText,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -93,7 +102,10 @@ function LeavePage() {
   const selectedLeaveType =
     activeLeaveTypes.find((type) => String(type.id) === applicationForm.leaveTypeId) || null;
   const minimumLeaveDate = getMinimumLeaveDate(selectedLeaveType);
-  const calculatedDays = calculateWeekdayLeaveDays(applicationForm.dateFrom, applicationForm.dateTo);
+  const calculatedDays = calculateWeekdayLeaveDays(
+    applicationForm.dateFrom,
+    applicationForm.dateTo,
+  );
   const daysRequested = applicationForm.overrideDays
     ? Number(applicationForm.daysRequested)
     : calculatedDays;
@@ -273,195 +285,195 @@ function LeavePage() {
           loading={ledgerLoading}
         />
       ) : (
-      <div className="rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-border p-4 xl:flex-row xl:items-center">
-          <div className="relative max-w-sm flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search employee, ID, or department"
-              className="pl-9"
-              value={q}
-              onChange={(event) => setQ(event.target.value)}
-            />
+        <div className="rounded-xl border border-border bg-card shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-border p-4 xl:flex-row xl:items-center">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search employee, ID, or department"
+                className="pl-9"
+                value={q}
+                onChange={(event) => setQ(event.target.value)}
+              />
+            </div>
+            <div className="flex overflow-x-auto rounded-lg bg-muted/50 p-1">
+              {(["all", "Pending", "Approved", "Disapproved", "Cancelled"] as const).map((item) => (
+                <button
+                  key={item}
+                  onClick={() => setStatus(item)}
+                  className={cn(
+                    "whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    status === item
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {item === "all" ? "All" : item}
+                </button>
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              disabled={!canEdit}
+              onClick={() => setShowType(true)}
+              className="border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-border dark:text-slate-300 dark:hover:bg-muted/40"
+            >
+              <Plus className="mr-1.5 h-4 w-4" /> Leave Type
+            </Button>
+            <Button
+              disabled={!canEdit}
+              onClick={() => setShowApplication(true)}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              <FilePlus2 className="mr-1.5 h-4 w-4" /> File Leave
+            </Button>
           </div>
-          <div className="flex overflow-x-auto rounded-lg bg-muted/50 p-1">
-            {(["all", "Pending", "Approved", "Disapproved", "Cancelled"] as const).map((item) => (
-              <button
-                key={item}
-                onClick={() => setStatus(item)}
-                className={cn(
-                  "whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  status === item
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {item === "all" ? "All" : item}
-              </button>
-            ))}
-          </div>
-          <Button
-            variant="outline"
-            disabled={!canEdit}
-            onClick={() => setShowType(true)}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-border dark:text-slate-300 dark:hover:bg-muted/40"
-          >
-            <Plus className="mr-1.5 h-4 w-4" /> Leave Type
-          </Button>
-          <Button
-            disabled={!canEdit}
-            onClick={() => setShowApplication(true)}
-            className="bg-blue-600 text-white hover:bg-blue-700"
-          >
-            <FilePlus2 className="mr-1.5 h-4 w-4" /> File Leave
-          </Button>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3 font-semibold">Employee</th>
-                <th className="px-4 py-3 font-semibold">Leave Type</th>
-                <th className="px-4 py-3 font-semibold">Dates</th>
-                <th className="px-4 py-3 font-semibold">Days</th>
-                <th className="px-4 py-3 font-semibold">Reason</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 text-right font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
-                    Loading leave records...
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-3 font-semibold">Employee</th>
+                  <th className="px-4 py-3 font-semibold">Leave Type</th>
+                  <th className="px-4 py-3 font-semibold">Dates</th>
+                  <th className="px-4 py-3 font-semibold">Days</th>
+                  <th className="px-4 py-3 font-semibold">Reason</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
                 </tr>
-              ) : applications.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
-                    No leave applications found.
-                  </td>
-                </tr>
-              ) : (
-                applications.map((application, index) => (
-                  <tr
-                    key={application.id}
-                    className={cn(
-                      "border-b border-border/50 last:border-0 hover:bg-muted/40",
-                      index % 2 === 1 && "bg-muted/10",
-                    )}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{application.employeeName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {application.employeeNo} · {application.department}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{application.leaveName}</div>
-                      <div className="text-xs text-muted-foreground">{application.leaveCode}</div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {application.dateFrom} to {application.dateTo}
-                    </td>
-                    <td className="px-4 py-3 font-medium">
-                      {formatNumber(application.daysRequested)}
-                    </td>
-                    <td className="max-w-[220px] truncate px-4 py-3 text-muted-foreground">
-                      {application.reason || "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant="outline" className={STATUS_COLOR[application.status]}>
-                        {application.status}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="inline-flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={!canEdit || application.status === "Approved"}
-                          onClick={() =>
-                            setDecision({
-                              application,
-                              status: "Approved",
-                              remarks: application.decisionRemarks || "",
-                              approvedDaysWithPay:
-                                application.approvedDaysWithPay?.toString() ||
-                                application.daysRequested.toString(),
-                              approvedDaysWithoutPay:
-                                application.approvedDaysWithoutPay?.toString() || "",
-                              approvedDaysOther: application.approvedDaysOther?.toString() || "",
-                              approvedDaysOtherText: application.approvedDaysOtherText || "",
-                              finalDisapprovalReason: application.finalDisapprovalReason || "",
-                            })
-                          }
-                          className="h-8 px-2"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={!canEdit || application.status === "Disapproved"}
-                          onClick={() =>
-                            setDecision({
-                              application,
-                              status: "Disapproved",
-                              remarks: application.decisionRemarks || "",
-                              approvedDaysWithPay:
-                                application.approvedDaysWithPay?.toString() || "",
-                              approvedDaysWithoutPay:
-                                application.approvedDaysWithoutPay?.toString() || "",
-                              approvedDaysOther: application.approvedDaysOther?.toString() || "",
-                              approvedDaysOtherText: application.approvedDaysOtherText || "",
-                              finalDisapprovalReason:
-                                application.finalDisapprovalReason ||
-                                application.decisionRemarks ||
-                                "",
-                            })
-                          }
-                          className="h-8 px-2"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => downloadForm6(application)}
-                          className="h-8 px-2"
-                          title="Download CS Form No. 6 Excel"
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => previewForm6Pdf(application)}
-                          className="h-8 px-2"
-                          title="Preview CS Form No. 6 PDF"
-                        >
-                          <FileText className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={!canEdit}
-                          onClick={() => remove(application)}
-                          className="h-8 px-2 text-destructive hover:text-destructive"
-                        >
-                          Delete
-                        </Button>
-                      </div>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                      Loading leave records...
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : applications.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                      No leave applications found.
+                    </td>
+                  </tr>
+                ) : (
+                  applications.map((application, index) => (
+                    <tr
+                      key={application.id}
+                      className={cn(
+                        "border-b border-border/50 last:border-0 hover:bg-muted/40",
+                        index % 2 === 1 && "bg-muted/10",
+                      )}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{application.employeeName}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {application.employeeNo} · {application.department}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{application.leaveName}</div>
+                        <div className="text-xs text-muted-foreground">{application.leaveCode}</div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {application.dateFrom} to {application.dateTo}
+                      </td>
+                      <td className="px-4 py-3 font-medium">
+                        {formatNumber(application.daysRequested)}
+                      </td>
+                      <td className="max-w-[220px] truncate px-4 py-3 text-muted-foreground">
+                        {application.reason || "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline" className={STATUS_COLOR[application.status]}>
+                          {application.status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="inline-flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!canEdit || application.status === "Approved"}
+                            onClick={() =>
+                              setDecision({
+                                application,
+                                status: "Approved",
+                                remarks: application.decisionRemarks || "",
+                                approvedDaysWithPay:
+                                  application.approvedDaysWithPay?.toString() ||
+                                  application.daysRequested.toString(),
+                                approvedDaysWithoutPay:
+                                  application.approvedDaysWithoutPay?.toString() || "",
+                                approvedDaysOther: application.approvedDaysOther?.toString() || "",
+                                approvedDaysOtherText: application.approvedDaysOtherText || "",
+                                finalDisapprovalReason: application.finalDisapprovalReason || "",
+                              })
+                            }
+                            className="h-8 px-2"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!canEdit || application.status === "Disapproved"}
+                            onClick={() =>
+                              setDecision({
+                                application,
+                                status: "Disapproved",
+                                remarks: application.decisionRemarks || "",
+                                approvedDaysWithPay:
+                                  application.approvedDaysWithPay?.toString() || "",
+                                approvedDaysWithoutPay:
+                                  application.approvedDaysWithoutPay?.toString() || "",
+                                approvedDaysOther: application.approvedDaysOther?.toString() || "",
+                                approvedDaysOtherText: application.approvedDaysOtherText || "",
+                                finalDisapprovalReason:
+                                  application.finalDisapprovalReason ||
+                                  application.decisionRemarks ||
+                                  "",
+                              })
+                            }
+                            className="h-8 px-2"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => downloadForm6(application)}
+                            className="h-8 px-2"
+                            title="Download CS Form No. 6 Excel"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => previewForm6Pdf(application)}
+                            className="h-8 px-2"
+                            title="Preview CS Form No. 6 PDF"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!canEdit}
+                            onClick={() => remove(application)}
+                            className="h-8 px-2 text-destructive hover:text-destructive"
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
       )}
 
       <Dialog open={showApplication} onOpenChange={setShowApplication}>
@@ -923,7 +935,10 @@ function CreditLedgerPanel({
         <>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {data.balances.map((balance) => (
-              <div key={balance.leaveTypeId} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div
+                key={balance.leaveTypeId}
+                className="rounded-xl border border-border bg-card p-4 shadow-sm"
+              >
                 <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {balance.code}
                 </div>
@@ -1033,13 +1048,7 @@ function RadioChoice({ value, label }: { value: string; label: string }) {
   );
 }
 
-function LeaveTypeGuidance({
-  leaveType,
-  className,
-}: {
-  leaveType: LeaveType;
-  className?: string;
-}) {
+function LeaveTypeGuidance({ leaveType, className }: { leaveType: LeaveType; className?: string }) {
   return (
     <div className={cn("rounded-lg border border-blue-100 bg-blue-50/60 p-3", className)}>
       <div className="flex flex-wrap gap-2">

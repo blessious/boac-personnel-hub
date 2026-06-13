@@ -210,7 +210,9 @@ function AttendancePage() {
     listBiometricDevices()
       .then((result) => {
         setBiometricDevices(result.devices);
-        setSelectedBiometricId((current) => current || result.devices.find((device) => device.active)?.id || "");
+        setSelectedBiometricId(
+          (current) => current || result.devices.find((device) => device.active)?.id || "",
+        );
       })
       .catch(() => setBiometricDevices([]));
   }, [showImportDialog, canManage]);
@@ -719,10 +721,18 @@ function AttendancePage() {
                   <Button variant="outline" onClick={refresh} disabled={busy}>
                     <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh DTR
                   </Button>
-                  <Button variant="outline" onClick={() => setShowScheduleDialog(true)} disabled={busy}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowScheduleDialog(true)}
+                    disabled={busy}
+                  >
                     <Settings2 className="mr-1.5 h-4 w-4" /> Schedule
                   </Button>
-                  <Button onClick={openImportAll} disabled={busy} className="bg-blue-600 text-white hover:bg-blue-700">
+                  <Button
+                    onClick={openImportAll}
+                    disabled={busy}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                  >
                     <Upload className="mr-1.5 h-4 w-4" /> Import DTR
                   </Button>
                   <Button onClick={openAdd} className="bg-blue-600 text-white hover:bg-blue-700">
@@ -805,13 +815,9 @@ function AttendancePage() {
                       {entry.biometricId || "-"}
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-medium text-foreground">
-                        {entry.employeeName}
-                      </p>
+                      <p className="font-medium text-foreground">{entry.employeeName}</p>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {entry.department || "-"}
-                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{entry.department || "-"}</td>
                     <td className="px-4 py-3 font-medium text-foreground">{entry.workDate}</td>
                     <td className="px-4 py-3 font-medium text-emerald-600">{entry.amIn || "-"}</td>
                     <td className="px-4 py-3 font-medium text-emerald-600">{entry.amOut || "-"}</td>
@@ -1016,7 +1022,10 @@ function AttendancePage() {
 
               <div className="space-y-1.5">
                 <Label>Import Source</Label>
-                <Select value={importSource} onValueChange={(value: "biometric" | "file") => setImportSource(value)}>
+                <Select
+                  value={importSource}
+                  onValueChange={(value: "biometric" | "file") => setImportSource(value)}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -1101,8 +1110,18 @@ function AttendancePage() {
               )}
 
               <div className="grid gap-3 md:grid-cols-2">
-                <Field label="Start Date" type="date" value={importStartDate} onChange={setImportStartDate} />
-                <Field label="End Date" type="date" value={importEndDate} onChange={setImportEndDate} />
+                <Field
+                  label="Start Date"
+                  type="date"
+                  value={importStartDate}
+                  onChange={setImportStartDate}
+                />
+                <Field
+                  label="End Date"
+                  type="date"
+                  value={importEndDate}
+                  onChange={setImportEndDate}
+                />
               </div>
             </div>
           </div>
@@ -1127,8 +1146,9 @@ function AttendancePage() {
           <DialogHeader>
             <DialogTitle>Import DTR</DialogTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Import attendance for <span className="font-semibold text-foreground">all employees</span> from a biometric device or file.
-              DTR records are automatically refreshed after import.
+              Import attendance for{" "}
+              <span className="font-semibold text-foreground">all employees</span> from a biometric
+              device or file. DTR records are automatically refreshed after import.
             </p>
           </DialogHeader>
           <div className="space-y-4">
@@ -1176,7 +1196,9 @@ function AttendancePage() {
                   </SelectContent>
                 </Select>
                 {!biometricDevices.length && (
-                  <p className="text-xs text-muted-foreground">No biometric devices configured yet.</p>
+                  <p className="text-xs text-muted-foreground">
+                    No biometric devices configured yet.
+                  </p>
                 )}
               </div>
             ) : (
@@ -1215,12 +1237,23 @@ function AttendancePage() {
             )}
 
             <div className="grid gap-3 md:grid-cols-2">
-              <Field label="Start Date" type="date" value={massImportStartDate} onChange={setMassImportStartDate} />
-              <Field label="End Date" type="date" value={massImportEndDate} onChange={setMassImportEndDate} />
+              <Field
+                label="Start Date"
+                type="date"
+                value={massImportStartDate}
+                onChange={setMassImportStartDate}
+              />
+              <Field
+                label="End Date"
+                type="date"
+                value={massImportEndDate}
+                onChange={setMassImportEndDate}
+              />
             </div>
 
             <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
-              <strong>All employees</strong> â€” punches are matched by Employee No. or Biometric ID. Unmatched records are skipped. DTR is refreshed automatically after import.
+              <strong>All employees</strong> â€” punches are matched by Employee No. or Biometric
+              ID. Unmatched records are skipped. DTR is refreshed automatically after import.
             </div>
           </div>
           <DialogFooter>
@@ -1266,9 +1299,7 @@ function AttendancePage() {
               <input
                 type="checkbox"
                 checked={deviceForm.active}
-                onChange={(event) =>
-                  setDeviceForm({ ...deviceForm, active: event.target.checked })
-                }
+                onChange={(event) => setDeviceForm({ ...deviceForm, active: event.target.checked })}
               />
               Active
             </label>
@@ -1320,7 +1351,9 @@ function AttendancePage() {
               <div className="space-y-1.5">
                 <Label>Noter Signatory</Label>
                 <Select
-                  value={noters.find((item) => item.signatory === exportForm.noterSignatory)?.id || ""}
+                  value={
+                    noters.find((item) => item.signatory === exportForm.noterSignatory)?.id || ""
+                  }
                   onValueChange={(value) => {
                     const noter = noters.find((item) => item.id === value);
                     setExportForm({
@@ -1401,11 +1434,7 @@ function AttendancePage() {
             <Button variant="outline" onClick={() => setShowExportDialog(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={viewPdf}
-              disabled={busy}
-              variant="outline"
-            >
+            <Button onClick={viewPdf} disabled={busy} variant="outline">
               <FileText className="mr-1.5 h-4 w-4" />
               View PDF
             </Button>
@@ -1515,10 +1544,30 @@ function AttendancePage() {
                 </div>
               )}
               <div className="grid gap-3 md:grid-cols-2">
-                <Field label="AM In" type="time" value={scheduleForm.amIn} onChange={(amIn) => setScheduleForm({ ...scheduleForm, amIn })} />
-                <Field label="AM Out" type="time" value={scheduleForm.amOut} onChange={(amOut) => setScheduleForm({ ...scheduleForm, amOut })} />
-                <Field label="PM In" type="time" value={scheduleForm.pmIn} onChange={(pmIn) => setScheduleForm({ ...scheduleForm, pmIn })} />
-                <Field label="PM Out" type="time" value={scheduleForm.pmOut} onChange={(pmOut) => setScheduleForm({ ...scheduleForm, pmOut })} />
+                <Field
+                  label="AM In"
+                  type="time"
+                  value={scheduleForm.amIn}
+                  onChange={(amIn) => setScheduleForm({ ...scheduleForm, amIn })}
+                />
+                <Field
+                  label="AM Out"
+                  type="time"
+                  value={scheduleForm.amOut}
+                  onChange={(amOut) => setScheduleForm({ ...scheduleForm, amOut })}
+                />
+                <Field
+                  label="PM In"
+                  type="time"
+                  value={scheduleForm.pmIn}
+                  onChange={(pmIn) => setScheduleForm({ ...scheduleForm, pmIn })}
+                />
+                <Field
+                  label="PM Out"
+                  type="time"
+                  value={scheduleForm.pmOut}
+                  onChange={(pmOut) => setScheduleForm({ ...scheduleForm, pmOut })}
+                />
               </div>
             </div>
           </div>

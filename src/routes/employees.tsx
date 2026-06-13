@@ -1,6 +1,5 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { type ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ChevronLeft,
@@ -14,6 +13,12 @@ import {
   Trash2,
   User,
   Users,
+  Briefcase,
+  UserCheck,
+  CalendarDays,
+  TrendingUp,
+  SlidersHorizontal,
+  LayoutGrid,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
@@ -51,6 +56,7 @@ import {
   listEmployees,
   type EmployeeRecord,
   type SettingsOptions,
+  type DashboardResponse,
 } from "@/lib/employees-api";
 import { cn } from "@/lib/utils";
 
@@ -58,15 +64,16 @@ export const Route = createFileRoute("/employees")({
   component: EmployeesPage,
 });
 
-const STATUS_COLOR: Record<string, string> = {
-  Permanent:
-    "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
-  Regular:
-    "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800",
-  Casual:
-    "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800",
-  "JO/COS":
-    "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+const EMP_TYPE_COLOR: Record<string, string> = {
+  Permanent: "text-emerald-700 border-emerald-200 bg-emerald-50",
+  Regular: "text-blue-700 border-blue-200 bg-blue-50",
+  Casual: "text-purple-700 border-purple-200 bg-purple-50",
+  "JO/COS": "text-amber-700 border-amber-200 bg-amber-50",
+};
+
+const EMP_STATUS_COLOR: Record<string, string> = {
+  Active: "text-emerald-700 border-emerald-200 bg-emerald-50",
+  Inactive: "text-rose-700 border-rose-200 bg-rose-50",
 };
 
 const EMPTY_FORM: Partial<EmployeeRecord> = {
@@ -92,7 +99,7 @@ function EmployeesPage() {
   const [dept, setDept] = useState("all");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(10);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -102,10 +109,9 @@ function EmployeesPage() {
     positions: [],
     salaryGrades: [],
   });
-  const [summary, setSummary] = useState({
-    regularEmployees: 0,
-    jobOrderEmployees: 0,
-  });
+
+  const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null);
+
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [form, setForm] = useState<Partial<EmployeeRecord>>(EMPTY_FORM);
 
@@ -133,18 +139,8 @@ function EmployeesPage() {
 
   useEffect(() => {
     getDashboard()
-      .then((result) =>
-        setSummary({
-          regularEmployees: result.regularEmployees,
-          jobOrderEmployees: result.jobOrderEmployees,
-        }),
-      )
-      .catch(() =>
-        setSummary({
-          regularEmployees: 0,
-          jobOrderEmployees: 0,
-        }),
-      );
+      .then(setDashboardData)
+      .catch(() => setDashboardData(null));
   }, []);
 
   const departments = useMemo(
@@ -188,248 +184,427 @@ function EmployeesPage() {
     }
   };
 
+  // Dashboard calculations
+  const totalEmployees = dashboardData?.totalEmployees ?? 0;
+  const regularEmployees = dashboardData?.regularEmployees ?? 0;
+  const joCosEmployees = dashboardData?.jobOrderEmployees ?? 0;
+  const activeEmployees = (dashboardData?.byEmploymentStatus ?? []).reduce(
+    (acc, curr) => acc + curr.active,
+    0,
+  );
+  const onLeave = 0; // Not available in DB response, rendering accurate DB basis
+
+  const regularPct = totalEmployees > 0 ? Math.round((regularEmployees / totalEmployees) * 100) : 0;
+  const joCosPct = totalEmployees > 0 ? Math.round((joCosEmployees / totalEmployees) * 100) : 0;
+  const activePct = totalEmployees > 0 ? Math.round((activeEmployees / totalEmployees) * 100) : 0;
+  const onLeavePct = totalEmployees > 0 ? Math.round((onLeave / totalEmployees) * 100) : 0;
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "-";
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    } catch {
+      return dateStr;
+    }
+  };
+
   return (
-    <AppShell
-      title="Employee Management - 201 Files"
-      subtitle={`${total} employee record${total === 1 ? "" : "s"} from MySQL`}
-    >
+    <AppShell title="" subtitle="">
       {error && (
         <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
-      <div className="mb-4 grid gap-3 md:grid-cols-3">
-        <SummaryCard label="Total Records" value={total} icon={Users} />
-        <SummaryCard
-          label="Regular Employees"
-          value={summary.regularEmployees}
-          icon={Activity}
-        />
-        <SummaryCard
-          label="Job Order / COS"
-          value={summary.jobOrderEmployees}
-          icon={ClipboardList}
-        />
-      </div>
+      <div className="flex flex-col space-y-6 pb-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground tracking-tight">
+              Employee Management
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage employee records, employment status, and workforce information.
+            </p>
+          </div>
+          <div className="mt-4 sm:mt-0">
+            <Button
+              disabled={!canEdit}
+              onClick={() => setShowAddDialog(true)}
+              className="bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+            >
+              <Plus className="mr-1.5 h-4 w-4" /> Add Employee
+            </Button>
+          </div>
+        </div>
 
-      <div className="rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-border p-4 xl:flex-row xl:items-center">
-          <div className="relative max-w-sm flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id="emp-search"
-              placeholder="Search name, ID, or email"
-              className="pl-9"
-              value={q}
-              onChange={(event) => {
-                setQ(event.target.value);
+        {/* Top Stat Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <StatCard
+            title="Total Employees"
+            value={dashboardData === null ? "..." : totalEmployees}
+            subtext="Current records"
+            subtextColor="text-muted-foreground"
+            icon={<Users className="w-5 h-5 text-blue-600" />}
+            iconBg="bg-blue-50"
+            chartColor="stroke-blue-500"
+            trend="up"
+          />
+          <StatCard
+            title="Permanent Employees"
+            value={dashboardData === null ? "..." : regularEmployees}
+            subtext={`${regularPct}% of total`}
+            subtextColor="text-muted-foreground"
+            subtextDot="bg-emerald-500"
+            icon={<Briefcase className="w-5 h-5 text-emerald-600" />}
+            iconBg="bg-emerald-50"
+            chartColor="stroke-emerald-500"
+            trend="up"
+          />
+          <StatCard
+            title="JO / COS Employees"
+            value={dashboardData === null ? "..." : joCosEmployees}
+            subtext={`${joCosPct}% of total`}
+            subtextColor="text-muted-foreground"
+            subtextDot="bg-amber-500"
+            icon={<UserCheck className="w-5 h-5 text-amber-600" />}
+            iconBg="bg-amber-50"
+            chartColor="stroke-amber-500"
+            trend="down"
+          />
+          <StatCard
+            title="Active Employees"
+            value={dashboardData === null ? "..." : activeEmployees}
+            subtext={`${activePct}% of total`}
+            subtextColor="text-muted-foreground"
+            subtextDot="bg-blue-500"
+            icon={<Activity className="w-5 h-5 text-blue-600" />}
+            iconBg="bg-blue-50"
+            chartColor="stroke-blue-500"
+            trend="up"
+          />
+          <StatCard
+            title="On Leave"
+            value={dashboardData === null ? "..." : onLeave}
+            subtext={`${onLeavePct}% of total`}
+            subtextColor="text-muted-foreground"
+            subtextDot="bg-purple-500"
+            icon={<CalendarDays className="w-5 h-5 text-purple-600" />}
+            iconBg="bg-purple-50"
+            chartColor="stroke-purple-500"
+            trend="down"
+          />
+        </div>
+
+        <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm flex flex-col">
+          {/* Filters */}
+          <div className="flex flex-col lg:flex-row gap-3 p-4 border-b border-border/50 items-center">
+            <div className="relative w-full lg:max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+              <Input
+                placeholder="Search by name, ID, or email..."
+                className="pl-9 bg-card text-card-foreground"
+                value={q}
+                onChange={(event) => {
+                  setQ(event.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+
+            <Select
+              value={dept}
+              onValueChange={(value) => {
+                setDept(value);
                 setPage(1);
               }}
-            />
-          </div>
-          <Select
-            value={dept}
-            onValueChange={(value) => {
-              setDept(value);
-              setPage(1);
-            }}
-          >
-            <SelectTrigger className="w-full lg:w-[240px]">
-              <SelectValue placeholder="Department" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              {departments.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={status}
-            onValueChange={(value) => {
-              setStatus(value);
-              setPage(1);
-            }}
-          >
-            <SelectTrigger className="w-full lg:w-[170px]">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              {EMPLOYMENT_STATUSES.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            disabled={!canEdit}
-            onClick={() => setShowAddDialog(true)}
-            className="bg-blue-600 text-white hover:bg-blue-700 lg:ml-auto"
-          >
-            <Plus className="mr-1.5 h-4 w-4" /> Add Employee
-          </Button>
-        </div>
+            >
+              <SelectTrigger className="w-full lg:w-[220px] bg-card text-card-foreground">
+                <SelectValue placeholder="All Departments" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3 font-semibold">Employee ID</th>
-                <th className="px-4 py-3 font-semibold">Full Name</th>
-                <th className="hidden px-4 py-3 font-semibold md:table-cell">Position</th>
-                <th className="hidden px-4 py-3 font-semibold lg:table-cell">Department</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="hidden px-4 py-3 font-semibold xl:table-cell">Date Hired</th>
-                <th className="px-4 py-3 text-right font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
-                    Loading employees...
-                  </td>
+            <Select
+              value={status}
+              onValueChange={(value) => {
+                setStatus(value);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full lg:w-[200px] bg-card text-card-foreground">
+                <SelectValue placeholder="All Employment Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Employment Types</SelectItem>
+                {EMPLOYMENT_STATUSES.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Placeholder for Status Filter since it's not implemented in API */}
+            <Select disabled>
+              <SelectTrigger className="w-full lg:w-[160px] bg-card text-card-foreground opacity-70">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="flex items-center gap-2 ml-auto mt-3 lg:mt-0 w-full lg:w-auto">
+              <Button variant="outline" className="flex-1 lg:flex-none text-muted-foreground">
+                <SlidersHorizontal className="w-4 h-4 mr-2" />
+                Filters
+              </Button>
+              <Button variant="outline" className="px-3 text-muted-foreground">
+                <LayoutGrid className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-border/50 text-muted-foreground uppercase tracking-wider">
+                  <th className="px-5 py-4 font-semibold">EMPLOYEE NO</th>
+                  <th className="px-5 py-4 font-semibold">FULL NAME</th>
+                  <th className="px-5 py-4 font-semibold">POSITION</th>
+                  <th className="px-5 py-4 font-semibold">DEPARTMENT</th>
+                  <th className="px-5 py-4 font-semibold">EMPLOYMENT TYPE</th>
+                  <th className="px-5 py-4 font-semibold">STATUS</th>
+                  <th className="px-5 py-4 font-semibold">DATE HIRED</th>
+                  <th className="px-5 py-4 font-semibold text-right">ACTIONS</th>
                 </tr>
-              ) : employees.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
-                    No employee records found in MySQL.
-                  </td>
-                </tr>
-              ) : (
-                employees.map((employee, index) => (
-                  <tr
-                    key={employee.id}
-                    className={cn(
-                      "border-b border-border/50 last:border-0 hover:bg-muted/40",
-                      index % 2 === 1 && "bg-muted/10",
-                    )}
-                  >
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                      {employee.employeeId}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="grid h-10 w-8 shrink-0 place-items-center overflow-hidden rounded border border-border bg-muted/30">
-                          {employee.photoUrl ? (
-                            <img
-                              src={employee.photoUrl}
-                              alt={`${employee.firstname} ${employee.lastname}`}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <User className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </div>
-                        <div>
-                          <div className="font-medium">
-                            {employee.lastname}, {employee.firstname} {employee.middlename}
-                          </div>
-                          <div className="hidden text-xs text-muted-foreground sm:block">
-                            {employee.email || "No email recorded"}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {loading ? (
+                  <tr>
                     <td
-                      className="hidden max-w-[240px] px-4 py-3 text-muted-foreground md:table-cell"
-                      title={employee.position}
+                      colSpan={8}
+                      className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
                     >
-                      <span className="block truncate">{employee.position}</span>
-                    </td>
-                    <td
-                      className="hidden max-w-[260px] px-4 py-3 text-muted-foreground lg:table-cell"
-                      title={employee.department}
-                    >
-                      <span className="block truncate">{employee.department}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge
-                        variant="outline"
-                        className={cn("text-[11px]", STATUS_COLOR[employee.status] ?? "")}
-                      >
-                        {employee.status}
-                      </Badge>
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground xl:table-cell">
-                      {employee.dateHired || "-"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="inline-flex items-center gap-1">
-                        <Link
-                          to="/employees/$id"
-                          params={{ id: employee.id }}
-                          className="inline-grid h-8 w-8 place-items-center rounded-md text-primary hover:bg-primary/10"
-                          title="View"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Link>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              className="inline-grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-accent"
-                              title="More actions"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-36">
-                            <DropdownMenuItem asChild>
-                              <Link to="/employees/$id" params={{ id: employee.id }}>
-                                <Pencil className="h-4 w-4" />
-                                Edit
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={!canEdit}
-                              onClick={() => remove(employee)}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                      Loading employees...
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : employees.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
+                    >
+                      No employee records found.
+                    </td>
+                  </tr>
+                ) : (
+                  employees.map((employee, index) => {
+                    const initials =
+                      `${employee.firstname?.[0] || ""}${employee.lastname?.[0] || ""}`.toUpperCase() ||
+                      "??";
+                    const avatarColors = [
+                      "bg-blue-100 text-blue-700",
+                      "bg-indigo-100 text-indigo-700",
+                      "bg-purple-100 text-purple-700",
+                      "bg-emerald-100 text-emerald-700",
+                    ];
+                    const avatarColor = avatarColors[index % avatarColors.length];
 
-        <div className="flex items-center justify-between border-t border-border p-4 text-sm text-muted-foreground">
-          <div>
-            Showing {employees.length} of {total} employees
+                    return (
+                      <tr key={employee.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-5 py-4 text-muted-foreground font-medium whitespace-nowrap">
+                          {employee.itemNo || employee.employeeId || "-"}
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={cn(
+                                "grid h-10 w-10 shrink-0 place-items-center rounded-full text-xs font-bold",
+                                avatarColor,
+                              )}
+                            >
+                              {employee.photoUrl ? (
+                                <img
+                                  src={employee.photoUrl}
+                                  alt={`${employee.firstname} ${employee.lastname}`}
+                                  className="h-full w-full object-cover rounded-full"
+                                />
+                              ) : (
+                                initials
+                              )}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-foreground">
+                                {employee.lastname}, {employee.firstname} {employee.middlename}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-muted-foreground font-medium">
+                          {employee.position || "-"}
+                        </td>
+                        <td className="px-5 py-4 text-muted-foreground">
+                          {employee.department || "-"}
+                        </td>
+                        <td className="px-5 py-4">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] uppercase font-semibold",
+                              EMP_TYPE_COLOR[employee.status] ??
+                                "text-foreground/80 bg-muted/50 border-border",
+                            )}
+                          >
+                            {employee.status}
+                          </Badge>
+                        </td>
+                        <td className="px-5 py-4">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] uppercase font-semibold",
+                              EMP_STATUS_COLOR[employee.empStatus] ??
+                                "text-foreground/80 bg-muted/50 border-border",
+                            )}
+                          >
+                            {employee.empStatus}
+                          </Badge>
+                        </td>
+                        <td className="px-5 py-4 text-muted-foreground">
+                          {formatDate(employee.dateHired)}
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <div className="inline-flex items-center gap-2 justify-end">
+                            <Link
+                              to="/employees/$id"
+                              params={{ id: employee.id }}
+                              className="inline-grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted/50 transition-colors"
+                              title="View"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  className="inline-grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted/50 transition-colors"
+                                  title="More actions"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-36">
+                                <DropdownMenuItem asChild>
+                                  <Link to="/employees/$id" params={{ id: employee.id }}>
+                                    <Pencil className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={!canEdit}
+                                  onClick={() => remove(employee)}
+                                  className="text-rose-600 focus:text-rose-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((value) => Math.max(1, value - 1))}
-              disabled={page === 1}
-              className="h-8 w-8 p-0"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex h-8 items-center rounded-md bg-muted/30 px-3 font-medium">
-              {page} / {totalPages}
+
+          {/* Pagination */}
+          <div className="flex flex-col sm:flex-row items-center justify-between border-t border-border/50 p-4 text-xs text-muted-foreground gap-4">
+            <div>
+              Showing {employees.length === 0 ? 0 : (page - 1) * pageSize + 1} to{" "}
+              {Math.min(page * pageSize, total)} of {total} employees
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-              disabled={page === totalPages}
-              className="h-8 w-8 p-0"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                  disabled={page === 1}
+                  className="h-8 w-8 p-0 text-muted-foreground"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                {/* Simplified pagination display to match screenshot's style */}
+                <div className="flex items-center gap-1 mx-1">
+                  <div className="h-8 w-8 rounded-md bg-blue-600 text-white grid place-items-center font-medium">
+                    {page}
+                  </div>
+                  {totalPages > 1 && page < totalPages && (
+                    <div
+                      className="h-8 w-8 rounded-md border border-border text-muted-foreground grid place-items-center font-medium hover:bg-muted/50 cursor-pointer"
+                      onClick={() => setPage(page + 1)}
+                    >
+                      {page + 1}
+                    </div>
+                  )}
+                  {totalPages > page + 1 && (
+                    <div className="h-8 w-8 grid place-items-center text-muted-foreground/70">
+                      ...
+                    </div>
+                  )}
+                  {totalPages > page + 1 && (
+                    <div
+                      className="h-8 w-8 rounded-md border border-border text-muted-foreground grid place-items-center font-medium hover:bg-muted/50 cursor-pointer"
+                      onClick={() => setPage(totalPages)}
+                    >
+                      {totalPages}
+                    </div>
+                  )}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                  disabled={page === totalPages}
+                  className="h-8 w-8 p-0 text-muted-foreground"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <Select
+                value={String(pageSize)}
+                onValueChange={(value) => {
+                  setPageSize(Number(value));
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[100px] h-8 bg-card text-card-foreground text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 / page</SelectItem>
+                  <SelectItem value="20">20 / page</SelectItem>
+                  <SelectItem value="50">50 / page</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>
@@ -581,23 +756,60 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function SummaryCard({
-  label,
+function StatCard({
+  title,
   value,
-  icon: Icon,
+  subtext,
+  subtextColor,
+  subtextDot,
+  icon,
+  iconBg,
+  chartColor,
+  trend,
 }: {
-  label: string;
+  title: string;
   value: string | number;
-  icon: React.ComponentType<{ className?: string }>;
+  subtext: string;
+  subtextColor?: string;
+  subtextDot?: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  chartColor: string;
+  trend: "up" | "down";
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700">
-        <Icon className="h-4 w-4" />
+    <div className="bg-card text-card-foreground p-4 rounded-xl border border-border shadow-sm relative overflow-hidden">
+      <div className="flex justify-between items-start mb-2">
+        <div>
+          <p className="text-xs font-semibold text-foreground/80">{title}</p>
+          <h2 className="text-2xl font-bold text-foreground mt-1">{value}</h2>
+        </div>
+        <div className={cn("p-2 rounded-lg", iconBg)}>{icon}</div>
       </div>
-      <div className="min-w-0">
-        <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        <p className="mt-1 truncate text-lg font-semibold text-foreground">{value}</p>
+      <div className="flex items-center text-[10px] mt-2 z-10 relative">
+        {subtextDot && <span className={cn("w-1.5 h-1.5 rounded-full mr-1.5", subtextDot)}></span>}
+        <span className={subtextColor}>{subtext}</span>
+      </div>
+      <div className="absolute bottom-2 right-2 w-24 h-8 opacity-50 z-0">
+        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-full">
+          {trend === "up" ? (
+            <path
+              d="M0,25 C20,20 40,30 60,10 C80,-5 100,5 100,5"
+              fill="none"
+              className={chartColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          ) : (
+            <path
+              d="M0,5 C20,5 40,-5 60,15 C80,30 100,20 100,20"
+              fill="none"
+              className={chartColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
       </div>
     </div>
   );

@@ -194,10 +194,9 @@ export function generateLeaveForm6Excel(id: string) {
 }
 
 export function generateLeaveForm6Pdf(id: string) {
-  return api<{ fileName: string; previewUrl: string }>(
-    `/api/leave/applications/${id}/form6/pdf`,
-    { method: "POST" },
-  );
+  return api<{ fileName: string; previewUrl: string }>(`/api/leave/applications/${id}/form6/pdf`, {
+    method: "POST",
+  });
 }
 
 export function getEmployeeLeave(employeeId: string) {

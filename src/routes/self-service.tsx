@@ -94,8 +94,8 @@ export function EmployeeDashboardHome() {
       getEmployeeLeave(user.employeeId),
       listDtr({
         employeeId: user.employeeId,
-        from: new Date().toLocaleDateString('en-CA'),
-        to: new Date().toLocaleDateString('en-CA'),
+        from: new Date().toLocaleDateString("en-CA"),
+        to: new Date().toLocaleDateString("en-CA"),
       }).catch(() => null),
     ])
       .then(([employeeResult, leaveResult, dtrResult]) => {
@@ -240,8 +240,8 @@ export function EmployeeProfileHome() {
       getEmployeeLeave(user.employeeId),
       listDtr({
         employeeId: user.employeeId,
-        from: new Date().toLocaleDateString('en-CA'),
-        to: new Date().toLocaleDateString('en-CA'),
+        from: new Date().toLocaleDateString("en-CA"),
+        to: new Date().toLocaleDateString("en-CA"),
       }).catch(() => null),
     ])
       .then(([employeeResult, leaveResult, dtrResult]) => {
@@ -371,12 +371,7 @@ function EmployeeServicesHome() {
       toast.info("No employee record is linked to this account yet");
       return;
     }
-    if (
-      !leaveForm.leaveTypeId ||
-      !leaveForm.dateFrom ||
-      !leaveForm.dateTo ||
-      calculatedDays <= 0
-    ) {
+    if (!leaveForm.leaveTypeId || !leaveForm.dateFrom || !leaveForm.dateTo || calculatedDays <= 0) {
       toast.error("Leave type and valid inclusive dates are required");
       return;
     }
@@ -531,9 +526,7 @@ function EmployeeServicesHome() {
             <FormField label="Leave Type">
               <Select
                 value={leaveForm.leaveTypeId}
-                onValueChange={(value) =>
-                  setLeaveForm({ ...emptyLeaveForm(), leaveTypeId: value })
-                }
+                onValueChange={(value) => setLeaveForm({ ...emptyLeaveForm(), leaveTypeId: value })}
                 disabled={leaveTypesLoading || leaveTypes.length === 0}
               >
                 <SelectTrigger>
@@ -625,9 +618,7 @@ function EmployeeServicesHome() {
                 <FormField label="Sick Leave Detail" className="sm:col-span-2">
                   <RadioGroup
                     value={leaveForm.detailSickType}
-                    onValueChange={(value) =>
-                      setLeaveForm({ ...leaveForm, detailSickType: value })
-                    }
+                    onValueChange={(value) => setLeaveForm({ ...leaveForm, detailSickType: value })}
                     className="grid gap-2 sm:grid-cols-2"
                   >
                     <RadioChoice value="Hospital" label="In hospital" />
@@ -1010,13 +1001,7 @@ function RadioChoice({ value, label }: { value: string; label: string }) {
   );
 }
 
-function LeaveTypeGuidance({
-  leaveType,
-  className,
-}: {
-  leaveType: LeaveType;
-  className?: string;
-}) {
+function LeaveTypeGuidance({ leaveType, className }: { leaveType: LeaveType; className?: string }) {
   return (
     <div className={cn("rounded-lg border border-blue-100 bg-blue-50/60 p-3", className)}>
       <div className="flex flex-wrap gap-2">

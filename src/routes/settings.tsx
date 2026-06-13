@@ -16,9 +16,21 @@ export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
-interface DepartmentRow { id: number; name: string }
-interface PositionRow { id: number; title: string }
-interface SalaryGradeRow { id: number; ordinance: string; grade: number; step: number; amount: number }
+interface DepartmentRow {
+  id: number;
+  name: string;
+}
+interface PositionRow {
+  id: number;
+  title: string;
+}
+interface SalaryGradeRow {
+  id: number;
+  ordinance: string;
+  grade: number;
+  step: number;
+  amount: number;
+}
 
 function SettingsPage() {
   const { can, user } = useAuth();
@@ -30,11 +42,16 @@ function SettingsPage() {
   const [newPos, setNewPos] = useState("");
   const [deptQuery, setDeptQuery] = useState("");
   const [posQuery, setPosQuery] = useState("");
-  const [newSalaryGrade, setNewSalaryGrade] = useState({ ordinance: "", grade: "", step: "", amount: "" });
+  const [newSalaryGrade, setNewSalaryGrade] = useState({
+    ordinance: "",
+    grade: "",
+    step: "",
+    amount: "",
+  });
   const [loading, setLoading] = useState(true);
 
-  const filteredDepts = depts.filter(d => d.name.toLowerCase().includes(deptQuery.toLowerCase()));
-  const filteredPos = pos.filter(p => p.title.toLowerCase().includes(posQuery.toLowerCase()));
+  const filteredDepts = depts.filter((d) => d.name.toLowerCase().includes(deptQuery.toLowerCase()));
+  const filteredPos = pos.filter((p) => p.title.toLowerCase().includes(posQuery.toLowerCase()));
 
   const isAdmin = user?.role === "Admin";
 
@@ -134,7 +151,9 @@ function SettingsPage() {
           amount: Number(newSalaryGrade.amount),
         }),
       });
-      setSalaryGrades((prev) => [...prev, result.salaryGrade].sort((a, b) => a.grade - b.grade || a.step - b.step));
+      setSalaryGrades((prev) =>
+        [...prev, result.salaryGrade].sort((a, b) => a.grade - b.grade || a.step - b.step),
+      );
       setNewSalaryGrade({ ordinance: "", grade: "", step: "", amount: "" });
       toast.success("Salary grade added");
     } catch (error) {
@@ -155,40 +174,46 @@ function SettingsPage() {
   return (
     <AppShell title="Settings" subtitle="Manage reference data, salary tables, and accounts">
       <Tabs defaultValue="agency">
-        {loading && <div className="mb-3 text-sm text-muted-foreground">Loading database settings...</div>}
+        {loading && (
+          <div className="mb-3 text-sm text-muted-foreground">Loading database settings...</div>
+        )}
         <div className="overflow-x-auto no-scrollbar">
           <TabsList className="bg-card border border-border w-max min-w-full">
             <TabsTrigger value="agency">Agency Profile</TabsTrigger>
             <TabsTrigger value="departments">Departments</TabsTrigger>
             <TabsTrigger value="positions">Positions</TabsTrigger>
             <TabsTrigger value="salary">Salary Grades</TabsTrigger>
-            <TabsTrigger value="users" disabled={!isAdmin}>Users</TabsTrigger>
+            <TabsTrigger value="users" disabled={!isAdmin}>
+              Users
+            </TabsTrigger>
           </TabsList>
         </div>
 
         <TabsContent value="agency" className="mt-4">
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <h3 className="text-lg font-medium mb-1">Agency Branding</h3>
-            <p className="text-sm text-muted-foreground mb-6">Customize the system name and logo for your agency.</p>
-            
+            <p className="text-sm text-muted-foreground mb-6">
+              Customize the system name and logo for your agency.
+            </p>
+
             <div className="space-y-6 max-w-2xl">
               <div className="grid gap-2">
                 <Label htmlFor="agency-name">Agency Name</Label>
-                <Input 
-                  id="agency-name" 
-                  value={agency.name} 
+                <Input
+                  id="agency-name"
+                  value={agency.name}
                   onChange={(e) => updateAgency({ name: e.target.value })}
-                  placeholder="e.g. Agency Name" 
+                  placeholder="e.g. Agency Name"
                 />
               </div>
 
               <div className="grid gap-2">
                 <Label htmlFor="agency-tagline">Tagline / Subtitle</Label>
-                <Input 
-                  id="agency-tagline" 
-                  value={agency.tagline} 
+                <Input
+                  id="agency-tagline"
+                  value={agency.tagline}
                   onChange={(e) => updateAgency({ tagline: e.target.value })}
-                  placeholder="e.g. Marinduque LGU" 
+                  placeholder="e.g. Marinduque LGU"
                 />
               </div>
 
@@ -215,18 +240,24 @@ function SettingsPage() {
                     />
                   </div>
                   <div className="relative group shrink-0">
-                    <div className={cn(
-                      "h-24 w-24 rounded-xl grid place-items-center overflow-hidden shadow-sm",
-                      agency.logoUrl ? "" : "border border-dashed border-border bg-muted/30"
-                    )}>
+                    <div
+                      className={cn(
+                        "h-24 w-24 rounded-xl grid place-items-center overflow-hidden shadow-sm",
+                        agency.logoUrl ? "" : "border border-dashed border-border bg-muted/30",
+                      )}
+                    >
                       {agency.logoUrl ? (
-                        <img src={agency.logoUrl} alt="Logo Preview" className="h-full w-full object-contain" />
+                        <img
+                          src={agency.logoUrl}
+                          alt="Logo Preview"
+                          className="h-full w-full object-contain"
+                        />
                       ) : (
                         <ShieldCheck className="h-10 w-10 text-muted-foreground/30" />
                       )}
                     </div>
                     {agency.logoUrl && (
-                      <button 
+                      <button
                         onClick={() => updateAgency({ logoUrl: "" })}
                         className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
                       >
@@ -262,13 +293,17 @@ function SettingsPage() {
                   <div className="relative group shrink-0">
                     <div className="h-12 w-12 rounded-lg border border-dashed border-border bg-muted/30 grid place-items-center overflow-hidden shadow-sm">
                       {agency.iconUrl ? (
-                        <img src={agency.iconUrl} alt="Icon Preview" className="h-full w-full object-cover" />
+                        <img
+                          src={agency.iconUrl}
+                          alt="Icon Preview"
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
                         <div className="text-[9px] text-muted-foreground">1:1</div>
                       )}
                     </div>
                     {agency.iconUrl && (
-                      <button 
+                      <button
                         onClick={() => updateAgency({ iconUrl: "" })}
                         className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                       >
@@ -302,18 +337,24 @@ function SettingsPage() {
                     />
                   </div>
                   <div className="relative group shrink-0">
-                    <div className={cn(
-                      "h-20 w-32 rounded-lg grid place-items-center overflow-hidden shadow-sm",
-                      agency.bannerUrl ? "" : "border border-dashed border-border bg-muted/30"
-                    )}>
+                    <div
+                      className={cn(
+                        "h-20 w-32 rounded-lg grid place-items-center overflow-hidden shadow-sm",
+                        agency.bannerUrl ? "" : "border border-dashed border-border bg-muted/30",
+                      )}
+                    >
                       {agency.bannerUrl ? (
-                        <img src={agency.bannerUrl} alt="Banner Preview" className="h-full w-full object-cover" />
+                        <img
+                          src={agency.bannerUrl}
+                          alt="Banner Preview"
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
                         <div className="text-[9px] text-muted-foreground">16:9</div>
                       )}
                     </div>
                     {agency.bannerUrl && (
-                      <button 
+                      <button
                         onClick={() => updateAgency({ bannerUrl: "" })}
                         className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
                       >
@@ -325,7 +366,7 @@ function SettingsPage() {
               </div>
 
               <div className="pt-4 flex justify-end">
-                <Button 
+                <Button
                   onClick={saveAgency}
                   className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-md hover:shadow-blue-500/20 transition-all duration-200"
                 >
@@ -340,35 +381,48 @@ function SettingsPage() {
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="flex flex-col sm:flex-row gap-3 mb-6">
               <div className="flex-1 flex gap-2">
-                <Input 
-                  placeholder="New department name" 
-                  value={newDept} 
-                  onChange={(e) => setNewDept(e.target.value)} 
+                <Input
+                  placeholder="New department name"
+                  value={newDept}
+                  onChange={(e) => setNewDept(e.target.value)}
                 />
                 <Button
                   disabled={!can("edit") || !newDept.trim()}
                   onClick={addDepartment}
                   className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                ><Plus className="h-4 w-4 mr-1" /> Add</Button>
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Add
+                </Button>
               </div>
               <div className="w-full sm:w-64">
-                <Input 
-                  placeholder="Search departments..." 
-                  value={deptQuery} 
-                  onChange={(e) => setDeptQuery(e.target.value)} 
+                <Input
+                  placeholder="Search departments..."
+                  value={deptQuery}
+                  onChange={(e) => setDeptQuery(e.target.value)}
                   className="bg-muted/50"
                 />
               </div>
             </div>
             <ul className="divide-y divide-border border-t border-border">
               {filteredDepts.map((d) => (
-                <li key={d.id} className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors">
+                <li
+                  key={d.id}
+                  className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors"
+                >
                   <span>{d.name}</span>
-                  <button disabled={!can("delete")} onClick={() => deleteDepartment(d.id)} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+                  <button
+                    disabled={!can("delete")}
+                    onClick={() => deleteDepartment(d.id)}
+                    className="text-muted-foreground hover:text-destructive disabled:opacity-30"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </li>
               ))}
               {filteredDepts.length === 0 && (
-                <li className="py-8 text-center text-muted-foreground text-sm">No departments found.</li>
+                <li className="py-8 text-center text-muted-foreground text-sm">
+                  No departments found.
+                </li>
               )}
             </ul>
           </div>
@@ -378,35 +432,48 @@ function SettingsPage() {
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="flex flex-col sm:flex-row gap-3 mb-6">
               <div className="flex-1 flex gap-2">
-                <Input 
-                  placeholder="New position title" 
-                  value={newPos} 
-                  onChange={(e) => setNewPos(e.target.value)} 
+                <Input
+                  placeholder="New position title"
+                  value={newPos}
+                  onChange={(e) => setNewPos(e.target.value)}
                 />
                 <Button
                   disabled={!can("edit") || !newPos.trim()}
                   onClick={addPosition}
                   className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                ><Plus className="h-4 w-4 mr-1" /> Add</Button>
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Add
+                </Button>
               </div>
               <div className="w-full sm:w-64">
-                <Input 
-                  placeholder="Search positions..." 
-                  value={posQuery} 
-                  onChange={(e) => setPosQuery(e.target.value)} 
+                <Input
+                  placeholder="Search positions..."
+                  value={posQuery}
+                  onChange={(e) => setPosQuery(e.target.value)}
                   className="bg-muted/50"
                 />
               </div>
             </div>
             <ul className="divide-y divide-border border-t border-border">
               {filteredPos.map((p) => (
-                <li key={p.id} className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors">
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors"
+                >
                   <span>{p.title}</span>
-                  <button disabled={!can("delete")} onClick={() => deletePosition(p.id)} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+                  <button
+                    disabled={!can("delete")}
+                    onClick={() => deletePosition(p.id)}
+                    className="text-muted-foreground hover:text-destructive disabled:opacity-30"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </li>
               ))}
               {filteredPos.length === 0 && (
-                <li className="py-8 text-center text-muted-foreground text-sm">No positions found.</li>
+                <li className="py-8 text-center text-muted-foreground text-sm">
+                  No positions found.
+                </li>
               )}
             </ul>
           </div>
@@ -416,15 +483,42 @@ function SettingsPage() {
           <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
             <div className="p-5 border-b border-border">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-                <Input placeholder="Ordinance" value={newSalaryGrade.ordinance} onChange={(e) => setNewSalaryGrade({ ...newSalaryGrade, ordinance: e.target.value })} />
-                <Input placeholder="Grade (e.g. 1)" value={newSalaryGrade.grade} onChange={(e) => setNewSalaryGrade({ ...newSalaryGrade, grade: e.target.value })} />
-                <Input placeholder="Step (e.g. 1)" value={newSalaryGrade.step} onChange={(e) => setNewSalaryGrade({ ...newSalaryGrade, step: e.target.value })} />
-                <Input placeholder="Amount" type="number" value={newSalaryGrade.amount} onChange={(e) => setNewSalaryGrade({ ...newSalaryGrade, amount: e.target.value })} />
+                <Input
+                  placeholder="Ordinance"
+                  value={newSalaryGrade.ordinance}
+                  onChange={(e) =>
+                    setNewSalaryGrade({ ...newSalaryGrade, ordinance: e.target.value })
+                  }
+                />
+                <Input
+                  placeholder="Grade (e.g. 1)"
+                  value={newSalaryGrade.grade}
+                  onChange={(e) => setNewSalaryGrade({ ...newSalaryGrade, grade: e.target.value })}
+                />
+                <Input
+                  placeholder="Step (e.g. 1)"
+                  value={newSalaryGrade.step}
+                  onChange={(e) => setNewSalaryGrade({ ...newSalaryGrade, step: e.target.value })}
+                />
+                <Input
+                  placeholder="Amount"
+                  type="number"
+                  value={newSalaryGrade.amount}
+                  onChange={(e) => setNewSalaryGrade({ ...newSalaryGrade, amount: e.target.value })}
+                />
                 <Button
-                  disabled={!can("edit") || !newSalaryGrade.ordinance.trim() || !newSalaryGrade.grade.trim() || !newSalaryGrade.step.trim() || !newSalaryGrade.amount.trim()}
+                  disabled={
+                    !can("edit") ||
+                    !newSalaryGrade.ordinance.trim() ||
+                    !newSalaryGrade.grade.trim() ||
+                    !newSalaryGrade.step.trim() ||
+                    !newSalaryGrade.amount.trim()
+                  }
                   onClick={addSalaryGrade}
                   className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                ><Plus className="h-4 w-4 mr-1" /> Add</Button>
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Add
+                </Button>
               </div>
             </div>
             <div className="max-h-[600px] overflow-auto">
@@ -444,9 +538,17 @@ function SettingsPage() {
                       <td className="px-4 py-2.5">{s.ordinance}</td>
                       <td className="px-4 py-2.5">SG-{s.grade}</td>
                       <td className="px-4 py-2.5">Step {s.step}</td>
-                      <td className="px-4 py-2.5 text-right font-mono">{s.amount.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">
+                        {s.amount.toLocaleString()}
+                      </td>
                       <td className="px-4 py-2.5 text-right">
-                        <button disabled={!can("delete")} onClick={() => deleteSalaryGrade(s.id)} className="text-muted-foreground hover:text-destructive disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+                        <button
+                          disabled={!can("delete")}
+                          onClick={() => deleteSalaryGrade(s.id)}
+                          className="text-muted-foreground hover:text-destructive disabled:opacity-30"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -459,7 +561,9 @@ function SettingsPage() {
         <TabsContent value="users" className="mt-4">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             {!isAdmin ? (
-              <div className="text-sm text-muted-foreground py-8 text-center">Admin access required.</div>
+              <div className="text-sm text-muted-foreground py-8 text-center">
+                Admin access required.
+              </div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
@@ -471,7 +575,9 @@ function SettingsPage() {
                 </thead>
                 <tbody>
                   <tr className="border-t border-border">
-                    <td className="px-2 py-3 text-muted-foreground" colSpan={3}>Use System Administration for user add, edit, and delete.</td>
+                    <td className="px-2 py-3 text-muted-foreground" colSpan={3}>
+                      Use System Administration for user add, edit, and delete.
+                    </td>
                   </tr>
                 </tbody>
               </table>

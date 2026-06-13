@@ -1,11 +1,6 @@
 import { api } from "@/lib/api";
 
-export const EMPLOYMENT_STATUSES = [
-  "Permanent",
-  "Regular",
-  "Casual",
-  "JO/COS",
-] as const;
+export const EMPLOYMENT_STATUSES = ["Permanent", "Regular", "Casual", "JO/COS"] as const;
 export const EMPLOYEE_LEVELS = ["First Level", "Second Level", "Third Level", "Executive"] as const;
 export const GENDERS = ["Male", "Female"] as const;
 export const CIVIL_STATUSES = ["Single", "Married", "Widowed", "Separated"] as const;

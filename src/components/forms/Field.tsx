@@ -7,11 +7,17 @@ export function Field({
   required,
   className,
   children,
-}: { label: string; required?: boolean; className?: string; children: ReactNode }) {
+}: {
+  label: string;
+  required?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
     <div className={cn("space-y-1", className)}>
       <Label className="text-xs font-medium text-muted-foreground">
-        {label}{required && <span className="text-destructive ml-0.5">*</span>}
+        {label}
+        {required && <span className="text-destructive ml-0.5">*</span>}
       </Label>
       {children}
     </div>
