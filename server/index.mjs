@@ -743,9 +743,19 @@ function parseJson(value, fallback = {}) {
   }
 }
 
+function formatLocalDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 function normalizeDate(value) {
   if (!value) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) return formatLocalDate(value);
   return String(value).slice(0, 10);
 }
 
@@ -1002,7 +1012,9 @@ function leaveApplicationRow(row) {
 
 function formatTime(value) {
   if (!value) return "";
-  if (value instanceof Date) return value.toISOString().slice(11, 16);
+  if (value instanceof Date) {
+    return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
+  }
   const text = String(value);
   if (text === "00:00:00" || text === "00:00") return "";
   return text.slice(0, 5);
@@ -1267,6 +1279,7 @@ async function initializeDatabase() {
     waitForConnections: true,
     connectionLimit: 10,
     namedPlaceholders: true,
+    dateStrings: true,
   });
 
   await pool.query(`
@@ -2415,8 +2428,8 @@ async function readAttendanceRows({ employeeId, from, to, q = "", limit = 500 })
 
 function defaultAttendanceRange(url) {
   const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const first = formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const last = formatLocalDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
   return {
     from: String(url.searchParams.get("from") || first).slice(0, 10),
     to: String(url.searchParams.get("to") || last).slice(0, 10),
@@ -3626,7 +3639,7 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
       for (; cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
         const day = cursor.getDay();
         if (skipWeekends && (day === 0 || day === 6)) continue;
-        const workDate = cursor.toISOString().slice(0, 10);
+        const workDate = formatLocalDate(cursor);
         for (const employeeId of employeeIds) {
           await connection.execute(
             `INSERT INTO employee_schedule_overrides
@@ -4034,10 +4047,10 @@ async function handleBiometricSyncNow(req, res) {
 
   const body = await readBody(req);
   const today = new Date();
-  const fallbackTo = today.toISOString().slice(0, 10);
+  const fallbackTo = formatLocalDate(today);
   const fallbackFromDate = new Date(today);
   fallbackFromDate.setDate(today.getDate() - Number(body.daysBack || 7));
-  const from = normalizeDate(body.from || body.startDate) || fallbackFromDate.toISOString().slice(0, 10);
+  const from = normalizeDate(body.from || body.startDate) || formatLocalDate(fallbackFromDate);
   const to = normalizeDate(body.to || body.endDate) || fallbackTo;
   const deviceId = String(body.deviceId || body.biometricId || "").trim();
 

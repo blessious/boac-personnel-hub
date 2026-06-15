@@ -83,14 +83,18 @@ export const Route = createFileRoute("/attendance")({
 });
 
 const today = new Date();
-const DEFAULT_FROM = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-const DEFAULT_TO = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-  .toISOString()
-  .slice(0, 10);
+const formatLocalDate = (date: Date) =>
+  [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+const DEFAULT_FROM = formatLocalDate(new Date(today.getFullYear(), today.getMonth(), 1));
+const DEFAULT_TO = formatLocalDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
 
 const EMPTY_DTR_FORM: DtrPayload = {
   employeeDbId: "",
-  workDate: new Date().toISOString().slice(0, 10),
+  workDate: formatLocalDate(new Date()),
   amIn: "",
   amOut: "",
   pmIn: "",
