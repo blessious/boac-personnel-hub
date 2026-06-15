@@ -792,6 +792,7 @@ function employeeDbPayload(body, existing = {}) {
 
   return {
     employeeNo: String(body.employeeId ?? existing.employeeId ?? "").trim(),
+    biometricId: String(body.biometricId ?? body.biometric_id ?? existing.biometricId ?? "").trim(),
     firstname,
     middlename: String(body.middlename ?? existing.middlename ?? "").trim(),
     lastname,
@@ -1336,6 +1337,7 @@ async function initializeDatabase() {
       email VARCHAR(180) NULL,
       cellphone_no VARCHAR(80) NULL,
       photo_url LONGTEXT NULL,
+      is_hidden TINYINT(1) NOT NULL DEFAULT 0,
       profile_json JSON NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1355,10 +1357,16 @@ async function initializeDatabase() {
   await ensureColumn("employees", "dtr_noter_id", "BIGINT UNSIGNED NULL");
   await ensureColumn("employees", "is_dtr_noter", "TINYINT(1) NOT NULL DEFAULT 0");
   await ensureColumn("employees", "regular", "TINYINT(1) NOT NULL DEFAULT 1");
+  await ensureColumn("employees", "is_hidden", "TINYINT(1) NOT NULL DEFAULT 0");
   await ensureIndex(
     "employees",
     "idx_employees_biometric_id",
     "INDEX idx_employees_biometric_id (biometric_id)",
+  );
+  await ensureIndex(
+    "employees",
+    "idx_employees_is_hidden",
+    "INDEX idx_employees_is_hidden (is_hidden)",
   );
 
   const employeeIdDefinition = await getEmployeeIdDefinition();
@@ -2280,15 +2288,16 @@ async function handleListEmployees(req, res, url) {
   const q = String(url.searchParams.get("q") || "").trim();
   const department = String(url.searchParams.get("department") || "").trim();
   const status = String(url.searchParams.get("status") || "").trim();
+  const empStatus = String(url.searchParams.get("empStatus") || "").trim();
   const page = Math.max(1, Number(url.searchParams.get("page") || 1));
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get("pageSize") || 10)));
   const offset = (page - 1) * pageSize;
-  const where = [];
+  const where = [`is_hidden = 0`];
   const params = {};
 
   if (q) {
     where.push(
-      `(employee_no LIKE :q OR firstname LIKE :q OR middlename LIKE :q OR lastname LIKE :q OR email LIKE :q)`,
+      `(employee_no LIKE :q OR biometric_id LIKE :q OR firstname LIKE :q OR middlename LIKE :q OR lastname LIKE :q OR email LIKE :q)`,
     );
     params.q = `%${q}%`;
   }
@@ -2299,6 +2308,10 @@ async function handleListEmployees(req, res, url) {
   if (status) {
     where.push(`status = :status`);
     params.status = status;
+  }
+  if (empStatus) {
+    where.push(`emp_status = :empStatus`);
+    params.empStatus = empStatus;
   }
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
@@ -4141,12 +4154,12 @@ async function handleCreateEmployee(req, res) {
   try {
     await pool.execute(
       `INSERT INTO employees (
-        id, employee_no, firstname, middlename, lastname, name_ext, department, position, status, level,
+        id, employee_no, biometric_id, firstname, middlename, lastname, name_ext, department, position, status, level,
         status_class, date_hired, date_employed, item_no, emp_status, birthday, gender, civil_status,
         email, cellphone_no, photo_url, schedule_am_in, schedule_am_out, schedule_pm_in, schedule_pm_out,
         dtr_signatory, dtr_noter_id, is_dtr_noter, regular, profile_json
       ) VALUES (
-        :id, :employeeNo, :firstname, :middlename, :lastname, :nameExt, :department, :position, :status, :level,
+        :id, :employeeNo, :biometricId, :firstname, :middlename, :lastname, :nameExt, :department, :position, :status, :level,
         :statusClass, :dateHired, :dateEmployed, :itemNo, :empStatus, :birthday, :gender, :civilStatus,
         :email, :cellphoneNo, :photoUrl, :scheduleAmIn, :scheduleAmOut, :schedulePmIn, :schedulePmOut,
         :dtrSignatory, :dtrNoterId, :isDtrNoter, :regular, :profileJson
@@ -4203,6 +4216,7 @@ async function handleUpdateEmployee(req, res, id) {
     await pool.execute(
       `UPDATE employees SET
         employee_no = :employeeNo,
+        biometric_id = :biometricId,
         firstname = :firstname,
         middlename = :middlename,
         lastname = :lastname,
@@ -4247,9 +4261,13 @@ async function handleDeleteEmployee(req, res, id) {
   const user = await requireEmployeeWrite(req, res);
   if (!user) return;
 
-  const [result] = await pool.execute(`DELETE FROM employees WHERE id = :id`, { id });
-  if (result.affectedRows === 0) return json(res, 404, { error: "Employee not found" });
-  await logAudit(user.id, "employees.delete", { employeeId: id }, req);
+  const [[employee]] = await pool.execute(`SELECT id FROM employees WHERE id = :id LIMIT 1`, {
+    id,
+  });
+  if (!employee) return json(res, 404, { error: "Employee not found" });
+
+  await pool.execute(`UPDATE employees SET is_hidden = 1 WHERE id = :id`, { id });
+  await logAudit(user.id, "employees.hide", { employeeId: id }, req);
   return json(res, 200, { ok: true });
 }
 

@@ -165,26 +165,33 @@ function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <section className="rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-5">
+          <section className="flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-5">
             <div className="mb-6">
               <h3 className="text-base font-semibold text-foreground">Workforce Age Profile</h3>
               <p className="mt-1 text-xs text-muted-foreground">
                 Age distribution based on recorded birthdates.
               </p>
             </div>
-            <div className="mt-5 space-y-4">
+            <div className="mb-4 grid grid-cols-[72px_minmax(0,1fr)_72px] items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.02em] text-muted-foreground">
+              <div>Age Group</div>
+              <div />
+              <div className="text-right">% of Total</div>
+            </div>
+            <div className="mt-1 flex-1 space-y-4">
               <AgeBar label="Under 30" count={getAgeCount("Under 30")} total={totalEmployees} />
               <AgeBar label="30-39" count={getAgeCount("30-39")} total={totalEmployees} active />
               <AgeBar label="40-49" count={getAgeCount("40-49")} total={totalEmployees} />
               <AgeBar label="50-59" count={getAgeCount("50-59")} total={totalEmployees} />
               <AgeBar label="60+" count={getAgeCount("60+")} total={totalEmployees} />
             </div>
-            <div className="mt-4 border-t border-border/50 pt-4 text-right text-xs font-semibold text-foreground/80">
-              Total: {totalEmployees}
+            <div className="mt-6 border-t border-border/50 pt-4 text-right">
+              <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                Total: {totalEmployees}
+              </span>
             </div>
           </section>
 
-          <section className="flex flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-3">
+          <section className="flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-3">
             <div>
               <h3 className="text-base font-semibold text-foreground">Employment Type Mix</h3>
               <p className="mt-1 text-xs text-muted-foreground">Distribution by employment type.</p>
@@ -249,14 +256,14 @@ function Dashboard() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-4">
+          <section className="flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-4">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Employees by Division</h3>
               <p className="mt-1 text-xs text-muted-foreground">
                 Distribution across hospital divisions.
               </p>
             </div>
-            <div className="mt-5 space-y-4">
+            <div className="mt-5 flex-1 space-y-4">
               {divisions.map((division, index) => {
                 const pct = percentOf(division.total, totalEmployees);
                 const colors = ["bg-blue-500", "bg-amber-500", "bg-emerald-500", "bg-purple-500"];
@@ -276,6 +283,9 @@ function Dashboard() {
                   No division data available
                 </div>
               )}
+            </div>
+            <div className="mt-6 border-t border-border/50 pt-4 text-sm font-semibold text-foreground/85">
+              Total: {totalEmployees}
             </div>
           </section>
         </div>

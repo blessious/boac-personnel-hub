@@ -13,6 +13,7 @@ export type CivilStatus = (typeof CIVIL_STATUSES)[number];
 export type EmployeeRecord = {
   id: string;
   employeeId: string;
+  biometricId: string;
   lastname: string;
   firstname: string;
   middlename: string;
@@ -137,6 +138,7 @@ export function listEmployees(params: {
   q?: string;
   department?: string;
   status?: string;
+  empStatus?: string;
   page?: number;
   pageSize?: number;
 }) {
@@ -144,6 +146,7 @@ export function listEmployees(params: {
   if (params.q) query.set("q", params.q);
   if (params.department && params.department !== "all") query.set("department", params.department);
   if (params.status && params.status !== "all") query.set("status", params.status);
+  if (params.empStatus && params.empStatus !== "all") query.set("empStatus", params.empStatus);
   if (params.page) query.set("page", String(params.page));
   if (params.pageSize) query.set("pageSize", String(params.pageSize));
   return api<EmployeeListResponse>(`/api/employees?${query.toString()}`);

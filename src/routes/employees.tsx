@@ -15,6 +15,7 @@ import {
   UserCheck,
   SlidersHorizontal,
   LayoutGrid,
+  List,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
@@ -61,19 +62,26 @@ export const Route = createFileRoute("/employees")({
 });
 
 const EMP_TYPE_COLOR: Record<string, string> = {
-  Permanent: "text-emerald-700 border-emerald-200 bg-emerald-50",
-  Regular: "text-blue-700 border-blue-200 bg-blue-50",
-  Casual: "text-purple-700 border-purple-200 bg-purple-50",
-  "JO/COS": "text-amber-700 border-amber-200 bg-amber-50",
+  Permanent:
+    "text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-200 dark:border-emerald-500/30 dark:bg-emerald-500/15",
+  Regular:
+    "text-blue-700 border-blue-200 bg-blue-50 dark:text-blue-200 dark:border-blue-500/30 dark:bg-blue-500/15",
+  Casual:
+    "text-purple-700 border-purple-200 bg-purple-50 dark:text-purple-200 dark:border-purple-500/30 dark:bg-purple-500/15",
+  "JO/COS":
+    "text-amber-700 border-amber-200 bg-amber-50 dark:text-amber-200 dark:border-amber-500/30 dark:bg-amber-500/15",
 };
 
 const EMP_STATUS_COLOR: Record<string, string> = {
-  Active: "text-emerald-700 border-emerald-200 bg-emerald-50",
-  Inactive: "text-rose-700 border-rose-200 bg-rose-50",
+  Active:
+    "text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-200 dark:border-emerald-500/30 dark:bg-emerald-500/15",
+  Inactive:
+    "text-rose-700 border-rose-200 bg-rose-50 dark:text-rose-200 dark:border-rose-500/30 dark:bg-rose-500/15",
 };
 
 const EMPTY_FORM: Partial<EmployeeRecord> = {
   employeeId: "",
+  biometricId: "",
   firstname: "",
   middlename: "",
   lastname: "",
@@ -94,8 +102,11 @@ function EmployeesPage() {
   const [q, setQ] = useState("");
   const [dept, setDept] = useState("all");
   const [status, setStatus] = useState("all");
+  const [empStatus, setEmpStatus] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -110,13 +121,14 @@ function EmployeesPage() {
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [form, setForm] = useState<Partial<EmployeeRecord>>(EMPTY_FORM);
+  const [positionQuery, setPositionQuery] = useState("");
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const load = () => {
     setLoading(true);
     setError("");
-    listEmployees({ q, department: dept, status, page, pageSize })
+    listEmployees({ q, department: dept, status, empStatus, page, pageSize })
       .then((result) => {
         setEmployees(result.employees);
         setTotal(result.total);
@@ -125,7 +137,7 @@ function EmployeesPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [q, dept, status, page, pageSize]);
+  useEffect(load, [q, dept, status, empStatus, page, pageSize]);
 
   useEffect(() => {
     getSettingsOptions()
@@ -147,6 +159,11 @@ function EmployeesPage() {
     () => options.positions.map((position) => position.title),
     [options.positions],
   );
+  const filteredPositions = useMemo(() => {
+    const query = positionQuery.trim().toLowerCase();
+    if (!query) return positions;
+    return positions.filter((position) => position.toLowerCase().includes(query));
+  }, [positionQuery, positions]);
 
   if (location.pathname !== "/employees") return <Outlet />;
 
@@ -156,6 +173,7 @@ function EmployeesPage() {
       toast.success("Employee added");
       setShowAddDialog(false);
       setForm(EMPTY_FORM);
+      setPositionQuery("");
       setPage(1);
       load();
       return result.employee;
@@ -167,13 +185,13 @@ function EmployeesPage() {
   const remove = async (employee: EmployeeRecord) => {
     if (
       !window.confirm(
-        `Delete ${employee.lastname}, ${employee.firstname}? This removes the 201 file and related records.`,
+        `Delete ${employee.lastname}, ${employee.firstname} from Employee Management? The database record will be kept.`,
       )
     )
       return;
     try {
       await deleteEmployee(employee.id);
-      toast.success("Employee deleted");
+      toast.success("Employee deleted from the list");
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to delete employee");
@@ -242,7 +260,7 @@ function EmployeesPage() {
             subtext="Current records"
             subtextColor="text-muted-foreground"
             icon={<Users className="w-5 h-5 text-blue-600" />}
-            iconBg="bg-blue-50"
+            iconBg="bg-blue-50 dark:bg-blue-500/15"
             chartColor="stroke-blue-500"
             trend="up"
           />
@@ -253,7 +271,7 @@ function EmployeesPage() {
             subtextColor="text-muted-foreground"
             subtextDot="bg-emerald-500"
             icon={<Briefcase className="w-5 h-5 text-emerald-600" />}
-            iconBg="bg-emerald-50"
+            iconBg="bg-emerald-50 dark:bg-emerald-500/15"
             chartColor="stroke-emerald-500"
             trend="up"
           />
@@ -264,7 +282,7 @@ function EmployeesPage() {
             subtextColor="text-muted-foreground"
             subtextDot="bg-amber-500"
             icon={<UserCheck className="w-5 h-5 text-amber-600" />}
-            iconBg="bg-amber-50"
+            iconBg="bg-amber-50 dark:bg-amber-500/15"
             chartColor="stroke-amber-500"
             trend="down"
           />
@@ -275,7 +293,7 @@ function EmployeesPage() {
             subtextColor="text-muted-foreground"
             subtextDot="bg-blue-500"
             icon={<Activity className="w-5 h-5 text-blue-600" />}
-            iconBg="bg-blue-50"
+            iconBg="bg-blue-50 dark:bg-blue-500/15"
             chartColor="stroke-blue-500"
             trend="up"
           />
@@ -337,28 +355,76 @@ function EmployeesPage() {
               </SelectContent>
             </Select>
 
-            {/* Placeholder for Status Filter since it's not implemented in API */}
-            <Select disabled>
-              <SelectTrigger className="w-full lg:w-[160px] bg-card text-card-foreground opacity-70">
+            <Select
+              value={empStatus}
+              onValueChange={(value) => {
+                setEmpStatus(value);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full lg:w-[160px] bg-card text-card-foreground">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="Active">Active</SelectItem>
+                <SelectItem value="Inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
 
             <div className="flex items-center gap-2 ml-auto mt-3 lg:mt-0 w-full lg:w-auto">
-              <Button variant="outline" className="flex-1 lg:flex-none text-muted-foreground">
+              <Button
+                variant={showAdvancedFilters ? "default" : "outline"}
+                className="flex-1 lg:flex-none"
+                onClick={() => setShowAdvancedFilters((value) => !value)}
+              >
                 <SlidersHorizontal className="w-4 h-4 mr-2" />
                 Filters
               </Button>
-              <Button variant="outline" className="px-3 text-muted-foreground">
-                <LayoutGrid className="w-4 h-4" />
+              <Button
+                variant="outline"
+                className={cn(
+                  "px-3 text-muted-foreground",
+                  viewMode === "grid" && "border-primary text-primary bg-primary/10",
+                )}
+                onClick={() => setViewMode((value) => (value === "table" ? "grid" : "table"))}
+                title={viewMode === "table" ? "Switch to grid view" : "Switch to table view"}
+              >
+                {viewMode === "table" ? (
+                  <LayoutGrid className="w-4 h-4" />
+                ) : (
+                  <List className="w-4 h-4" />
+                )}
               </Button>
             </div>
           </div>
 
+          {showAdvancedFilters && (
+            <div className="flex flex-col gap-3 border-b border-border/50 bg-muted/25 p-4 text-xs text-muted-foreground sm:flex-row sm:items-center">
+              <span>
+                Active filters: department <strong>{dept === "all" ? "Any" : dept}</strong>,
+                employment type <strong>{status === "all" ? "Any" : status}</strong>, status{" "}
+                <strong>{empStatus === "all" ? "Any" : empStatus}</strong>
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 sm:ml-auto"
+                onClick={() => {
+                  setQ("");
+                  setDept("all");
+                  setStatus("all");
+                  setEmpStatus("all");
+                  setPage(1);
+                }}
+              >
+                Clear filters
+              </Button>
+            </div>
+          )}
+
           {/* Table */}
+          {viewMode === "table" ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
@@ -373,7 +439,7 @@ function EmployeesPage() {
                   <th className="px-5 py-4 font-semibold text-right">ACTIONS</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-border/50">
                 {loading ? (
                   <tr>
                     <td
@@ -398,10 +464,10 @@ function EmployeesPage() {
                       `${employee.firstname?.[0] || ""}${employee.lastname?.[0] || ""}`.toUpperCase() ||
                       "??";
                     const avatarColors = [
-                      "bg-blue-100 text-blue-700",
-                      "bg-indigo-100 text-indigo-700",
-                      "bg-purple-100 text-purple-700",
-                      "bg-emerald-100 text-emerald-700",
+                      "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100",
+                      "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-100",
+                      "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-100",
+                      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100",
                     ];
                     const avatarColor = avatarColors[index % avatarColors.length];
 
@@ -513,6 +579,126 @@ function EmployeesPage() {
               </tbody>
             </table>
           </div>
+          ) : (
+            <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+              {loading ? (
+                <div className="col-span-full py-12 text-center text-sm text-muted-foreground/70">
+                  Loading employees...
+                </div>
+              ) : employees.length === 0 ? (
+                <div className="col-span-full py-12 text-center text-sm text-muted-foreground/70">
+                  No employee records found.
+                </div>
+              ) : (
+                employees.map((employee, index) => {
+                  const initials =
+                    `${employee.firstname?.[0] || ""}${employee.lastname?.[0] || ""}`.toUpperCase() ||
+                    "??";
+                  const avatarColors = [
+                    "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100",
+                    "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-100",
+                    "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-100",
+                    "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100",
+                  ];
+                  const avatarColor = avatarColors[index % avatarColors.length];
+
+                  return (
+                    <div
+                      key={employee.id}
+                      className="rounded-lg border border-border bg-card p-4 text-sm shadow-sm"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={cn(
+                            "grid h-11 w-11 shrink-0 place-items-center rounded-full text-xs font-bold",
+                            avatarColor,
+                          )}
+                        >
+                          {employee.photoUrl ? (
+                            <img
+                              src={employee.photoUrl}
+                              alt={`${employee.firstname} ${employee.lastname}`}
+                              className="h-full w-full rounded-full object-cover"
+                            />
+                          ) : (
+                            initials
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-semibold text-foreground">
+                            {employee.lastname}, {employee.firstname} {employee.middlename}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {employee.itemNo || employee.employeeId || "-"}
+                          </div>
+                        </div>
+                        <Link
+                          to="/employees/$id"
+                          params={{ id: employee.id }}
+                          className="inline-grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted/50"
+                          title="View"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Link>
+                      </div>
+                      <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+                        <div className="flex justify-between gap-3">
+                          <span>Position</span>
+                          <span className="text-right font-medium text-foreground">
+                            {employee.position || "-"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span>Department</span>
+                          <span className="text-right font-medium text-foreground">
+                            {employee.department || "-"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Type</span>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] uppercase font-semibold",
+                              EMP_TYPE_COLOR[employee.status] ??
+                                "text-foreground/80 bg-muted/50 border-border",
+                            )}
+                          >
+                            {employee.status}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Status</span>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] uppercase font-semibold",
+                              EMP_STATUS_COLOR[employee.empStatus] ??
+                                "text-foreground/80 bg-muted/50 border-border",
+                            )}
+                          >
+                            {employee.empStatus}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!canEdit}
+                          onClick={() => remove(employee)}
+                          className="text-rose-600 hover:text-rose-600 dark:text-rose-300"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
 
           {/* Pagination */}
           <div className="flex flex-col sm:flex-row items-center justify-between border-t border-border/50 p-4 text-xs text-muted-foreground gap-4">
@@ -572,28 +758,36 @@ function EmployeesPage() {
                 </Button>
               </div>
 
-              <Select
-                value={String(pageSize)}
-                onValueChange={(value) => {
-                  setPageSize(Number(value));
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-[100px] h-8 bg-card text-card-foreground text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10">10 / page</SelectItem>
-                  <SelectItem value="20">20 / page</SelectItem>
-                  <SelectItem value="50">50 / page</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="employee-page-size" className="text-xs font-normal">
+                  Show
+                </Label>
+                <Input
+                  id="employee-page-size"
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={pageSize}
+                  onChange={(event) => {
+                    const next = Math.min(100, Math.max(1, Number(event.target.value) || 1));
+                    setPageSize(next);
+                    setPage(1);
+                  }}
+                  className="h-8 w-20 bg-card text-xs"
+                />
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+      <Dialog
+        open={showAddDialog}
+        onOpenChange={(open) => {
+          setShowAddDialog(open);
+          if (!open) positionQuery && setPositionQuery("");
+        }}
+      >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add Employee</DialogTitle>
@@ -604,6 +798,13 @@ function EmployeesPage() {
                 value={form.employeeId ?? ""}
                 onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
                 placeholder="Auto-generated if blank"
+              />
+            </Field>
+            <Field label="Biometric ID">
+              <Input
+                value={form.biometricId ?? ""}
+                onChange={(e) => setForm({ ...form, biometricId: e.target.value })}
+                placeholder="Attendance device user ID"
               />
             </Field>
             <Field label="First Name *">
@@ -650,11 +851,28 @@ function EmployeesPage() {
                   <SelectValue placeholder="Select position" />
                 </SelectTrigger>
                 <SelectContent>
-                  {positions.map((item) => (
+                  <div className="sticky top-0 z-10 bg-popover p-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                      <Input
+                        value={positionQuery}
+                        onChange={(event) => setPositionQuery(event.target.value)}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        placeholder="Search positions..."
+                        className="h-8 pl-9"
+                      />
+                    </div>
+                  </div>
+                  {filteredPositions.map((item) => (
                     <SelectItem key={item} value={item}>
                       {item}
                     </SelectItem>
                   ))}
+                  {filteredPositions.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      No positions found.
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
             </Field>
@@ -714,7 +932,13 @@ function EmployeesPage() {
             </Field>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowAddDialog(false);
+                setPositionQuery("");
+              }}
+            >
               Cancel
             </Button>
             <Button
