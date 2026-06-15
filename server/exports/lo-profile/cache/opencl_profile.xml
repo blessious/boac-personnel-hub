@@ -3,14 +3,14 @@
  <version>LibreOffice v1</version>
  <device>
   <type>opencl</type>
-  <name>gfx90c</name>
-  <driver>3584.0 (PAL,HSAIL)</driver>
-  <time>39255</time>
+  <name>Intel(R) UHD Graphics 730</name>
+  <driver>32.0.101.7082</driver>
+  <time>max</time>
   <errors>false</errors>
  </device>
  <device>
   <type>native</type>
-  <time>1711104</time>
+  <time>2282496</time>
   <errors>false</errors>
  </device>
 </profile>

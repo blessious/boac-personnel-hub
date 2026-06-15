@@ -1,27 +1,20 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, useMemo } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import {
-  Users,
-  Briefcase,
-  UserCheck,
-  UserX,
   BarChart3,
+  Briefcase,
   Calendar as CalendarIcon,
-  ChevronRight,
-  TrendingUp,
-  Info,
-  Clock,
-  UserPlus,
-  FileText,
-  Search,
   CheckSquare,
-  AlertCircle,
-  FileWarning,
+  FileText,
+  UserCheck,
+  UserPlus,
+  Users,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getDashboard, type DashboardResponse } from "@/lib/employees-api";
+import { EmployeeDashboardHome } from "@/routes/self-service";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
@@ -29,13 +22,17 @@ export const Route = createFileRoute("/")({
 
 function Dashboard() {
   const { user } = useAuth();
-  const role = user?.role || "System Administrator";
-
   const [data, setData] = useState<DashboardResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(user?.role !== "Employee");
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (user?.role === "Employee") {
+      setLoading(false);
+      setError("");
+      return;
+    }
+
     let alive = true;
     setLoading(true);
     getDashboard()
@@ -51,46 +48,45 @@ function Dashboard() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [user?.role]);
 
-  // Derived calculations
+  if (user?.role === "Employee") {
+    return <EmployeeDashboardHome />;
+  }
+
   const totalEmployees = data?.totalEmployees ?? 0;
-  const regularEmployees = data?.regularEmployees ?? 0;
+  const permanentRegularEmployees = data?.regularEmployees ?? 0;
   const joCosEmployees = data?.jobOrderEmployees ?? 0;
+  const activeEmployees = (data?.byEmploymentStatus ?? []).reduce(
+    (total, row) => total + row.active,
+    0,
+  );
 
-  const regularPct = totalEmployees > 0 ? Math.round((regularEmployees / totalEmployees) * 100) : 0;
+  const permanentRegularPct =
+    totalEmployees > 0 ? Math.round((permanentRegularEmployees / totalEmployees) * 100) : 0;
   const joCosPct = totalEmployees > 0 ? Math.round((joCosEmployees / totalEmployees) * 100) : 0;
+  const activePct = totalEmployees > 0 ? Math.round((activeEmployees / totalEmployees) * 100) : 0;
 
-  const vacantPositions = (data?.byDivision ?? []).reduce((acc, curr) => acc + curr.unfilled, 0);
-
-  // Age Group Data
   const ageGroupData = data?.byAgeGroup ?? [];
-  const getAgeCount = (group: string) => ageGroupData.find((a) => a.ageGroup === group)?.total ?? 0;
-  const ageUnder30 = getAgeCount("Under 30");
-  const age3039 = getAgeCount("30-39");
-  const age4049 = getAgeCount("40-49");
-  const age5059 = getAgeCount("50-59");
-  const age60Plus = getAgeCount("60+");
+  const getAgeCount = (group: string) =>
+    ageGroupData.find((row) => row.ageGroup === group)?.total ?? 0;
 
-  // Employment Type Mix
-  const empTypes = data?.byEmploymentStatus ?? [];
-  const permanentTotal =
-    empTypes.find((e) => e.status === "Permanent" || e.status === "Regular")?.total ??
-    regularEmployees;
-  const joCosTotal =
-    empTypes.find((e) => e.status === "JO/COS" || e.status === "Casual")?.total ?? joCosEmployees;
-  const otherTotal = totalEmployees - permanentTotal - joCosTotal;
+  const permanentRegularTotal = sumStatuses(
+    data,
+    ["Permanent", "Regular"],
+    permanentRegularEmployees,
+  );
+  const joCosTotal = sumStatuses(data, ["JO/COS", "Casual"], joCosEmployees);
+  const otherTotal = Math.max(0, totalEmployees - permanentRegularTotal - joCosTotal);
 
-  // Gender Distribution
-  const maleTotal = (data?.bySexLevel ?? []).reduce((acc, curr) => acc + curr.male, 0);
-  const femaleTotal = (data?.bySexLevel ?? []).reduce((acc, curr) => acc + curr.female, 0);
+  const maleTotal = (data?.bySexLevel ?? []).reduce((total, row) => total + row.male, 0);
+  const femaleTotal = (data?.bySexLevel ?? []).reduce((total, row) => total + row.female, 0);
   const genderTotal = maleTotal + femaleTotal;
   const femalePct = genderTotal > 0 ? Math.round((femaleTotal / genderTotal) * 100) : 0;
   const malePct = genderTotal > 0 ? Math.round((maleTotal / genderTotal) * 100) : 0;
 
-  // Divisions
   const divisions = [...(data?.byDivision ?? [])].sort((a, b) => b.total - a.total).slice(0, 4);
-
+  const firstName = getFirstName(user?.employeeName || user?.name || user?.username);
   const currentDate = new Date().toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
@@ -106,42 +102,40 @@ function Dashboard() {
       )}
 
       <div className="flex flex-col space-y-6 pb-8">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-sm font-medium text-blue-600 mb-1">Good morning, {role}! 👋</div>
-            <h1 className="text-3xl font-bold text-foreground tracking-tight">Dashboard</h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <div className="mb-1 text-sm font-medium text-blue-600">Good morning, {firstName}</div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
               Overview of the workforce and HR operations.
             </p>
           </div>
           <div className="mt-4 sm:mt-0">
-            <button className="flex items-center space-x-2 px-4 py-2 border border-border rounded-md bg-card text-card-foreground text-sm font-medium text-foreground/80 hover:bg-muted/50 shadow-sm">
-              <CalendarIcon className="w-4 h-4 text-muted-foreground" />
+            <div className="flex items-center space-x-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground/80 shadow-sm">
+              <CalendarIcon className="h-4 w-4 text-muted-foreground" />
               <span>{currentDate}</span>
-            </button>
+            </div>
           </div>
         </div>
 
-        {/* Top Stat Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title="Total Employees"
             value={loading ? "..." : totalEmployees}
-            subtext="Current Records"
+            subtext="Current records"
             subtextColor="text-muted-foreground"
-            icon={<Users className="w-5 h-5 text-blue-600" />}
+            icon={<Users className="h-5 w-5 text-blue-600" />}
             iconBg="bg-blue-50"
             chartColor="stroke-blue-500"
             trend="up"
           />
           <StatCard
-            title="Permanent Employees"
-            value={loading ? "..." : regularEmployees}
-            subtext={`${regularPct}% of total`}
+            title="Permanent / Regular"
+            value={loading ? "..." : permanentRegularEmployees}
+            subtext={`${permanentRegularPct}% of total`}
             subtextColor="text-muted-foreground"
             subtextDot="bg-emerald-500"
-            icon={<Briefcase className="w-5 h-5 text-emerald-600" />}
+            icon={<Briefcase className="h-5 w-5 text-emerald-600" />}
             iconBg="bg-emerald-50"
             chartColor="stroke-emerald-500"
             trend="up"
@@ -152,81 +146,52 @@ function Dashboard() {
             subtext={`${joCosPct}% of total`}
             subtextColor="text-muted-foreground"
             subtextDot="bg-amber-500"
-            icon={<UserCheck className="w-5 h-5 text-amber-600" />}
+            icon={<UserCheck className="h-5 w-5 text-amber-600" />}
             iconBg="bg-amber-50"
             chartColor="stroke-amber-500"
             trend="down"
           />
           <StatCard
-            title="Near Retirement"
-            value={loading ? "..." : 0} // Calculation logic required from DB
-            subtext="Turning 65 within 5 years"
+            title="Active Employees"
+            value={loading ? "..." : activeEmployees}
+            subtext={`${activePct}% of total`}
             subtextColor="text-muted-foreground"
-            icon={<UserX className="w-5 h-5 text-rose-500" />}
-            iconBg="bg-rose-50"
-            chartColor="stroke-rose-500"
-            trend="up"
-          />
-          <StatCard
-            title="Vacant Positions"
-            value={loading ? "..." : vacantPositions}
-            subtext="Plantilla Items"
-            subtextColor="text-muted-foreground"
-            icon={<BarChart3 className="w-5 h-5 text-purple-600" />}
-            iconBg="bg-purple-50"
-            chartColor="stroke-purple-500"
+            subtextDot="bg-blue-500"
+            icon={<UserCheck className="h-5 w-5 text-blue-600" />}
+            iconBg="bg-blue-50"
+            chartColor="stroke-blue-500"
             trend="up"
           />
         </div>
 
-        {/* Middle Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Workforce Age Profile */}
-          <div className="lg:col-span-5 bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5">
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <h3 className="text-base font-semibold text-foreground">Workforce Age Profile</h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Age distribution based on recorded birthdates.
-                </p>
-              </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <section className="rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-5">
+            <div className="mb-6">
+              <h3 className="text-base font-semibold text-foreground">Workforce Age Profile</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Age distribution based on recorded birthdates.
+              </p>
             </div>
-
-            <div className="h-48 flex items-end justify-between space-x-2 mt-4 px-2">
-              <BarItem label="Under 30" count={ageUnder30} total={totalEmployees} active={false} />
-              <BarItem label="30-39" count={age3039} total={totalEmployees} active={true} />
-              <BarItem label="40-49" count={age4049} total={totalEmployees} active={false} />
-              <BarItem label="50-59" count={age5059} total={totalEmployees} active={false} />
-              <BarItem label="60+" count={age60Plus} total={totalEmployees} active={false} />
+            <div className="mt-5 space-y-4">
+              <AgeBar label="Under 30" count={getAgeCount("Under 30")} total={totalEmployees} />
+              <AgeBar label="30-39" count={getAgeCount("30-39")} total={totalEmployees} active />
+              <AgeBar label="40-49" count={getAgeCount("40-49")} total={totalEmployees} />
+              <AgeBar label="50-59" count={getAgeCount("50-59")} total={totalEmployees} />
+              <AgeBar label="60+" count={getAgeCount("60+")} total={totalEmployees} />
             </div>
-
-            <div className="flex justify-between text-xs text-muted-foreground/70 mt-2 px-2 border-t border-border/50 pt-2 pb-6">
-              <div className="w-1/5 text-center"></div>
-              <div className="w-1/5 text-center"></div>
-              <div className="w-1/5 text-center"></div>
-              <div className="w-1/5 text-center"></div>
-              <div className="w-1/5 text-center"></div>
+            <div className="mt-4 border-t border-border/50 pt-4 text-right text-xs font-semibold text-foreground/80">
+              Total: {totalEmployees}
             </div>
+          </section>
 
-            <div className="flex items-center justify-between text-xs mt-4 pt-4 border-t border-border/50">
-              <div className="flex items-center text-muted-foreground">
-                <Info className="w-4 h-4 text-blue-500 mr-2" />
-                <span>Age bands based on employee records.</span>
-              </div>
-              <div className="font-semibold text-foreground/80">Total: {totalEmployees}</div>
-            </div>
-          </div>
-
-          {/* Employment Type Mix */}
-          <div className="lg:col-span-3 bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5 flex flex-col">
+          <section className="flex flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-3">
             <div>
               <h3 className="text-base font-semibold text-foreground">Employment Type Mix</h3>
-              <p className="text-xs text-muted-foreground mt-1">Distribution by employment type.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Distribution by employment type.</p>
             </div>
-
-            <div className="flex-1 flex flex-col items-center justify-center mt-6">
-              <div className="relative w-40 h-40">
-                <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
+            <div className="mt-6 flex flex-1 flex-col items-center justify-center">
+              <div className="relative h-40 w-40">
+                <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
                   <circle
                     cx="50"
                     cy="50"
@@ -244,7 +209,6 @@ function Dashboard() {
                     strokeWidth="20"
                     strokeDasharray={`${(joCosTotal / Math.max(totalEmployees, 1)) * 251.2} 251.2`}
                     strokeDashoffset="0"
-                    className="transition-all duration-1000 ease-out"
                   />
                   <circle
                     cx="50"
@@ -253,9 +217,8 @@ function Dashboard() {
                     fill="transparent"
                     stroke="#2563eb"
                     strokeWidth="20"
-                    strokeDasharray={`${(permanentTotal / Math.max(totalEmployees, 1)) * 251.2} 251.2`}
+                    strokeDasharray={`${(permanentRegularTotal / Math.max(totalEmployees, 1)) * 251.2} 251.2`}
                     strokeDashoffset={`${-(joCosTotal / Math.max(totalEmployees, 1)) * 251.2}`}
-                    className="transition-all duration-1000 ease-out"
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -263,93 +226,69 @@ function Dashboard() {
                   <span className="text-xs text-muted-foreground">Total</span>
                 </div>
               </div>
-
-              <div className="w-full mt-8 space-y-3">
+              <div className="mt-8 w-full space-y-3">
                 <LegendItem
                   color="bg-blue-600"
-                  label="Permanent"
-                  value={permanentTotal}
-                  percent={`(${totalEmployees > 0 ? Math.round((permanentTotal / totalEmployees) * 100) : 0}%)`}
+                  label="Permanent / Regular"
+                  value={permanentRegularTotal}
+                  percent={`(${percentOf(permanentRegularTotal, totalEmployees)}%)`}
                 />
                 <LegendItem
                   color="bg-amber-500"
                   label="JO / COS"
                   value={joCosTotal}
-                  percent={`(${totalEmployees > 0 ? Math.round((joCosTotal / totalEmployees) * 100) : 0}%)`}
+                  percent={`(${percentOf(joCosTotal, totalEmployees)}%)`}
                 />
                 <LegendItem
                   color="bg-gray-300"
                   label="Other Types"
                   value={otherTotal}
-                  percent={`(${totalEmployees > 0 ? Math.round((otherTotal / totalEmployees) * 100) : 0}%)`}
+                  percent={`(${percentOf(otherTotal, totalEmployees)}%)`}
                 />
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* Action Center */}
-          <div className="lg:col-span-4 bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5">
-            <div className="flex justify-between items-center mb-5">
-              <h3 className="text-base font-semibold text-foreground">Action Center</h3>
-              <button className="text-xs font-semibold text-blue-600 hover:text-blue-700">
-                View all
-              </button>
+          <section className="rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-4">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Employees by Division</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Distribution across hospital divisions.
+              </p>
             </div>
-
-            <div className="space-y-3">
-              {/* Dynamic data for action center is not provided by getDashboard, rendering zero placeholders to avoid hardcoded mock data */}
-              <ActionItem
-                icon={<UserX className="w-4 h-4 text-rose-500" />}
-                iconBg="bg-rose-50"
-                count={0}
-                countColor="text-rose-500"
-                title="Employees with missing eligibility"
-              />
-              <ActionItem
-                icon={<FileWarning className="w-4 h-4 text-amber-500" />}
-                iconBg="bg-amber-50"
-                count={0}
-                countColor="text-amber-500"
-                title="Employees with missing license"
-              />
-              <ActionItem
-                icon={<Clock className="w-4 h-4 text-amber-500" />}
-                iconBg="bg-amber-50"
-                count={0}
-                countColor="text-amber-500"
-                title="JO/COS contracts expiring soon"
-                subtitle="Within the next 60 days"
-              />
-              <ActionItem
-                icon={<UserX className="w-4 h-4 text-blue-500" />}
-                iconBg="bg-blue-50"
-                count={0}
-                countColor="text-blue-500"
-                title="Employees turning 65 this year"
-                subtitle="For retirement planning"
-              />
-              <ActionItem
-                icon={<BarChart3 className="w-4 h-4 text-purple-500" />}
-                iconBg="bg-purple-50"
-                count={vacantPositions}
-                countColor="text-purple-500"
-                title="Vacant plantilla items"
-              />
+            <div className="mt-5 space-y-4">
+              {divisions.map((division, index) => {
+                const pct = percentOf(division.total, totalEmployees);
+                const colors = ["bg-blue-500", "bg-amber-500", "bg-emerald-500", "bg-purple-500"];
+                return (
+                  <ProgressBar
+                    key={division.department || "Unassigned"}
+                    label={division.department || "Unassigned"}
+                    value={division.total}
+                    percent={`${pct}%`}
+                    width={`${pct}%`}
+                    color={colors[index % colors.length]}
+                  />
+                );
+              })}
+              {divisions.length === 0 && (
+                <div className="py-4 text-center text-sm text-muted-foreground/70">
+                  No division data available
+                </div>
+              )}
             </div>
-          </div>
+          </section>
         </div>
 
-        {/* Bottom Section 1 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Gender Distribution */}
-          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5 flex flex-col">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <section className="flex flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-4">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Gender Distribution</h3>
-              <p className="text-xs text-muted-foreground mt-1">Workforce by gender.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Workforce by gender.</p>
             </div>
-            <div className="flex-1 flex items-center justify-between mt-4">
-              <div className="relative w-28 h-28">
-                <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
+            <div className="mt-4 flex flex-1 items-center justify-between">
+              <div className="relative h-28 w-28">
+                <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
                   <circle
                     cx="50"
                     cy="50"
@@ -391,148 +330,71 @@ function Dashboard() {
                 />
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* Employees by Division */}
-          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Employees by Division</h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Distribution across hospital divisions.
-              </p>
-            </div>
-            <div className="mt-5 space-y-4">
-              {divisions.map((div, i) => {
-                const pct = totalEmployees > 0 ? Math.round((div.total / totalEmployees) * 100) : 0;
-                const colors = ["bg-blue-500", "bg-amber-500", "bg-emerald-500", "bg-purple-500"];
-                return (
-                  <ProgressBar
-                    key={div.department}
-                    label={div.department || "Unassigned"}
-                    value={div.total}
-                    percent={`${pct}%`}
-                    width={`${pct}%`}
-                    color={colors[i % colors.length]}
-                  />
-                );
-              })}
-              {divisions.length === 0 && (
-                <div className="text-sm text-muted-foreground/70 text-center py-4">
-                  No division data available
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Years of Service */}
-          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5 flex flex-col justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">
-                Years of Service Distribution
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">Workforce by length of service.</p>
-            </div>
-            <div className="mt-5 space-y-3">
-              {/* Not available in DashboardResponse, rendering empty state to avoid hardcoded mock data */}
-              <div className="text-sm text-muted-foreground/70 text-center py-8">
-                Service distribution data not available
-              </div>
-            </div>
-            <div className="mt-4 pt-3 border-t border-border/50 text-xs font-semibold text-foreground/80">
-              Total: {totalEmployees}
-            </div>
-          </div>
-
-          {/* Upcoming Birthdays */}
-          <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5 flex flex-col">
-            <div className="flex justify-between items-start mb-1">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">Upcoming Birthdays</h3>
-                <p className="text-xs text-muted-foreground mt-1">This month</p>
-              </div>
-            </div>
-
-            <div className="mt-3 flex-1 space-y-3">
-              <div className="text-sm text-muted-foreground/70 text-center py-8">
-                Birthday data not available
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Section 2 */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Recent Personnel Updates */}
-          <div className="lg:col-span-8 bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5">
-            <div className="mb-4">
-              <h3 className="text-base font-semibold text-foreground">Recent Personnel Updates</h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Latest changes and updates in employee records.
-              </p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-border/50 text-muted-foreground uppercase tracking-wider">
-                    <th className="pb-3 font-medium">EMPLOYEE</th>
-                    <th className="pb-3 font-medium">ACTION</th>
-                    <th className="pb-3 font-medium">DETAILS</th>
-                    <th className="pb-3 font-medium">DATE</th>
-                    <th className="pb-3 font-medium">UPDATED BY</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {/* Not available in DashboardResponse, keeping empty to avoid hardcoded mock data */}
-                  <tr>
-                    <td colSpan={5} className="py-6 text-center text-muted-foreground/70">
-                      No recent updates available
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Quick Links */}
-          <div className="lg:col-span-4 bg-card text-card-foreground rounded-xl border border-border shadow-sm p-5">
+          <section className="rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-8">
             <div className="mb-5">
               <h3 className="text-base font-semibold text-foreground">Quick Links</h3>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
               <QuickLink
-                icon={<UserPlus className="w-5 h-5 text-blue-600" />}
+                to="/employees"
+                icon={<UserPlus className="h-5 w-5 text-blue-600" />}
                 label="Add Employee"
                 bg="bg-blue-50"
               />
               <QuickLink
-                icon={<CalendarIcon className="w-5 h-5 text-emerald-600" />}
+                to="/leave"
+                icon={<CalendarIcon className="h-5 w-5 text-emerald-600" />}
                 label="Leave Requests"
                 bg="bg-emerald-50"
               />
               <QuickLink
-                icon={<FileText className="w-5 h-5 text-purple-600" />}
+                to="/employees"
+                icon={<FileText className="h-5 w-5 text-purple-600" />}
                 label="Employee Directory"
                 bg="bg-purple-50"
               />
               <QuickLink
-                icon={<BarChart3 className="w-5 h-5 text-amber-600" />}
-                label="Reports & Analytics"
+                to="/reports"
+                icon={<BarChart3 className="h-5 w-5 text-amber-600" />}
+                label="Reports"
                 bg="bg-amber-50"
               />
               <QuickLink
-                icon={<CheckSquare className="w-5 h-5 text-teal-600" />}
-                label="Requests & Approvals"
+                to="/requests"
+                icon={<CheckSquare className="h-5 w-5 text-teal-600" />}
+                label="Requests"
                 bg="bg-teal-50"
               />
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </AppShell>
   );
 }
 
-// Subcomponents
+function sumStatuses(data: DashboardResponse | null, statuses: string[], fallback: number) {
+  const rows = data?.byEmploymentStatus ?? [];
+  const sum = rows
+    .filter((row) => statuses.includes(row.status))
+    .reduce((total, row) => total + row.total, 0);
+  return sum || fallback;
+}
+
+function percentOf(value: number, total: number) {
+  return total > 0 ? Math.round((value / total) * 100) : 0;
+}
+
+function getFirstName(value?: string) {
+  const cleaned = String(value || "").trim();
+  if (!cleaned) return "there";
+  if (cleaned.includes(",")) {
+    return cleaned.split(",")[1]?.trim().split(/\s+/)[0] || cleaned.split(",")[0].trim();
+  }
+  return cleaned.split(/\s+/)[0];
+}
 
 function StatCard({
   title,
@@ -540,7 +402,6 @@ function StatCard({
   subtext,
   subtextColor,
   subtextDot,
-  subtextIcon,
   icon,
   iconBg,
   chartColor,
@@ -551,28 +412,26 @@ function StatCard({
   subtext: string;
   subtextColor?: string;
   subtextDot?: string;
-  subtextIcon?: React.ReactNode;
   icon: React.ReactNode;
   iconBg: string;
   chartColor: string;
   trend: "up" | "down";
 }) {
   return (
-    <div className="bg-card text-card-foreground p-4 rounded-xl border border-border shadow-sm relative overflow-hidden">
-      <div className="flex justify-between items-start mb-2">
+    <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+      <div className="mb-2 flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold text-foreground/80">{title}</p>
-          <h2 className="text-2xl font-bold text-foreground mt-1">{value}</h2>
+          <h2 className="mt-1 text-2xl font-bold text-foreground">{value}</h2>
         </div>
-        <div className={cn("p-2 rounded-lg", iconBg)}>{icon}</div>
+        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
       </div>
-      <div className="flex items-center text-[10px] mt-2 z-10 relative">
-        {subtextDot && <span className={cn("w-1.5 h-1.5 rounded-full mr-1.5", subtextDot)}></span>}
+      <div className="relative z-10 mt-2 flex items-center text-[10px]">
+        {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
         <span className={subtextColor}>{subtext}</span>
-        {subtextIcon}
       </div>
-      <div className="absolute bottom-2 right-2 w-24 h-8 opacity-50 z-0">
-        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-full">
+      <div className="absolute bottom-2 right-2 z-0 h-8 w-24 opacity-50">
+        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
           {trend === "up" ? (
             <path
               d="M0,25 C20,20 40,30 60,10 C80,-5 100,5 100,5"
@@ -596,32 +455,35 @@ function StatCard({
   );
 }
 
-function BarItem({
+function AgeBar({
   label,
   count,
   total,
-  active,
+  active = false,
 }: {
   label: string;
   count: number;
   total: number;
-  active: boolean;
+  active?: boolean;
 }) {
-  const percent = total > 0 ? Math.round((count / total) * 100) : 0;
-  const height = percent > 0 ? `${percent}%` : "5%";
+  const percent = percentOf(count, total);
+  const width = percent > 0 ? `${percent}%` : "4px";
   return (
-    <div className="flex flex-col items-center flex-1 group h-full justify-end">
-      <div className="text-[10px] font-semibold text-foreground/80 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {count} ({percent}%)
+    <div className="grid grid-cols-[72px_minmax(0,1fr)_72px] items-center gap-3">
+      <div className="text-xs font-medium text-foreground/80">{label}</div>
+      <div className="h-3 overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn(
+            "h-full rounded-full transition-all duration-300",
+            active ? "bg-blue-600" : "bg-blue-500/80",
+          )}
+          style={{ width }}
+        />
       </div>
-      <div
-        className={cn(
-          "w-full max-w-[48px] rounded-t-sm transition-all duration-300",
-          active ? "bg-blue-600" : "bg-blue-500/80 hover:bg-blue-500",
-        )}
-        style={{ height }}
-      ></div>
-      <div className="text-[10px] text-muted-foreground mt-2 whitespace-nowrap">{label}</div>
+      <div className="text-right text-xs font-semibold tabular-nums text-foreground">
+        {count}
+        <span className="ml-1 font-medium text-muted-foreground">({percent}%)</span>
+      </div>
     </div>
   );
 }
@@ -640,51 +502,21 @@ function LegendItem({
   small?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between text-xs w-full">
+    <div className="flex w-full items-center justify-between text-xs">
       <div className="flex items-center">
-        <div className={cn("rounded-full mr-2", color, small ? "w-2 h-2" : "w-3 h-3")}></div>
+        <div className={cn("mr-2 rounded-full", color, small ? "h-2 w-2" : "h-3 w-3")} />
         <span
           className={cn(
-            small ? "text-muted-foreground font-medium" : "text-foreground/80 font-medium",
+            small ? "font-medium text-muted-foreground" : "font-medium text-foreground/80",
           )}
         >
           {label}
         </span>
       </div>
       <div>
-        <span className="font-semibold text-foreground mr-1">{value}</span>
+        <span className="mr-1 font-semibold text-foreground">{value}</span>
         <span className="text-muted-foreground">{percent}</span>
       </div>
-    </div>
-  );
-}
-
-function ActionItem({
-  icon,
-  iconBg,
-  count,
-  countColor,
-  title,
-  subtitle,
-}: {
-  icon: React.ReactNode;
-  iconBg: string;
-  count: string | number;
-  countColor: string;
-  title: string;
-  subtitle?: string;
-}) {
-  return (
-    <div className="flex items-center justify-between p-2.5 rounded-lg border border-border/30 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer group">
-      <div className="flex items-center space-x-3">
-        <div className={cn("p-1.5 rounded-md", iconBg)}>{icon}</div>
-        <div className={cn("text-lg font-bold w-6 text-center", countColor)}>{count}</div>
-        <div>
-          <p className="text-xs font-semibold text-foreground">{title}</p>
-          {subtitle && <p className="text-[10px] text-muted-foreground">{subtitle}</p>}
-        </div>
-      </div>
-      <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-muted-foreground" />
     </div>
   );
 }
@@ -704,27 +536,38 @@ function ProgressBar({
 }) {
   return (
     <div>
-      <div className="flex justify-between text-[11px] mb-1">
+      <div className="mb-1 flex justify-between text-[11px]">
         <span className="font-medium text-foreground/80">{label}</span>
         <div>
-          <span className="font-semibold text-foreground mr-1">{value}</span>
+          <span className="mr-1 font-semibold text-foreground">{value}</span>
           <span className="text-muted-foreground">({percent})</span>
         </div>
       </div>
-      <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-        <div className={cn("h-full rounded-full", color)} style={{ width }}></div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div className={cn("h-full rounded-full", color)} style={{ width }} />
       </div>
     </div>
   );
 }
 
-function QuickLink({ icon, label, bg }: { icon: React.ReactNode; label: string; bg: string }) {
+function QuickLink({
+  to,
+  icon,
+  label,
+  bg,
+}: {
+  to: "/" | "/employees" | "/leave" | "/reports" | "/requests";
+  icon: React.ReactNode;
+  label: string;
+  bg: string;
+}) {
   return (
-    <div className="flex flex-col items-center justify-center p-3 rounded-xl border border-border/50 bg-card text-card-foreground hover:border-border hover:shadow-sm transition-all cursor-pointer text-center group">
-      <div className={cn("p-2.5 rounded-lg mb-2 group-hover:scale-105 transition-transform", bg)}>
-        {icon}
-      </div>
+    <Link
+      to={to}
+      className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-3 text-center text-card-foreground transition-all hover:border-border hover:shadow-sm"
+    >
+      <div className={cn("mb-2 rounded-lg p-2.5 transition-transform", bg)}>{icon}</div>
       <span className="text-[10px] font-medium text-foreground/80">{label}</span>
-    </div>
+    </Link>
   );
 }

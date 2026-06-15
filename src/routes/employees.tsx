@@ -4,19 +4,15 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
-  ClipboardList,
   Eye,
   MoreVertical,
   Pencil,
   Plus,
   Search,
   Trash2,
-  User,
   Users,
   Briefcase,
   UserCheck,
-  CalendarDays,
-  TrendingUp,
   SlidersHorizontal,
   LayoutGrid,
 } from "lucide-react";
@@ -186,18 +182,17 @@ function EmployeesPage() {
 
   // Dashboard calculations
   const totalEmployees = dashboardData?.totalEmployees ?? 0;
-  const regularEmployees = dashboardData?.regularEmployees ?? 0;
+  const permanentRegularEmployees = dashboardData?.regularEmployees ?? 0;
   const joCosEmployees = dashboardData?.jobOrderEmployees ?? 0;
   const activeEmployees = (dashboardData?.byEmploymentStatus ?? []).reduce(
     (acc, curr) => acc + curr.active,
     0,
   );
-  const onLeave = 0; // Not available in DB response, rendering accurate DB basis
 
-  const regularPct = totalEmployees > 0 ? Math.round((regularEmployees / totalEmployees) * 100) : 0;
+  const permanentRegularPct =
+    totalEmployees > 0 ? Math.round((permanentRegularEmployees / totalEmployees) * 100) : 0;
   const joCosPct = totalEmployees > 0 ? Math.round((joCosEmployees / totalEmployees) * 100) : 0;
   const activePct = totalEmployees > 0 ? Math.round((activeEmployees / totalEmployees) * 100) : 0;
-  const onLeavePct = totalEmployees > 0 ? Math.round((onLeave / totalEmployees) * 100) : 0;
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "-";
@@ -240,7 +235,7 @@ function EmployeesPage() {
         </div>
 
         {/* Top Stat Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <StatCard
             title="Total Employees"
             value={dashboardData === null ? "..." : totalEmployees}
@@ -252,9 +247,9 @@ function EmployeesPage() {
             trend="up"
           />
           <StatCard
-            title="Permanent Employees"
-            value={dashboardData === null ? "..." : regularEmployees}
-            subtext={`${regularPct}% of total`}
+            title="Permanent / Regular"
+            value={dashboardData === null ? "..." : permanentRegularEmployees}
+            subtext={`${permanentRegularPct}% of total`}
             subtextColor="text-muted-foreground"
             subtextDot="bg-emerald-500"
             icon={<Briefcase className="w-5 h-5 text-emerald-600" />}
@@ -283,17 +278,6 @@ function EmployeesPage() {
             iconBg="bg-blue-50"
             chartColor="stroke-blue-500"
             trend="up"
-          />
-          <StatCard
-            title="On Leave"
-            value={dashboardData === null ? "..." : onLeave}
-            subtext={`${onLeavePct}% of total`}
-            subtextColor="text-muted-foreground"
-            subtextDot="bg-purple-500"
-            icon={<CalendarDays className="w-5 h-5 text-purple-600" />}
-            iconBg="bg-purple-50"
-            chartColor="stroke-purple-500"
-            trend="down"
           />
         </div>
 

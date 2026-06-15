@@ -24,7 +24,7 @@
             	<value xml:lang="ckb">Languages and Locales</value>
             	<value xml:lang="cs">Jazyky a národní prostředí</value>
             	<value xml:lang="cy">Ieithoedd a Locales</value>
-            	<value xml:lang="da">Sprog og sprogindstillinger</value>
+            	<value xml:lang="da">Sprog og lokalitetsindstillinger</value>
             	<value xml:lang="de">Sprachen und Gebietsschemata</value>
             	<value xml:lang="dgo">Languages and Locales</value>
             	<value xml:lang="dsb">Rěcy a narodne šemy</value>
@@ -40,7 +40,7 @@
             	<value xml:lang="fi">Kielet ja lokaalit</value>
             	<value xml:lang="fr">Langues et locales</value>
             	<value xml:lang="fur">Languages and Locales</value>
-            	<value xml:lang="fy">Taal ynstellingen</value>
+            	<value xml:lang="fy">Languages and Locales</value>
             	<value xml:lang="ga">Teangacha agus Logánuithe</value>
             	<value xml:lang="gd">Cànain is sgeamannan ionadail</value>
             	<value xml:lang="gl">Idiomas e configuración local</value>
