@@ -82,6 +82,33 @@ export type BiometricDevice = {
   active: boolean;
 };
 
+export type BiometricRealtimeLog = {
+  time: string;
+  level: "info" | "success" | "warn" | "error" | string;
+  message: string;
+};
+
+export type BiometricRealtimeStatus = {
+  status: {
+    status: "idle" | "syncing" | "success" | "failed" | string;
+    mode: string;
+    admsPort: number;
+    lastSyncTime: string | null;
+    syncStartTime: string | null;
+    durationMs: number | null;
+    elapsedMs: number | null;
+    recordsFetched: number;
+    recordsInserted: number;
+    devicesProcessed: number;
+    error: string | null;
+  };
+  queue: {
+    pendingEmployees: number;
+    running: boolean;
+  };
+  devices: BiometricDevice[];
+};
+
 export function listDtr(params: { employeeId?: string; from?: string; to?: string; q?: string }) {
   const query = new URLSearchParams();
   if (params.employeeId) query.set("employeeId", params.employeeId);
@@ -245,6 +272,29 @@ export function checkBiometricStatus(payload: { ip_address: string; port: number
       body: JSON.stringify(payload),
     },
   );
+}
+
+export function getBiometricRealtimeStatus() {
+  return api<BiometricRealtimeStatus>("/api/attendance/biometrics/realtime/status");
+}
+
+export function getBiometricRealtimeLogs(since = 0) {
+  return api<{ logs: BiometricRealtimeLog[]; total: number }>(
+    `/api/attendance/biometrics/realtime/logs?since=${since}`,
+  );
+}
+
+export function syncBiometricNow(payload: { deviceId?: string; from?: string; to?: string }) {
+  return api<{
+    status: BiometricRealtimeStatus["status"];
+    recordsFetched: number;
+    recordsInserted: number;
+    devicesProcessed: number;
+    errors: string[];
+  }>("/api/attendance/biometrics/realtime/sync-now", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function checkUnimportedDtrs(employeeId: string) {

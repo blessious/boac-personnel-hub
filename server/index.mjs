@@ -53,6 +53,7 @@ const LEAVE_FORM6_TEMPLATE_XLSX = path.join(
 );
 const LEAVE_FORM6_EXCEL_SCRIPT = path.join(process.cwd(), "server", "leave_form6_excel.py");
 const BIOMETRIC_FETCH_SCRIPT = path.join(process.cwd(), "server", "fetch_biometric.py");
+const ADMS_PORT = Number(process.env.HRIS_ADMS_PORT || 6000);
 const LIBREOFFICE_EXE =
   process.env.HRIS_LIBREOFFICE_EXE || "C:\\Program Files\\LibreOffice\\program\\soffice.com";
 const LIBREOFFICE_PROFILE_DIR = path.join(EXPORT_DIR, "lo-profile");
@@ -76,6 +77,7 @@ const PYTHON_CANDIDATES = [
 const PYTHON_EXE = PYTHON_CANDIDATES[0];
 const BIOMETRIC_PYTHON_EXE =
   process.env.HRIS_BIOMETRIC_PYTHON_EXE || process.env.PYTHON_EXE || "python";
+const BIOMETRIC_SYNC_LOG_LIMIT = 200;
 
 const ROLES = ["Admin", "HR", "Employee", "Viewer"];
 const DEFAULT_AGENCY = {
@@ -535,6 +537,22 @@ const EMPLOYEE_PROFILE_FIELDS = [
 ];
 
 let pool;
+const biometricSyncLogs = [];
+const biometricRefreshQueue = new Map();
+let biometricQueueRunning = false;
+let biometricSyncStartedAt = null;
+let biometricSyncStatus = {
+  status: "idle",
+  mode: "ADMS",
+  admsPort: ADMS_PORT,
+  lastSyncTime: null,
+  syncStartTime: null,
+  durationMs: null,
+  recordsFetched: 0,
+  recordsInserted: 0,
+  devicesProcessed: 0,
+  error: null,
+};
 
 function json(res, status, body, headers = {}) {
   res.writeHead(status, {
@@ -543,6 +561,15 @@ function json(res, status, body, headers = {}) {
     ...headers,
   });
   res.end(JSON.stringify(body));
+}
+
+function text(res, status, body, headers = {}) {
+  res.writeHead(status, {
+    "Content-Type": "text/plain; charset=utf-8",
+    "Cache-Control": "no-store",
+    ...headers,
+  });
+  res.end(body);
 }
 
 function sendFile(res, filePath, fileName) {
@@ -620,6 +647,21 @@ function readBody(req) {
         reject(new Error("Invalid JSON body"));
       }
     });
+    req.on("error", reject);
+  });
+}
+
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk;
+      if (raw.length > 15 * 1024 * 1024) {
+        req.destroy();
+        reject(new Error("Request body too large"));
+      }
+    });
+    req.on("end", () => resolve(raw));
     req.on("error", reject);
   });
 }
@@ -3762,6 +3804,329 @@ async function fetchBiometricPunches(device, from, to) {
     .sort((a, b) => a.punchAt.localeCompare(b.punchAt));
 }
 
+function addBiometricSyncLog(level, message) {
+  const entry = {
+    time: new Date().toISOString(),
+    level,
+    message,
+  };
+  biometricSyncLogs.push(entry);
+  if (biometricSyncLogs.length > BIOMETRIC_SYNC_LOG_LIMIT) biometricSyncLogs.shift();
+  console.log(`[BIOMETRIC ${level.toUpperCase()}] ${message}`);
+}
+
+function setBiometricSyncStatus(patch) {
+  biometricSyncStatus = {
+    ...biometricSyncStatus,
+    ...patch,
+    admsPort: ADMS_PORT,
+  };
+}
+
+function enqueueBiometricDtrRefresh(employeeId, workDate) {
+  if (!employeeId || !workDate) return;
+  const existing = biometricRefreshQueue.get(employeeId);
+  biometricRefreshQueue.set(employeeId, {
+    from: existing?.from && existing.from < workDate ? existing.from : workDate,
+    to: existing?.to && existing.to > workDate ? existing.to : workDate,
+  });
+  processBiometricDtrQueue().catch((error) => {
+    addBiometricSyncLog("error", `DTR refresh queue failed: ${error.message}`);
+  });
+}
+
+async function processBiometricDtrQueue() {
+  if (biometricQueueRunning || biometricRefreshQueue.size === 0) return;
+  biometricQueueRunning = true;
+  try {
+    while (biometricRefreshQueue.size > 0) {
+      const [employeeId, range] = biometricRefreshQueue.entries().next().value;
+      biometricRefreshQueue.delete(employeeId);
+      try {
+        const refreshed = await refreshDtrEntries({
+          employeeId,
+          from: range.from,
+          to: range.to,
+          userId: null,
+        });
+        addBiometricSyncLog(
+          "success",
+          `DTR refreshed for employee ${employeeId}: ${refreshed.recordsProcessed} day(s), ${refreshed.punchesProcessed} punch(es)`,
+        );
+      } catch (error) {
+        addBiometricSyncLog(
+          "error",
+          `DTR refresh failed for employee ${employeeId}: ${error.message}`,
+        );
+      }
+    }
+  } finally {
+    biometricQueueRunning = false;
+  }
+}
+
+function parseAdmsAttlog(rawData) {
+  return String(rawData || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split("\t");
+      const employeeNo = String(parts[0] || "").trim();
+      const punchAt = truncateTimestampToMinute(parts[1] || "");
+      return {
+        employeeNo,
+        punchAt,
+        workDate: punchAt.slice(0, 10),
+        raw: line,
+      };
+    })
+    .filter((row) => row.employeeNo && row.punchAt);
+}
+
+async function insertBiometricPunches({ punches, sourceDevice, createdBy = null, importId = null }) {
+  let inserted = 0;
+  let skipped = 0;
+  const affectedEmployees = new Map();
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    for (const punch of punches) {
+      const [[employee]] = await connection.execute(
+        `SELECT id FROM employees WHERE employee_no = :employeeNo OR biometric_id = :employeeNo LIMIT 1`,
+        { employeeNo: punch.employeeNo },
+      );
+      if (!employee) {
+        skipped++;
+        continue;
+      }
+      const [result] = await connection.execute(
+        `INSERT IGNORE INTO attendance_logs
+           (id, employee_id, punch_at, source, source_device, import_id, raw_payload, created_by)
+         VALUES
+           (:id, :employeeId, :punchAt, 'Biometric', :sourceDevice, :importId, :rawPayload, :createdBy)`,
+        {
+          id: crypto.randomUUID(),
+          employeeId: employee.id,
+          punchAt: punch.punchAt,
+          sourceDevice: sourceDevice.slice(0, 120),
+          importId,
+          rawPayload: JSON.stringify({ raw: punch.raw, employeeNo: punch.employeeNo }),
+          createdBy,
+        },
+      );
+      if (result.affectedRows > 0) {
+        inserted++;
+        const existing = affectedEmployees.get(employee.id);
+        affectedEmployees.set(employee.id, {
+          from: existing?.from && existing.from < punch.workDate ? existing.from : punch.workDate,
+          to: existing?.to && existing.to > punch.workDate ? existing.to : punch.workDate,
+        });
+      } else {
+        skipped++;
+      }
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  return { inserted, skipped, affectedEmployees };
+}
+
+async function handleAdmsIclock(req, res, url) {
+  if (req.method === "GET") return text(res, 200, "OK");
+  if (req.method !== "POST") return text(res, 405, "OK");
+
+  const table = String(url.searchParams.get("table") || "").toUpperCase();
+  const serial = String(url.searchParams.get("SN") || url.searchParams.get("sn") || "").trim();
+  const remote = req.socket?.remoteAddress || "";
+  const sourceDevice = serial ? `ADMS ${serial}` : `ADMS ${remote || "device"}`;
+  const rawData = await readRawBody(req);
+  text(res, 200, "OK");
+
+  if (table !== "ATTLOG") return;
+  const punches = parseAdmsAttlog(rawData);
+  if (!punches.length) return;
+
+  biometricSyncStartedAt = Date.now();
+  setBiometricSyncStatus({
+    status: "syncing",
+    mode: "ADMS",
+    syncStartTime: new Date().toISOString(),
+    error: null,
+  });
+  addBiometricSyncLog("info", `ADMS received ${punches.length} ATTLOG row(s) from ${sourceDevice}`);
+  try {
+    const result = await insertBiometricPunches({ punches, sourceDevice });
+    for (const [employeeId, range] of result.affectedEmployees.entries()) {
+      enqueueBiometricDtrRefresh(employeeId, range.from);
+      if (range.to !== range.from) enqueueBiometricDtrRefresh(employeeId, range.to);
+    }
+    const now = new Date().toISOString();
+    setBiometricSyncStatus({
+      status: "success",
+      lastSyncTime: now,
+      durationMs: null,
+      recordsFetched: punches.length,
+      recordsInserted: result.inserted,
+      devicesProcessed: 1,
+      error: null,
+    });
+    biometricSyncStartedAt = null;
+    addBiometricSyncLog(
+      "success",
+      `ADMS stored ${result.inserted} new punch(es), skipped ${result.skipped}`,
+    );
+  } catch (error) {
+    setBiometricSyncStatus({
+      status: "failed",
+      lastSyncTime: new Date().toISOString(),
+      recordsFetched: punches.length,
+      recordsInserted: 0,
+      devicesProcessed: 1,
+      error: error.message,
+    });
+    biometricSyncStartedAt = null;
+    addBiometricSyncLog("error", `ADMS import failed: ${error.message}`);
+  }
+}
+
+async function handleBiometricRealtimeStatus(req, res) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  const elapsedMs =
+    biometricSyncStatus.status === "syncing" && biometricSyncStartedAt
+      ? Date.now() - biometricSyncStartedAt
+      : biometricSyncStatus.durationMs;
+  const [devices] = await pool.query(
+    `SELECT id, name, ip_address, port, is_active FROM biometric_devices ORDER BY name ASC`,
+  );
+  return json(res, 200, {
+    status: { ...biometricSyncStatus, elapsedMs },
+    queue: {
+      pendingEmployees: biometricRefreshQueue.size,
+      running: biometricQueueRunning,
+    },
+    devices: devices.map(biometricDeviceRow),
+  });
+}
+
+async function handleBiometricRealtimeLogs(req, res, url) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  const since = Math.max(0, Number(url.searchParams.get("since") || 0));
+  return json(res, 200, {
+    logs: biometricSyncLogs.slice(since),
+    total: biometricSyncLogs.length,
+  });
+}
+
+async function handleBiometricSyncNow(req, res) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  if (biometricSyncStatus.status === "syncing") {
+    return json(res, 409, { error: "Biometric sync already in progress", status: biometricSyncStatus });
+  }
+
+  const body = await readBody(req);
+  const today = new Date();
+  const fallbackTo = today.toISOString().slice(0, 10);
+  const fallbackFromDate = new Date(today);
+  fallbackFromDate.setDate(today.getDate() - Number(body.daysBack || 7));
+  const from = normalizeDate(body.from || body.startDate) || fallbackFromDate.toISOString().slice(0, 10);
+  const to = normalizeDate(body.to || body.endDate) || fallbackTo;
+  const deviceId = String(body.deviceId || body.biometricId || "").trim();
+
+  const deviceWhere = deviceId ? "WHERE id = :deviceId" : "WHERE is_active = 1";
+  const [devices] = await pool.execute(
+    `SELECT * FROM biometric_devices ${deviceWhere} ORDER BY name ASC`,
+    { deviceId },
+  );
+  const activeDevices = devices.filter((device) => device.is_active);
+  if (!activeDevices.length) {
+    return json(res, 400, { error: "No active biometric devices configured" });
+  }
+
+  biometricSyncStartedAt = Date.now();
+  setBiometricSyncStatus({
+    status: "syncing",
+    mode: "manual",
+    syncStartTime: new Date().toISOString(),
+    durationMs: null,
+    recordsFetched: 0,
+    recordsInserted: 0,
+    devicesProcessed: 0,
+    error: null,
+  });
+  addBiometricSyncLog(
+    "info",
+    `Manual sync started for ${activeDevices.length} device(s), ${from} to ${to}`,
+  );
+
+  let recordsFetched = 0;
+  let recordsInserted = 0;
+  let devicesProcessed = 0;
+  const errors = [];
+
+  for (const device of activeDevices) {
+    try {
+      addBiometricSyncLog("info", `Fetching ${device.name} (${device.ip_address}:${device.port})`);
+      const parsed = await fetchBiometricPunches(device, from, to);
+      recordsFetched += parsed.length;
+      const result = await importParsedPunches({
+        user,
+        req,
+        body,
+        fileName: `Biometric ${device.name || device.ip_address}`,
+        parsed,
+        employeeId: "",
+        from,
+        to,
+        source: "Biometric",
+        sourceDevice: String(device.name || device.ip_address || "Biometric").slice(0, 120),
+      });
+      recordsInserted += result.imported;
+      devicesProcessed++;
+      addBiometricSyncLog(
+        "success",
+        `${device.name} imported ${result.imported} punch(es); refreshed ${result.refreshed.recordsProcessed} day(s)`,
+      );
+    } catch (error) {
+      errors.push(`${device.name || device.ip_address}: ${error.message}`);
+      addBiometricSyncLog("warn", `${device.name || device.ip_address} skipped: ${error.message}`);
+    }
+  }
+
+  const durationMs = Date.now() - biometricSyncStartedAt;
+  const status = errors.length && !recordsInserted ? "failed" : "success";
+  setBiometricSyncStatus({
+    status,
+    lastSyncTime: new Date().toISOString(),
+    durationMs,
+    recordsFetched,
+    recordsInserted,
+    devicesProcessed,
+    error: errors.length ? errors.join("\n") : null,
+  });
+  biometricSyncStartedAt = null;
+  addBiometricSyncLog(
+    status === "success" ? "success" : "error",
+    `Manual sync finished: ${recordsFetched} fetched, ${recordsInserted} imported`,
+  );
+
+  return json(res, status === "success" ? 200 : 500, {
+    status: biometricSyncStatus,
+    recordsFetched,
+    recordsInserted,
+    devicesProcessed,
+    errors,
+  });
+}
+
 async function prepareDtrExport(req, res) {
   const user = await requireAttendanceRead(req, res);
   if (!user) return null;
@@ -5375,12 +5740,15 @@ async function route(req, res) {
   const dtrPdfMatch = url.pathname.match(/^\/api\/attendance\/dtr\/pdf\/([^/]+)$/);
   const dtrNoterMatch = url.pathname.match(/^\/api\/attendance\/noters\/(\d+)$/);
   const biometricDeviceMatch = url.pathname.match(/^\/api\/attendance\/biometrics\/(\d+)$/);
+  const isAdmsIclock = url.pathname === "/iclock/cdata" || url.pathname === "/iclock/getrequest";
   const unimportedDtrMatch = url.pathname.match(
     /^\/api\/attendance\/check-unimported-dtrs\/([A-Za-z0-9-]+)$/,
   );
   const departmentMatch = url.pathname.match(/^\/api\/settings\/departments\/(\d+)$/);
   const positionMatch = url.pathname.match(/^\/api\/settings\/positions\/(\d+)$/);
   const salaryGradeMatch = url.pathname.match(/^\/api\/settings\/salary-grades\/(\d+)$/);
+
+  if (isAdmsIclock) return handleAdmsIclock(req, res, url);
 
   if (req.method === "GET" && url.pathname === "/api/health") {
     return json(res, 200, { ok: true, database: DB_NAME });
@@ -5491,6 +5859,8 @@ async function route(req, res) {
     return handleImportDtrFile(req, res);
   if (req.method === "POST" && url.pathname === "/api/attendance/import-single-dtr")
     return handleImportSingleDtr(req, res);
+  if (req.method === "POST" && url.pathname === "/api/attendance/import-all")
+    return handleImportAllDtr(req, res);
   if (req.method === "POST" && url.pathname === "/api/attendance/import-all-dtr")
     return handleImportAllDtr(req, res);
   if (req.method === "GET" && unimportedDtrMatch)
@@ -5519,6 +5889,12 @@ async function route(req, res) {
     return handleDeleteBiometricDevice(req, res, biometricDeviceMatch[1]);
   if (req.method === "POST" && url.pathname === "/api/attendance/biometrics/check-status")
     return handleCheckBiometricStatus(req, res);
+  if (req.method === "GET" && url.pathname === "/api/attendance/biometrics/realtime/status")
+    return handleBiometricRealtimeStatus(req, res);
+  if (req.method === "GET" && url.pathname === "/api/attendance/biometrics/realtime/logs")
+    return handleBiometricRealtimeLogs(req, res, url);
+  if (req.method === "POST" && url.pathname === "/api/attendance/biometrics/realtime/sync-now")
+    return handleBiometricSyncNow(req, res);
   if (req.method === "POST" && url.pathname === "/api/attendance/dtr/excel")
     return handleGenerateDtrExcel(req, res);
   if (req.method === "GET" && dtrExcelMatch)
@@ -5567,3 +5943,29 @@ server.listen(PORT, () => {
   console.log(`HRIS API listening on http://localhost:${PORT}`);
   console.log(`Using MySQL schema ${DB_NAME} at ${DB_HOST}`);
 });
+
+if (ADMS_PORT && ADMS_PORT !== PORT) {
+  const admsServer = http.createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host || `localhost:${ADMS_PORT}`}`);
+      if (url.pathname === "/iclock/cdata" || url.pathname === "/iclock/getrequest") {
+        return handleAdmsIclock(req, res, url);
+      }
+      return text(res, 404, "Not found");
+    } catch (error) {
+      console.error(error);
+      if (!res.headersSent) text(res, 200, "OK");
+    }
+  });
+
+  admsServer.on("error", (error) => {
+    addBiometricSyncLog(
+      "error",
+      `ADMS listener could not start on port ${ADMS_PORT}: ${error.message}`,
+    );
+  });
+
+  admsServer.listen(ADMS_PORT, "0.0.0.0", () => {
+    addBiometricSyncLog("info", `ADMS live receiver listening on port ${ADMS_PORT}`);
+  });
+}

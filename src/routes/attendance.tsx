@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
+  Activity,
   CalendarClock,
   CheckCircle2,
   ChevronDown,
@@ -10,9 +11,11 @@ import {
   FileText,
   Pencil,
   Plus,
+  RadioTower,
   RefreshCw,
   Search,
   Settings2,
+  SquareTerminal,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -54,6 +57,8 @@ import {
   downloadDtrCsv,
   generateDtrExcel,
   generateDtrPdf,
+  getBiometricRealtimeLogs,
+  getBiometricRealtimeStatus,
   importAllDtr,
   importSingleDtr,
   listBiometricDevices,
@@ -61,7 +66,10 @@ import {
   listDtr,
   openGeneratedFile,
   refreshDtr,
+  syncBiometricNow,
   updateDtr,
+  type BiometricRealtimeLog,
+  type BiometricRealtimeStatus,
   type BiometricDevice,
   type DtrNoter,
   type DtrEntry,
@@ -132,6 +140,13 @@ function AttendancePage() {
   const [selectedBiometricId, setSelectedBiometricId] = useState("");
   const [deviceStatus, setDeviceStatus] = useState<Record<string, "online" | "offline">>({});
   const [unimportedCount, setUnimportedCount] = useState<number | null>(null);
+  const [realtimeStatus, setRealtimeStatus] = useState<BiometricRealtimeStatus["status"] | null>(
+    null,
+  );
+  const [realtimeQueue, setRealtimeQueue] = useState<BiometricRealtimeStatus["queue"] | null>(null);
+  const [realtimeLogs, setRealtimeLogs] = useState<BiometricRealtimeLog[]>([]);
+  const [showRealtimeLogs, setShowRealtimeLogs] = useState(false);
+  const [manualSyncDeviceId, setManualSyncDeviceId] = useState("all");
   const [importStartDate, setImportStartDate] = useState(DEFAULT_FROM);
   const [importEndDate, setImportEndDate] = useState(DEFAULT_TO);
   const [deviceForm, setDeviceForm] = useState({
@@ -204,6 +219,44 @@ function AttendancePage() {
       })
       .catch(() => setNoters([]));
   }, [canManage, isEmployee]);
+
+  useEffect(() => {
+    if (!canManage) return;
+    let cancelled = false;
+    let logOffset = 0;
+
+    const loadRealtime = async () => {
+      try {
+        const [statusResult, logsResult] = await Promise.all([
+          getBiometricRealtimeStatus(),
+          getBiometricRealtimeLogs(logOffset),
+        ]);
+        if (cancelled) return;
+        setRealtimeStatus(statusResult.status);
+        setRealtimeQueue(statusResult.queue);
+        setBiometricDevices(statusResult.devices);
+        setManualSyncDeviceId((current) => {
+          if (current !== "all") return current;
+          return statusResult.devices.some((device) => device.active) ? "all" : current;
+        });
+        if (logsResult.logs.length) {
+          setRealtimeLogs((current) => [...current, ...logsResult.logs].slice(-80));
+          logOffset = logsResult.total;
+        }
+      } catch {
+        if (!cancelled) {
+          setRealtimeStatus((current) => current || null);
+        }
+      }
+    };
+
+    loadRealtime();
+    const timer = window.setInterval(loadRealtime, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [canManage]);
 
   useEffect(() => {
     if (!showImportDialog || !canManage) return;
@@ -446,6 +499,27 @@ function AttendancePage() {
     }
   };
 
+  const runManualBiometricSync = async () => {
+    setBusy(true);
+    try {
+      const result = await syncBiometricNow({
+        deviceId: manualSyncDeviceId === "all" ? undefined : manualSyncDeviceId,
+        from,
+        to,
+      });
+      setRealtimeStatus(result.status);
+      toast.success(
+        `Biometric sync complete: ${result.recordsInserted} of ${result.recordsFetched} punch(es) imported`,
+      );
+      if (result.errors?.length) toast.warning(`${result.errors.length} device(s) need checking`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to sync biometric devices");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveBiometricDevice = async () => {
     const name = deviceForm.name.trim();
     const ipAddress = deviceForm.ip_address.trim();
@@ -658,6 +732,17 @@ function AttendancePage() {
     }
   };
 
+  const activeBiometricDevices = biometricDevices.filter((device) => device.active);
+  const realtimeState = realtimeStatus?.status || "idle";
+  const realtimeBadgeClass =
+    realtimeState === "syncing"
+      ? "border-amber-200 bg-amber-50 text-amber-700"
+      : realtimeState === "failed"
+        ? "border-rose-200 bg-rose-50 text-rose-700"
+        : realtimeState === "success"
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-slate-200 bg-slate-50 text-slate-700";
+
   return (
     <AppShell
       title={isEmployee ? "My Attendance" : "Attendance DTR"}
@@ -780,6 +865,143 @@ function AttendancePage() {
           <SummaryCard label="Incomplete" value={summary.incomplete} />
           <SummaryCard label="Late Minutes" value={summary.lateMinutes} />
         </div>
+
+        {canManage && (
+          <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <RadioTower className="h-4 w-4 text-emerald-700" />
+                    <div>
+                      <h2 className="text-sm font-semibold text-foreground">
+                        Real-Time Biometric
+                      </h2>
+                      <p className="text-xs text-muted-foreground">
+                        ADMS receiver on port {realtimeStatus?.admsPort || 6000}; active devices
+                        are synced by biometric ID or employee number.
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className={realtimeBadgeClass}>
+                    <Activity className="mr-1 h-3.5 w-3.5" />
+                    {realtimeState}
+                  </Badge>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-4">
+                  <RealtimeStat label="Active Devices" value={activeBiometricDevices.length} />
+                  <RealtimeStat label="Fetched" value={realtimeStatus?.recordsFetched || 0} />
+                  <RealtimeStat label="Imported" value={realtimeStatus?.recordsInserted || 0} />
+                  <RealtimeStat label="DTR Queue" value={realtimeQueue?.pendingEmployees || 0} />
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+                  <div className="space-y-1.5">
+                    <Label>Manual Sync Device</Label>
+                    <Select value={manualSyncDeviceId} onValueChange={setManualSyncDeviceId}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All active devices</SelectItem>
+                        {biometricDevices.map((device) => (
+                          <SelectItem key={device.id} value={device.id} disabled={!device.active}>
+                            {device.name} - {device.ip_address}:{device.port}
+                            {!device.active ? " (Inactive)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button variant="outline" onClick={() => setShowRealtimeLogs((value) => !value)}>
+                    <SquareTerminal className="mr-1.5 h-4 w-4" />
+                    Logs
+                  </Button>
+                  <Button
+                    onClick={runManualBiometricSync}
+                    disabled={busy || !activeBiometricDevices.length || realtimeState === "syncing"}
+                    className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  >
+                    <RefreshCw className="mr-1.5 h-4 w-4" />
+                    Sync Now
+                  </Button>
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  {activeBiometricDevices.length ? (
+                    activeBiometricDevices.map((device) => (
+                      <div
+                        key={device.id}
+                        className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-foreground">{device.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {device.ip_address}:{device.port}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground md:col-span-2">
+                      No active biometric devices configured. Add the 2nd Floor device, then keep
+                      ADMS pointed to this computer on port {realtimeStatus?.admsPort || 6000}.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-md border border-border bg-muted/30">
+                <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">
+                    Recent Events
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {realtimeStatus?.lastSyncTime
+                      ? new Date(realtimeStatus.lastSyncTime).toLocaleString()
+                      : "Waiting for ADMS"}
+                  </p>
+                </div>
+                <div
+                  className={`max-h-56 overflow-y-auto px-3 py-2 font-mono text-xs ${
+                    showRealtimeLogs ? "" : "hidden xl:block"
+                  }`}
+                >
+                  {realtimeLogs.length ? (
+                    realtimeLogs
+                      .slice()
+                      .reverse()
+                      .map((log, index) => (
+                        <div key={`${log.time}-${index}`} className="mb-1 flex gap-2">
+                          <span className="shrink-0 text-muted-foreground">
+                            {new Date(log.time).toLocaleTimeString()}
+                          </span>
+                          <span
+                            className={
+                              log.level === "error"
+                                ? "text-rose-600"
+                                : log.level === "warn"
+                                  ? "text-amber-600"
+                                  : log.level === "success"
+                                    ? "text-emerald-600"
+                                    : "text-foreground"
+                            }
+                          >
+                            {log.message}
+                          </span>
+                        </div>
+                      ))
+                  ) : (
+                    <p className="py-6 text-center font-sans text-sm text-muted-foreground">
+                      No biometric events yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -1594,6 +1816,15 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
     <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-1 text-xl font-semibold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function RealtimeStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-border bg-background px-3 py-2">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-foreground">{value}</p>
     </div>
   );
 }
