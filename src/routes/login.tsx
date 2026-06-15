@@ -234,8 +234,8 @@ function LoginPage() {
             </form>
 
             <div className="mt-10 pt-6 border-t border-border/60 flex items-center justify-center">
-              <div className="text-xs text-muted-foreground/60 font-semibold tracking-wider uppercase">
-                Department of Health © {new Date().getFullYear()}
+              <div className="text-xs text-muted-foreground/60 font-semibold tracking-wider ">
+                41 Information Technology Services © {new Date().getFullYear()}
               </div>
             </div>
           </div>
