@@ -4,7 +4,7 @@ import {
   BarChart3,
   Briefcase,
   Calendar as CalendarIcon,
-  CheckSquare,
+  Clock,
   FileText,
   UserCheck,
   UserPlus,
@@ -372,9 +372,9 @@ function Dashboard() {
                 bg="bg-amber-50"
               />
               <QuickLink
-                to="/requests"
-                icon={<CheckSquare className="h-5 w-5 text-teal-600" />}
-                label="Requests"
+                to="/attendance"
+                icon={<Clock className="h-5 w-5 text-teal-600" />}
+                label="Attendance"
                 bg="bg-teal-50"
               />
             </div>
@@ -566,7 +566,7 @@ function QuickLink({
   label,
   bg,
 }: {
-  to: "/" | "/employees" | "/leave" | "/reports" | "/requests";
+  to: "/" | "/employees" | "/attendance" | "/leave" | "/reports";
   icon: React.ReactNode;
   label: string;
   bg: string;

@@ -2,6 +2,11 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { api } from "@/lib/api";
 
 export type Role = "Admin" | "HR" | "Employee" | "Viewer";
+
+export function isSelfServiceRole(role: Role | string | undefined): role is "Employee" {
+  return role === "Employee";
+}
+
 export interface User {
   id: number;
   username: string;

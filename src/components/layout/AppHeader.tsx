@@ -1,5 +1,6 @@
 import {
   Bell,
+  ClipboardList,
   Moon,
   Sun,
   Upload,
@@ -15,7 +16,7 @@ import {
   ShieldCheck,
   ClipboardCheck,
 } from "lucide-react";
-import { useAuth } from "@/lib/auth";
+import { isSelfServiceRole, useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect } from "react";
@@ -39,7 +40,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useNavigate, Link, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { listLeaveApplications } from "@/lib/leave-api";
 import { cn } from "@/lib/utils";
 
 export function AppHeader({ title, subtitle }: { title: string; subtitle?: string }) {
@@ -51,6 +54,16 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
 
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [formData, setFormData] = useState({ name: "", photoUrl: "" });
+  const canSeeLeaveNotifications = user?.role === "Admin" || user?.role === "HR";
+
+  const { data: leaveNotifications } = useQuery({
+    queryKey: ["leave-notifications", user?.role],
+    queryFn: () => listLeaveApplications({ status: "Pending" }),
+    enabled: canSeeLeaveNotifications,
+    refetchInterval: 30000,
+  });
+
+  const pendingLeaveCount = leaveNotifications?.summary.pending || 0;
 
   useEffect(() => {
     if (user) {
@@ -117,12 +130,11 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
     { to: "/settings", label: "Settings", icon: SettingsIcon },
   ];
   const mobileNav = NAV.filter((item) => {
-    const employeeOnly = ["/my-profile", "/requests"];
-    if (user?.role === "Admin") return !employeeOnly.includes(item.to);
-    if (user?.role === "HR") return !["/admin", ...employeeOnly].includes(item.to);
-    if (user?.role === "Viewer")
-      return ["/", "/employees", "/reports", "/self-service"].includes(item.to);
-    if (user?.role === "Employee") {
+    const selfServiceOnly = ["/my-profile", "/self-service", "/requests"];
+    if (user?.role === "Admin") return !selfServiceOnly.includes(item.to);
+    if (user?.role === "HR") return !["/admin", ...selfServiceOnly].includes(item.to);
+    if (user?.role === "Viewer") return ["/", "/employees", "/reports"].includes(item.to);
+    if (isSelfServiceRole(user?.role)) {
       return ["/", "/my-profile", "/self-service", "/attendance", "/requests"].includes(item.to);
     }
     return false;
@@ -169,6 +181,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                 {mobileNav.map((item) => {
                   const active = isActive(item.to, item.exact);
                   const Icon = item.icon;
+                  const itemPendingCount = item.to === "/leave" ? pendingLeaveCount : 0;
                   return (
                     <Link
                       key={item.to}
@@ -189,6 +202,11 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                         )}
                       />
                       <span className="truncate">{item.label}</span>
+                      {itemPendingCount > 0 && (
+                        <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">
+                          {itemPendingCount > 99 ? "99+" : itemPendingCount}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}
@@ -224,13 +242,46 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
             >
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
-            <button
-              className="relative h-8 w-8 grid place-items-center rounded-full hover:bg-background hover:shadow-sm text-muted-foreground transition-all duration-200"
-              aria-label="Notifications"
-            >
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-destructive ring-2 ring-background" />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="relative h-8 w-8 grid place-items-center rounded-full hover:bg-background hover:shadow-sm text-muted-foreground transition-all duration-200"
+                  aria-label="Notifications"
+                >
+                  <Bell className="h-4 w-4" />
+                  {pendingLeaveCount > 0 && (
+                    <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold leading-4 text-destructive-foreground ring-2 ring-background">
+                      {pendingLeaveCount > 9 ? "9+" : pendingLeaveCount}
+                    </span>
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {canSeeLeaveNotifications && pendingLeaveCount > 0 ? (
+                  <DropdownMenuItem
+                    onClick={() => navigate({ to: "/leave" })}
+                    className="cursor-pointer items-start gap-2"
+                  >
+                    <ClipboardList className="mt-0.5 h-4 w-4 text-amber-600" />
+                    <span>
+                      <span className="block text-sm font-medium">
+                        {pendingLeaveCount} pending leave request
+                        {pendingLeaveCount === 1 ? "" : "s"}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        Open Leave Management to review.
+                      </span>
+                    </span>
+                  </DropdownMenuItem>
+                ) : (
+                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No notifications.
+                  </div>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {user && (

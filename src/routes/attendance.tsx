@@ -119,7 +119,6 @@ function AttendancePage() {
   const [employeeId, setEmployeeId] = useState("all");
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [entries, setEntries] = useState<DtrEntry[]>([]);
-  const [summary, setSummary] = useState({ total: 0, present: 0, incomplete: 0, lateMinutes: 0 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [showDtrDialog, setShowDtrDialog] = useState(false);
@@ -193,7 +192,6 @@ function AttendancePage() {
     listDtr({ employeeId: selectedEmployeeId, from, to, q: isEmployee ? "" : q })
       .then((result) => {
         setEntries(result.entries);
-        setSummary(result.summary);
       })
       .catch((err) => toast.error(err.message || "Unable to load DTR"))
       .finally(() => setLoading(false));
@@ -845,7 +843,7 @@ function AttendancePage() {
                   )}
                   <DropdownMenuItem onClick={openExport}>
                     <FileSpreadsheet className="h-4 w-4" />
-                    View DTR Excel
+                    {isEmployee ? "Download DTR Excel" : "View DTR Excel"}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => exportRows(false)}>
                     <Download className="h-4 w-4" />
@@ -862,13 +860,6 @@ function AttendancePage() {
             </div>
           </div>
         </section>
-
-        <div className="grid gap-3 md:grid-cols-4">
-          <SummaryCard label="DTR Rows" value={summary.total} />
-          <SummaryCard label="Present/Late" value={summary.present} />
-          <SummaryCard label="Incomplete" value={summary.incomplete} />
-          <SummaryCard label="Late Minutes" value={summary.lateMinutes} />
-        </div>
 
         {canManage && (
           <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -920,7 +911,7 @@ function AttendancePage() {
                   </div>
                   <Button variant="outline" onClick={() => setShowRealtimeLogs((value) => !value)}>
                     <SquareTerminal className="mr-1.5 h-4 w-4" />
-                    Logs
+                    {showRealtimeLogs ? "Hide Logs" : "Logs"}
                   </Button>
                   <Button
                     onClick={runManualBiometricSync}
@@ -956,53 +947,51 @@ function AttendancePage() {
                 </div>
               </div>
 
-              <div className="rounded-md border border-border bg-muted/30">
-                <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground">
-                    Recent Events
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {realtimeStatus?.lastSyncTime
-                      ? new Date(realtimeStatus.lastSyncTime).toLocaleString()
-                      : "Waiting for ADMS"}
-                  </p>
-                </div>
-                <div
-                  className={`max-h-56 overflow-y-auto px-3 py-2 font-mono text-xs ${
-                    showRealtimeLogs ? "" : "hidden xl:block"
-                  }`}
-                >
-                  {realtimeLogs.length ? (
-                    realtimeLogs
-                      .slice()
-                      .reverse()
-                      .map((log, index) => (
-                        <div key={`${log.time}-${index}`} className="mb-1 flex gap-2">
-                          <span className="shrink-0 text-muted-foreground">
-                            {new Date(log.time).toLocaleTimeString()}
-                          </span>
-                          <span
-                            className={
-                              log.level === "error"
-                                ? "text-rose-600"
-                                : log.level === "warn"
-                                  ? "text-amber-600"
-                                  : log.level === "success"
-                                    ? "text-emerald-600"
-                                    : "text-foreground"
-                            }
-                          >
-                            {log.message}
-                          </span>
-                        </div>
-                      ))
-                  ) : (
-                    <p className="py-6 text-center font-sans text-sm text-muted-foreground">
-                      No biometric events yet.
+              {showRealtimeLogs && (
+                <div className="rounded-md border border-border bg-muted/30">
+                  <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                      Recent Events
                     </p>
-                  )}
+                    <p className="text-xs text-muted-foreground">
+                      {realtimeStatus?.lastSyncTime
+                        ? new Date(realtimeStatus.lastSyncTime).toLocaleString()
+                        : "Waiting for ADMS"}
+                    </p>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto px-3 py-2 font-mono text-xs">
+                    {realtimeLogs.length ? (
+                      realtimeLogs
+                        .slice()
+                        .reverse()
+                        .map((log, index) => (
+                          <div key={`${log.time}-${index}`} className="mb-1 flex gap-2">
+                            <span className="shrink-0 text-muted-foreground">
+                              {new Date(log.time).toLocaleTimeString()}
+                            </span>
+                            <span
+                              className={
+                                log.level === "error"
+                                  ? "text-rose-600"
+                                  : log.level === "warn"
+                                    ? "text-amber-600"
+                                    : log.level === "success"
+                                      ? "text-emerald-600"
+                                      : "text-foreground"
+                              }
+                            >
+                              {log.message}
+                            </span>
+                          </div>
+                        ))
+                    ) : (
+                      <p className="py-6 text-center font-sans text-sm text-muted-foreground">
+                        No biometric events yet.
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </section>
         )}
@@ -1548,7 +1537,7 @@ function AttendancePage() {
       <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>View DTR Excel</DialogTitle>
+            <DialogTitle>{isEmployee ? "Download DTR Excel" : "View DTR Excel"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-5">
             {!isEmployee && (
@@ -1660,17 +1649,19 @@ function AttendancePage() {
             <Button variant="outline" onClick={() => setShowExportDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={viewPdf} disabled={busy} variant="outline">
-              <FileText className="mr-1.5 h-4 w-4" />
-              View PDF
-            </Button>
+            {!isEmployee && (
+              <Button onClick={viewPdf} disabled={busy} variant="outline">
+                <FileText className="mr-1.5 h-4 w-4" />
+                View PDF
+              </Button>
+            )}
             <Button
               onClick={exportExcel}
               disabled={busy}
               className="bg-blue-600 text-white hover:bg-blue-700"
             >
               <FileSpreadsheet className="mr-1.5 h-4 w-4" />
-              Generate Excel
+              {isEmployee ? "Download Excel" : "Generate Excel"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1812,15 +1803,6 @@ function AttendancePage() {
         </DialogContent>
       </Dialog>
     </AppShell>
-  );
-}
-
-function SummaryCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-foreground">{value}</p>
-    </div>
   );
 }
 

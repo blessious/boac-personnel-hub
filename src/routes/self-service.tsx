@@ -43,6 +43,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
 import {
+  generateEmployeePdsExcel,
   getEmployee,
   type EmployeeDetailResponse,
   type EmployeeRecord,
@@ -56,7 +57,7 @@ import {
   type LeaveType,
   listLeaveTypes,
 } from "@/lib/leave-api";
-import { listDtr } from "@/lib/attendance-api";
+import { listDtr, type DtrEntry, type DtrListResponse } from "@/lib/attendance-api";
 import { submitLeaveRequest } from "@/lib/requests-api";
 import { cn } from "@/lib/utils";
 
@@ -78,6 +79,13 @@ export function EmployeeDashboardHome() {
   const [profile, setProfile] = useState<EmployeeDetailResponse | null>(null);
   const [leave, setLeave] = useState<EmployeeLeaveResponse | null>(null);
   const [todayStatus, setTodayStatus] = useState<string>("Loading...");
+  const [todayDtr, setTodayDtr] = useState<DtrEntry | null>(null);
+  const [dtrSummary, setDtrSummary] = useState<DtrListResponse["summary"]>({
+    total: 0,
+    present: 0,
+    incomplete: 0,
+    lateMinutes: 0,
+  });
   const [loading, setLoading] = useState(Boolean(user?.employeeId));
   const [error, setError] = useState("");
 
@@ -89,20 +97,27 @@ export function EmployeeDashboardHome() {
 
     setLoading(true);
     setError("");
+    const now = new Date();
+    const today = now.toLocaleDateString("en-CA");
+    const monthFrom = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString("en-CA");
+    const monthTo = new Date(now.getFullYear(), now.getMonth() + 1, 0).toLocaleDateString("en-CA");
     Promise.all([
       getEmployee(user.employeeId),
       getEmployeeLeave(user.employeeId),
       listDtr({
         employeeId: user.employeeId,
-        from: new Date().toLocaleDateString("en-CA"),
-        to: new Date().toLocaleDateString("en-CA"),
+        from: monthFrom,
+        to: monthTo,
       }).catch(() => null),
     ])
       .then(([employeeResult, leaveResult, dtrResult]) => {
         setProfile(employeeResult);
         setLeave(leaveResult);
-        if (dtrResult && dtrResult.entries && dtrResult.entries.length > 0) {
-          setTodayStatus(dtrResult.entries[0].status);
+        if (dtrResult) setDtrSummary(dtrResult.summary);
+        const todayEntry = dtrResult?.entries.find((entry) => entry.workDate === today);
+        setTodayDtr(todayEntry || null);
+        if (todayEntry) {
+          setTodayStatus(todayEntry.status);
         } else {
           setTodayStatus("No Record");
         }
@@ -115,6 +130,11 @@ export function EmployeeDashboardHome() {
   const pendingRequests =
     leave?.applications.filter((item) => item.status === "Pending").length || 0;
   const primaryLeave = leave?.balances[0] || null;
+  const availableLeaveCredits = (leave?.balances || []).reduce(
+    (total, balance) => total + Number(balance.balance || 0),
+    0,
+  );
+  const monthLabel = new Date().toLocaleDateString("en-US", { month: "long" });
 
   const openProfile = () => navigate({ to: "/my-profile" });
   const openServices = () => navigate({ to: "/self-service" });
@@ -139,40 +159,99 @@ export function EmployeeDashboardHome() {
         />
       ) : (
         <div className="space-y-5">
-          <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0">
-                <h2 className="mt-1 text-2xl font-semibold text-foreground">
-                  Welcome, {employee.firstname || user?.name}
-                </h2>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                  {employee.position || "Position not set"} -{" "}
-                  {employee.department || "Department not set"}
-                </p>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button variant="outline" onClick={openProfile} className="w-full sm:w-auto">
-                  My Profile
-                </Button>
-                <Button
-                  onClick={openServices}
-                  className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
-                >
-                  Self-Service
-                  <ChevronRight className="ml-2 h-4 w-4" />
-                </Button>
+          <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <div className="relative p-5 lg:p-6">
+              <div className="absolute inset-y-0 left-0 w-1.5 bg-blue-600" />
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0 pl-2">
+                  <div className="mb-2 inline-flex items-center rounded-md border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                    Employee Dashboard
+                  </div>
+                  <h2 className="text-3xl font-bold tracking-tight text-foreground">
+                    Welcome, {employee.firstname || user?.name}
+                  </h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    {employee.position || "Position not set"} -{" "}
+                    {employee.department || "Department not set"}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                    >
+                      {todayStatus}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="border-amber-200 bg-amber-50 text-amber-700"
+                    >
+                      {pendingRequests} pending request{pendingRequests === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:w-auto">
+                  <Button variant="outline" onClick={openProfile} className="w-full">
+                    My Profile
+                  </Button>
+                  <Button
+                    onClick={openServices}
+                    className="w-full bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    Self-Service
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </section>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <CleanStat label="Attendance" value={todayStatus} icon={Clock} />
-            <CleanStat
-              label={primaryLeave?.code || "Leave Balance"}
-              value={primaryLeave ? formatNumber(primaryLeave.balance) : "-"}
-              icon={ClipboardCheck}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <DashboardMetricCard
+              title="Today DTR"
+              value={formatPunchRange(todayDtr?.amIn, todayDtr?.amOut)}
+              subtext={formatPunchRange(todayDtr?.pmIn, todayDtr?.pmOut)}
+              details={[
+                `AM In: ${valueOrDash(todayDtr?.amIn)}`,
+                `AM Out: ${valueOrDash(todayDtr?.amOut)}`,
+                `PM In: ${valueOrDash(todayDtr?.pmIn)}`,
+                `PM Out: ${valueOrDash(todayDtr?.pmOut)}`,
+              ]}
+              icon={<Clock className="h-5 w-5 text-blue-600" />}
+              iconBg="bg-blue-50"
+              chartColor="stroke-blue-500"
+              trend="up"
             />
-            <CleanStat label="Pending Requests" value={pendingRequests} icon={Bell} />
+            <DashboardMetricCard
+              title={`${monthLabel} Records`}
+              value={dtrSummary.total}
+              subtext={`${dtrSummary.present} present or late record(s)`}
+              icon={<CalendarCheck className="h-5 w-5 text-emerald-600" />}
+              iconBg="bg-emerald-50"
+              chartColor="stroke-emerald-500"
+              trend="up"
+            />
+            <DashboardMetricCard
+              title="Late Minutes"
+              value={dtrSummary.lateMinutes}
+              subtext="Month-to-date total"
+              icon={<CalendarClock className="h-5 w-5 text-amber-600" />}
+              iconBg="bg-amber-50"
+              chartColor="stroke-amber-500"
+              trend="down"
+            />
+            <DashboardMetricCard
+              title="Leave Credits"
+              value={formatNumber(availableLeaveCredits)}
+              subtext={
+                primaryLeave
+                  ? `${primaryLeave.code}: ${formatNumber(primaryLeave.balance)} available`
+                  : "No active leave balances"
+              }
+              icon={<ClipboardCheck className="h-5 w-5 text-rose-600" />}
+              iconBg="bg-rose-50"
+              chartColor="stroke-rose-500"
+              trend="up"
+            />
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -291,6 +370,7 @@ export function EmployeeProfileHome() {
             employee={employee}
             balances={leave?.balances || []}
             applications={leave?.applications || []}
+            sections={sections}
           />
           <ProfileTabs
             employee={employee}
@@ -315,6 +395,7 @@ function EmployeeServicesHome() {
   const [loading, setLoading] = useState(Boolean(user?.employeeId));
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [submittingLeave, setSubmittingLeave] = useState(false);
+  const [generatingPds, setGeneratingPds] = useState(false);
   const [leaveForm, setLeaveForm] = useState({
     leaveTypeId: "",
     dateFrom: "",
@@ -409,6 +490,23 @@ function EmployeeServicesHome() {
     }
   };
 
+  const downloadPds = async () => {
+    if (!user?.employeeId) {
+      toast.info("No employee record is linked to this account yet");
+      return;
+    }
+    try {
+      setGeneratingPds(true);
+      const result = await generateEmployeePdsExcel(user.employeeId);
+      toast.success("Personal Data Sheet generated");
+      window.location.href = result.downloadUrl;
+    } catch (error) {
+      toast.error((error as Error).message || "Unable to generate Personal Data Sheet");
+    } finally {
+      setGeneratingPds(false);
+    }
+  };
+
   return (
     <AppShell title="Self-Service Portal" subtitle="Employee requests, records, and HR services">
       <div className="space-y-5">
@@ -497,6 +595,12 @@ function EmployeeServicesHome() {
                 title="My Profile"
                 description="Review personal information and 201 records."
                 onClick={() => navigate({ to: "/my-profile" })}
+              />
+              <ActionButton
+                icon={FileText}
+                title={generatingPds ? "Generating PDS" : "Generate PDS"}
+                description="Download your filled Personal Data Sheet."
+                onClick={downloadPds}
               />
               <ActionButton
                 icon={Bell}
@@ -730,44 +834,50 @@ function ProfileHeader({
   const initials = getInitials(employee);
 
   return (
-    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
-          <Avatar className="h-20 w-20 border border-border bg-muted">
-            {employee.photoUrl ? <AvatarImage src={employee.photoUrl} alt={fullName} /> : null}
-            <AvatarFallback className="bg-blue-50 text-xl font-semibold text-blue-700">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="relative p-5 lg:p-6">
+        <div className="absolute inset-y-0 left-0 w-1.5 bg-blue-600" />
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-4 pl-2 sm:flex-row sm:items-center">
+            <Avatar className="h-20 w-20 border border-border bg-muted shadow-sm">
+              {employee.photoUrl ? <AvatarImage src={employee.photoUrl} alt={fullName} /> : null}
+              <AvatarFallback className="bg-blue-50 text-xl font-semibold text-blue-700">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
 
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-2xl font-semibold tracking-normal text-foreground">
-                {fullName}
-              </h2>
-              <Badge
-                variant="outline"
-                className="border-emerald-200 bg-emerald-50 text-emerald-700"
-              >
-                {employee.empStatus || "Active"}
-              </Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {employee.position || "Position not set"}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span>ID: {valueOrDash(employee.employeeId)}</span>
-              <span>Department: {valueOrDash(employee.department)}</span>
-              <span>Status: {valueOrDash(employee.status)}</span>
+            <div className="min-w-0">
+              <div className="mb-2 inline-flex items-center rounded-md border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                Employee Profile
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-3xl font-bold tracking-tight text-foreground">
+                  {fullName}
+                </h2>
+                <Badge
+                  variant="outline"
+                  className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                >
+                  {employee.empStatus || "Active"}
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {employee.position || "Position not set"}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span>ID: {valueOrDash(employee.employeeId)}</span>
+                <span>Department: {valueOrDash(employee.department)}</span>
+                <span>Status: {valueOrDash(employee.status)}</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="w-full lg:w-auto">
-          <Button variant="outline" onClick={onOpenProfile} className="w-full lg:w-auto">
-            Full 201 File
-            <ChevronRight className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="w-full lg:w-auto">
+            <Button variant="outline" onClick={onOpenProfile} className="w-full lg:w-auto">
+              Full 201 File
+              <ChevronRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </section>
@@ -778,24 +888,70 @@ function ProfileQuickStats({
   employee,
   balances,
   applications,
+  sections,
 }: {
   employee: EmployeeRecord;
   balances: LeaveBalance[];
   applications: LeaveApplication[];
+  sections: Record<string, SectionRow[]>;
 }) {
   const pending = applications.filter((item) => item.status === "Pending").length;
-  const primaryBalance = balances[0];
-  const mobileOrEmail = employee.cellphoneNo || employee.email ? "Available" : "Needs update";
+  const availableLeaveCredits = balances.reduce(
+    (total, balance) => total + Number(balance.balance || 0),
+    0,
+  );
+  const recordCount = Object.values(sections).reduce((total, rows) => total + countRows(rows), 0);
+  const governmentIds = [
+    employee.gsis,
+    employee.sss,
+    employee.pagibig,
+    employee.philhealth,
+    employee.tin,
+  ].filter(Boolean).length;
+  const contactStatus = employee.cellphoneNo || employee.email ? "Available" : "Needs Update";
 
   return (
-    <div className="grid gap-3 md:grid-cols-3">
-      <CleanStat label="Contact" value={mobileOrEmail} icon={Phone} />
-      <CleanStat
-        label="Leave Balance"
-        value={primaryBalance ? formatNumber(primaryBalance.balance) : "-"}
-        icon={ClipboardCheck}
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <DashboardMetricCard
+        title="Contact"
+        value={contactStatus}
+        subtext={employee.email || employee.cellphoneNo || "No contact details recorded"}
+        icon={<Phone className="h-5 w-5 text-blue-600" />}
+        iconBg="bg-blue-50"
+        chartColor="stroke-blue-500"
+        trend="up"
       />
-      <CleanStat label="Pending Requests" value={pending} icon={Bell} />
+      <DashboardMetricCard
+        title="Employment"
+        value={employee.status || "-"}
+        subtext={
+          employee.dateHired || employee.dateEmployed
+            ? `Hired ${formatDate(employee.dateHired || employee.dateEmployed)}`
+            : "Hire date not set"
+        }
+        icon={<IdCard className="h-5 w-5 text-emerald-600" />}
+        iconBg="bg-emerald-50"
+        chartColor="stroke-emerald-500"
+        trend="up"
+      />
+      <DashboardMetricCard
+        title="201 Records"
+        value={recordCount}
+        subtext={`${governmentIds}/5 government IDs recorded`}
+        icon={<ShieldCheck className="h-5 w-5 text-amber-600" />}
+        iconBg="bg-amber-50"
+        chartColor="stroke-amber-500"
+        trend="up"
+      />
+      <DashboardMetricCard
+        title="Leave & Requests"
+        value={formatNumber(availableLeaveCredits)}
+        subtext={`${pending} pending request${pending === 1 ? "" : "s"}`}
+        icon={<ClipboardCheck className="h-5 w-5 text-rose-600" />}
+        iconBg="bg-rose-50"
+        chartColor="stroke-rose-500"
+        trend="down"
+      />
     </div>
   );
 }
@@ -924,6 +1080,72 @@ function CleanStat({
       <div className="min-w-0">
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
         <p className="mt-1 truncate text-lg font-semibold text-foreground">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function DashboardMetricCard({
+  title,
+  value,
+  subtext,
+  details,
+  icon,
+  iconBg,
+  chartColor,
+  trend,
+}: {
+  title: string;
+  value: string | number;
+  subtext: string;
+  details?: string[];
+  icon: React.ReactNode;
+  iconBg: string;
+  chartColor: string;
+  trend: "up" | "down";
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground/80">{title}</p>
+          <h2 className="mt-1 truncate text-2xl font-bold text-foreground">{value}</h2>
+        </div>
+        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
+      </div>
+      <div className="relative z-10 mt-2 flex items-center text-[10px]">
+        <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
+        <span className="truncate text-muted-foreground">{subtext}</span>
+      </div>
+      {details?.length ? (
+        <div className="relative z-10 mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+          {details.map((detail) => (
+            <span key={detail} className="truncate">
+              {detail}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="absolute bottom-2 right-2 z-0 h-8 w-24 opacity-50">
+        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
+          {trend === "up" ? (
+            <path
+              d="M0,25 C20,20 40,30 60,10 C80,-5 100,5 100,5"
+              fill="none"
+              className={chartColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          ) : (
+            <path
+              d="M0,5 C20,5 40,-5 60,15 C80,30 100,20 100,20"
+              fill="none"
+              className={chartColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
       </div>
     </div>
   );
@@ -1239,6 +1461,11 @@ function formatDate(value?: string | null) {
 function formatNumber(value?: number | string | null) {
   const number = Number(value || 0);
   return new Intl.NumberFormat("en-PH", { maximumFractionDigits: 3 }).format(number);
+}
+
+function formatPunchRange(timeIn?: string | null, timeOut?: string | null) {
+  if (!timeIn && !timeOut) return "-";
+  return `${valueOrDash(timeIn)} - ${valueOrDash(timeOut)}`;
 }
 
 function valueOrDash(value?: string | number | null) {

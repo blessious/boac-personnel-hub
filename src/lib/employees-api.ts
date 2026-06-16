@@ -156,6 +156,12 @@ export function getEmployee(id: string) {
   return api<EmployeeDetailResponse>(`/api/employees/${id}`);
 }
 
+export function generateEmployeePdsExcel(id: string) {
+  return api<{ fileName: string; downloadUrl: string }>(`/api/employees/${id}/pds/excel`, {
+    method: "POST",
+  });
+}
+
 export function createEmployee(employee: Partial<EmployeeRecord>) {
   return api<{ employee: EmployeeRecord }>("/api/employees", {
     method: "POST",

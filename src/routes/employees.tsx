@@ -1,4 +1,11 @@
-import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useSearch,
+} from "@tanstack/react-router";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -58,6 +65,9 @@ import {
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/employees")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    department: typeof search.department === "string" ? search.department : undefined,
+  }),
   component: EmployeesPage,
 });
 
@@ -97,10 +107,12 @@ const EMPTY_FORM: Partial<EmployeeRecord> = {
 
 function EmployeesPage() {
   const location = useLocation();
+  const navigate = useNavigate({ from: "/employees" });
+  const search = useSearch({ from: "/employees" });
   const { can } = useAuth();
   const canEdit = can("edit");
   const [q, setQ] = useState("");
-  const [dept, setDept] = useState("all");
+  const [dept, setDept] = useState(search.department?.trim() || "all");
   const [status, setStatus] = useState("all");
   const [empStatus, setEmpStatus] = useState("all");
   const [page, setPage] = useState(1);
@@ -124,6 +136,7 @@ function EmployeesPage() {
   const [positionQuery, setPositionQuery] = useState("");
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const selectedDepartment = search.department?.trim() || "all";
 
   const load = () => {
     setLoading(true);
@@ -138,6 +151,11 @@ function EmployeesPage() {
   };
 
   useEffect(load, [q, dept, status, empStatus, page, pageSize]);
+
+  useEffect(() => {
+    setDept(selectedDepartment);
+    setPage(1);
+  }, [selectedDepartment]);
 
   useEffect(() => {
     getSettingsOptions()
@@ -320,6 +338,10 @@ function EmployeesPage() {
               onValueChange={(value) => {
                 setDept(value);
                 setPage(1);
+                navigate({
+                  search: value === "all" ? {} : { department: value },
+                  replace: true,
+                });
               }}
             >
               <SelectTrigger className="w-full lg:w-[220px] bg-card text-card-foreground">
@@ -416,6 +438,7 @@ function EmployeesPage() {
                   setStatus("all");
                   setEmpStatus("all");
                   setPage(1);
+                  navigate({ search: {}, replace: true });
                 }}
               >
                 Clear filters

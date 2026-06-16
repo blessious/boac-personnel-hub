@@ -52,6 +52,8 @@ const LEAVE_FORM6_TEMPLATE_XLSX = path.join(
   "CS Form No. 6, Revised 2020 (Application for Leave) (Fillable).xlsx",
 );
 const LEAVE_FORM6_EXCEL_SCRIPT = path.join(process.cwd(), "server", "leave_form6_excel.py");
+const PDS_TEMPLATE_XLSX = path.join(process.cwd(), "Personal Data Sheet", "Personal Data Sheet.xlsx");
+const PDS_EXCEL_SCRIPT = path.join(process.cwd(), "server", "pds_excel.py");
 const BIOMETRIC_FETCH_SCRIPT = path.join(process.cwd(), "server", "fetch_biometric.py");
 const ADMS_PORT = Number(process.env.HRIS_ADMS_PORT || 6000);
 const LIBREOFFICE_EXE =
@@ -1321,6 +1323,23 @@ async function initializeDatabase() {
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_audit_user_id (user_id),
       CONSTRAINT fk_audit_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS error_logs (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NULL,
+      method VARCHAR(12) NULL,
+      path VARCHAR(500) NULL,
+      message TEXT NOT NULL,
+      stack MEDIUMTEXT NULL,
+      ip_address VARCHAR(64) NULL,
+      user_agent VARCHAR(500) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_error_logs_user_id (user_id),
+      INDEX idx_error_logs_created_at (created_at),
+      CONSTRAINT fk_error_logs_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
 
@@ -4575,6 +4594,99 @@ async function handleGetEmployee(req, res, id) {
   return json(res, 200, { employee, sections });
 }
 
+async function buildEmployeePdsPayload(id, user) {
+  if (!["Admin", "HR", "Viewer"].includes(user.role) && user.employeeId !== id) {
+    throw httpError(403, "You can only export your own Personal Data Sheet");
+  }
+  try {
+    await fs.access(PDS_TEMPLATE_XLSX);
+  } catch {
+    throw httpError(500, "Personal Data Sheet Excel template was not found");
+  }
+
+  const employee = await readEmployeeById(id);
+  if (!employee) throw httpError(404, "Employee not found");
+
+  const sections = {};
+  for (const [key, config] of Object.entries(EMPLOYEE_SECTION_TABLES)) {
+    const [rows] = await pool.execute(
+      `SELECT id, payload, created_at, updated_at FROM \`${config.table}\` WHERE employee_id = :id ORDER BY created_at ASC, id ASC`,
+      { id },
+    );
+    sections[key] = rows.map(sectionRow);
+  }
+
+  const [[agency]] = await pool.query(
+    `SELECT name, tagline FROM agency_settings WHERE id = 1 LIMIT 1`,
+  );
+
+  return {
+    agency: agency || {},
+    employee,
+    sections,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+async function generateEmployeePdsExcelFile(id, user, req) {
+  const payload = await buildEmployeePdsPayload(id, user);
+  await fs.mkdir(PREVIEW_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safeName =
+    `${payload.employee.lastname || "employee"}-${payload.employee.firstname || ""}`.replace(
+      /[^A-Za-z0-9_-]+/g,
+      "-",
+    ) || "employee";
+  const fileName = `pds-${safeName}-${stamp}.xlsx`;
+  const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
+  const outputPath = path.join(PREVIEW_DIR, fileName);
+
+  await fs.writeFile(inputPath, JSON.stringify(payload), "utf8");
+  try {
+    await runPython([PDS_EXCEL_SCRIPT, inputPath, outputPath, PDS_TEMPLATE_XLSX]);
+  } finally {
+    await fs.rm(inputPath, { force: true }).catch(() => {});
+  }
+
+  await logAudit(user.id, "employees.pds_excel_generate", { employeeId: id, fileName }, req);
+  return { fileName, outputPath, payload };
+}
+
+async function handleGenerateEmployeePdsExcel(req, res, id) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  try {
+    const { fileName } = await generateEmployeePdsExcelFile(id, user, req);
+    return json(res, 200, {
+      fileName,
+      downloadUrl: `/api/employees/pds/excel/${encodeURIComponent(fileName)}`,
+    });
+  } catch (error) {
+    const status = error.statusCode || 500;
+    return json(res, status, { error: error.message });
+  }
+}
+
+async function handleDownloadEmployeePdsExcel(req, res, fileName) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const decoded = decodeURIComponent(fileName);
+  if (!/^pds-[A-Za-z0-9_.-]+\.xlsx$/.test(decoded)) {
+    return json(res, 400, { error: "Invalid Personal Data Sheet file name" });
+  }
+  const resolved = path.resolve(PREVIEW_DIR, decoded);
+  if (!resolved.startsWith(path.resolve(PREVIEW_DIR))) {
+    return json(res, 400, { error: "Invalid Personal Data Sheet path" });
+  }
+  try {
+    await fs.access(resolved);
+  } catch {
+    return json(res, 404, { error: "Personal Data Sheet file not found" });
+  }
+  await logAudit(user.id, "employees.pds_excel_download", { fileName: decoded }, req);
+  return sendFile(res, resolved, decoded);
+}
+
 async function handleUpdateEmployee(req, res, id) {
   const user = await requireEmployeeWrite(req, res);
   if (!user) return;
@@ -5614,6 +5726,34 @@ async function handleListAuditLogs(req, res) {
   return json(res, 200, { logs });
 }
 
+async function handleListErrorLogs(req, res) {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+
+  const [rows] = await pool.query(
+    `SELECT el.id, el.method, el.path, el.message, el.stack, el.ip_address, el.user_agent,
+            el.created_at, u.username, u.name, u.role
+     FROM error_logs el
+     LEFT JOIN users u ON u.id = el.user_id
+     ORDER BY el.created_at DESC, el.id DESC
+     LIMIT 200`,
+  );
+
+  return json(res, 200, {
+    logs: rows.map((row) => ({
+      id: row.id,
+      method: row.method || "",
+      path: row.path || "",
+      message: row.message || "",
+      stack: row.stack || "",
+      ipAddress: row.ip_address || "",
+      userAgent: row.user_agent || "",
+      createdAt: row.created_at,
+      user: row.username ? { username: row.username, name: row.name, role: row.role } : null,
+    })),
+  });
+}
+
 async function handleListBackups(req, res) {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
@@ -5647,6 +5787,7 @@ async function handleCreateBackup(req, res) {
   const tables = [
     "users",
     "audit_logs",
+    "error_logs",
     "agency_settings",
     "departments",
     "positions",
@@ -5715,12 +5856,46 @@ async function handleDownloadBackup(req, res, fileName) {
   return sendFile(res, resolved, decoded);
 }
 
+async function logServerError(req, error) {
+  try {
+    const user = await getSessionUser(req).catch(() => null);
+    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    const [result] = await pool.execute(
+      `INSERT INTO error_logs (
+         user_id, method, path, message, stack, ip_address, user_agent
+       )
+       VALUES (
+         :userId, :method, :path, :message, :stack, :ipAddress, :userAgent
+       )`,
+      {
+        userId: user?.id || null,
+        method: String(req.method || "").slice(0, 12),
+        path: url.pathname.slice(0, 500),
+        message: String(error?.message || error || "Unknown error"),
+        stack: String(error?.stack || ""),
+        ipAddress: getIp(req),
+        userAgent: String(req.headers["user-agent"] || "").slice(0, 500),
+      },
+    );
+    return result.insertId;
+  } catch (logError) {
+    console.error("Failed to record error log", logError);
+    return null;
+  }
+}
+
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const userMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)$/);
   const resetPasswordMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/reset-password$/);
   const backupDownloadMatch = url.pathname.match(/^\/api\/admin\/backups\/([^/]+)\/download$/);
   const employeeMatch = url.pathname.match(/^\/api\/employees\/([A-Za-z0-9-]+)$/);
+  const employeePdsExcelGenerateMatch = url.pathname.match(
+    /^\/api\/employees\/([A-Za-z0-9-]+)\/pds\/excel$/,
+  );
+  const employeePdsExcelDownloadMatch = url.pathname.match(
+    /^\/api\/employees\/pds\/excel\/([^/]+)$/,
+  );
   const employeeSectionMatch = url.pathname.match(
     /^\/api\/employees\/([A-Za-z0-9-]+)\/sections\/([A-Za-z0-9-]+)$/,
   );
@@ -5792,6 +5967,8 @@ async function route(req, res) {
     return handleResetUserPassword(req, res, resetPasswordMatch[1]);
   if (req.method === "GET" && url.pathname === "/api/admin/audit-logs")
     return handleListAuditLogs(req, res);
+  if (req.method === "GET" && url.pathname === "/api/admin/error-logs")
+    return handleListErrorLogs(req, res);
   if (req.method === "GET" && url.pathname === "/api/admin/backups")
     return handleListBackups(req, res);
   if (req.method === "POST" && url.pathname === "/api/admin/backups")
@@ -5805,6 +5982,10 @@ async function route(req, res) {
     return handleListEmployees(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/employees")
     return handleCreateEmployee(req, res);
+  if (req.method === "POST" && employeePdsExcelGenerateMatch)
+    return handleGenerateEmployeePdsExcel(req, res, employeePdsExcelGenerateMatch[1]);
+  if (req.method === "GET" && employeePdsExcelDownloadMatch)
+    return handleDownloadEmployeePdsExcel(req, res, employeePdsExcelDownloadMatch[1]);
   if (req.method === "GET" && employeeMatch) return handleGetEmployee(req, res, employeeMatch[1]);
   if (req.method === "PATCH" && employeeMatch)
     return handleUpdateEmployee(req, res, employeeMatch[1]);
@@ -5948,7 +6129,10 @@ const server = http.createServer(async (req, res) => {
     await route(req, res);
   } catch (error) {
     console.error(error);
-    json(res, 500, { error: "Internal server error" });
+    const errorId = await logServerError(req, error);
+    json(res, 500, {
+      error: errorId ? `Internal server error. Reference #${errorId}` : "Internal server error",
+    });
   }
 });
 

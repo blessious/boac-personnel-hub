@@ -33,7 +33,7 @@ interface SalaryGradeRow {
 }
 
 function SettingsPage() {
-  const { can, user } = useAuth();
+  const { can } = useAuth();
   const { agency, updateAgency } = useSettings();
   const [depts, setDepts] = useState<DepartmentRow[]>([]);
   const [pos, setPos] = useState<PositionRow[]>([]);
@@ -52,8 +52,6 @@ function SettingsPage() {
 
   const filteredDepts = depts.filter((d) => d.name.toLowerCase().includes(deptQuery.toLowerCase()));
   const filteredPos = pos.filter((p) => p.title.toLowerCase().includes(posQuery.toLowerCase()));
-
-  const isAdmin = user?.role === "Admin";
 
   const loadSettings = async () => {
     setLoading(true);
@@ -183,9 +181,6 @@ function SettingsPage() {
             <TabsTrigger value="departments">Departments</TabsTrigger>
             <TabsTrigger value="positions">Positions</TabsTrigger>
             <TabsTrigger value="salary">Salary Grades</TabsTrigger>
-            <TabsTrigger value="users" disabled={!isAdmin}>
-              Users
-            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -555,33 +550,6 @@ function SettingsPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="users" className="mt-4">
-          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            {!isAdmin ? (
-              <div className="text-sm text-muted-foreground py-8 text-center">
-                Admin access required.
-              </div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="px-2 py-3 font-medium">Name</th>
-                    <th className="px-2 py-3 font-medium">Username</th>
-                    <th className="px-2 py-3 font-medium">Role</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-t border-border">
-                    <td className="px-2 py-3 text-muted-foreground" colSpan={3}>
-                      Use System Administration for user add, edit, and delete.
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            )}
           </div>
         </TabsContent>
       </Tabs>

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   Activity,
   AlertCircle,
+  Bug,
   Database,
   Download,
   Edit,
@@ -41,7 +42,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-type AdminTab = "users" | "audit" | "backup";
+type AdminTab = "users" | "audit" | "errors" | "backup";
 
 interface AdminUser {
   id: number;
@@ -64,6 +65,18 @@ interface AuditLog {
   user: { username: string; name: string; role: Role } | null;
 }
 
+interface ErrorLog {
+  id: number;
+  method: string;
+  path: string;
+  message: string;
+  stack: string;
+  ipAddress: string;
+  userAgent: string;
+  createdAt: string;
+  user: { username: string; name: string; role: Role } | null;
+}
+
 interface BackupFile {
   fileName: string;
   size: number;
@@ -74,6 +87,7 @@ interface BackupFile {
 const ADMIN_TABS: { key: AdminTab; label: string; icon: typeof Users }[] = [
   { key: "users", label: "User Management", icon: Users },
   { key: "audit", label: "Audit Log", icon: Activity },
+  { key: "errors", label: "Error Log", icon: Bug },
   { key: "backup", label: "Data Backup", icon: Database },
 ];
 
@@ -91,8 +105,10 @@ function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [employeeCandidates, setEmployeeCandidates] = useState<EmployeeRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [errorLogs, setErrorLogs] = useState<ErrorLog[]>([]);
   const [backups, setBackups] = useState<BackupFile[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
+  const [loadingErrors, setLoadingErrors] = useState(false);
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [creatingBackup, setCreatingBackup] = useState(false);
   const [showAddUser, setShowAddUser] = useState(false);
@@ -152,6 +168,19 @@ function AdminPage() {
     }
   };
 
+  const loadErrorLogs = async () => {
+    if (!isAdmin) return;
+    setLoadingErrors(true);
+    try {
+      const result = await api<{ logs: ErrorLog[] }>("/api/admin/error-logs");
+      setErrorLogs(result.logs);
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setLoadingErrors(false);
+    }
+  };
+
   const loadBackups = async () => {
     if (!isAdmin) return;
     setLoadingBackups(true);
@@ -167,6 +196,7 @@ function AdminPage() {
 
   useEffect(() => {
     if (activeTab === "audit") loadAuditLogs();
+    if (activeTab === "errors") loadErrorLogs();
     if (activeTab === "backup") loadBackups();
   }, [activeTab, isAdmin]);
 
@@ -546,6 +576,84 @@ function AdminPage() {
                   <tr>
                     <td className="px-4 py-8 text-center text-muted-foreground" colSpan={5}>
                       {loadingAudit ? "Loading audit logs..." : "No audit logs found."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "errors" && (
+        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+          <div className="p-4 flex items-center justify-between border-b border-border">
+            <div>
+              <h4 className="font-semibold text-foreground">Error Log</h4>
+              <p className="text-xs text-muted-foreground">
+                Latest {errorLogs.length} unexpected system errors
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={loadErrorLogs}
+              disabled={loadingErrors}
+              className="gap-1.5"
+            >
+              <RefreshCw className={cn("h-4 w-4", loadingErrors && "animate-spin")} /> Refresh
+            </Button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px] text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                  <th className="px-4 py-3 font-semibold">Date/Time</th>
+                  <th className="px-4 py-3 font-semibold">User</th>
+                  <th className="px-4 py-3 font-semibold">Request</th>
+                  <th className="px-4 py-3 font-semibold">Message</th>
+                  <th className="px-4 py-3 font-semibold">Stack</th>
+                  <th className="px-4 py-3 font-semibold">IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {errorLogs.map((log, index) => (
+                  <tr
+                    key={log.id}
+                    className={cn(
+                      "border-b border-border/50 last:border-0 align-top",
+                      index % 2 === 1 && "bg-muted/10",
+                    )}
+                  >
+                    <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                      {formatDateTime(log.createdAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{log.user?.name || "Unknown"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {log.user ? `@${log.user.username}` : "No account"}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-mono text-xs">{log.method || "-"}</div>
+                      <div className="max-w-[220px] truncate text-xs text-muted-foreground">
+                        {log.path || "-"}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 max-w-[260px] break-words text-rose-700">
+                      {log.message}
+                    </td>
+                    <td className="px-4 py-3">
+                      <pre className="max-h-28 max-w-[360px] overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-2 text-[11px] text-muted-foreground">
+                        {log.stack || "-"}
+                      </pre>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{log.ipAddress || "-"}</td>
+                  </tr>
+                ))}
+                {errorLogs.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>
+                      {loadingErrors ? "Loading error logs..." : "No error logs found."}
                     </td>
                   </tr>
                 )}

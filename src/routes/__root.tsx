@@ -8,7 +8,7 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
-import { AuthProvider, useAuth, type Role } from "@/lib/auth";
+import { AuthProvider, isSelfServiceRole, useAuth, type Role } from "@/lib/auth";
 import { SettingsProvider } from "@/lib/settings-context";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppHeader } from "@/components/layout/AppHeader";
@@ -150,10 +150,16 @@ function AppLayout() {
 }
 
 function canAccessPath(role: Role, pathname: string, employeeId?: string) {
+  const isSelfServicePath =
+    pathname.startsWith("/self-service") ||
+    pathname.startsWith("/my-profile") ||
+    pathname.startsWith("/requests");
+
+  if (pathname === "/") return true;
+  if (isSelfServicePath) return isSelfServiceRole(role);
   if (role === "Admin") return true;
-  if (pathname === "/" || pathname.startsWith("/self-service")) return true;
-  if (role === "Employee") {
-    if (["/my-profile", "/attendance", "/requests"].includes(pathname)) return true;
+  if (isSelfServiceRole(role)) {
+    if (pathname === "/attendance") return true;
     return Boolean(employeeId && pathname === `/employees/${employeeId}`);
   }
   if (pathname.startsWith("/admin") || pathname.startsWith("/settings")) return false;
