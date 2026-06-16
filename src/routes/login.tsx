@@ -130,13 +130,12 @@ function LoginPage() {
               </div>
             </div>
 
-            <h1 className="text-5xl font-extrabold tracking-tight leading-tight">
+            <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight leading-tight">
               Streamlining <br />
               <span className="text-white">Human Resources</span>
             </h1>
-            <p className="mt-6 text-xl text-white/80 max-w-md font-light leading-relaxed">
-              Personnel Management Information System. A secure and efficient platform for modern
-              government administration.
+            <p className="mt-6 text-lg sm:text-xl text-white/80 max-w-lg font-light leading-relaxed text-pretty">
+              A secure and efficient platform for managing employee records, attendance, and personnel information in support of modern government HR administration.
             </p>
           </div>
         </div>

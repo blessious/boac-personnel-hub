@@ -115,6 +115,7 @@ function AdminPage() {
   const [showEditUser, setShowEditUser] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [tempPasswordMap, setTempPasswordMap] = useState<Record<number, string>>({});
   const [form, setForm] = useState<{
     name: string;
     username: string;
@@ -207,6 +208,10 @@ function AdminPage() {
     setShowAddUser(true);
   };
 
+  const handleAddUserOpenChange = (open: boolean) => {
+    setShowAddUser(open);
+  };
+
   const createUser = async () => {
     try {
       const result = await api<{ user: AdminUser; temporaryPassword: string }>("/api/admin/users", {
@@ -215,6 +220,8 @@ function AdminPage() {
       });
       setUsers((prev) => [...prev, result.user].sort((a, b) => a.name.localeCompare(b.name)));
       setTemporaryPassword(result.temporaryPassword);
+      // Persist in map so it survives modal close/reopen
+      setTempPasswordMap((prev) => ({ ...prev, [result.user.id]: result.temporaryPassword }));
       toast.success("User created");
     } catch (error) {
       toast.error((error as Error).message);
@@ -223,7 +230,8 @@ function AdminPage() {
 
   const openEditUser = (item: AdminUser) => {
     setSelectedUser(item);
-    setTemporaryPassword("");
+    // Restore temp password for this user if one was generated, don't wipe it
+    setTemporaryPassword(tempPasswordMap[item.id] ?? "");
     setForm({
       name: item.name,
       username: item.username,
@@ -301,6 +309,12 @@ function AdminPage() {
         body: JSON.stringify(form),
       });
       setUsers((prev) => prev.map((item) => (item.id === result.user.id ? result.user : item)));
+      // Clear stored temp password once acknowledged via Save Changes
+      setTempPasswordMap((prev) => {
+        const next = { ...prev };
+        delete next[selectedUser.id];
+        return next;
+      });
       setShowEditUser(false);
       toast.success("User updated");
     } catch (error) {
@@ -329,6 +343,8 @@ function AdminPage() {
         prev.map((u) => (u.id === item.id ? { ...u, mustChangePassword: true } : u)),
       );
       setTemporaryPassword(result.temporaryPassword);
+      // Persist in map so it shows when edit dialog is opened
+      setTempPasswordMap((prev) => ({ ...prev, [item.id]: result.temporaryPassword }));
       toast.success(`Temporary password: ${result.temporaryPassword}`);
     } catch (error) {
       toast.error((error as Error).message);
@@ -747,7 +763,7 @@ function AdminPage() {
         form={form}
         employeeCandidates={employeeCandidates}
         temporaryPassword={temporaryPassword}
-        onOpenChange={setShowAddUser}
+        onOpenChange={handleAddUserOpenChange}
         onChange={setForm}
         onSubmit={createUser}
       />
