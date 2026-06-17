@@ -56,6 +56,7 @@ import {
   getDashboard,
   deleteEmployee,
   EMPLOYMENT_STATUSES,
+  GENDERS,
   getSettingsOptions,
   listEmployees,
   type EmployeeRecord,
@@ -63,6 +64,7 @@ import {
   type DashboardResponse,
 } from "@/lib/employees-api";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export const Route = createFileRoute("/employees")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -110,11 +112,14 @@ function EmployeesPage() {
   const navigate = useNavigate({ from: "/employees" });
   const search = useSearch({ from: "/employees" });
   const { can } = useAuth();
+  const isMobile = useIsMobile();
   const canEdit = can("edit");
   const [q, setQ] = useState("");
   const [dept, setDept] = useState(search.department?.trim() || "all");
   const [status, setStatus] = useState("all");
   const [empStatus, setEmpStatus] = useState("all");
+  const [gender, setGender] = useState("all");
+  const [filterDepartmentQuery, setFilterDepartmentQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -133,6 +138,7 @@ function EmployeesPage() {
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [form, setForm] = useState<Partial<EmployeeRecord>>(EMPTY_FORM);
+  const [departmentQuery, setDepartmentQuery] = useState("");
   const [positionQuery, setPositionQuery] = useState("");
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -141,7 +147,7 @@ function EmployeesPage() {
   const load = () => {
     setLoading(true);
     setError("");
-    listEmployees({ q, department: dept, status, empStatus, page, pageSize })
+    listEmployees({ q, department: dept, status, empStatus, gender, page, pageSize })
       .then((result) => {
         setEmployees(result.employees);
         setTotal(result.total);
@@ -150,7 +156,7 @@ function EmployeesPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [q, dept, status, empStatus, page, pageSize]);
+  useEffect(load, [q, dept, status, empStatus, gender, page, pageSize]);
 
   useEffect(() => {
     setDept(selectedDepartment);
@@ -169,10 +175,24 @@ function EmployeesPage() {
       .catch(() => setDashboardData(null));
   }, []);
 
+  useEffect(() => {
+    setViewMode(isMobile ? "grid" : "table");
+  }, [isMobile]);
+
   const departments = useMemo(
     () => options.departments.map((department) => department.name),
     [options.departments],
   );
+  const filteredDepartments = useMemo(() => {
+    const query = departmentQuery.trim().toLowerCase();
+    if (!query) return departments;
+    return departments.filter((department) => department.toLowerCase().includes(query));
+  }, [departmentQuery, departments]);
+  const filteredFilterDepartments = useMemo(() => {
+    const query = filterDepartmentQuery.trim().toLowerCase();
+    if (!query) return departments;
+    return departments.filter((department) => department.toLowerCase().includes(query));
+  }, [filterDepartmentQuery, departments]);
   const positions = useMemo(
     () => options.positions.map((position) => position.title),
     [options.positions],
@@ -191,6 +211,7 @@ function EmployeesPage() {
       toast.success("Employee added");
       setShowAddDialog(false);
       setForm(EMPTY_FORM);
+      setDepartmentQuery("");
       setPositionQuery("");
       setPage(1);
       load();
@@ -259,7 +280,12 @@ function EmployeesPage() {
               Manage employee records, employment status, and workforce information.
             </p>
           </div>
-          <div className="mt-4 sm:mt-0">
+          <div className="mobile-action-row mt-4 flex flex-wrap gap-2 sm:mt-0">
+            <Button variant="outline" asChild>
+              <Link to="/employees/references" search={{ department: undefined }}>
+                Employee References
+              </Link>
+            </Button>
             <Button
               disabled={!canEdit}
               onClick={() => setShowAddDialog(true)}
@@ -348,12 +374,29 @@ function EmployeesPage() {
                 <SelectValue placeholder="All Departments" />
               </SelectTrigger>
               <SelectContent>
+                <div className="sticky top-0 z-10 bg-popover p-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                    <Input
+                      value={filterDepartmentQuery}
+                      onChange={(event) => setFilterDepartmentQuery(event.target.value)}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      placeholder="Search departments..."
+                      className="h-8 pl-9"
+                    />
+                  </div>
+                </div>
                 <SelectItem value="all">All Departments</SelectItem>
-                {departments.map((item) => (
+                {filteredFilterDepartments.map((item) => (
                   <SelectItem key={item} value={item}>
                     {item}
                   </SelectItem>
                 ))}
+                {filteredFilterDepartments.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">
+                    No departments found.
+                  </div>
+                )}
               </SelectContent>
             </Select>
 
@@ -394,6 +437,26 @@ function EmployeesPage() {
               </SelectContent>
             </Select>
 
+            <Select
+              value={gender}
+              onValueChange={(value) => {
+                setGender(value);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-full lg:w-[150px] bg-card text-card-foreground">
+                <SelectValue placeholder="All Gender" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Gender</SelectItem>
+                {GENDERS.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <div className="flex items-center gap-2 ml-auto mt-3 lg:mt-0 w-full lg:w-auto">
               <Button
                 variant={showAdvancedFilters ? "default" : "outline"}
@@ -406,7 +469,7 @@ function EmployeesPage() {
               <Button
                 variant="outline"
                 className={cn(
-                  "px-3 text-muted-foreground",
+                  "hidden px-3 text-muted-foreground md:inline-flex",
                   viewMode === "grid" && "border-primary text-primary bg-primary/10",
                 )}
                 onClick={() => setViewMode((value) => (value === "table" ? "grid" : "table"))}
@@ -426,7 +489,8 @@ function EmployeesPage() {
               <span>
                 Active filters: department <strong>{dept === "all" ? "Any" : dept}</strong>,
                 employment type <strong>{status === "all" ? "Any" : status}</strong>, status{" "}
-                <strong>{empStatus === "all" ? "Any" : empStatus}</strong>
+                <strong>{empStatus === "all" ? "Any" : empStatus}</strong>, gender{" "}
+                <strong>{gender === "all" ? "Any" : gender}</strong>
               </span>
               <Button
                 variant="ghost"
@@ -437,6 +501,7 @@ function EmployeesPage() {
                   setDept("all");
                   setStatus("all");
                   setEmpStatus("all");
+                  setGender("all");
                   setPage(1);
                   navigate({ search: {}, replace: true });
                 }}
@@ -448,162 +513,162 @@ function EmployeesPage() {
 
           {/* Table */}
           {viewMode === "table" ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-border/50 text-muted-foreground uppercase tracking-wider">
-                  <th className="px-5 py-4 font-semibold">EMPLOYEE NO</th>
-                  <th className="px-5 py-4 font-semibold">FULL NAME</th>
-                  <th className="px-5 py-4 font-semibold">POSITION</th>
-                  <th className="px-5 py-4 font-semibold">DEPARTMENT</th>
-                  <th className="px-5 py-4 font-semibold">EMPLOYMENT TYPE</th>
-                  <th className="px-5 py-4 font-semibold">STATUS</th>
-                  <th className="px-5 py-4 font-semibold">DATE HIRED</th>
-                  <th className="px-5 py-4 font-semibold text-right">ACTIONS</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {loading ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
-                    >
-                      Loading employees...
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-border/50 text-muted-foreground uppercase tracking-wider">
+                    <th className="px-5 py-4 font-semibold">EMPLOYEE NO</th>
+                    <th className="px-5 py-4 font-semibold">FULL NAME</th>
+                    <th className="px-5 py-4 font-semibold">POSITION</th>
+                    <th className="px-5 py-4 font-semibold">DEPARTMENT</th>
+                    <th className="px-5 py-4 font-semibold">EMPLOYMENT TYPE</th>
+                    <th className="px-5 py-4 font-semibold">STATUS</th>
+                    <th className="px-5 py-4 font-semibold">DATE HIRED</th>
+                    <th className="px-5 py-4 font-semibold text-right">ACTIONS</th>
                   </tr>
-                ) : employees.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
-                    >
-                      No employee records found.
-                    </td>
-                  </tr>
-                ) : (
-                  employees.map((employee, index) => {
-                    const initials =
-                      `${employee.firstname?.[0] || ""}${employee.lastname?.[0] || ""}`.toUpperCase() ||
-                      "??";
-                    const avatarColors = [
-                      "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100",
-                      "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-100",
-                      "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-100",
-                      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100",
-                    ];
-                    const avatarColor = avatarColors[index % avatarColors.length];
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {loading ? (
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
+                      >
+                        Loading employees...
+                      </td>
+                    </tr>
+                  ) : employees.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
+                      >
+                        No employee records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    employees.map((employee, index) => {
+                      const initials =
+                        `${employee.firstname?.[0] || ""}${employee.lastname?.[0] || ""}`.toUpperCase() ||
+                        "??";
+                      const avatarColors = [
+                        "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100",
+                        "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-100",
+                        "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-100",
+                        "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100",
+                      ];
+                      const avatarColor = avatarColors[index % avatarColors.length];
 
-                    return (
-                      <tr key={employee.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-5 py-4 text-muted-foreground font-medium whitespace-nowrap">
-                          {employee.itemNo || employee.employeeId || "-"}
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={cn(
-                                "grid h-10 w-10 shrink-0 place-items-center rounded-full text-xs font-bold",
-                                avatarColor,
-                              )}
-                            >
-                              {employee.photoUrl ? (
-                                <img
-                                  src={employee.photoUrl}
-                                  alt={`${employee.firstname} ${employee.lastname}`}
-                                  className="h-full w-full object-cover rounded-full"
-                                />
-                              ) : (
-                                initials
-                              )}
-                            </div>
-                            <div>
-                              <div className="font-semibold text-foreground">
-                                {employee.lastname}, {employee.firstname} {employee.middlename}
+                      return (
+                        <tr key={employee.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-5 py-4 text-muted-foreground font-medium whitespace-nowrap">
+                            {employee.itemNo || employee.employeeId || "-"}
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={cn(
+                                  "grid h-10 w-10 shrink-0 place-items-center rounded-full text-xs font-bold",
+                                  avatarColor,
+                                )}
+                              >
+                                {employee.photoUrl ? (
+                                  <img
+                                    src={employee.photoUrl}
+                                    alt={`${employee.firstname} ${employee.lastname}`}
+                                    className="h-full w-full object-cover rounded-full"
+                                  />
+                                ) : (
+                                  initials
+                                )}
+                              </div>
+                              <div>
+                                <div className="font-semibold text-foreground">
+                                  {employee.lastname}, {employee.firstname} {employee.middlename}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4 text-muted-foreground font-medium">
-                          {employee.position || "-"}
-                        </td>
-                        <td className="px-5 py-4 text-muted-foreground">
-                          {employee.department || "-"}
-                        </td>
-                        <td className="px-5 py-4">
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[10px] uppercase font-semibold",
-                              EMP_TYPE_COLOR[employee.status] ??
-                                "text-foreground/80 bg-muted/50 border-border",
-                            )}
-                          >
-                            {employee.status}
-                          </Badge>
-                        </td>
-                        <td className="px-5 py-4">
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[10px] uppercase font-semibold",
-                              EMP_STATUS_COLOR[employee.empStatus] ??
-                                "text-foreground/80 bg-muted/50 border-border",
-                            )}
-                          >
-                            {employee.empStatus}
-                          </Badge>
-                        </td>
-                        <td className="px-5 py-4 text-muted-foreground">
-                          {formatDate(employee.dateHired)}
-                        </td>
-                        <td className="px-5 py-4 text-right">
-                          <div className="inline-flex items-center gap-2 justify-end">
-                            <Link
-                              to="/employees/$id"
-                              params={{ id: employee.id }}
-                              className="inline-grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted/50 transition-colors"
-                              title="View"
+                          </td>
+                          <td className="px-5 py-4 text-muted-foreground font-medium">
+                            {employee.position || "-"}
+                          </td>
+                          <td className="px-5 py-4 text-muted-foreground">
+                            {employee.department || "-"}
+                          </td>
+                          <td className="px-5 py-4">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[10px] uppercase font-semibold",
+                                EMP_TYPE_COLOR[employee.status] ??
+                                  "text-foreground/80 bg-muted/50 border-border",
+                              )}
                             >
-                              <Eye className="h-4 w-4" />
-                            </Link>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <button
-                                  className="inline-grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted/50 transition-colors"
-                                  title="More actions"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-36">
-                                <DropdownMenuItem asChild>
-                                  <Link to="/employees/$id" params={{ id: employee.id }}>
-                                    <Pencil className="h-4 w-4 mr-2" />
-                                    Edit
-                                  </Link>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  disabled={!canEdit}
-                                  onClick={() => remove(employee)}
-                                  className="text-rose-600 focus:text-rose-600"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                              {employee.status}
+                            </Badge>
+                          </td>
+                          <td className="px-5 py-4">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[10px] uppercase font-semibold",
+                                EMP_STATUS_COLOR[employee.empStatus] ??
+                                  "text-foreground/80 bg-muted/50 border-border",
+                              )}
+                            >
+                              {employee.empStatus}
+                            </Badge>
+                          </td>
+                          <td className="px-5 py-4 text-muted-foreground">
+                            {formatDate(employee.dateHired)}
+                          </td>
+                          <td className="px-5 py-4 text-right">
+                            <div className="inline-flex items-center gap-2 justify-end">
+                              <Link
+                                to="/employees/$id"
+                                params={{ id: employee.id }}
+                                className="inline-grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted/50 transition-colors"
+                                title="View"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Link>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    className="inline-grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted/50 transition-colors"
+                                    title="More actions"
+                                  >
+                                    <MoreVertical className="h-4 w-4" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-36">
+                                  <DropdownMenuItem asChild>
+                                    <Link to="/employees/$id" params={{ id: employee.id }}>
+                                      <Pencil className="h-4 w-4 mr-2" />
+                                      Edit
+                                    </Link>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    disabled={!canEdit}
+                                    onClick={() => remove(employee)}
+                                    className="text-rose-600 focus:text-rose-600"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           ) : (
-            <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
               {loading ? (
                 <div className="col-span-full py-12 text-center text-sm text-muted-foreground/70">
                   Loading employees...
@@ -626,10 +691,7 @@ function EmployeesPage() {
                   const avatarColor = avatarColors[index % avatarColors.length];
 
                   return (
-                    <div
-                      key={employee.id}
-                      className="rounded-lg border border-border bg-card p-4 text-sm shadow-sm"
-                    >
+                    <div key={employee.id} className="mobile-record-card text-sm">
                       <div className="flex items-start gap-3">
                         <div
                           className={cn(
@@ -704,7 +766,7 @@ function EmployeesPage() {
                           </Badge>
                         </div>
                       </div>
-                      <div className="mt-4 flex justify-end">
+                      <div className="mobile-action-row mt-4 flex justify-end">
                         <Button
                           variant="outline"
                           size="sm"
@@ -808,7 +870,12 @@ function EmployeesPage() {
         open={showAddDialog}
         onOpenChange={(open) => {
           setShowAddDialog(open);
-          if (!open) positionQuery && setPositionQuery("");
+          if (!open && departmentQuery) {
+            setDepartmentQuery("");
+          }
+          if (!open && positionQuery) {
+            setPositionQuery("");
+          }
         }}
       >
         <DialogContent className="sm:max-w-2xl">
@@ -857,11 +924,28 @@ function EmployeesPage() {
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
-                  {departments.map((item) => (
+                  <div className="sticky top-0 z-10 bg-popover p-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                      <Input
+                        value={departmentQuery}
+                        onChange={(event) => setDepartmentQuery(event.target.value)}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        placeholder="Search departments..."
+                        className="h-8 pl-9"
+                      />
+                    </div>
+                  </div>
+                  {filteredDepartments.map((item) => (
                     <SelectItem key={item} value={item}>
                       {item}
                     </SelectItem>
                   ))}
+                  {filteredDepartments.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      No departments found.
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
             </Field>

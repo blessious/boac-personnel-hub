@@ -12,6 +12,9 @@ import { AuthProvider, isSelfServiceRole, useAuth, type Role } from "@/lib/auth"
 import { SettingsProvider } from "@/lib/settings-context";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
+import { useDeviceProfile } from "@/hooks/use-mobile";
+import { useSettings } from "@/lib/settings-context";
 import { useEffect } from "react";
 
 import appCss from "../styles.css?url";
@@ -105,6 +108,8 @@ function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { title, subtitle } = useSettings();
+  const deviceProfile = useDeviceProfile();
   const isLoginPage = location.pathname === "/login";
   const isChangePasswordPage = location.pathname === "/change-password";
   const authorized =
@@ -127,6 +132,11 @@ function AppLayout() {
     }
   }, [user, isLoginPage, isChangePasswordPage, location.pathname, navigate]);
 
+  useEffect(() => {
+    document.body.dataset.device = deviceProfile.device;
+    document.body.dataset.touch = String(deviceProfile.isTouch);
+  }, [deviceProfile.device, deviceProfile.isTouch]);
+
   if ((!user && !isLoginPage) || !authorized) return null;
 
   return (
@@ -134,14 +144,15 @@ function AppLayout() {
       {isLoginPage || isChangePasswordPage ? (
         <Outlet />
       ) : (
-        <div className="flex min-h-screen w-full bg-background">
+        <div className="app-frame flex min-h-dvh w-full bg-background">
           <AppSidebar />
-          <div className="flex-1 flex flex-col min-w-0">
-            <AppHeader title="STRH HRIS" subtitle="" />
-            <main className="flex-1 p-4 xl:p-5 min-w-0">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <AppHeader title={title || "STRH HRIS"} subtitle={subtitle} />
+            <main className="mobile-app-content min-w-0 flex-1 p-3 sm:p-4 xl:p-5">
               <Outlet />
             </main>
           </div>
+          <MobileBottomNav />
         </div>
       )}
       <Toaster richColors position="top-right" />

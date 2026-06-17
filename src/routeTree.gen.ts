@@ -21,6 +21,7 @@ import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AttendanceRouteImport } from './routes/attendance'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as EmployeesReferencesRouteImport } from './routes/employees.references'
 import { Route as EmployeesIdRouteImport } from './routes/employees.$id'
 
 const SettingsRoute = SettingsRouteImport.update({
@@ -83,6 +84,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EmployeesReferencesRoute = EmployeesReferencesRouteImport.update({
+  id: '/references',
+  path: '/references',
+  getParentRoute: () => EmployeesRoute,
+} as any)
 const EmployeesIdRoute = EmployeesIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -103,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/self-service': typeof SelfServiceRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
+  '/employees/references': typeof EmployeesReferencesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -118,6 +125,7 @@ export interface FileRoutesByTo {
   '/self-service': typeof SelfServiceRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
+  '/employees/references': typeof EmployeesReferencesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/self-service': typeof SelfServiceRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
+  '/employees/references': typeof EmployeesReferencesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -151,6 +160,7 @@ export interface FileRouteTypes {
     | '/self-service'
     | '/settings'
     | '/employees/$id'
+    | '/employees/references'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -166,6 +176,7 @@ export interface FileRouteTypes {
     | '/self-service'
     | '/settings'
     | '/employees/$id'
+    | '/employees/references'
   id:
     | '__root__'
     | '/'
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '/self-service'
     | '/settings'
     | '/employees/$id'
+    | '/employees/references'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -284,6 +296,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/employees/references': {
+      id: '/employees/references'
+      path: '/references'
+      fullPath: '/employees/references'
+      preLoaderRoute: typeof EmployeesReferencesRouteImport
+      parentRoute: typeof EmployeesRoute
+    }
     '/employees/$id': {
       id: '/employees/$id'
       path: '/$id'
@@ -296,10 +315,12 @@ declare module '@tanstack/react-router' {
 
 interface EmployeesRouteChildren {
   EmployeesIdRoute: typeof EmployeesIdRoute
+  EmployeesReferencesRoute: typeof EmployeesReferencesRoute
 }
 
 const EmployeesRouteChildren: EmployeesRouteChildren = {
   EmployeesIdRoute: EmployeesIdRoute,
+  EmployeesReferencesRoute: EmployeesReferencesRoute,
 }
 
 const EmployeesRouteWithChildren = EmployeesRoute._addFileChildren(

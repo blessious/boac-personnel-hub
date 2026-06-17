@@ -329,7 +329,131 @@ function LeavePage() {
             </Button>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="mobile-record-list">
+            {loading ? (
+              <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                Loading leave records...
+              </div>
+            ) : applications.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                No leave applications found.
+              </div>
+            ) : (
+              applications.map((application) => (
+                <article key={application.id} className="mobile-record-card">
+                  <div className="mobile-record-card__header">
+                    <div className="min-w-0">
+                      <h3 className="mobile-record-card__title">{application.employeeName}</h3>
+                      <p className="mobile-record-card__meta">
+                        {application.employeeNo} - {application.department}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className={STATUS_COLOR[application.status]}>
+                      {application.status}
+                    </Badge>
+                  </div>
+
+                  <div className="mobile-record-card__grid">
+                    <div className="mobile-record-card__field">
+                      <span className="mobile-record-card__label">Leave Type</span>
+                      <span className="mobile-record-card__value">{application.leaveName}</span>
+                      <span className="mobile-record-card__meta">{application.leaveCode}</span>
+                    </div>
+                    <div className="mobile-record-card__field">
+                      <span className="mobile-record-card__label">Days</span>
+                      <span className="mobile-record-card__value">
+                        {formatNumber(application.daysRequested)}
+                      </span>
+                    </div>
+                    <div className="mobile-record-card__field">
+                      <span className="mobile-record-card__label">From</span>
+                      <span className="mobile-record-card__value">{application.dateFrom}</span>
+                    </div>
+                    <div className="mobile-record-card__field">
+                      <span className="mobile-record-card__label">To</span>
+                      <span className="mobile-record-card__value">{application.dateTo}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="mobile-record-card__label">Reason</span>
+                    <p className="text-sm text-muted-foreground">{application.reason || "-"}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!canEdit || application.status === "Approved"}
+                      onClick={() =>
+                        setDecision({
+                          application,
+                          status: "Approved",
+                          remarks: application.decisionRemarks || "",
+                          approvedDaysWithPay:
+                            application.approvedDaysWithPay?.toString() ||
+                            application.daysRequested.toString(),
+                          approvedDaysWithoutPay:
+                            application.approvedDaysWithoutPay?.toString() || "",
+                          approvedDaysOther: application.approvedDaysOther?.toString() || "",
+                          approvedDaysOtherText: application.approvedDaysOtherText || "",
+                          finalDisapprovalReason: application.finalDisapprovalReason || "",
+                        })
+                      }
+                    >
+                      <Check className="mr-1.5 h-4 w-4" />
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!canEdit || application.status === "Disapproved"}
+                      onClick={() =>
+                        setDecision({
+                          application,
+                          status: "Disapproved",
+                          remarks: application.decisionRemarks || "",
+                          approvedDaysWithPay: application.approvedDaysWithPay?.toString() || "",
+                          approvedDaysWithoutPay:
+                            application.approvedDaysWithoutPay?.toString() || "",
+                          approvedDaysOther: application.approvedDaysOther?.toString() || "",
+                          approvedDaysOtherText: application.approvedDaysOtherText || "",
+                          finalDisapprovalReason:
+                            application.finalDisapprovalReason || application.decisionRemarks || "",
+                        })
+                      }
+                    >
+                      <X className="mr-1.5 h-4 w-4" />
+                      Disapprove
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => downloadForm6(application)}>
+                      <Download className="mr-1.5 h-4 w-4" />
+                      Excel
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => previewForm6Pdf(application)}
+                    >
+                      <FileText className="mr-1.5 h-4 w-4" />
+                      PDF
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!canEdit}
+                      onClick={() => remove(application)}
+                      className="col-span-2 text-destructive hover:text-destructive"
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+
+          <div className="mobile-desktop-table overflow-x-auto">
             <table className="w-full min-w-[980px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">

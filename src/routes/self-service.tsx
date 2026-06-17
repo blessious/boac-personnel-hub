@@ -135,6 +135,17 @@ export function EmployeeDashboardHome() {
     0,
   );
   const monthLabel = new Date().toLocaleDateString("en-US", { month: "long" });
+  const otherAttendanceRecords = Math.max(
+    dtrSummary.total - dtrSummary.present - dtrSummary.incomplete,
+    0,
+  );
+  const attendanceSummaryText = [
+    `${dtrSummary.present} present/late`,
+    dtrSummary.incomplete ? `${dtrSummary.incomplete} incomplete` : "",
+    otherAttendanceRecords ? `${otherAttendanceRecords} other` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   const openProfile = () => navigate({ to: "/my-profile" });
   const openServices = () => navigate({ to: "/self-service" });
@@ -159,37 +170,47 @@ export function EmployeeDashboardHome() {
         />
       ) : (
         <div className="space-y-5">
-          <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
             <div className="relative p-5 lg:p-6">
-              <div className="absolute inset-y-0 left-0 w-1.5 bg-blue-600" />
               <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0 pl-2">
-                  <div className="mb-2 inline-flex items-center rounded-md border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                    Employee Dashboard
-                  </div>
-                  <h2 className="text-3xl font-bold tracking-tight text-foreground">
-                    Welcome, {employee.firstname || user?.name}
-                  </h2>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                    {employee.position || "Position not set"} -{" "}
-                    {employee.department || "Department not set"}
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Badge
-                      variant="outline"
-                      className="border-emerald-200 bg-emerald-50 text-emerald-700"
-                    >
-                      {todayStatus}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className="border-amber-200 bg-amber-50 text-amber-700"
-                    >
-                      {pendingRequests} pending request{pendingRequests === 1 ? "" : "s"}
-                    </Badge>
+                <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
+                  <Avatar className="h-20 w-20 border border-border bg-muted shadow-sm">
+                    {employee.photoUrl ? (
+                      <AvatarImage src={employee.photoUrl} alt={formatFullName(employee)} />
+                    ) : null}
+                    <AvatarFallback className="bg-sky-50 text-xl font-semibold text-sky-700">
+                      {getInitials(employee)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Employee Dashboard
+                    </div>
+                    <h2 className="text-3xl font-bold tracking-tight text-foreground">
+                      Welcome, {employee.firstname || user?.name}
+                    </h2>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                      {employee.position || "Position not set"} -{" "}
+                      {employee.department || "Department not set"}
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Badge
+                        variant="outline"
+                        className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700"
+                      >
+                        {todayStatus}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="rounded-full border-amber-200 bg-amber-50 text-amber-700"
+                      >
+                        {pendingRequests} pending request{pendingRequests === 1 ? "" : "s"}
+                      </Badge>
+                    </div>
                   </div>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:w-auto">
+                <div className="grid gap-2 sm:grid-cols-2 lg:w-[300px]">
                   <Button variant="outline" onClick={openProfile} className="w-full">
                     My Profile
                   </Button>
@@ -207,14 +228,14 @@ export function EmployeeDashboardHome() {
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <DashboardMetricCard
-              title="Today DTR"
+              title="Today's DTR"
               value={formatPunchRange(todayDtr?.amIn, todayDtr?.amOut)}
               subtext={formatPunchRange(todayDtr?.pmIn, todayDtr?.pmOut)}
               details={[
-                `AM In: ${valueOrDash(todayDtr?.amIn)}`,
-                `AM Out: ${valueOrDash(todayDtr?.amOut)}`,
-                `PM In: ${valueOrDash(todayDtr?.pmIn)}`,
-                `PM Out: ${valueOrDash(todayDtr?.pmOut)}`,
+                `AM In: ${formatDtrTime(todayDtr?.amIn)}`,
+                `AM Out: ${formatDtrTime(todayDtr?.amOut)}`,
+                `PM In: ${formatDtrTime(todayDtr?.pmIn)}`,
+                `PM Out: ${formatDtrTime(todayDtr?.pmOut)}`,
               ]}
               icon={<Clock className="h-5 w-5 text-blue-600" />}
               iconBg="bg-blue-50"
@@ -222,16 +243,16 @@ export function EmployeeDashboardHome() {
               trend="up"
             />
             <DashboardMetricCard
-              title={`${monthLabel} Records`}
+              title={`${monthLabel} Attendance`}
               value={dtrSummary.total}
-              subtext={`${dtrSummary.present} present or late record(s)`}
+              subtext={attendanceSummaryText || "No attendance entries"}
               icon={<CalendarCheck className="h-5 w-5 text-emerald-600" />}
               iconBg="bg-emerald-50"
               chartColor="stroke-emerald-500"
               trend="up"
             />
             <DashboardMetricCard
-              title="Late Minutes"
+              title="Tardiness"
               value={dtrSummary.lateMinutes}
               subtext="Month-to-date total"
               icon={<CalendarClock className="h-5 w-5 text-amber-600" />}
@@ -834,26 +855,40 @@ function ProfileHeader({
   const initials = getInitials(employee);
 
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <div className="relative p-5 lg:p-6">
-        <div className="absolute inset-y-0 left-0 w-1.5 bg-blue-600" />
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 flex-col gap-4 pl-2 sm:flex-row sm:items-center">
-            <Avatar className="h-20 w-20 border border-border bg-muted shadow-sm">
+    <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+      <div className="border-b border-border bg-muted/20 px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Personal 201 Record
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">My Profile</h2>
+          </div>
+          <Button variant="outline" onClick={onOpenProfile} className="w-full sm:w-auto">
+            Full 201 File
+            <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      <div className="p-5 lg:p-6">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
+            <Avatar className="h-24 w-24 shrink-0 border border-border bg-muted shadow-sm">
               {employee.photoUrl ? <AvatarImage src={employee.photoUrl} alt={fullName} /> : null}
-              <AvatarFallback className="bg-blue-50 text-xl font-semibold text-blue-700">
+              <AvatarFallback className="bg-sky-50 text-2xl font-semibold text-sky-700">
                 {initials}
               </AvatarFallback>
             </Avatar>
 
             <div className="min-w-0">
-              <div className="mb-2 inline-flex items-center rounded-md border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                Employee Profile
+              <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                <UserCircle className="h-3.5 w-3.5" />
+                Employee Identity
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="truncate text-3xl font-bold tracking-tight text-foreground">
+              <div className="flex flex-wrap items-start gap-2">
+                <h3 className="max-w-full break-words text-3xl font-bold tracking-tight text-foreground">
                   {fullName}
-                </h2>
+                </h3>
                 <Badge
                   variant="outline"
                   className="border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -864,19 +899,24 @@ function ProfileHeader({
               <p className="mt-1 text-sm text-muted-foreground">
                 {employee.position || "Position not set"}
               </p>
-              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span>ID: {valueOrDash(employee.employeeId)}</span>
-                <span>Department: {valueOrDash(employee.department)}</span>
-                <span>Status: {valueOrDash(employee.status)}</span>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full border border-border bg-muted/50 px-3 py-1 text-muted-foreground">
+                  ID: {valueOrDash(employee.employeeId)}
+                </span>
+                <span className="rounded-full border border-border bg-muted/50 px-3 py-1 text-muted-foreground">
+                  {valueOrDash(employee.department)}
+                </span>
+                <span className="rounded-full border border-border bg-muted/50 px-3 py-1 text-muted-foreground">
+                  {valueOrDash(employee.status)}
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="w-full lg:w-auto">
-            <Button variant="outline" onClick={onOpenProfile} className="w-full lg:w-auto">
-              Full 201 File
-              <ChevronRight className="ml-2 h-4 w-4" />
-            </Button>
+          <div className="grid content-start gap-3 rounded-lg border border-border bg-background/60 p-4">
+            <DetailItem label="Employee No" value={employee.employeeId} />
+            <DetailItem label="Department" value={employee.department} />
+            <DetailItem label="Employment Status" value={employee.status || employee.empStatus} />
           </div>
         </div>
       </div>
@@ -912,16 +952,14 @@ function ProfileQuickStats({
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-      <DashboardMetricCard
+      <ProfileRecordCard
         title="Contact"
         value={contactStatus}
         subtext={employee.email || employee.cellphoneNo || "No contact details recorded"}
         icon={<Phone className="h-5 w-5 text-blue-600" />}
         iconBg="bg-blue-50"
-        chartColor="stroke-blue-500"
-        trend="up"
       />
-      <DashboardMetricCard
+      <ProfileRecordCard
         title="Employment"
         value={employee.status || "-"}
         subtext={
@@ -931,27 +969,52 @@ function ProfileQuickStats({
         }
         icon={<IdCard className="h-5 w-5 text-emerald-600" />}
         iconBg="bg-emerald-50"
-        chartColor="stroke-emerald-500"
-        trend="up"
       />
-      <DashboardMetricCard
+      <ProfileRecordCard
         title="201 Records"
         value={recordCount}
         subtext={`${governmentIds}/5 government IDs recorded`}
         icon={<ShieldCheck className="h-5 w-5 text-amber-600" />}
         iconBg="bg-amber-50"
-        chartColor="stroke-amber-500"
-        trend="up"
       />
-      <DashboardMetricCard
+      <ProfileRecordCard
         title="Leave & Requests"
         value={formatNumber(availableLeaveCredits)}
         subtext={`${pending} pending request${pending === 1 ? "" : "s"}`}
         icon={<ClipboardCheck className="h-5 w-5 text-rose-600" />}
         iconBg="bg-rose-50"
-        chartColor="stroke-rose-500"
-        trend="down"
       />
+    </div>
+  );
+}
+
+function ProfileRecordCard({
+  title,
+  value,
+  subtext,
+  icon,
+  iconBg,
+}: {
+  title: string;
+  value: string | number;
+  subtext: string;
+  icon: React.ReactNode;
+  iconBg: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-lg", iconBg)}>
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {title}
+          </p>
+          <p className="mt-1 break-words text-lg font-semibold text-foreground">{value}</p>
+          <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">{subtext}</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1105,16 +1168,18 @@ function DashboardMetricCard({
   trend: "up" | "down";
 }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm transition-colors hover:bg-muted/10">
       <div className="mb-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold text-foreground/80">{title}</p>
-          <h2 className="mt-1 truncate text-2xl font-bold text-foreground">{value}</h2>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {title}
+          </p>
+          <h2 className="mt-2 truncate text-2xl font-bold text-foreground">{value}</h2>
         </div>
-        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
+        <div className={cn("rounded-xl p-2.5 ring-1 ring-black/5", iconBg)}>{icon}</div>
       </div>
-      <div className="relative z-10 mt-2 flex items-center text-[10px]">
-        <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
+      <div className="relative z-10 mt-3 flex items-center text-[11px]">
+        <span className="mr-2 h-1.5 w-1.5 rounded-full bg-emerald-500" />
         <span className="truncate text-muted-foreground">{subtext}</span>
       </div>
       {details?.length ? (
@@ -1161,9 +1226,11 @@ function CleanPanel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-2">
-        <Icon className="h-4 w-4 text-blue-700" />
+        <div className="grid h-8 w-8 place-items-center rounded-xl bg-sky-50 text-sky-700">
+          <Icon className="h-4 w-4" />
+        </div>
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
       {children}
@@ -1465,7 +1532,19 @@ function formatNumber(value?: number | string | null) {
 
 function formatPunchRange(timeIn?: string | null, timeOut?: string | null) {
   if (!timeIn && !timeOut) return "-";
-  return `${valueOrDash(timeIn)} - ${valueOrDash(timeOut)}`;
+  return `${formatDtrTime(timeIn)} - ${formatDtrTime(timeOut)}`;
+}
+
+function formatDtrTime(value?: string | null) {
+  if (!value) return "-";
+  const match = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return value;
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  if (Number.isNaN(hours) || hours > 23) return value;
+  const period = hours >= 12 ? "PM" : "AM";
+  const hour12 = hours % 12 || 12;
+  return `${hour12}:${minutes} ${period}`;
 }
 
 function valueOrDash(value?: string | number | null) {

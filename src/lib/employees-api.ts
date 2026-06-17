@@ -139,6 +139,7 @@ export function listEmployees(params: {
   department?: string;
   status?: string;
   empStatus?: string;
+  gender?: string;
   page?: number;
   pageSize?: number;
 }) {
@@ -147,6 +148,7 @@ export function listEmployees(params: {
   if (params.department && params.department !== "all") query.set("department", params.department);
   if (params.status && params.status !== "all") query.set("status", params.status);
   if (params.empStatus && params.empStatus !== "all") query.set("empStatus", params.empStatus);
+  if (params.gender && params.gender !== "all") query.set("gender", params.gender);
   if (params.page) query.set("page", String(params.page));
   if (params.pageSize) query.set("pageSize", String(params.pageSize));
   return api<EmployeeListResponse>(`/api/employees?${query.toString()}`);

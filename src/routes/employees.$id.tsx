@@ -1,10 +1,17 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Pencil, Plus, Save, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Save, Search, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -89,9 +96,11 @@ const SECTION_BY_TAB: Partial<Record<Tab, string>> = {
 type FieldConfig = {
   key: string;
   label: string;
-  type?: "text" | "date" | "number" | "textarea" | "select";
+  type?: "text" | "date" | "number" | "textarea" | "select" | "file";
   options?: string[];
 };
+
+const MAX_201_FILE_BYTES = 8 * 1024 * 1024;
 
 const SECTION_FIELDS: Record<string, FieldConfig[]> = {
   family: [
@@ -162,7 +171,7 @@ const SECTION_FIELDS: Record<string, FieldConfig[]> = {
     { key: "yearFrom", label: "Year From" },
     { key: "yearTo", label: "Year To" },
     { key: "hours", label: "No. of Hours", type: "number" },
-    { key: "file", label: "File Name" },
+    { key: "file", label: "Certificate / Attachment", type: "file" },
   ],
   salary: [
     { key: "date", label: "Date Increment", type: "date" },
@@ -202,14 +211,14 @@ const SECTION_FIELDS: Record<string, FieldConfig[]> = {
     { key: "to", label: "Date To", type: "date" },
     { key: "grades", label: "Grades" },
     { key: "remarks", label: "Remarks", type: "textarea" },
-    { key: "file", label: "File Name" },
+    { key: "file", label: "IPCR Attachment", type: "file" },
   ],
 };
 
 function EmployeeFile() {
   const { id } = useParams({ from: "/employees/$id" });
-  const { can } = useAuth();
-  const canEdit = can("edit");
+  const { can, user } = useAuth();
+  const canManageEmployees = can("edit");
   const [active, setActive] = useState<Tab>("PERSONAL");
   const [employee, setEmployee] = useState<EmployeeRecord | null>(null);
   const [sections, setSections] = useState<Record<string, SectionRow[]>>({});
@@ -262,6 +271,9 @@ function EmployeeFile() {
       </AppShell>
     );
   }
+
+  const canEditOwnProfile = user?.role === "Employee" && user.employeeId === employee.id;
+  const canEditProfile = canManageEmployees || canEditOwnProfile;
 
   return (
     <AppShell title="201 File" subtitle="Personnel record management">
@@ -318,18 +330,18 @@ function EmployeeFile() {
           <PersonalTab
             employee={employee}
             options={options}
-            canEdit={canEdit}
+            canEdit={canEditProfile}
             onSaved={(updated) => setEmployee(updated)}
           />
         ) : active === "LEAVE BALANCE" ? (
-          <LeaveBalanceTab employeeId={employee.id} canEdit={canEdit} />
+          <LeaveBalanceTab employeeId={employee.id} canEdit={canManageEmployees} />
         ) : (
           <SectionTab
             employeeId={employee.id}
             section={SECTION_BY_TAB[active] || ""}
             title={active}
             rows={sections[SECTION_BY_TAB[active] || ""] || []}
-            canEdit={canEdit}
+            canEdit={canEditProfile}
             onChange={load}
           />
         )}
@@ -350,8 +362,20 @@ function PersonalTab({
   onSaved: (employee: EmployeeRecord) => void;
 }) {
   const [form, setForm] = useState<EmployeeRecord>(employee);
+  const [departmentQuery, setDepartmentQuery] = useState("");
+  const [positionQuery, setPositionQuery] = useState("");
   const departments = options.departments.map((department) => department.name);
   const positions = options.positions.map((position) => position.title);
+  const filteredDepartments = useMemo(() => {
+    const query = departmentQuery.trim().toLowerCase();
+    if (!query) return departments;
+    return departments.filter((department) => department.toLowerCase().includes(query));
+  }, [departmentQuery, departments]);
+  const filteredPositions = useMemo(() => {
+    const query = positionQuery.trim().toLowerCase();
+    if (!query) return positions;
+    return positions.filter((position) => position.toLowerCase().includes(query));
+  }, [positionQuery, positions]);
 
   const set = (key: keyof EmployeeRecord, value: EmployeeRecord[keyof EmployeeRecord]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -379,11 +403,26 @@ function PersonalTab({
               <SelectValue placeholder="Select department" />
             </SelectTrigger>
             <SelectContent>
-              {departments.map((item) => (
+              <div className="sticky top-0 z-10 bg-popover p-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                  <Input
+                    value={departmentQuery}
+                    onChange={(event) => setDepartmentQuery(event.target.value)}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    placeholder="Search departments..."
+                    className="h-8 pl-9"
+                  />
+                </div>
+              </div>
+              {filteredDepartments.map((item) => (
                 <SelectItem key={item} value={item}>
                   {item}
                 </SelectItem>
               ))}
+              {filteredDepartments.length === 0 && (
+                <div className="px-3 py-2 text-sm text-muted-foreground">No departments found.</div>
+              )}
             </SelectContent>
           </Select>
         </Field>
@@ -393,11 +432,26 @@ function PersonalTab({
               <SelectValue placeholder="Select position" />
             </SelectTrigger>
             <SelectContent>
-              {positions.map((item) => (
+              <div className="sticky top-0 z-10 bg-popover p-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                  <Input
+                    value={positionQuery}
+                    onChange={(event) => setPositionQuery(event.target.value)}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    placeholder="Search positions..."
+                    className="h-8 pl-9"
+                  />
+                </div>
+              </div>
+              {filteredPositions.map((item) => (
                 <SelectItem key={item} value={item}>
                   {item}
                 </SelectItem>
               ))}
+              {filteredPositions.length === 0 && (
+                <div className="px-3 py-2 text-sm text-muted-foreground">No positions found.</div>
+              )}
             </SelectContent>
           </Select>
         </Field>
@@ -708,20 +762,50 @@ function SectionTab({
   canEdit: boolean;
   onChange: () => void;
 }) {
-  const fields = SECTION_FIELDS[section] || [];
+  const fields = useMemo(() => SECTION_FIELDS[section] || [], [section]);
   const blank = useMemo(() => Object.fromEntries(fields.map((field) => [field.key, ""])), [fields]);
   const [form, setForm] = useState<Record<string, string | number | boolean | null>>(blank);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     setForm(blank);
     setEditingId(null);
+    setShowForm(false);
   }, [blank]);
 
   const set = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const setFile = (key: string, file: File | null) => {
+    if (!file) {
+      setForm((current) => ({
+        ...current,
+        [key]: "",
+        [`${key}Data`]: "",
+        [`${key}Type`]: "",
+        [`${key}Size`]: "",
+      }));
+      return;
+    }
+    if (file.size > MAX_201_FILE_BYTES) {
+      toast.error("File must be 8 MB or smaller");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setForm((current) => ({
+        ...current,
+        [key]: file.name,
+        [`${key}Data`]: String(reader.result || ""),
+        [`${key}Type`]: file.type || "application/octet-stream",
+        [`${key}Size`]: String(file.size),
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
   const clear = () => {
     setForm(blank);
     setEditingId(null);
+    setShowForm(false);
   };
   const save = async () => {
     try {
@@ -738,9 +822,15 @@ function SectionTab({
       toast.error(err instanceof Error ? err.message : "Unable to save record");
     }
   };
+  const add = () => {
+    setForm(blank);
+    setEditingId(null);
+    setShowForm(true);
+  };
   const edit = (row: SectionRow) => {
     setForm({ ...blank, ...row.payload });
     setEditingId(row.id);
+    setShowForm(true);
   };
   const remove = async (row: SectionRow) => {
     if (!window.confirm("Delete this 201 record?")) return;
@@ -755,35 +845,59 @@ function SectionTab({
 
   return (
     <div>
-      <FormSection title={editingId ? `Edit ${title}` : `Add ${title}`}>
-        {fields.map((field) => (
-          <Field
-            key={field.key}
-            label={field.label}
-            className={field.type === "textarea" ? "md:col-span-2 lg:col-span-3" : undefined}
-          >
-            <SectionInput
-              field={field}
-              value={String(form[field.key] ?? "")}
-              onChange={(value) => set(field.key, value)}
-            />
-          </Field>
-        ))}
-      </FormSection>
       <div className="mb-4 flex justify-end gap-2">
-        <Button variant="outline" onClick={clear}>
-          Cancel
-        </Button>
         <Button
           disabled={!canEdit}
-          onClick={save}
+          onClick={add}
           className="bg-blue-600 text-white hover:bg-blue-700"
         >
-          {editingId ? <Pencil className="mr-1.5 h-4 w-4" /> : <Plus className="mr-1.5 h-4 w-4" />}
-          {editingId ? "Update" : "Add"}
+          <Plus className="mr-1.5 h-4 w-4" />
+          Add
         </Button>
       </div>
       <RecordTable fields={fields} rows={rows} canEdit={canEdit} onEdit={edit} onDelete={remove} />
+      <Dialog open={showForm} onOpenChange={(open) => (open ? setShowForm(true) : clear())}>
+        <DialogContent className="grid max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="border-b border-border px-5 py-4 pr-12">
+            <DialogTitle>{editingId ? `Edit ${title}` : `Add ${title}`}</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto px-5 py-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {fields.map((field) => (
+                <Field
+                  key={field.key}
+                  label={field.label}
+                  className={field.type === "textarea" ? "md:col-span-2" : undefined}
+                >
+                  <SectionInput
+                    field={field}
+                    value={String(form[field.key] ?? "")}
+                    onChange={(value) => set(field.key, value)}
+                    onFileChange={(file) => setFile(field.key, file)}
+                  />
+                </Field>
+              ))}
+            </div>
+          </div>
+          <DialogFooter className="flex-row flex-wrap justify-end gap-2 border-t border-border px-5 py-4 sm:space-x-0">
+            <Button variant="outline" onClick={clear}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!canEdit}
+              onClick={save}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {editingId ? (
+                <Pencil className="mr-1.5 h-4 w-4" />
+              ) : (
+                <Plus className="mr-1.5 h-4 w-4" />
+              )}
+              {editingId ? "Update" : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -792,13 +906,30 @@ function SectionInput({
   field,
   value,
   onChange,
+  onFileChange,
 }: {
   field: FieldConfig;
   value: string;
   onChange: (value: string) => void;
+  onFileChange?: (file: File | null) => void;
 }) {
   if (field.type === "textarea")
     return <Textarea value={value} onChange={(event) => onChange(event.target.value)} rows={2} />;
+  if (field.type === "file") {
+    return (
+      <div className="space-y-2">
+        <Input type="file" onChange={(event) => onFileChange?.(event.target.files?.[0] || null)} />
+        {value && (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            <span className="truncate">{value}</span>
+            <button type="button" className="text-destructive" onClick={() => onFileChange?.(null)}>
+              Remove
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
   if (field.type === "select") {
     return (
       <Select
@@ -844,7 +975,47 @@ function RecordTable({
   const visibleFields = fields.slice(0, 6);
   return (
     <div className="my-2 overflow-hidden rounded-xl border border-border bg-card">
-      <div className="overflow-x-auto">
+      <div className="mobile-record-list">
+        {rows.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+            No records found.
+          </div>
+        ) : (
+          rows.map((row) => (
+            <article key={row.id} className="mobile-record-card">
+              <div className="mobile-record-card__grid">
+                {visibleFields.map((field) => (
+                  <div key={field.key} className="mobile-record-card__field">
+                    <span className="mobile-record-card__label">{field.label}</span>
+                    <span className="mobile-record-card__value">
+                      {renderSectionValue(field, row.payload) || "-"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {canEdit && (
+                <div className="mobile-record-card__actions">
+                  <Button variant="outline" size="sm" onClick={() => onEdit(row)}>
+                    <Pencil className="mr-1.5 h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onDelete(row)}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="mr-1.5 h-4 w-4" />
+                    Delete
+                  </Button>
+                </div>
+              )}
+            </article>
+          ))
+        )}
+      </div>
+
+      <div className="mobile-desktop-table overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -877,7 +1048,7 @@ function RecordTable({
                 >
                   {visibleFields.map((field) => (
                     <td key={field.key} className="whitespace-nowrap px-3 py-2.5">
-                      {String(row.payload[field.key] ?? "")}
+                      {renderSectionValue(field, row.payload)}
                     </td>
                   ))}
                   {canEdit && (
@@ -905,6 +1076,27 @@ function RecordTable({
         </table>
       </div>
     </div>
+  );
+}
+
+function renderSectionValue(
+  field: FieldConfig,
+  payload: Record<string, string | number | boolean | null>,
+) {
+  const value = String(payload[field.key] ?? "");
+  if (field.type !== "file") return value;
+  const data = String(payload[`${field.key}Data`] ?? "");
+  if (!value) return "";
+  if (!data) return value;
+  return (
+    <a
+      href={data}
+      download={value}
+      className="inline-flex max-w-[220px] items-center gap-1 truncate text-primary hover:underline"
+    >
+      <Upload className="h-3.5 w-3.5 shrink-0" />
+      <span className="truncate">{value}</span>
+    </a>
   );
 }
 

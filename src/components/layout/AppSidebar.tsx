@@ -1,72 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import {
-  LayoutDashboard,
-  Users,
-  CalendarDays,
-  MonitorSmartphone,
-  BarChart3,
-  ShieldCheck,
-  Settings,
-  ClipboardCheck,
-  LogOut,
-  ChevronLeft,
-  ChevronRight,
-  Stethoscope,
-  UserCircle,
-} from "lucide-react";
+import { LogOut, ChevronLeft, ChevronRight, Stethoscope } from "lucide-react";
 import { isSelfServiceRole, useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { getDashboard } from "@/lib/employees-api";
 import { listLeaveApplications } from "@/lib/leave-api";
 import { cn } from "@/lib/utils";
-
-type NavItem = {
-  to:
-    | "/"
-    | "/employees"
-    | "/attendance"
-    | "/leave"
-    | "/self-service"
-    | "/reports"
-    | "/admin"
-    | "/settings"
-    | "/my-profile"
-    | "/requests";
-  label: string;
-  icon: typeof LayoutDashboard;
-  exact?: boolean;
-};
-
-const NAV: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { to: "/my-profile", label: "My Profile", icon: UserCircle },
-  { to: "/employees", label: "Employee Management", icon: Users },
-  { to: "/attendance", label: "Attendance", icon: CalendarDays },
-  { to: "/leave", label: "Leave Management", icon: ClipboardCheck },
-  { to: "/self-service", label: "Self-Service Portal", icon: MonitorSmartphone },
-  { to: "/requests", label: "My Requests", icon: ClipboardCheck },
-  { to: "/reports", label: "Reports & Analytics", icon: BarChart3 },
-  { to: "/admin", label: "System Administration", icon: ShieldCheck },
-  { to: "/settings", label: "Settings", icon: Settings },
-];
-
-function navForRole(role: string | undefined) {
-  const selfServiceOnly = ["/my-profile", "/self-service", "/requests"];
-  if (role === "Admin") return NAV.filter((item) => !selfServiceOnly.includes(item.to));
-  if (role === "HR") {
-    return NAV.filter((item) => !["/admin", ...selfServiceOnly].includes(item.to));
-  }
-  if (role === "Viewer") {
-    return NAV.filter((item) => ["/", "/employees", "/reports"].includes(item.to));
-  }
-  if (isSelfServiceRole(role)) {
-    return NAV.filter((item) =>
-      ["/", "/my-profile", "/self-service", "/attendance", "/requests"].includes(item.to),
-    );
-  }
-  return [];
-}
+import { navForRole } from "@/components/layout/navigation";
 
 export function AppSidebar() {
   const { agency, sidebarCollapsed: collapsed, toggleSidebar } = useSettings();
@@ -74,10 +14,12 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const nav = navForRole(user?.role);
   const canSeeLeaveNotifications = user?.role === "Admin" || user?.role === "HR";
+  const canSeeEmployeeStats = !isSelfServiceRole(user?.role);
 
   const { data: dashboard } = useQuery({
     queryKey: ["dashboard"],
     queryFn: getDashboard,
+    enabled: canSeeEmployeeStats,
   });
 
   const { data: leaveNotifications } = useQuery({
@@ -150,89 +92,88 @@ export function AppSidebar() {
         </button>
       </div>
 
-      {!collapsed && (
-        <div className="px-4 pt-4 pb-1 text-[10px] tracking-widest uppercase text-muted-foreground font-semibold">
-          Main Menu
-        </div>
-      )}
-
-      <nav className="px-2 space-y-0.5 py-2">
-        {nav.map((item) => {
-          const active = isActive(item.to, item.exact);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={cn(
-                "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition-all duration-150 relative",
-                active
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-sidebar-foreground hover:bg-muted/50",
-                collapsed && "justify-center px-0",
-              )}
-            >
-              <Icon
-                className={cn(
-                  "h-[18px] w-[18px] shrink-0",
-                  active
-                    ? "text-primary"
-                    : "text-muted-foreground group-hover:text-sidebar-foreground",
-                )}
-              />
-              {!collapsed && <span className="flex-1 leading-snug">{item.label}</span>}
-              {item.to === "/employees" && !collapsed && dashboard && (
-                <span className="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold rounded-full bg-primary/20 text-primary shrink-0">
-                  {dashboard.totalEmployees}
-                </span>
-              )}
-              {item.to === "/leave" && pendingLeaveCount > 0 && (
-                <span
-                  className={cn(
-                    "inline-flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold shrink-0",
-                    collapsed
-                      ? "absolute right-2 top-1 h-4 min-w-4 px-1"
-                      : "px-2 py-0.5",
-                  )}
-                >
-                  {pendingLeaveCount > 99 ? "99+" : pendingLeaveCount}
-                </span>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* Departments Section */}
-      {!collapsed && dashboard && dashboard.byDivision.length > 0 && (
-        <>
+      <div className="flex-1 overflow-y-auto no-scrollbar">
+        {!collapsed && (
           <div className="px-4 pt-4 pb-1 text-[10px] tracking-widest uppercase text-muted-foreground font-semibold">
-            Departments
+            Main Menu
           </div>
-          <nav className="px-2 flex-1 space-y-0.5 py-1 overflow-y-auto scrollbar-thin">
-            {dashboard.byDivision.map((dept, idx) => (
+        )}
+
+        <nav className="px-2 space-y-0.5 py-2">
+          {nav.map((item) => {
+            const active = isActive(item.to, item.exact);
+            const Icon = item.icon;
+            return (
               <Link
-                key={dept.department}
-                to="/employees"
-                search={{ department: dept.department }}
-                className="flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium text-muted-foreground hover:text-sidebar-foreground hover:bg-muted/50 transition-all duration-150"
+                key={item.to}
+                to={item.to}
+                className={cn(
+                  "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition-all duration-150 relative",
+                  active
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-sidebar-foreground hover:bg-muted/50",
+                  collapsed && "justify-center px-0",
+                )}
               >
-                <div
+                <Icon
                   className={cn(
-                    "h-2.5 w-2.5 rounded-full shrink-0",
-                    deptColors[idx % deptColors.length],
+                    "h-[18px] w-[18px] shrink-0",
+                    active
+                      ? "text-primary"
+                      : "text-muted-foreground group-hover:text-sidebar-foreground",
                   )}
                 />
-                <span className="flex-1 leading-snug">{dept.department}</span>
-                <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-primary/10 text-primary shrink-0">
-                  {dept.filled}
-                </span>
+                {!collapsed && <span className="flex-1 leading-snug">{item.label}</span>}
+                {item.to === "/employees" && !collapsed && dashboard && (
+                  <span className="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold rounded-full bg-primary/20 text-primary shrink-0">
+                    {dashboard.totalEmployees}
+                  </span>
+                )}
+                {item.to === "/leave" && pendingLeaveCount > 0 && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold shrink-0",
+                      collapsed ? "absolute right-2 top-1 h-4 min-w-4 px-1" : "px-2 py-0.5",
+                    )}
+                  >
+                    {pendingLeaveCount > 99 ? "99+" : pendingLeaveCount}
+                  </span>
+                )}
               </Link>
-            ))}
-          </nav>
-        </>
-      )}
-      {collapsed && <div className="flex-1 overflow-y-auto no-scrollbar" />}
+            );
+          })}
+        </nav>
+
+        {/* Departments Section */}
+        {!collapsed && canSeeEmployeeStats && dashboard && dashboard.byDivision.length > 0 && (
+          <>
+            <div className="px-4 pt-4 pb-1 text-[10px] tracking-widest uppercase text-muted-foreground font-semibold">
+              Departments
+            </div>
+            <nav className="px-2 space-y-0.5 py-1">
+              {dashboard.byDivision.map((dept, idx) => (
+                <Link
+                  key={dept.department}
+                  to="/employees"
+                  search={{ department: dept.department }}
+                  className="flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium text-muted-foreground hover:text-sidebar-foreground hover:bg-muted/50 transition-all duration-150"
+                >
+                  <div
+                    className={cn(
+                      "h-2.5 w-2.5 rounded-full shrink-0",
+                      deptColors[idx % deptColors.length],
+                    )}
+                  />
+                  <span className="flex-1 leading-snug">{dept.department}</span>
+                  <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-primary/10 text-primary shrink-0">
+                    {dept.filled}
+                  </span>
+                </Link>
+              ))}
+            </nav>
+          </>
+        )}
+      </div>
 
       <div className="p-3 border-t border-sidebar-border/50">
         {!collapsed && user && (

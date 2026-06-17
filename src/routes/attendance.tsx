@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   CalendarClock,
@@ -92,6 +92,24 @@ const formatLocalDate = (date: Date) =>
 const DEFAULT_FROM = formatLocalDate(new Date(today.getFullYear(), today.getMonth(), 1));
 const DEFAULT_TO = formatLocalDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
 
+function formatDtrTime(value?: string | null) {
+  if (!value) return "-";
+  const match = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return value;
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  if (Number.isNaN(hours) || hours > 23) return value;
+  const period = hours >= 12 ? "PM" : "AM";
+  const hour12 = hours % 12 || 12;
+  return `${hour12}:${minutes} ${period}`;
+}
+
+function filterEmployeeOptions(options: Array<{ id: string; label: string }>, searchValue: string) {
+  const search = searchValue.trim().toLowerCase();
+  if (!search) return options;
+  return options.filter((employee) => employee.label.toLowerCase().includes(search));
+}
+
 const EMPTY_DTR_FORM: DtrPayload = {
   employeeDbId: "",
   workDate: formatLocalDate(new Date()),
@@ -138,6 +156,11 @@ function AttendancePage() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importSource, setImportSource] = useState<"biometric" | "file">("biometric");
   const [importSearch, setImportSearch] = useState("");
+  const [filterEmployeeSearch, setFilterEmployeeSearch] = useState("");
+  const [formEmployeeSearch, setFormEmployeeSearch] = useState("");
+  const [exportEmployeeSearch, setExportEmployeeSearch] = useState("");
+  const [exportNoterSearch, setExportNoterSearch] = useState("");
+  const [scheduleEmployeeSearch, setScheduleEmployeeSearch] = useState("");
   const [selectedImportEmployeeId, setSelectedImportEmployeeId] = useState("");
   const [biometricDevices, setBiometricDevices] = useState<BiometricDevice[]>([]);
   const [selectedBiometricId, setSelectedBiometricId] = useState("");
@@ -298,6 +321,32 @@ function AttendancePage() {
       })),
     [employees],
   );
+  const filteredEmployeeOptions = useMemo(
+    () => filterEmployeeOptions(employeeOptions, filterEmployeeSearch),
+    [employeeOptions, filterEmployeeSearch],
+  );
+  const filteredFormEmployeeOptions = useMemo(
+    () => filterEmployeeOptions(employeeOptions, formEmployeeSearch),
+    [employeeOptions, formEmployeeSearch],
+  );
+  const filteredExportEmployeeOptions = useMemo(
+    () => filterEmployeeOptions(employeeOptions, exportEmployeeSearch),
+    [employeeOptions, exportEmployeeSearch],
+  );
+  const filteredScheduleEmployeeOptions = useMemo(
+    () => filterEmployeeOptions(employeeOptions, scheduleEmployeeSearch),
+    [employeeOptions, scheduleEmployeeSearch],
+  );
+  const filteredExportNoters = useMemo(() => {
+    const search = exportNoterSearch.trim().toLowerCase();
+    if (!search) return noters;
+    return noters.filter((noter) =>
+      [noter.signatory, noter.name, noter.position, noter.office]
+        .join(" ")
+        .toLowerCase()
+        .includes(search),
+    );
+  }, [noters, exportNoterSearch]);
 
   const importEmployees = useMemo(
     () =>
@@ -683,8 +732,13 @@ function AttendancePage() {
     setBusy(true);
     try {
       const result = await generateDtrPdf(payload);
-      openGeneratedFile(result.previewUrl);
-      toast.success(`DTR PDF generated with ${result.rowCount} row(s)`);
+      if (isEmployee) {
+        downloadGeneratedFile(result.previewUrl, result.fileName);
+        toast.success(`DTR PDF downloaded with ${result.rowCount} row(s)`);
+      } else {
+        openGeneratedFile(result.previewUrl);
+        toast.success(`DTR PDF generated with ${result.rowCount} row(s)`);
+      }
       setShowExportDialog(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to generate DTR PDF");
@@ -734,6 +788,22 @@ function AttendancePage() {
     }
   };
 
+  const generatePdf = async () => {
+    const payload = buildDtrExportPayload();
+    if (!payload) return;
+    setBusy(true);
+    try {
+      const result = await generateDtrPdf(payload);
+      downloadGeneratedFile(result.previewUrl, result.fileName);
+      toast.success(`DTR PDF generated with ${result.rowCount} row(s)`);
+      setShowExportDialog(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to generate DTR PDF");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const activeBiometricDevices = biometricDevices.filter((device) => device.active);
   const realtimeState = realtimeStatus?.status || "idle";
   const realtimeBadgeClass =
@@ -766,12 +836,29 @@ function AttendancePage() {
                       <SelectValue placeholder="All employees" />
                     </SelectTrigger>
                     <SelectContent>
+                      <div className="sticky top-0 z-10 bg-popover p-2">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                          <Input
+                            value={filterEmployeeSearch}
+                            onChange={(event) => setFilterEmployeeSearch(event.target.value)}
+                            onKeyDown={(event) => event.stopPropagation()}
+                            placeholder="Search employees..."
+                            className="h-8 pl-9"
+                          />
+                        </div>
+                      </div>
                       <SelectItem value="all">All employees</SelectItem>
-                      {employeeOptions.map((employee) => (
+                      {filteredEmployeeOptions.map((employee) => (
                         <SelectItem key={employee.id} value={employee.id}>
                           {employee.label}
                         </SelectItem>
                       ))}
+                      {filteredEmployeeOptions.length === 0 && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">
+                          No employees found.
+                        </div>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -799,7 +886,7 @@ function AttendancePage() {
                 </div>
               )}
             </div>
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="mobile-action-row flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={load} disabled={loading}>
                 <RefreshCw className="mr-1.5 h-4 w-4" /> Reload
               </Button>
@@ -827,36 +914,45 @@ function AttendancePage() {
                   </Button>
                 </>
               )}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    Actions
-                    <ChevronDown className="ml-1.5 h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44">
-                  {canManage && (
-                    <DropdownMenuItem onClick={openImport}>
-                      <Upload className="h-4 w-4" />
-                      Import Single DTR
+              {isEmployee ? (
+                <Button
+                  onClick={openExport}
+                  disabled={busy}
+                  className="bg-blue-600 text-white hover:bg-blue-700"
+                >
+                  <FileText className="mr-1.5 h-4 w-4" />
+                  Download DTR PDF
+                </Button>
+              ) : (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      Actions
+                      <ChevronDown className="ml-1.5 h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    {canManage && (
+                      <DropdownMenuItem onClick={openImport}>
+                        <Upload className="h-4 w-4" />
+                        Import Single DTR
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={openExport}>
+                      <FileSpreadsheet className="h-4 w-4" />
+                      View DTR
                     </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem onClick={openExport}>
-                    <FileSpreadsheet className="h-4 w-4" />
-                    {isEmployee ? "Download DTR Excel" : "View DTR Excel"}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => exportRows(false)}>
-                    <Download className="h-4 w-4" />
-                    Quick CSV
-                  </DropdownMenuItem>
-                  {!isEmployee && (
+                    <DropdownMenuItem onClick={() => exportRows(false)}>
+                      <Download className="h-4 w-4" />
+                      Quick CSV
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => exportRows(true)}>
                       <FileDown className="h-4 w-4" />
                       Mass Export
                     </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
         </section>
@@ -869,12 +965,10 @@ function AttendancePage() {
                   <div className="flex items-center gap-2">
                     <RadioTower className="h-4 w-4 text-emerald-700" />
                     <div>
-                      <h2 className="text-sm font-semibold text-foreground">
-                        Real-Time Biometric
-                      </h2>
+                      <h2 className="text-sm font-semibold text-foreground">Real-Time Biometric</h2>
                       <p className="text-xs text-muted-foreground">
-                        ADMS receiver on port {realtimeStatus?.admsPort || 6000}; active devices
-                        are synced by biometric ID or employee number.
+                        ADMS receiver on port {realtimeStatus?.admsPort || 6000}; active devices are
+                        synced by biometric ID or employee number.
                       </p>
                     </div>
                   </div>
@@ -1007,7 +1101,78 @@ function AttendancePage() {
             </p>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="mobile-record-list">
+            {entries.map((entry) => (
+              <article key={entry.id} className="mobile-record-card">
+                <div className="mobile-record-card__header">
+                  <div className="min-w-0">
+                    <h3 className="mobile-record-card__title">{entry.employeeName}</h3>
+                    <p className="mobile-record-card__meta">
+                      {entry.workDate} · {entry.department || "No office"}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                    {entry.biometricId || "No ID"}
+                  </span>
+                </div>
+
+                <div className="mobile-record-card__grid">
+                  <div className="mobile-record-card__field">
+                    <span className="mobile-record-card__label">AM In</span>
+                    <span className="mobile-record-card__value text-emerald-700">
+                      {formatDtrTime(entry.amIn)}
+                    </span>
+                  </div>
+                  <div className="mobile-record-card__field">
+                    <span className="mobile-record-card__label">AM Out</span>
+                    <span className="mobile-record-card__value text-emerald-700">
+                      {formatDtrTime(entry.amOut)}
+                    </span>
+                  </div>
+                  <div className="mobile-record-card__field">
+                    <span className="mobile-record-card__label">PM In</span>
+                    <span className="mobile-record-card__value text-emerald-700">
+                      {formatDtrTime(entry.pmIn)}
+                    </span>
+                  </div>
+                  <div className="mobile-record-card__field">
+                    <span className="mobile-record-card__label">PM Out</span>
+                    <span className="mobile-record-card__value text-emerald-700">
+                      {formatDtrTime(entry.pmOut)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <span className="mobile-record-card__label">Tardiness</span>
+                    <span className="text-sm font-semibold text-destructive">
+                      {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
+                    </span>
+                  </div>
+                  {canManage && (
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openEdit(entry)}>
+                        <Pencil className="mr-1.5 h-4 w-4" />
+                        Edit
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => remove(entry)}>
+                        <Trash2 className="mr-1.5 h-4 w-4 text-destructive" />
+                        Delete
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </article>
+            ))}
+            {!entries.length && !loading && (
+              <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                No DTR records found for this filter.
+              </div>
+            )}
+          </div>
+
+          <div className="mobile-desktop-table overflow-x-auto">
             <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
               <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                 <tr>
@@ -1034,10 +1199,18 @@ function AttendancePage() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{entry.department || "-"}</td>
                     <td className="px-4 py-3 font-medium text-foreground">{entry.workDate}</td>
-                    <td className="px-4 py-3 font-medium text-emerald-600">{entry.amIn || "-"}</td>
-                    <td className="px-4 py-3 font-medium text-emerald-600">{entry.amOut || "-"}</td>
-                    <td className="px-4 py-3 font-medium text-emerald-600">{entry.pmIn || "-"}</td>
-                    <td className="px-4 py-3 font-medium text-emerald-600">{entry.pmOut || "-"}</td>
+                    <td className="px-4 py-3 font-medium text-emerald-600">
+                      {formatDtrTime(entry.amIn)}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-emerald-600">
+                      {formatDtrTime(entry.amOut)}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-emerald-600">
+                      {formatDtrTime(entry.pmIn)}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-emerald-600">
+                      {formatDtrTime(entry.pmOut)}
+                    </td>
                     <td className="px-4 py-3 text-destructive font-medium">
                       {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
                     </td>
@@ -1090,11 +1263,28 @@ function AttendancePage() {
                   <SelectValue placeholder="Select employee" />
                 </SelectTrigger>
                 <SelectContent>
-                  {employeeOptions.map((employee) => (
+                  <div className="sticky top-0 z-10 bg-popover p-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                      <Input
+                        value={formEmployeeSearch}
+                        onChange={(event) => setFormEmployeeSearch(event.target.value)}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        placeholder="Search employees..."
+                        className="h-8 pl-9"
+                      />
+                    </div>
+                  </div>
+                  {filteredFormEmployeeOptions.map((employee) => (
                     <SelectItem key={employee.id} value={employee.id}>
                       {employee.label}
                     </SelectItem>
                   ))}
+                  {filteredFormEmployeeOptions.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      No employees found.
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -1431,7 +1621,7 @@ function AttendancePage() {
                     type="file"
                     accept=".txt,.xlsx,.xls,.dat"
                     className="hidden"
-                    onChange={(event: any) => {
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => {
                       const file = event.target.files?.[0];
                       if (!file) return;
                       if (!/\.(txt|xlsx|xls|dat)$/i.test(file.name)) {
@@ -1535,11 +1725,11 @@ function AttendancePage() {
       </Dialog>
 
       <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{isEmployee ? "Download DTR Excel" : "View DTR Excel"}</DialogTitle>
+        <DialogContent className="grid max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="border-b border-border px-5 py-4 pr-12">
+            <DialogTitle>{isEmployee ? "Download DTR PDF" : "View DTR"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-5">
+          <div className="space-y-5 overflow-y-auto px-5 py-4">
             {!isEmployee && (
               <div className="space-y-1.5">
                 <Label>Employee</Label>
@@ -1551,12 +1741,29 @@ function AttendancePage() {
                     <SelectValue placeholder="Select employee" />
                   </SelectTrigger>
                   <SelectContent>
+                    <div className="sticky top-0 z-10 bg-popover p-2">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                        <Input
+                          value={exportEmployeeSearch}
+                          onChange={(event) => setExportEmployeeSearch(event.target.value)}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          placeholder="Search employees..."
+                          className="h-8 pl-9"
+                        />
+                      </div>
+                    </div>
                     <SelectItem value="all">Current selected employee</SelectItem>
-                    {employeeOptions.map((employee) => (
+                    {filteredExportEmployeeOptions.map((employee) => (
                       <SelectItem key={employee.id} value={employee.id}>
                         {employee.label}
                       </SelectItem>
                     ))}
+                    {filteredExportEmployeeOptions.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No employees found.
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -1582,23 +1789,34 @@ function AttendancePage() {
                     <SelectValue placeholder="Select noter" />
                   </SelectTrigger>
                   <SelectContent>
-                    {noters.map((noter) => (
+                    <div className="sticky top-0 z-10 bg-popover p-2">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                        <Input
+                          value={exportNoterSearch}
+                          onChange={(event) => setExportNoterSearch(event.target.value)}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          placeholder="Search noters..."
+                          className="h-8 pl-9"
+                        />
+                      </div>
+                    </div>
+                    {filteredExportNoters.map((noter) => (
                       <SelectItem key={noter.id} value={noter.id}>
                         {noter.signatory} - {noter.position}
                       </SelectItem>
                     ))}
+                    {filteredExportNoters.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No noters found.
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
                 <Label>Noter Position</Label>
-                <Input
-                  value={exportForm.noterPosition}
-                  onChange={(event) =>
-                    setExportForm({ ...exportForm, noterPosition: event.target.value })
-                  }
-                  placeholder="Position title"
-                />
+                <Input value={exportForm.noterPosition} placeholder="Position title" disabled />
               </div>
             </div>
 
@@ -1645,24 +1863,43 @@ function AttendancePage() {
               </div>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-row flex-wrap justify-end gap-2 border-t border-border px-5 py-4 sm:space-x-0">
             <Button variant="outline" onClick={() => setShowExportDialog(false)}>
               Cancel
             </Button>
-            {!isEmployee && (
-              <Button onClick={viewPdf} disabled={busy} variant="outline">
+            {isEmployee ? (
+              <Button
+                onClick={viewPdf}
+                disabled={busy}
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
                 <FileText className="mr-1.5 h-4 w-4" />
-                View PDF
+                Download DTR PDF
               </Button>
+            ) : (
+              <>
+                <Button onClick={viewPdf} disabled={busy} variant="outline">
+                  <FileText className="mr-1.5 h-4 w-4" />
+                  View PDF
+                </Button>
+                <Button
+                  onClick={exportExcel}
+                  disabled={busy}
+                  className="border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  <FileSpreadsheet className="mr-1.5 h-4 w-4" />
+                  Generate Excel
+                </Button>
+                <Button
+                  onClick={generatePdf}
+                  disabled={busy}
+                  className="border-red-600 bg-red-600 text-white hover:bg-red-700"
+                >
+                  <FileText className="mr-1.5 h-4 w-4" />
+                  Generate PDF
+                </Button>
+              </>
             )}
-            <Button
-              onClick={exportExcel}
-              disabled={busy}
-              className="bg-blue-600 text-white hover:bg-blue-700"
-            >
-              <FileSpreadsheet className="mr-1.5 h-4 w-4" />
-              {isEmployee ? "Download Excel" : "Generate Excel"}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1676,25 +1913,45 @@ function AttendancePage() {
             <div className="space-y-3">
               <Label>Employees</Label>
               <div className="max-h-80 overflow-y-auto rounded-md border border-border p-2">
+                <div className="sticky top-0 z-10 bg-card pb-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                    <Input
+                      value={scheduleEmployeeSearch}
+                      onChange={(event) => setScheduleEmployeeSearch(event.target.value)}
+                      placeholder="Search employees..."
+                      className="h-8 pl-9"
+                    />
+                  </div>
+                </div>
                 <label className="mb-2 flex items-center gap-2 rounded px-2 py-1 text-sm">
                   <input
                     type="checkbox"
                     checked={
-                      employeeOptions.length > 0 &&
-                      scheduleForm.employeeIds.length === employeeOptions.length
+                      filteredScheduleEmployeeOptions.length > 0 &&
+                      filteredScheduleEmployeeOptions.every((employee) =>
+                        scheduleForm.employeeIds.includes(employee.id),
+                      )
                     }
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const visibleEmployeeIds = filteredScheduleEmployeeOptions.map(
+                        (employee) => employee.id,
+                      );
                       setScheduleForm({
                         ...scheduleForm,
                         employeeIds: event.target.checked
-                          ? employeeOptions.map((item) => item.id)
-                          : [],
-                      })
-                    }
+                          ? Array.from(
+                              new Set([...scheduleForm.employeeIds, ...visibleEmployeeIds]),
+                            )
+                          : scheduleForm.employeeIds.filter(
+                              (id) => !visibleEmployeeIds.includes(id),
+                            ),
+                      });
+                    }}
                   />
-                  Select all
+                  Select all visible
                 </label>
-                {employeeOptions.map((employee) => (
+                {filteredScheduleEmployeeOptions.map((employee) => (
                   <label
                     key={employee.id}
                     className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted"
@@ -1714,6 +1971,9 @@ function AttendancePage() {
                     <span className="truncate">{employee.label}</span>
                   </label>
                 ))}
+                {filteredScheduleEmployeeOptions.length === 0 && (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">No employees found.</div>
+                )}
               </div>
             </div>
             <div className="space-y-4">

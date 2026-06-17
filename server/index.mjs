@@ -1227,6 +1227,10 @@ async function requireEmployeeWrite(req, res) {
   return user;
 }
 
+function canWriteEmployeeRecord(user, employeeId) {
+  return ["Admin", "HR"].includes(user.role) || user.employeeId === employeeId;
+}
+
 async function requireAttendanceRead(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
@@ -2363,6 +2367,7 @@ async function handleListEmployees(req, res, url) {
   const department = String(url.searchParams.get("department") || "").trim();
   const status = String(url.searchParams.get("status") || "").trim();
   const empStatus = String(url.searchParams.get("empStatus") || "").trim();
+  const gender = String(url.searchParams.get("gender") || "").trim();
   const page = Math.max(1, Number(url.searchParams.get("page") || 1));
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get("pageSize") || 10)));
   const offset = (page - 1) * pageSize;
@@ -2386,6 +2391,10 @@ async function handleListEmployees(req, res, url) {
   if (empStatus) {
     where.push(`emp_status = :empStatus`);
     params.empStatus = empStatus;
+  }
+  if (gender) {
+    where.push(`gender = :gender`);
+    params.gender = gender;
   }
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
@@ -4688,8 +4697,11 @@ async function handleDownloadEmployeePdsExcel(req, res, fileName) {
 }
 
 async function handleUpdateEmployee(req, res, id) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requireUser(req, res);
   if (!user) return;
+  if (!canWriteEmployeeRecord(user, id)) {
+    return json(res, 403, { error: "You can only update your own employee record" });
+  }
 
   const existing = await readEmployeeById(id);
   if (!existing) return json(res, 404, { error: "Employee not found" });
@@ -4762,8 +4774,11 @@ async function handleDeleteEmployee(req, res, id) {
 }
 
 async function handleCreateSectionRow(req, res, employeeId, section) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requireUser(req, res);
   if (!user) return;
+  if (!canWriteEmployeeRecord(user, employeeId)) {
+    return json(res, 403, { error: "You can only update your own 201 records" });
+  }
   const config = validateSection(section);
   if (!config) return json(res, 404, { error: "Section not found" });
   const employee = await readEmployeeById(employeeId);
@@ -4795,8 +4810,11 @@ async function handleCreateSectionRow(req, res, employeeId, section) {
 }
 
 async function handleUpdateSectionRow(req, res, employeeId, section, rowId, suppliedPayload) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requireUser(req, res);
   if (!user) return;
+  if (!canWriteEmployeeRecord(user, employeeId)) {
+    return json(res, 403, { error: "You can only update your own 201 records" });
+  }
   const config = validateSection(section);
   if (!config) return json(res, 404, { error: "Section not found" });
   const body = suppliedPayload ? { payload: suppliedPayload } : await readBody(req);
@@ -4816,8 +4834,11 @@ async function handleUpdateSectionRow(req, res, employeeId, section, rowId, supp
 }
 
 async function handleDeleteSectionRow(req, res, employeeId, section, rowId) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requireUser(req, res);
   if (!user) return;
+  if (!canWriteEmployeeRecord(user, employeeId)) {
+    return json(res, 403, { error: "You can only update your own 201 records" });
+  }
   const config = validateSection(section);
   if (!config) return json(res, 404, { error: "Section not found" });
 

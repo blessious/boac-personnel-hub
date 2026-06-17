@@ -133,49 +133,91 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] text-sm">
-        <thead>
-          <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <th className="px-4 py-3 font-semibold">Request</th>
-            <th className="px-4 py-3 font-semibold">Dates</th>
-            <th className="px-4 py-3 font-semibold">Days</th>
-            <th className="px-4 py-3 font-semibold">Status</th>
-            <th className="px-4 py-3 font-semibold">Remarks</th>
-          </tr>
-        </thead>
-        <tbody>
-          {applications.map((application, index) => (
-            <tr
-              key={application.id}
-              className={cn(
-                "border-b border-border/50 last:border-0",
-                index % 2 === 1 && "bg-muted/10",
-              )}
-            >
-              <td className="px-4 py-3">
-                <div className="font-medium text-foreground">{application.title}</div>
-                <div className="text-xs text-muted-foreground">{application.kind}</div>
-              </td>
-              <td className="px-4 py-3 text-muted-foreground">
-                {formatDate(application.dateFrom)} to {formatDate(application.dateTo)}
-              </td>
-              <td className="px-4 py-3 font-medium">
-                {formatNumber(application.source.daysRequested)}
-              </td>
-              <td className="px-4 py-3">
-                <Badge variant="outline" className={STATUS_COLOR[application.status]}>
-                  {application.status}
-                </Badge>
-              </td>
-              <td className="max-w-[260px] px-4 py-3 text-muted-foreground">
-                {application.remarks || application.details || "-"}
-              </td>
+    <>
+      <div className="mobile-record-list">
+        {applications.map((application) => (
+          <article key={application.id} className="mobile-record-card">
+            <div className="mobile-record-card__header">
+              <div className="min-w-0">
+                <h3 className="mobile-record-card__title">{application.title}</h3>
+                <p className="mobile-record-card__meta">{application.kind}</p>
+              </div>
+              <Badge variant="outline" className={STATUS_COLOR[application.status]}>
+                {application.status}
+              </Badge>
+            </div>
+            <div className="mobile-record-card__grid">
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">From</span>
+                <span className="mobile-record-card__value">
+                  {formatDate(application.dateFrom)}
+                </span>
+              </div>
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">To</span>
+                <span className="mobile-record-card__value">{formatDate(application.dateTo)}</span>
+              </div>
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">Days</span>
+                <span className="mobile-record-card__value">
+                  {formatNumber(application.source.daysRequested)}
+                </span>
+              </div>
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">Remarks</span>
+                <span className="mobile-record-card__value">
+                  {application.remarks || application.details || "-"}
+                </span>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="mobile-desktop-table overflow-x-auto">
+        <table className="w-full min-w-[760px] text-sm">
+          <thead>
+            <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <th className="px-4 py-3 font-semibold">Request</th>
+              <th className="px-4 py-3 font-semibold">Dates</th>
+              <th className="px-4 py-3 font-semibold">Days</th>
+              <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3 font-semibold">Remarks</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {applications.map((application, index) => (
+              <tr
+                key={application.id}
+                className={cn(
+                  "border-b border-border/50 last:border-0",
+                  index % 2 === 1 && "bg-muted/10",
+                )}
+              >
+                <td className="px-4 py-3">
+                  <div className="font-medium text-foreground">{application.title}</div>
+                  <div className="text-xs text-muted-foreground">{application.kind}</div>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {formatDate(application.dateFrom)} to {formatDate(application.dateTo)}
+                </td>
+                <td className="px-4 py-3 font-medium">
+                  {formatNumber(application.source.daysRequested)}
+                </td>
+                <td className="px-4 py-3">
+                  <Badge variant="outline" className={STATUS_COLOR[application.status]}>
+                    {application.status}
+                  </Badge>
+                </td>
+                <td className="max-w-[260px] px-4 py-3 text-muted-foreground">
+                  {application.remarks || application.details || "-"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

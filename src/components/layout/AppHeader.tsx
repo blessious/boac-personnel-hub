@@ -8,15 +8,9 @@ import {
   LogOut,
   User as UserIcon,
   Menu,
-  LayoutDashboard,
-  Users,
-  FileText,
-  CalendarDays,
-  Settings as SettingsIcon,
   ShieldCheck,
-  ClipboardCheck,
 } from "lucide-react";
-import { isSelfServiceRole, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect } from "react";
@@ -44,6 +38,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { listLeaveApplications } from "@/lib/leave-api";
 import { cn } from "@/lib/utils";
+import { navForRole } from "@/components/layout/navigation";
 
 export function AppHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   const { user, logout, updateProfile } = useAuth();
@@ -102,62 +97,30 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
   const isActive = (to: string, exact?: boolean) =>
     exact ? path === to : path === to || path.startsWith(to + "/");
 
-  const NAV: {
-    to:
-      | "/"
-      | "/employees"
-      | "/attendance"
-      | "/leave"
-      | "/reports"
-      | "/settings"
-      | "/self-service"
-      | "/admin"
-      | "/my-profile"
-      | "/requests";
-    label: string;
-    icon: typeof LayoutDashboard;
-    exact?: boolean;
-  }[] = [
-    { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
-    { to: "/my-profile", label: "My Profile", icon: UserIcon },
-    { to: "/employees", label: "Employees", icon: Users },
-    { to: "/attendance", label: "Attendance", icon: CalendarDays },
-    { to: "/leave", label: "Leave Management", icon: ClipboardCheck },
-    { to: "/self-service", label: "Self-Service", icon: UserIcon },
-    { to: "/requests", label: "My Requests", icon: ClipboardCheck },
-    { to: "/reports", label: "Reports", icon: FileText },
-    { to: "/admin", label: "Administration", icon: ShieldCheck },
-    { to: "/settings", label: "Settings", icon: SettingsIcon },
-  ];
-  const mobileNav = NAV.filter((item) => {
-    const selfServiceOnly = ["/my-profile", "/self-service", "/requests"];
-    if (user?.role === "Admin") return !selfServiceOnly.includes(item.to);
-    if (user?.role === "HR") return !["/admin", ...selfServiceOnly].includes(item.to);
-    if (user?.role === "Viewer") return ["/", "/employees", "/reports"].includes(item.to);
-    if (isSelfServiceRole(user?.role)) {
-      return ["/", "/my-profile", "/self-service", "/attendance", "/requests"].includes(item.to);
-    }
-    return false;
-  });
+  const mobileNav = navForRole(user?.role);
 
   return (
     <>
-      <header className="flex items-center justify-between gap-4 h-16 px-4 md:px-6 border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-20">
+      <header className="mobile-app-header flex h-16 items-center justify-between gap-3 border-b border-border/50 bg-background/90 px-3 backdrop-blur-md md:px-6">
         <div className="flex items-center gap-3 min-w-0">
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden shrink-0 h-9 w-9">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 shrink-0 rounded-full md:hidden"
+              >
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
             <SheetContent
               side="left"
-              className="w-[280px] p-0 flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+              className="flex w-[min(88vw,340px)] flex-col border-r border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
             >
-              <div className="flex items-center gap-2 h-16 border-b border-sidebar-border px-4 shrink-0">
+              <div className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-4">
                 <div
                   className={cn(
-                    "rounded-lg grid place-items-center shrink-0 overflow-hidden h-9 w-9",
+                    "grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl",
                     agency.logoUrl
                       ? ""
                       : "bg-[var(--navy)] text-[var(--navy-foreground)] shadow-sm",
@@ -169,15 +132,17 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                     <ShieldCheck className="h-5 w-5" />
                   )}
                 </div>
-                <div className="leading-tight overflow-hidden flex-1">
-                  <div className="font-semibold text-sm truncate">{agency.name} PMIS</div>
-                  <div className="text-[11px] text-muted-foreground truncate">{agency.tagline}</div>
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="break-words text-sm font-semibold">{agency.name} PMIS</div>
+                  <div className="break-words text-[11px] text-muted-foreground">
+                    {agency.tagline}
+                  </div>
                 </div>
               </div>
-              <div className="px-4 pt-4 pb-2 text-[10px] tracking-widest uppercase text-muted-foreground">
+              <div className="px-4 pt-5 pb-2 text-[10px] tracking-widest uppercase text-muted-foreground">
                 Menu
               </div>
-              <nav className="flex-1 overflow-y-auto px-4 space-y-1.5 py-2">
+              <nav className="flex-1 space-y-1.5 overflow-y-auto px-4 py-2">
                 {mobileNav.map((item) => {
                   const active = isActive(item.to, item.exact);
                   const Icon = item.icon;
@@ -187,9 +152,9 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                       key={item.to}
                       to={item.to}
                       className={cn(
-                        "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition-all duration-200",
+                        "group flex min-h-12 items-center gap-3 rounded-2xl px-3.5 py-3 text-[14px] font-medium transition-all duration-200",
                         active
-                          ? "bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(var(--primary),0.1)]"
+                          ? "bg-primary text-primary-foreground shadow-sm"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                       )}
                     >
@@ -197,7 +162,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                         className={cn(
                           "h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110",
                           active
-                            ? "text-primary"
+                            ? "text-primary-foreground"
                             : "text-muted-foreground group-hover:text-foreground",
                         )}
                       />
@@ -211,10 +176,21 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                   );
                 })}
               </nav>
-              <div className="p-4 border-t border-sidebar-border/50">
+              <div className="border-t border-sidebar-border/50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                {user && (
+                  <div className="mb-3 rounded-2xl bg-muted/40 px-3 py-2.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Logged in as
+                    </div>
+                    <div className="break-words text-sm font-semibold text-sidebar-foreground">
+                      {user.name}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">{user.role}</div>
+                  </div>
+                )}
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-200 group"
+                  className="group flex min-h-11 w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-destructive/10 hover:text-destructive"
                 >
                   <LogOut className="h-[18px] w-[18px] transition-transform duration-200 group-hover:-translate-x-1" />
                   <span>Log Out</span>
@@ -223,7 +199,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
             </SheetContent>
           </Sheet>
           <div className="min-w-0">
-            <h1 className="text-[18px] font-bold tracking-tight text-foreground/90 truncate">
+            <h1 className="truncate text-[17px] font-bold tracking-tight text-foreground/90 md:text-[18px]">
               {title}
             </h1>
             {subtitle && (
@@ -233,11 +209,11 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-muted/30 p-1 rounded-full border border-border/40 mr-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="mr-0 flex items-center rounded-full border border-border/40 bg-muted/30 p-1 md:mr-2">
             <button
               onClick={toggleTheme}
-              className="h-8 w-8 grid place-items-center rounded-full hover:bg-background hover:shadow-sm text-muted-foreground transition-all duration-200"
+              className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-all duration-200 hover:bg-background hover:shadow-sm md:h-8 md:w-8"
               aria-label="Toggle dark mode"
             >
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -245,7 +221,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="relative h-8 w-8 grid place-items-center rounded-full hover:bg-background hover:shadow-sm text-muted-foreground transition-all duration-200"
+                  className="relative grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-all duration-200 hover:bg-background hover:shadow-sm md:h-8 md:w-8"
                   aria-label="Notifications"
                 >
                   <Bell className="h-4 w-4" />
@@ -285,9 +261,9 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
           </div>
 
           {user && (
-            <div className="flex items-center gap-2.5 pl-2 py-1 border-l border-border/50">
-              <div className="leading-tight text-right hidden sm:block">
-                <div className="text-xs font-semibold">{user.name}</div>
+            <div className="flex min-w-0 items-center gap-2.5 border-l border-border/50 py-1 pl-2">
+              <div className="hidden max-w-[min(34vw,18rem)] text-right leading-tight sm:block">
+                <div className="break-words text-xs font-semibold leading-snug">{user.name}</div>
                 <div className="text-[10px] text-muted-foreground/80 uppercase tracking-wider">
                   {user.role}
                 </div>
