@@ -163,6 +163,20 @@ def draw_period(c, period_index, employee, noter, period, entries, shift_type):
     c.setFont(font("Calibri"), 9)
     for day, entry in entries_for_period(entries, period).items():
         y = 656.5 - ((day - 1) * 12)
+        display_label = str(entry.get("displayLabel") or "").strip()
+        if display_label:
+            left_x = time_x[0] - 17.85
+            width = (time_x[3] - time_x[0]) + 35.7
+            c.setFillColorRGB(1, 1, 1)
+            c.rect(left_x, y - 4.8, width, 11.8, fill=1, stroke=0)
+            c.setStrokeColorRGB(0, 0, 0)
+            c.rect(left_x, y - 4.8, width, 11.8, fill=0, stroke=1)
+            c.setFillColorRGB(0, 0, 0)
+            label_size = 8 if len(display_label) <= 34 else 6.5
+            c.setFont(font("Calibri Bold"), label_size)
+            c.drawCentredString(left_x + width / 2, y - 1.5, display_label)
+            c.setFont(font("Calibri"), 9)
+            continue
         if shift_type == "night":
             if entry.get("pmIn"):
                 c.drawString(time_x[0], y, format_time(entry.get("pmIn")))

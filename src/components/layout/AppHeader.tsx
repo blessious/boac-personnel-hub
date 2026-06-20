@@ -9,6 +9,7 @@ import {
   User as UserIcon,
   Menu,
   ShieldCheck,
+  CheckCheck,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
@@ -37,6 +38,8 @@ import { useNavigate, Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { listLeaveApplications } from "@/lib/leave-api";
+import { listDtrCorrectionRequests } from "@/lib/attendance-api";
+import { useRealtime } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
 import { navForRole } from "@/components/layout/navigation";
 
@@ -50,15 +53,22 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [formData, setFormData] = useState({ name: "", photoUrl: "" });
   const canSeeLeaveNotifications = user?.role === "Admin" || user?.role === "HR";
+  const { connected, notifications, unreadCount, markRead, markAllRead } = useRealtime();
 
   const { data: leaveNotifications } = useQuery({
     queryKey: ["leave-notifications", user?.role],
     queryFn: () => listLeaveApplications({ status: "Pending" }),
     enabled: canSeeLeaveNotifications,
-    refetchInterval: 30000,
+  });
+
+  const { data: dtrNotifications } = useQuery({
+    queryKey: ["dtr-correction-notifications", user?.role],
+    queryFn: () => listDtrCorrectionRequests({ status: "Pending" }),
+    enabled: canSeeLeaveNotifications,
   });
 
   const pendingLeaveCount = leaveNotifications?.summary.pending || 0;
+  const pendingDtrCount = dtrNotifications?.requests.length || 0;
 
   useEffect(() => {
     if (user) {
@@ -146,7 +156,12 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                 {mobileNav.map((item) => {
                   const active = isActive(item.to, item.exact);
                   const Icon = item.icon;
-                  const itemPendingCount = item.to === "/leave" ? pendingLeaveCount : 0;
+                  const itemPendingCount =
+                    item.to === "/leave"
+                      ? pendingLeaveCount
+                      : item.to === "/attendance"
+                        ? pendingDtrCount
+                        : 0;
                   return (
                     <Link
                       key={item.to}
@@ -225,16 +240,87 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                   aria-label="Notifications"
                 >
                   <Bell className="h-4 w-4" />
-                  {pendingLeaveCount > 0 && (
+                  {unreadCount > 0 && (
                     <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold leading-4 text-destructive-foreground ring-2 ring-background">
-                      {pendingLeaveCount > 9 ? "9+" : pendingLeaveCount}
+                      {unreadCount > 9 ? "9+" : unreadCount}
                     </span>
                   )}
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-72">
-                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+              <DropdownMenuContent
+                align="end"
+                className="max-h-[min(32rem,75vh)] w-80 overflow-y-auto"
+              >
+                <DropdownMenuLabel className="flex items-center justify-between">
+                  <span>Notifications</span>
+                  <span className="flex items-center gap-1 text-[10px] font-normal text-muted-foreground">
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        connected ? "bg-emerald-500" : "bg-amber-500",
+                      )}
+                    />
+                    {connected ? "Live" : "Reconnecting"}
+                  </span>
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {notifications.slice(0, 10).map((notification) => (
+                  <DropdownMenuItem
+                    key={notification.id}
+                    onClick={async () => {
+                      await markRead(notification.id);
+                      if (notification.path) window.location.assign(notification.path);
+                    }}
+                    className={cn(
+                      "cursor-pointer items-start gap-2",
+                      !notification.readAt && "bg-primary/5",
+                    )}
+                  >
+                    <span className="relative mt-0.5">
+                      <Bell className="h-4 w-4 text-primary" />
+                      {!notification.readAt && (
+                        <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-destructive ring-1 ring-background" />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">{notification.title}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {notification.message}
+                      </span>
+                      <span className="mt-1 block text-[10px] text-muted-foreground/70">
+                        {formatNotificationTime(notification.createdAt)}
+                      </span>
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+                {unreadCount > 0 && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={markAllRead}
+                      className="justify-center gap-2 text-xs"
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      Mark all as read
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                {canSeeLeaveNotifications && pendingDtrCount > 0 && (
+                  <DropdownMenuItem
+                    onClick={() => navigate({ to: "/attendance" })}
+                    className="cursor-pointer items-start gap-2"
+                  >
+                    <ClipboardList className="mt-0.5 h-4 w-4 text-blue-600" />
+                    <span>
+                      <span className="block text-sm font-medium">
+                        {pendingDtrCount} pending DTR request{pendingDtrCount === 1 ? "" : "s"}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        Open Attendance to review.
+                      </span>
+                    </span>
+                  </DropdownMenuItem>
+                )}
                 {canSeeLeaveNotifications && pendingLeaveCount > 0 ? (
                   <DropdownMenuItem
                     onClick={() => navigate({ to: "/leave" })}
@@ -251,11 +337,11 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                       </span>
                     </span>
                   </DropdownMenuItem>
-                ) : (
+                ) : pendingDtrCount === 0 && notifications.length === 0 ? (
                   <div className="px-3 py-6 text-center text-sm text-muted-foreground">
                     No notifications.
                   </div>
-                )}
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -394,4 +480,15 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
       </Dialog>
     </>
   );
+}
+
+function formatNotificationTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }

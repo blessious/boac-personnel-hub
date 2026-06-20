@@ -6,31 +6,39 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
-import { getEmployeeLeave, type EmployeeLeaveResponse, type LeaveStatus } from "@/lib/leave-api";
-import { requestsFromLeave, type RequestRecord } from "@/lib/requests-api";
+import { getEmployeeLeave } from "@/lib/leave-api";
+import { listDtrCorrectionRequests } from "@/lib/attendance-api";
+import {
+  requestsFromDtrCorrections,
+  requestsFromLeave,
+  type RequestRecord,
+  type RequestStatus,
+} from "@/lib/requests-api";
 import { cn } from "@/lib/utils";
+import { useRealtimeRefresh } from "@/lib/realtime";
 
 export const Route = createFileRoute("/requests")({
   component: RequestsPage,
 });
 
-const STATUS_COLOR: Record<LeaveStatus, string> = {
+const STATUS_COLOR: Record<RequestStatus, string> = {
   Pending: "bg-amber-100 text-amber-700 border-amber-200",
   Approved: "bg-emerald-100 text-emerald-700 border-emerald-200",
   Disapproved: "bg-rose-100 text-rose-700 border-rose-200",
   Cancelled: "bg-muted text-muted-foreground border-border",
+  Reversed: "bg-violet-100 text-violet-700 border-violet-200",
 };
 
 function RequestsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState<EmployeeLeaveResponse | null>(null);
+  const [records, setRecords] = useState<RequestRecord[]>([]);
   const [loading, setLoading] = useState(Boolean(user?.employeeId));
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<LeaveStatus | "all">("all");
+  const [status, setStatus] = useState<RequestStatus | "all">("all");
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const load = () => {
     if (!user?.employeeId) {
       setLoading(false);
       return;
@@ -38,25 +46,33 @@ function RequestsPage() {
 
     setLoading(true);
     setError("");
-    getEmployeeLeave(user.employeeId)
-      .then(setData)
+    Promise.all([getEmployeeLeave(user.employeeId), listDtrCorrectionRequests()])
+      .then(([leave, dtr]) =>
+        setRecords([
+          ...requestsFromLeave(leave.applications),
+          ...requestsFromDtrCorrections(dtr.requests),
+        ]),
+      )
       .catch((err) => setError(err.message || "Unable to load requests"))
       .finally(() => setLoading(false));
-  }, [user?.employeeId]);
+  };
+
+  useEffect(load, [user?.employeeId]);
+  useRealtimeRefresh(load, ["leave", "attendance"]);
 
   const applications = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return requestsFromLeave(data?.applications || []).filter((item) => {
-      const matchesStatus = status === "all" || item.status === status;
-      const text = `${item.kind} ${item.title} ${item.details} ${item.status}`.toLowerCase();
-      return matchesStatus && (!normalized || text.includes(normalized));
-    });
-  }, [data?.applications, query, status]);
+    return records
+      .slice()
+      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+      .filter((item) => {
+        const matchesStatus = status === "all" || item.status === status;
+        const text = `${item.kind} ${item.title} ${item.details} ${item.status}`.toLowerCase();
+        return matchesStatus && (!normalized || text.includes(normalized));
+      });
+  }, [records, query, status]);
 
-  const summary = useMemo(
-    () => summarize(requestsFromLeave(data?.applications || [])),
-    [data?.applications],
-  );
+  const summary = useMemo(() => summarize(records), [records]);
 
   return (
     <AppShell title="My Requests" subtitle="Track leave, attendance, and HR request status">
@@ -80,7 +96,9 @@ function RequestsPage() {
               />
             </div>
             <div className="flex overflow-x-auto rounded-lg bg-muted/50 p-1">
-              {(["all", "Pending", "Approved", "Disapproved", "Cancelled"] as const).map((item) => (
+              {(
+                ["all", "Pending", "Approved", "Disapproved", "Cancelled", "Reversed"] as const
+              ).map((item) => (
                 <button
                   key={item}
                   onClick={() => setStatus(item)}
@@ -158,10 +176,8 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
                 <span className="mobile-record-card__value">{formatDate(application.dateTo)}</span>
               </div>
               <div className="mobile-record-card__field">
-                <span className="mobile-record-card__label">Days</span>
-                <span className="mobile-record-card__value">
-                  {formatNumber(application.source.daysRequested)}
-                </span>
+                <span className="mobile-record-card__label">{application.metricLabel}</span>
+                <span className="mobile-record-card__value">{application.metricValue}</span>
               </div>
               <div className="mobile-record-card__field">
                 <span className="mobile-record-card__label">Remarks</span>
@@ -180,7 +196,7 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
             <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <th className="px-4 py-3 font-semibold">Request</th>
               <th className="px-4 py-3 font-semibold">Dates</th>
-              <th className="px-4 py-3 font-semibold">Days</th>
+              <th className="px-4 py-3 font-semibold">Detail</th>
               <th className="px-4 py-3 font-semibold">Status</th>
               <th className="px-4 py-3 font-semibold">Remarks</th>
             </tr>
@@ -201,9 +217,7 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
                 <td className="px-4 py-3 text-muted-foreground">
                   {formatDate(application.dateFrom)} to {formatDate(application.dateTo)}
                 </td>
-                <td className="px-4 py-3 font-medium">
-                  {formatNumber(application.source.daysRequested)}
-                </td>
+                <td className="px-4 py-3 font-medium">{application.metricValue}</td>
                 <td className="px-4 py-3">
                   <Badge variant="outline" className={STATUS_COLOR[application.status]}>
                     {application.status}
@@ -242,7 +256,7 @@ function summarize(applications: RequestRecord[]) {
       acc.total += 1;
       return acc;
     },
-    { Pending: 0, Approved: 0, Disapproved: 0, Cancelled: 0, total: 0 },
+    { Pending: 0, Approved: 0, Disapproved: 0, Cancelled: 0, Reversed: 0, total: 0 },
   );
 }
 
@@ -255,10 +269,4 @@ function formatDate(value?: string | null) {
     day: "numeric",
     year: "numeric",
   }).format(date);
-}
-
-function formatNumber(value: number) {
-  return Number.isInteger(value)
-    ? String(value)
-    : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
 }

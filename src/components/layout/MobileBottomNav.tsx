@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
 import { useAuth } from "@/lib/auth";
 import { listLeaveApplications } from "@/lib/leave-api";
+import { listDtrCorrectionRequests } from "@/lib/attendance-api";
 import { cn } from "@/lib/utils";
 import { mobileTabsForRole } from "@/components/layout/navigation";
 
@@ -16,10 +17,16 @@ export function MobileBottomNav() {
     queryKey: ["leave-notifications", user?.role],
     queryFn: () => listLeaveApplications({ status: "Pending" }),
     enabled: canSeeLeaveNotifications,
-    refetchInterval: 30000,
+  });
+
+  const { data: dtrNotifications } = useQuery({
+    queryKey: ["dtr-correction-notifications", user?.role],
+    queryFn: () => listDtrCorrectionRequests({ status: "Pending" }),
+    enabled: canSeeLeaveNotifications,
   });
 
   const pendingLeaveCount = leaveNotifications?.summary.pending || 0;
+  const pendingDtrCount = dtrNotifications?.requests.length || 0;
   const isActive = (to: string, exact?: boolean) =>
     exact ? path === to : path === to || path.startsWith(to + "/");
   const activeIndex = Math.max(
@@ -44,7 +51,12 @@ export function MobileBottomNav() {
         {tabs.map((item) => {
           const active = isActive(item.to, item.exact);
           const Icon = item.icon;
-          const itemPendingCount = item.to === "/leave" ? pendingLeaveCount : 0;
+          const itemPendingCount =
+            item.to === "/leave"
+              ? pendingLeaveCount
+              : item.to === "/attendance"
+                ? pendingDtrCount
+                : 0;
 
           return (
             <Link

@@ -1,10 +1,12 @@
 import calendar
+from copy import copy
 import datetime as dt
 import json
 import os
 import sys
 
 import openpyxl
+from openpyxl.styles import PatternFill
 
 
 MONTHS = [
@@ -146,6 +148,23 @@ def fill_period(sheet, start_col, employee, noter, period, entries, shift_type):
     rows = period_rows(entries, period)
     for day, entry in rows.items():
         row = day + 10
+        display_label = str(entry.get("displayLabel") or "").strip()
+        if display_label:
+            merged_range = f"{time_cols[0]}{row}:{time_cols[3]}{row}"
+            sheet.merge_cells(merged_range)
+            cell = sheet[f"{time_cols[0]}{row}"]
+            cell.value = display_label
+            label_font = copy(cell.font)
+            label_font.bold = True
+            label_font.color = "000000"
+            cell.font = label_font
+            cell.fill = PatternFill(fill_type="solid", fgColor="FFFFFF")
+            label_alignment = copy(cell.alignment)
+            label_alignment.horizontal = "center"
+            label_alignment.vertical = "center"
+            label_alignment.shrink_to_fit = True
+            cell.alignment = label_alignment
+            continue
         if shift_type == "night":
             sheet[f"{time_cols[0]}{row}"] = format_time(entry.get("pmIn"))
             sheet[f"{time_cols[1]}{row}"] = ""

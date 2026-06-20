@@ -25,6 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FormSection } from "@/components/forms/Field";
 import { useAuth } from "@/lib/auth";
+import { useRealtimeRefresh } from "@/lib/realtime";
 import {
   CIVIL_STATUSES,
   createSectionRow,
@@ -243,6 +244,7 @@ function EmployeeFile() {
   };
 
   useEffect(load, [id]);
+  useRealtimeRefresh(load, ["employees", "settings"]);
   useEffect(() => {
     getSettingsOptions()
       .then(setOptions)
@@ -1114,6 +1116,7 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
   };
 
   useEffect(load, [employeeId]);
+  useRealtimeRefresh(load, ["leave", "employees"]);
 
   const submitAdjustment = async () => {
     try {

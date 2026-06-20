@@ -18,12 +18,79 @@ export type DtrEntry = {
   undertimeMinutes: number;
   source: "Imported" | "Manual" | "Adjusted";
   remarks: string;
+  displayLabel: string;
+  displayLabelRequestId: string;
   locked: boolean;
   importId: string;
   editedByName: string;
   editedAt: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type DtrCorrectionStatus = "Pending" | "Approved" | "Disapproved" | "Cancelled" | "Reversed";
+
+export type DtrCorrectionEvent = {
+  id: string;
+  eventType: "Filed" | "Approved" | "Disapproved" | "Cancelled" | "Reversed";
+  fromStatus: string;
+  toStatus: string;
+  actorName: string;
+  remarks: string;
+  ipAddress: string;
+  original: Record<string, unknown> | null;
+  requested: Record<string, unknown> | null;
+  applied: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export type DtrCorrectionRequest = {
+  id: string;
+  employeeId: string;
+  employeeNo: string;
+  employeeName: string;
+  department: string;
+  dtrEntryId: string;
+  workDate: string;
+  requestType: "Times" | "Label";
+  original: { amIn: string; amOut: string; pmIn: string; pmOut: string; label: string };
+  requested: { amIn: string; amOut: string; pmIn: string; pmOut: string; label: string };
+  applied: {
+    amIn: string;
+    amOut: string;
+    pmIn: string;
+    pmOut: string;
+    label: string;
+    status: string;
+    remarks: string;
+  };
+  reason: string;
+  status: DtrCorrectionStatus;
+  createdByName: string;
+  requestIp: string;
+  reviewRemarks: string;
+  reviewedByName: string;
+  reviewIp: string;
+  reviewedAt: string;
+  reverseReason: string;
+  reversedByName: string;
+  reversalIp: string;
+  reversedAt: string;
+  events: DtrCorrectionEvent[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DtrCorrectionPayload = {
+  employeeId?: string;
+  workDate: string;
+  requestType: "Times" | "Label";
+  amIn?: string;
+  amOut?: string;
+  pmIn?: string;
+  pmOut?: string;
+  label?: string;
+  reason: string;
 };
 
 export type AttendanceImport = {
@@ -134,6 +201,60 @@ export function updateDtr(id: string, payload: DtrPayload) {
 
 export function deleteDtr(id: string) {
   return api<{ ok: boolean }>(`/api/attendance/dtr/${id}`, { method: "DELETE" });
+}
+
+export function listDtrCorrectionRequests(
+  params: {
+    employeeId?: string;
+    status?: DtrCorrectionStatus;
+    requestType?: "Times" | "Label";
+    reviewerId?: string;
+    q?: string;
+    from?: string;
+    to?: string;
+  } = {},
+) {
+  const query = new URLSearchParams();
+  if (params.employeeId) query.set("employeeId", params.employeeId);
+  if (params.status) query.set("status", params.status);
+  if (params.requestType) query.set("requestType", params.requestType);
+  if (params.reviewerId) query.set("reviewerId", params.reviewerId);
+  if (params.q) query.set("q", params.q);
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  return api<{ requests: DtrCorrectionRequest[] }>(
+    `/api/attendance/correction-requests?${query.toString()}`,
+  );
+}
+
+export function createDtrCorrectionRequest(payload: DtrCorrectionPayload) {
+  return api<{ request: DtrCorrectionRequest }>("/api/attendance/correction-requests", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function decideDtrCorrectionRequest(
+  id: string,
+  payload: { status: "Approved" | "Disapproved"; reviewRemarks?: string },
+) {
+  return api<{ request: DtrCorrectionRequest }>(
+    `/api/attendance/correction-requests/${id}/decision`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export function cancelDtrCorrectionRequest(id: string) {
+  return api<{ ok: boolean }>(`/api/attendance/correction-requests/${id}/cancel`, {
+    method: "POST",
+  });
+}
+
+export function reverseDtrCorrectionRequest(id: string, reason: string) {
+  return api<{ request: DtrCorrectionRequest }>(
+    `/api/attendance/correction-requests/${id}/reverse`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
 }
 
 export function importDtrRows(payload: {

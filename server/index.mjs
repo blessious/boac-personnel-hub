@@ -9,23 +9,26 @@ import path from "node:path";
 import mysql from "mysql2/promise";
 
 function loadServerEnv() {
-  try {
-    const envPath = path.join(process.cwd(), "server", ".env");
-    const text = readFileSync(envPath, "utf8");
-    for (const line of text.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const index = trimmed.indexOf("=");
-      if (index < 1) continue;
-      const key = trimmed.slice(0, index).trim();
-      const value = trimmed
-        .slice(index + 1)
-        .trim()
-        .replace(/^["']|["']$/g, "");
-      if (!(key in process.env)) process.env[key] = value;
+  const candidates = [".env.local", ".env"];
+  for (const fileName of candidates) {
+    try {
+      const envPath = path.join(process.cwd(), "server", fileName);
+      const text = readFileSync(envPath, "utf8");
+      for (const line of text.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const index = trimmed.indexOf("=");
+        if (index < 1) continue;
+        const key = trimmed.slice(0, index).trim();
+        const value = trimmed
+          .slice(index + 1)
+          .trim()
+          .replace(/^["']|["']$/g, "");
+        if (!(key in process.env)) process.env[key] = value;
+      }
+    } catch {
+      // Environment variables can still be supplied by the host process.
     }
-  } catch {
-    // Environment variables can still be supplied by the host process.
   }
 }
 
@@ -38,13 +41,14 @@ const DB_PASSWORD = process.env.HRIS_DB_PASSWORD || "";
 const DB_NAME = process.env.HRIS_DB_NAME || "hris_db";
 const SESSION_COOKIE = "hris_session";
 const SESSION_HOURS = 8;
+const MAX_FAILED_LOGIN_ATTEMPTS = 3;
+const PASSWORD_HISTORY_LIMIT = 5;
 const BACKUP_DIR = path.join(process.cwd(), "server", "backups");
 const EXPORT_DIR = path.join(process.cwd(), "server", "exports");
 const PREVIEW_DIR = path.join(EXPORT_DIR, "previews");
 const TEMPLATE_DIR = path.join(process.cwd(), "server", "templates");
 const DTR_TEMPLATE_XLSX = path.join(TEMPLATE_DIR, "format.xlsx");
 const DTR_EXCEL_SCRIPT = path.join(process.cwd(), "server", "dtr_excel.py");
-const DTR_PDF_SCRIPT = path.join(process.cwd(), "server", "dtr_pdf.py");
 const DTR_PARSE_SCRIPT = path.join(process.cwd(), "server", "dtr_parse.py");
 const LEAVE_FORM6_TEMPLATE_XLSX = path.join(
   process.cwd(),
@@ -52,7 +56,11 @@ const LEAVE_FORM6_TEMPLATE_XLSX = path.join(
   "CS Form No. 6, Revised 2020 (Application for Leave) (Fillable).xlsx",
 );
 const LEAVE_FORM6_EXCEL_SCRIPT = path.join(process.cwd(), "server", "leave_form6_excel.py");
-const PDS_TEMPLATE_XLSX = path.join(process.cwd(), "Personal Data Sheet", "Personal Data Sheet.xlsx");
+const PDS_TEMPLATE_XLSX = path.join(
+  process.cwd(),
+  "Personal Data Sheet",
+  "Personal Data Sheet.xlsx",
+);
 const PDS_EXCEL_SCRIPT = path.join(process.cwd(), "server", "pds_excel.py");
 const BIOMETRIC_FETCH_SCRIPT = path.join(process.cwd(), "server", "fetch_biometric.py");
 const ADMS_PORT = Number(process.env.HRIS_ADMS_PORT || 6000);
@@ -540,6 +548,8 @@ const EMPLOYEE_PROFILE_FIELDS = [
 
 let pool;
 const biometricSyncLogs = [];
+const realtimeClients = new Map();
+let realtimeSequence = 0;
 const biometricRefreshQueue = new Map();
 let biometricQueueRunning = false;
 let biometricSyncStartedAt = null;
@@ -572,6 +582,203 @@ function text(res, status, body, headers = {}) {
     ...headers,
   });
   res.end(body);
+}
+
+function realtimeTopic(pathname) {
+  if (pathname.startsWith("/api/attendance")) return "attendance";
+  if (pathname.startsWith("/api/leave")) return "leave";
+  if (pathname.startsWith("/api/employees")) return "employees";
+  if (pathname.startsWith("/api/settings")) return "settings";
+  if (pathname.startsWith("/api/admin")) return "admin";
+  if (pathname.startsWith("/api/auth")) return "auth";
+  return "system";
+}
+
+function publishRealtime(event) {
+  const payload = {
+    id: event.id || `${Date.now()}-${++realtimeSequence}`,
+    kind: event.kind || "refresh",
+    topic: event.topic || "system",
+    title: event.title || "",
+    message: event.message || "",
+    path: event.path || "",
+    sourceType: event.sourceType || "",
+    sourceId: event.sourceId || "",
+    readAt: event.readAt || null,
+    createdAt: event.createdAt || new Date().toISOString(),
+  };
+  const encoded = `id: ${payload.id}\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const [clientId, client] of realtimeClients) {
+    if (event.excludeUserId && client.user.id === event.excludeUserId) continue;
+    if (event.roles?.length && !event.roles.includes(client.user.role)) continue;
+    if (event.userIds?.length && !event.userIds.includes(client.user.id)) continue;
+    if (event.employeeIds?.length && !event.employeeIds.includes(client.user.employeeId)) continue;
+    try {
+      client.res.write(encoded);
+    } catch {
+      realtimeClients.delete(clientId);
+    }
+  }
+}
+
+function notificationRow(row) {
+  return {
+    id: row.id,
+    topic: row.topic,
+    title: row.title,
+    message: row.message,
+    path: row.path || "",
+    sourceType: row.source_type || "",
+    sourceId: row.source_id || "",
+    readAt: row.read_at || null,
+    createdAt: row.created_at,
+  };
+}
+
+async function notifyUsers({ userIds, topic, title, message, path, sourceType, sourceId }) {
+  const recipients = [...new Set((userIds || []).map(Number).filter(Number.isInteger))];
+  if (!recipients.length) return [];
+  const createdAt = new Date().toISOString();
+  const notifications = await Promise.all(
+    recipients.map(async (userId) => {
+      const id = crypto.randomUUID();
+      await pool.execute(
+        `INSERT INTO notifications (
+           id, user_id, topic, title, message, path, source_type, source_id
+         ) VALUES (
+           :id, :userId, :topic, :title, :message, :path, :sourceType, :sourceId
+         )`,
+        {
+          id,
+          userId,
+          topic,
+          title,
+          message,
+          path: path || null,
+          sourceType: sourceType || null,
+          sourceId: sourceId || null,
+        },
+      );
+      const notification = {
+        id,
+        kind: "notification",
+        topic,
+        title,
+        message,
+        path: path || "",
+        sourceType: sourceType || "",
+        sourceId: sourceId || "",
+        readAt: null,
+        createdAt,
+      };
+      publishRealtime({ ...notification, userIds: [userId] });
+      return notification;
+    }),
+  );
+  return notifications;
+}
+
+async function notifyRoles({ roles, excludeUserId, ...notification }) {
+  if (!roles?.length) return [];
+  const placeholders = roles.map(() => "?").join(", ");
+  const params = [...roles];
+  let sql = `SELECT id FROM users WHERE is_active = 1 AND role IN (${placeholders})`;
+  if (excludeUserId) {
+    sql += " AND id <> ?";
+    params.push(Number(excludeUserId));
+  }
+  const [rows] = await pool.query(sql, params);
+  return notifyUsers({ ...notification, userIds: rows.map((row) => row.id) });
+}
+
+async function notifyEmployees({ employeeIds, excludeUserId, ...notification }) {
+  if (!employeeIds?.length) return [];
+  const placeholders = employeeIds.map(() => "?").join(", ");
+  const params = [...employeeIds];
+  let sql = `SELECT id FROM users WHERE is_active = 1 AND employee_id IN (${placeholders})`;
+  if (excludeUserId) {
+    sql += " AND id <> ?";
+    params.push(Number(excludeUserId));
+  }
+  const [rows] = await pool.query(sql, params);
+  return notifyUsers({ ...notification, userIds: rows.map((row) => row.id) });
+}
+
+async function handleListNotifications(req, res, url) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 30));
+  const [rows] = await pool.execute(
+    `SELECT id, topic, title, message, path, source_type, source_id, read_at, created_at
+     FROM notifications
+     WHERE user_id = :userId
+     ORDER BY created_at DESC
+     LIMIT ${limit}`,
+    { userId: user.id },
+  );
+  const [[summary]] = await pool.execute(
+    `SELECT COUNT(*) AS unread FROM notifications WHERE user_id = :userId AND read_at IS NULL`,
+    { userId: user.id },
+  );
+  return json(res, 200, {
+    notifications: rows.map(notificationRow),
+    unreadCount: Number(summary.unread || 0),
+  });
+}
+
+async function handleReadNotification(req, res, id) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const [result] = await pool.execute(
+    `UPDATE notifications SET read_at = COALESCE(read_at, NOW())
+     WHERE id = :id AND user_id = :userId`,
+    { id, userId: user.id },
+  );
+  if (!result.affectedRows) return json(res, 404, { error: "Notification not found" });
+  return json(res, 200, { ok: true });
+}
+
+async function handleReadAllNotifications(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const [result] = await pool.execute(
+    `UPDATE notifications SET read_at = NOW() WHERE user_id = :userId AND read_at IS NULL`,
+    { userId: user.id },
+  );
+  return json(res, 200, { ok: true, updated: Number(result.affectedRows || 0) });
+}
+
+async function cleanupNotifications() {
+  await pool.execute(
+    `DELETE FROM notifications WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)`,
+  );
+}
+
+async function handleRealtimeEvents(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const clientId = crypto.randomUUID();
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.write(`event: connected\ndata: {"ok":true}\n\n`);
+  realtimeClients.set(clientId, { res, user });
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(`: heartbeat ${Date.now()}\n\n`);
+    } catch {
+      clearInterval(heartbeat);
+      realtimeClients.delete(clientId);
+    }
+  }, 25000);
+  heartbeat.unref();
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    realtimeClients.delete(clientId);
+  });
 }
 
 function sendFile(res, filePath, fileName) {
@@ -703,6 +910,16 @@ function verifyPassword(password, stored) {
   return expected.length === candidate.length && crypto.timingSafeEqual(expected, candidate);
 }
 
+function validatePassword(password) {
+  const errors = [];
+  if (password.length < 12) errors.push("at least 12 characters");
+  if (!/[a-z]/.test(password)) errors.push("a lowercase letter");
+  if (!/[A-Z]/.test(password)) errors.push("an uppercase letter");
+  if (!/\d/.test(password)) errors.push("a number");
+  if (!/[^A-Za-z0-9]/.test(password)) errors.push("a special character");
+  return errors;
+}
+
 function publicUser(row) {
   return {
     id: row.id,
@@ -730,6 +947,8 @@ function adminUser(row) {
     employeeName: row.employee_name || "",
     isActive: Boolean(row.is_active),
     mustChangePassword: Boolean(row.must_change_password),
+    failedLoginAttempts: Number(row.failed_login_attempts || 0),
+    lockedAt: row.locked_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1081,6 +1300,8 @@ function attendanceDtrRow(row) {
     undertimeMinutes: Number(row.undertime_minutes || 0),
     source: row.source || "Imported",
     remarks: row.remarks || "",
+    displayLabel: row.display_label || "",
+    displayLabelRequestId: row.display_label_request_id || "",
     locked: Boolean(row.locked),
     importId: row.import_id || "",
     editedByName: row.edited_by_name || "",
@@ -1088,6 +1309,135 @@ function attendanceDtrRow(row) {
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
   };
+}
+
+function dtrCorrectionRequestRow(row) {
+  const applied = parseJson(row.applied_snapshot, {});
+  return {
+    id: row.id,
+    employeeId: row.employee_id,
+    employeeNo: row.employee_no || "",
+    employeeName: row.employee_name || "",
+    department: row.department || "",
+    dtrEntryId: row.dtr_entry_id || "",
+    workDate: normalizeDate(row.work_date),
+    requestType: row.request_type,
+    original: {
+      amIn: formatTime(row.original_am_in),
+      amOut: formatTime(row.original_am_out),
+      pmIn: formatTime(row.original_pm_in),
+      pmOut: formatTime(row.original_pm_out),
+      label: row.original_label || "",
+    },
+    requested: {
+      amIn: formatTime(row.requested_am_in),
+      amOut: formatTime(row.requested_am_out),
+      pmIn: formatTime(row.requested_pm_in),
+      pmOut: formatTime(row.requested_pm_out),
+      label: row.requested_label || "",
+    },
+    applied: {
+      amIn: applied.amIn || "",
+      amOut: applied.amOut || "",
+      pmIn: applied.pmIn || "",
+      pmOut: applied.pmOut || "",
+      label: applied.displayLabel || "",
+      status: applied.status || "",
+      remarks: applied.remarks || "",
+    },
+    reason: row.reason || "",
+    status: row.status,
+    createdByName: row.created_by_name || "",
+    requestIp: row.request_ip || "",
+    reviewRemarks: row.review_remarks || "",
+    reviewedByName: row.reviewed_by_name || "",
+    reviewIp: row.review_ip || "",
+    reviewedAt: row.reviewed_at || "",
+    reverseReason: row.reverse_reason || "",
+    reversedByName: row.reversed_by_name || "",
+    reversalIp: row.reversal_ip || "",
+    reversedAt: row.reversed_at || "",
+    events: [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function dtrAuditSnapshot(row) {
+  if (!row) return { exists: false };
+  return {
+    exists: true,
+    id: row.id,
+    amIn: formatTime(row.am_in),
+    amOut: formatTime(row.am_out),
+    pmIn: formatTime(row.pm_in),
+    pmOut: formatTime(row.pm_out),
+    status: row.status || "Incomplete",
+    lateMinutes: Number(row.late_minutes || 0),
+    undertimeMinutes: Number(row.undertime_minutes || 0),
+    source: row.source || "Imported",
+    remarks: row.remarks || "",
+    displayLabel: row.display_label || "",
+    displayLabelRequestId: row.display_label_request_id || "",
+  };
+}
+
+function correctionOriginalStillMatches(request, existing) {
+  if (request.request_type === "Label") {
+    return String(existing?.display_label || "") === String(request.original_label || "");
+  }
+  return [
+    ["am_in", "original_am_in"],
+    ["am_out", "original_am_out"],
+    ["pm_in", "original_pm_in"],
+    ["pm_out", "original_pm_out"],
+  ].every(([currentKey, originalKey]) => {
+    return formatTime(existing?.[currentKey]) === formatTime(request[originalKey]);
+  });
+}
+
+function dtrSnapshotsMatch(left, right) {
+  if (Boolean(left?.exists) !== Boolean(right?.exists)) return false;
+  if (!left?.exists) return true;
+  return [
+    "id",
+    "amIn",
+    "amOut",
+    "pmIn",
+    "pmOut",
+    "status",
+    "lateMinutes",
+    "undertimeMinutes",
+    "source",
+    "remarks",
+    "displayLabel",
+    "displayLabelRequestId",
+  ].every((key) => String(left?.[key] ?? "") === String(right?.[key] ?? ""));
+}
+
+async function insertDtrCorrectionEvent(connection, event) {
+  await connection.execute(
+    `INSERT INTO dtr_correction_events (
+       id, request_id, event_type, from_status, to_status, actor_id, remarks, ip_address,
+       original_json, requested_json, applied_json
+     ) VALUES (
+       :id, :requestId, :eventType, :fromStatus, :toStatus, :actorId, :remarks, :ipAddress,
+       :originalJson, :requestedJson, :appliedJson
+     )`,
+    {
+      id: crypto.randomUUID(),
+      requestId: event.requestId,
+      eventType: event.eventType,
+      fromStatus: event.fromStatus || null,
+      toStatus: event.toStatus,
+      actorId: event.actorId || null,
+      remarks: event.remarks || null,
+      ipAddress: event.ipAddress || null,
+      originalJson: event.original ? JSON.stringify(event.original) : null,
+      requestedJson: event.requested ? JSON.stringify(event.requested) : null,
+      appliedJson: event.applied ? JSON.stringify(event.applied) : null,
+    },
+  );
 }
 
 function attendanceImportRow(row) {
@@ -1261,7 +1611,7 @@ async function readEmployeeById(id) {
 }
 
 function generateTemporaryPassword() {
-  return `STRH-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+  return `Strh-${crypto.randomBytes(6).toString("hex")}!A1`;
 }
 
 async function initializeDatabase() {
@@ -1297,6 +1647,8 @@ async function initializeDatabase() {
       role ENUM('Admin', 'HR', 'Employee', 'Viewer') NOT NULL,
       photo_url LONGTEXT NULL,
       must_change_password TINYINT(1) NOT NULL DEFAULT 0,
+      failed_login_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      locked_at DATETIME NULL,
       is_active TINYINT(1) NOT NULL DEFAULT 1,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -1304,6 +1656,19 @@ async function initializeDatabase() {
   `);
 
   await ensureColumn("users", "must_change_password", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureColumn("users", "failed_login_attempts", "TINYINT UNSIGNED NOT NULL DEFAULT 0");
+  await ensureColumn("users", "locked_at", "DATETIME NULL");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_history (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_password_history_user_created (user_id, created_at),
+      CONSTRAINT fk_password_history_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB;
+  `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS sessions (
@@ -1314,6 +1679,25 @@ async function initializeDatabase() {
       INDEX idx_sessions_user_id (user_id),
       INDEX idx_sessions_expires_at (expires_at),
       CONSTRAINT fk_sessions_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      topic VARCHAR(40) NOT NULL,
+      title VARCHAR(160) NOT NULL,
+      message VARCHAR(600) NOT NULL,
+      path VARCHAR(300) NULL,
+      source_type VARCHAR(60) NULL,
+      source_id VARCHAR(80) NULL,
+      read_at DATETIME NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_notifications_user_created (user_id, created_at),
+      INDEX idx_notifications_user_unread (user_id, read_at),
+      INDEX idx_notifications_source (source_type, source_id),
+      CONSTRAINT fk_notifications_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB;
   `);
 
@@ -1737,6 +2121,8 @@ async function initializeDatabase() {
       undertime_minutes INT UNSIGNED NOT NULL DEFAULT 0,
       source ENUM('Imported', 'Manual', 'Adjusted') NOT NULL DEFAULT 'Imported',
       remarks TEXT NULL,
+      display_label VARCHAR(180) NULL,
+      display_label_request_id CHAR(36) NULL,
       locked TINYINT(1) NOT NULL DEFAULT 0,
       import_id CHAR(36) NULL,
       edited_by INT UNSIGNED NULL,
@@ -1749,6 +2135,83 @@ async function initializeDatabase() {
       CONSTRAINT fk_dtr_entries_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
       CONSTRAINT fk_dtr_entries_import_id FOREIGN KEY (import_id) REFERENCES attendance_imports(id) ON DELETE SET NULL,
       CONSTRAINT fk_dtr_entries_edited_by FOREIGN KEY (edited_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+  await ensureColumn("dtr_entries", "display_label", "VARCHAR(180) NULL");
+  await ensureColumn("dtr_entries", "display_label_request_id", "CHAR(36) NULL");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dtr_correction_requests (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      employee_id ${employeeIdDefinition},
+      dtr_entry_id CHAR(36) NULL,
+      work_date DATE NOT NULL,
+      request_type ENUM('Times', 'Label') NOT NULL,
+      original_am_in TIME NULL,
+      original_am_out TIME NULL,
+      original_pm_in TIME NULL,
+      original_pm_out TIME NULL,
+      original_label VARCHAR(180) NULL,
+      requested_am_in TIME NULL,
+      requested_am_out TIME NULL,
+      requested_pm_in TIME NULL,
+      requested_pm_out TIME NULL,
+      requested_label VARCHAR(180) NULL,
+      reason TEXT NOT NULL,
+      status ENUM('Pending', 'Approved', 'Disapproved', 'Cancelled') NOT NULL DEFAULT 'Pending',
+      reviewed_by INT UNSIGNED NULL,
+      review_remarks TEXT NULL,
+      reviewed_at DATETIME NULL,
+      created_by INT UNSIGNED NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_dtr_corrections_employee_date (employee_id, work_date),
+      INDEX idx_dtr_corrections_status_created (status, created_at),
+      CONSTRAINT fk_dtr_corrections_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      CONSTRAINT fk_dtr_corrections_dtr_entry_id FOREIGN KEY (dtr_entry_id) REFERENCES dtr_entries(id) ON DELETE SET NULL,
+      CONSTRAINT fk_dtr_corrections_reviewed_by FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+      CONSTRAINT fk_dtr_corrections_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    ALTER TABLE dtr_correction_requests
+    MODIFY status ENUM('Pending', 'Approved', 'Disapproved', 'Cancelled', 'Reversed')
+      NOT NULL DEFAULT 'Pending'
+  `);
+  await ensureColumn("dtr_correction_requests", "pre_approval_snapshot", "JSON NULL");
+  await ensureColumn("dtr_correction_requests", "applied_snapshot", "JSON NULL");
+  await ensureColumn("dtr_correction_requests", "request_ip", "VARCHAR(64) NULL");
+  await ensureColumn("dtr_correction_requests", "review_ip", "VARCHAR(64) NULL");
+  await ensureColumn("dtr_correction_requests", "reversed_by", "INT UNSIGNED NULL");
+  await ensureColumn("dtr_correction_requests", "reverse_reason", "TEXT NULL");
+  await ensureColumn("dtr_correction_requests", "reversal_ip", "VARCHAR(64) NULL");
+  await ensureColumn("dtr_correction_requests", "reversed_at", "DATETIME NULL");
+  await ensureForeignKey(
+    "dtr_correction_requests",
+    "fk_dtr_corrections_reversed_by",
+    "FOREIGN KEY (reversed_by) REFERENCES users(id) ON DELETE SET NULL",
+  );
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dtr_correction_events (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      request_id CHAR(36) NOT NULL,
+      event_type ENUM('Filed', 'Approved', 'Disapproved', 'Cancelled', 'Reversed') NOT NULL,
+      from_status VARCHAR(24) NULL,
+      to_status VARCHAR(24) NOT NULL,
+      actor_id INT UNSIGNED NULL,
+      remarks TEXT NULL,
+      ip_address VARCHAR(64) NULL,
+      original_json JSON NULL,
+      requested_json JSON NULL,
+      applied_json JSON NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_dtr_correction_events_request_date (request_id, created_at),
+      CONSTRAINT fk_dtr_correction_events_request_id
+        FOREIGN KEY (request_id) REFERENCES dtr_correction_requests(id) ON DELETE CASCADE,
+      CONSTRAINT fk_dtr_correction_events_actor_id
+        FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
 
@@ -1771,21 +2234,7 @@ async function initializeDatabase() {
 
   await seedConfigTables();
 
-  const seeds = [
-    ["admin", "admin", "System Administrator", "Admin"],
-    ["hr", "hr", "Maria Santos", "HR"],
-    ["employee", "employee", "Juan dela Cruz", "Employee"],
-    ["viewer", "viewer", "Pedro Cruz", "Viewer"],
-  ];
-
-  for (const [username, password, name, role] of seeds) {
-    await pool.execute(
-      `INSERT INTO users (username, password_hash, name, role)
-       VALUES (:username, :passwordHash, :name, :role)
-       ON DUPLICATE KEY UPDATE username = username`,
-      { username, passwordHash: hashPassword(password), name, role },
-    );
-  }
+  await bootstrapAdministrator();
 }
 
 async function ensureColumn(table, column, definition) {
@@ -1822,6 +2271,65 @@ async function ensureForeignKey(table, constraintName, definition) {
   if (Number(rows[0].count) === 0) {
     await pool.query(`ALTER TABLE \`${table}\` ADD CONSTRAINT \`${constraintName}\` ${definition}`);
   }
+}
+
+async function bootstrapAdministrator() {
+  const [[{ count }]] = await pool.query(`SELECT COUNT(*) AS count FROM users`);
+  if (Number(count) > 0) return;
+
+  const username = String(process.env.HRIS_BOOTSTRAP_ADMIN_USERNAME || "")
+    .trim()
+    .toLowerCase();
+  const password = String(process.env.HRIS_BOOTSTRAP_ADMIN_PASSWORD || "");
+  const name = String(process.env.HRIS_BOOTSTRAP_ADMIN_NAME || "System Administrator").trim();
+
+  if (!username || !password) {
+    throw new Error(
+      "No system users exist. Set HRIS_BOOTSTRAP_ADMIN_USERNAME and HRIS_BOOTSTRAP_ADMIN_PASSWORD to create the first administrator.",
+    );
+  }
+  if (!/^[a-z0-9._-]{3,50}$/.test(username)) {
+    throw new Error("HRIS_BOOTSTRAP_ADMIN_USERNAME is invalid.");
+  }
+  const passwordErrors = validatePassword(password);
+  if (passwordErrors.length) {
+    throw new Error(`HRIS_BOOTSTRAP_ADMIN_PASSWORD must contain ${passwordErrors.join(", ")}.`);
+  }
+
+  const passwordHash = hashPassword(password);
+  const [result] = await pool.execute(
+    `INSERT INTO users (username, password_hash, name, role, must_change_password)
+     VALUES (:username, :passwordHash, :name, 'Admin', 1)`,
+    { username, passwordHash, name },
+  );
+  await recordPasswordHistory(result.insertId, passwordHash);
+}
+
+async function recordPasswordHistory(userId, passwordHash) {
+  await pool.execute(
+    `INSERT INTO password_history (user_id, password_hash) VALUES (:userId, :passwordHash)`,
+    { userId, passwordHash },
+  );
+  await pool.execute(
+    `DELETE FROM password_history
+     WHERE user_id = :userId AND id NOT IN (
+       SELECT id FROM (
+         SELECT id FROM password_history WHERE user_id = :userId
+         ORDER BY created_at DESC, id DESC LIMIT ${PASSWORD_HISTORY_LIMIT}
+       ) recent
+     )`,
+    { userId },
+  );
+}
+
+async function isPasswordReused(userId, password, currentHash) {
+  if (verifyPassword(password, currentHash)) return true;
+  const [rows] = await pool.execute(
+    `SELECT password_hash FROM password_history
+     WHERE user_id = :userId ORDER BY created_at DESC, id DESC LIMIT ${PASSWORD_HISTORY_LIMIT}`,
+    { userId },
+  );
+  return rows.some((row) => verifyPassword(password, row.password_hash));
 }
 
 async function getEmployeeIdDefinition() {
@@ -1962,6 +2470,13 @@ async function logAudit(userId, action, details, req) {
   );
 }
 
+function getIp(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  return forwarded || req.socket.remoteAddress || null;
+}
+
 async function handleLogin(req, res) {
   const body = await readBody(req);
   const username = String(body.username || "")
@@ -1979,7 +2494,8 @@ async function handleLogin(req, res) {
   }
 
   const [rows] = await pool.execute(
-    `SELECT u.id, u.username, u.password_hash, u.name, u.role, u.photo_url, u.must_change_password, u.employee_id,
+    `SELECT u.id, u.username, u.password_hash, u.name, u.role, u.photo_url, u.must_change_password,
+            u.failed_login_attempts, u.locked_at, u.employee_id,
             e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
      FROM users u
      LEFT JOIN employees e ON e.id = u.employee_id
@@ -1989,13 +2505,50 @@ async function handleLogin(req, res) {
   );
   const user = rows[0];
 
-  if (!user || !verifyPassword(password, user.password_hash)) {
+  if (!user) {
+    await logAudit(null, "auth.login_failed", { username, reason: "invalid_credentials" }, req);
     return json(res, 401, { error: "Invalid username or password" });
   }
 
+  if (user.locked_at) {
+    await logAudit(user.id, "auth.login_blocked", { username, reason: "account_locked" }, req);
+    return json(res, 423, { error: "Account is locked. Contact the system administrator." });
+  }
+
+  if (!verifyPassword(password, user.password_hash)) {
+    const failedLoginAttempts = Math.min(
+      MAX_FAILED_LOGIN_ATTEMPTS,
+      Number(user.failed_login_attempts || 0) + 1,
+    );
+    const shouldLock = failedLoginAttempts >= MAX_FAILED_LOGIN_ATTEMPTS;
+    await pool.execute(
+      `UPDATE users
+       SET failed_login_attempts = :failedLoginAttempts,
+           locked_at = CASE WHEN :shouldLock = 1 THEN NOW() ELSE locked_at END
+       WHERE id = :id`,
+      { id: user.id, failedLoginAttempts, shouldLock: shouldLock ? 1 : 0 },
+    );
+    if (shouldLock) await pool.execute(`DELETE FROM sessions WHERE user_id = :id`, { id: user.id });
+    await logAudit(
+      user.id,
+      shouldLock ? "auth.account_locked" : "auth.login_failed",
+      { username, failedLoginAttempts, reason: "invalid_credentials" },
+      req,
+    );
+    return shouldLock
+      ? json(res, 423, { error: "Account is locked. Contact the system administrator." })
+      : json(res, 401, { error: "Invalid username or password" });
+  }
+
   if (expectedRole && user.role !== expectedRole) {
+    await logAudit(user.id, "auth.login_failed", { username, reason: "role_mismatch" }, req);
     return json(res, 403, { error: "Selected role does not match this account" });
   }
+
+  await pool.execute(
+    `UPDATE users SET failed_login_attempts = 0, locked_at = NULL WHERE id = :id`,
+    { id: user.id },
+  );
 
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 60 * 60 * 1000);
@@ -2014,10 +2567,12 @@ async function handleLogin(req, res) {
 }
 
 async function handleLogout(req, res) {
+  const user = await getSessionUser(req);
   const token = parseCookies(req)[SESSION_COOKIE];
   if (token) {
     await pool.execute(`DELETE FROM sessions WHERE id = :token`, { token });
   }
+  if (user) await logAudit(user.id, "auth.logout", null, req);
   return json(res, 200, { ok: true }, { "Set-Cookie": clearSessionCookie() });
 }
 
@@ -2058,8 +2613,10 @@ async function handleChangePassword(req, res) {
   const currentPassword = String(body.currentPassword || "");
   const newPassword = String(body.newPassword || "");
 
-  if (newPassword.length < 8)
-    return json(res, 400, { error: "New password must be at least 8 characters" });
+  const passwordErrors = validatePassword(newPassword);
+  if (passwordErrors.length) {
+    return json(res, 400, { error: `New password must contain ${passwordErrors.join(", ")}.` });
+  }
 
   const [rows] = await pool.execute(
     `SELECT id, username, password_hash, name, role, photo_url, must_change_password
@@ -2068,13 +2625,26 @@ async function handleChangePassword(req, res) {
   );
   const row = rows[0];
   if (!row || !verifyPassword(currentPassword, row.password_hash)) {
+    await logAudit(user.id, "auth.password_change_failed", { reason: "incorrect_password" }, req);
     return json(res, 401, { error: "Current password is incorrect" });
   }
 
+  if (await isPasswordReused(user.id, newPassword, row.password_hash)) {
+    return json(res, 400, { error: "New password cannot match your current or recent passwords" });
+  }
+
+  const passwordHash = hashPassword(newPassword);
+  await recordPasswordHistory(user.id, row.password_hash);
   await pool.execute(
     `UPDATE users SET password_hash = :passwordHash, must_change_password = 0 WHERE id = :id`,
-    { id: user.id, passwordHash: hashPassword(newPassword) },
+    { id: user.id, passwordHash },
   );
+  await recordPasswordHistory(user.id, passwordHash);
+  const currentToken = parseCookies(req)[SESSION_COOKIE];
+  await pool.execute(`DELETE FROM sessions WHERE user_id = :id AND id <> :currentToken`, {
+    id: user.id,
+    currentToken: currentToken || "",
+  });
   await logAudit(user.id, "auth.change_password", null, req);
 
   const [updated] = await pool.execute(
@@ -2093,7 +2663,8 @@ async function handleListUsers(req, res) {
   if (!user) return;
 
   const [rows] = await pool.query(
-    `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password, u.employee_id,
+    `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password,
+            u.failed_login_attempts, u.locked_at, u.employee_id,
             u.created_at, u.updated_at, e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
      FROM users u
      LEFT JOIN employees e ON e.id = u.employee_id
@@ -2128,11 +2699,13 @@ async function handleCreateUser(req, res) {
   }
 
   try {
+    const passwordHash = hashPassword(temporaryPassword);
     const [result] = await pool.execute(
       `INSERT INTO users (username, password_hash, name, role, employee_id, must_change_password)
        VALUES (:username, :passwordHash, :name, :role, :employeeId, 1)`,
-      { username, passwordHash: hashPassword(temporaryPassword), name, role, employeeId },
+      { username, passwordHash, name, role, employeeId },
     );
+    await recordPasswordHistory(result.insertId, passwordHash);
     await logAudit(
       admin.id,
       "users.create",
@@ -2140,7 +2713,8 @@ async function handleCreateUser(req, res) {
       req,
     );
     const [rows] = await pool.execute(
-      `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password, u.employee_id,
+      `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password,
+              u.failed_login_attempts, u.locked_at, u.employee_id,
               u.created_at, u.updated_at, e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
        FROM users u
        LEFT JOIN employees e ON e.id = u.employee_id
@@ -2173,10 +2747,19 @@ async function handleUpdateUser(req, res, id) {
   if (Number(id) === admin.id && isActive === 0)
     return json(res, 400, { error: "You cannot deactivate your own account" });
 
+  const [existingRows] = await pool.execute(
+    `SELECT role, is_active FROM users WHERE id = :id LIMIT 1`,
+    { id },
+  );
+  const existing = existingRows[0];
+  if (!existing) return json(res, 404, { error: "User not found" });
+
   await pool.execute(
     `UPDATE users SET name = :name, role = :role, employee_id = :employeeId, is_active = :isActive WHERE id = :id`,
     { id, name, role, employeeId, isActive },
   );
+  const accessChanged = existing.role !== role || Boolean(existing.is_active) !== Boolean(isActive);
+  if (accessChanged) await pool.execute(`DELETE FROM sessions WHERE user_id = :id`, { id });
   await logAudit(
     admin.id,
     "users.update",
@@ -2184,7 +2767,8 @@ async function handleUpdateUser(req, res, id) {
     req,
   );
   const [rows] = await pool.execute(
-    `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password, u.employee_id,
+    `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password,
+            u.failed_login_attempts, u.locked_at, u.employee_id,
             u.created_at, u.updated_at, e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
      FROM users u
      LEFT JOIN employees e ON e.id = u.employee_id
@@ -2213,14 +2797,37 @@ async function handleResetUserPassword(req, res, id) {
   if (!admin) return;
 
   const temporaryPassword = generateTemporaryPassword();
-  const [result] = await pool.execute(
-    `UPDATE users SET password_hash = :passwordHash, must_change_password = 1 WHERE id = :id`,
-    { id, passwordHash: hashPassword(temporaryPassword) },
+  const passwordHash = hashPassword(temporaryPassword);
+  const [existingRows] = await pool.execute(
+    `SELECT password_hash FROM users WHERE id = :id LIMIT 1`,
+    { id },
   );
-  if (result.affectedRows === 0) return json(res, 404, { error: "User not found" });
+  if (!existingRows[0]) return json(res, 404, { error: "User not found" });
+  await recordPasswordHistory(id, existingRows[0].password_hash);
+  const [result] = await pool.execute(
+    `UPDATE users
+     SET password_hash = :passwordHash, must_change_password = 1,
+         failed_login_attempts = 0, locked_at = NULL
+     WHERE id = :id`,
+    { id, passwordHash },
+  );
+  await recordPasswordHistory(id, passwordHash);
   await pool.execute(`DELETE FROM sessions WHERE user_id = :id`, { id });
   await logAudit(admin.id, "users.reset_password", { userId: id }, req);
   return json(res, 200, { temporaryPassword });
+}
+
+async function handleUnlockUser(req, res, id) {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+
+  const [result] = await pool.execute(
+    `UPDATE users SET failed_login_attempts = 0, locked_at = NULL WHERE id = :id`,
+    { id },
+  );
+  if (result.affectedRows === 0) return json(res, 404, { error: "User not found" });
+  await logAudit(admin.id, "users.unlock", { userId: id }, req);
+  return json(res, 200, { ok: true });
 }
 
 async function handleDashboard(req, res) {
@@ -3925,7 +4532,12 @@ function parseAdmsAttlog(rawData) {
     .filter((row) => row.employeeNo && row.punchAt);
 }
 
-async function insertBiometricPunches({ punches, sourceDevice, createdBy = null, importId = null }) {
+async function insertBiometricPunches({
+  punches,
+  sourceDevice,
+  createdBy = null,
+  importId = null,
+}) {
   let inserted = 0;
   let skipped = 0;
   const affectedEmployees = new Map();
@@ -4070,7 +4682,10 @@ async function handleBiometricSyncNow(req, res) {
   const user = await requireAttendanceWrite(req, res);
   if (!user) return;
   if (biometricSyncStatus.status === "syncing") {
-    return json(res, 409, { error: "Biometric sync already in progress", status: biometricSyncStatus });
+    return json(res, 409, {
+      error: "Biometric sync already in progress",
+      status: biometricSyncStatus,
+    });
   }
 
   const body = await readBody(req);
@@ -4333,14 +4948,20 @@ async function handleGenerateDtrPdf(req, res) {
   const fileName = `dtr-${safeName}-${stamp}.pdf`;
   const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
   const outputPath = path.join(PREVIEW_DIR, fileName);
+  const workbookPath = outputPath.replace(/\.pdf$/i, ".xlsx");
 
   await fs.writeFile(inputPath, JSON.stringify(payload), "utf8");
   try {
-    await runPython([DTR_PDF_SCRIPT, inputPath, outputPath, TEMPLATE_DIR]);
+    await runPython([DTR_EXCEL_SCRIPT, inputPath, workbookPath, DTR_TEMPLATE_XLSX]);
+    const convertedPath = await convertSpreadsheetToPdf(workbookPath);
+    if (path.resolve(convertedPath) !== path.resolve(outputPath)) {
+      await fs.rename(convertedPath, outputPath);
+    }
   } catch (error) {
     return json(res, 500, { error: error.message });
   } finally {
     await fs.rm(inputPath, { force: true }).catch(() => {});
+    await fs.rm(workbookPath, { force: true }).catch(() => {});
   }
 
   await pool.execute(
@@ -4381,6 +5002,621 @@ async function handlePreviewDtrPdf(req, res, fileName) {
     return json(res, 404, { error: "DTR PDF file not found" });
   }
   return sendInlinePdfAndDelete(res, resolved, decoded);
+}
+
+async function readDtrCorrectionRequests({
+  employeeId = "",
+  status = "",
+  requestType = "",
+  reviewerId = "",
+  q = "",
+  from = "",
+  to = "",
+}) {
+  const where = [];
+  const params = {};
+  if (employeeId) {
+    where.push("r.employee_id = :employeeId");
+    params.employeeId = employeeId;
+  }
+  if (status) {
+    where.push("r.status = :status");
+    params.status = status;
+  }
+  if (requestType) {
+    where.push("r.request_type = :requestType");
+    params.requestType = requestType;
+  }
+  if (reviewerId) {
+    where.push("r.reviewed_by = :reviewerId");
+    params.reviewerId = reviewerId;
+  }
+  if (q) {
+    where.push(`(
+      e.employee_no LIKE :query OR e.firstname LIKE :query OR e.lastname LIKE :query OR
+      r.reason LIKE :query OR r.review_remarks LIKE :query OR r.requested_label LIKE :query
+    )`);
+    params.query = `%${q}%`;
+  }
+  if (from) {
+    where.push("r.work_date >= :from");
+    params.from = from;
+  }
+  if (to) {
+    where.push("r.work_date <= :to");
+    params.to = to;
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const [rows] = await pool.execute(
+    `SELECT r.*, e.employee_no, e.department,
+            CONCAT(e.lastname, ', ', e.firstname) AS employee_name,
+            creator.name AS created_by_name,
+            reviewer.name AS reviewed_by_name,
+            reverser.name AS reversed_by_name
+     FROM dtr_correction_requests r
+     INNER JOIN employees e ON e.id = r.employee_id
+     LEFT JOIN users creator ON creator.id = r.created_by
+     LEFT JOIN users reviewer ON reviewer.id = r.reviewed_by
+     LEFT JOIN users reverser ON reverser.id = r.reversed_by
+     ${whereSql}
+     ORDER BY CASE r.status WHEN 'Pending' THEN 0 ELSE 1 END, r.created_at DESC
+     LIMIT 500`,
+    params,
+  );
+  const requests = rows.map(dtrCorrectionRequestRow);
+  if (!requests.length) return requests;
+  const placeholders = requests.map(() => "?").join(", ");
+  const [eventRows] = await pool.query(
+    `SELECT ev.*, actor.name AS actor_name
+     FROM dtr_correction_events ev
+     LEFT JOIN users actor ON actor.id = ev.actor_id
+     WHERE ev.request_id IN (${placeholders})
+     ORDER BY ev.created_at ASC`,
+    requests.map((item) => item.id),
+  );
+  const eventsByRequest = new Map();
+  for (const row of eventRows) {
+    const event = {
+      id: row.id,
+      eventType: row.event_type,
+      fromStatus: row.from_status || "",
+      toStatus: row.to_status,
+      actorName: row.actor_name || "System",
+      remarks: row.remarks || "",
+      ipAddress: row.ip_address || "",
+      original: parseJson(row.original_json, null),
+      requested: parseJson(row.requested_json, null),
+      applied: parseJson(row.applied_json, null),
+      createdAt: row.created_at,
+    };
+    const events = eventsByRequest.get(row.request_id) || [];
+    events.push(event);
+    eventsByRequest.set(row.request_id, events);
+  }
+  return requests.map((request) => ({
+    ...request,
+    events: eventsByRequest.get(request.id) || [],
+  }));
+}
+
+async function handleListDtrCorrectionRequests(req, res, url) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (!["Admin", "HR", "Employee"].includes(user.role)) {
+    return json(res, 403, { error: "DTR correction request access required" });
+  }
+  const requestedEmployeeId = String(url.searchParams.get("employeeId") || "").trim();
+  const employeeId = user.role === "Employee" ? user.employeeId || "" : requestedEmployeeId;
+  if (user.role === "Employee" && !employeeId) {
+    return json(res, 400, { error: "No employee record linked to this account" });
+  }
+  const status = String(url.searchParams.get("status") || "").trim();
+  if (status && !["Pending", "Approved", "Disapproved", "Cancelled", "Reversed"].includes(status)) {
+    return json(res, 400, { error: "Invalid request status" });
+  }
+  const requestType = String(url.searchParams.get("requestType") || "").trim();
+  if (requestType && !["Times", "Label"].includes(requestType)) {
+    return json(res, 400, { error: "Invalid request type" });
+  }
+  const requests = await readDtrCorrectionRequests({
+    employeeId,
+    status,
+    requestType,
+    reviewerId: String(url.searchParams.get("reviewerId") || "").trim(),
+    q: String(url.searchParams.get("q") || "")
+      .trim()
+      .slice(0, 100),
+    from: normalizeDate(url.searchParams.get("from")),
+    to: normalizeDate(url.searchParams.get("to")),
+  });
+  return json(res, 200, { requests });
+}
+
+async function handleCreateDtrCorrectionRequest(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (!["Admin", "HR", "Employee"].includes(user.role)) {
+    return json(res, 403, { error: "DTR correction request access required" });
+  }
+  const body = await readBody(req);
+  const employeeId =
+    user.role === "Employee" ? user.employeeId || "" : String(body.employeeId || "").trim();
+  if (!employeeId) return json(res, 400, { error: "Employee is required" });
+  const workDate = normalizeDate(body.workDate || body.date);
+  if (!workDate) return json(res, 400, { error: "DTR date is required" });
+  if (workDate > formatLocalDate(new Date())) {
+    return json(res, 400, { error: "Future DTR dates cannot be corrected" });
+  }
+  const requestType = body.requestType === "Label" ? "Label" : "Times";
+  const reason = String(body.reason || "").trim();
+  if (reason.length < 5) return json(res, 400, { error: "Provide a clear reason for the request" });
+  if (reason.length > 1000) return json(res, 400, { error: "Reason is too long" });
+
+  const [[employee]] = await pool.execute(
+    `SELECT id FROM employees WHERE id = :employeeId LIMIT 1`,
+    {
+      employeeId,
+    },
+  );
+  if (!employee) return json(res, 404, { error: "Employee not found" });
+  const [[existing]] = await pool.execute(
+    `SELECT * FROM dtr_entries WHERE employee_id = :employeeId AND work_date = :workDate LIMIT 1`,
+    { employeeId, workDate },
+  );
+  const [[pending]] = await pool.execute(
+    `SELECT id FROM dtr_correction_requests
+     WHERE employee_id = :employeeId AND work_date = :workDate AND status = 'Pending' LIMIT 1`,
+    { employeeId, workDate },
+  );
+  if (pending)
+    return json(res, 409, { error: "A pending DTR request already exists for this date" });
+
+  let requested = { amIn: null, amOut: null, pmIn: null, pmOut: null };
+  let requestedLabel = null;
+  if (requestType === "Times") {
+    try {
+      requested = {
+        amIn: normalizeTimeInput(body.amIn),
+        amOut: normalizeTimeInput(body.amOut),
+        pmIn: normalizeTimeInput(body.pmIn),
+        pmOut: normalizeTimeInput(body.pmOut),
+      };
+    } catch (error) {
+      return json(res, 400, { error: error.message });
+    }
+    const originalTimes = [
+      existing?.am_in,
+      existing?.am_out,
+      existing?.pm_in,
+      existing?.pm_out,
+    ].map((value) => formatTime(value));
+    const requestedTimes = [requested.amIn, requested.amOut, requested.pmIn, requested.pmOut].map(
+      (value) => formatTime(value),
+    );
+    if (originalTimes.every((value, index) => value === requestedTimes[index])) {
+      return json(res, 400, { error: "Requested times are unchanged" });
+    }
+  } else {
+    requestedLabel = String(body.label || body.requestedLabel || "")
+      .trim()
+      .replace(/\s+/g, " ");
+    if (requestedLabel.length < 3) return json(res, 400, { error: "Enter the DTR activity label" });
+    if (requestedLabel.length > 180) return json(res, 400, { error: "DTR label is too long" });
+    if (requestedLabel === String(existing?.display_label || "").trim()) {
+      return json(res, 400, { error: "Requested label is unchanged" });
+    }
+  }
+
+  const id = crypto.randomUUID();
+  await pool.execute(
+    `INSERT INTO dtr_correction_requests (
+       id, employee_id, dtr_entry_id, work_date, request_type,
+       original_am_in, original_am_out, original_pm_in, original_pm_out, original_label,
+       requested_am_in, requested_am_out, requested_pm_in, requested_pm_out, requested_label,
+       reason, created_by, request_ip
+     ) VALUES (
+       :id, :employeeId, :dtrEntryId, :workDate, :requestType,
+       :originalAmIn, :originalAmOut, :originalPmIn, :originalPmOut, :originalLabel,
+       :requestedAmIn, :requestedAmOut, :requestedPmIn, :requestedPmOut, :requestedLabel,
+       :reason, :createdBy, :requestIp
+     )`,
+    {
+      id,
+      employeeId,
+      dtrEntryId: existing?.id || null,
+      workDate,
+      requestType,
+      originalAmIn: existing?.am_in || null,
+      originalAmOut: existing?.am_out || null,
+      originalPmIn: existing?.pm_in || null,
+      originalPmOut: existing?.pm_out || null,
+      originalLabel: existing?.display_label || null,
+      requestedAmIn: requested.amIn,
+      requestedAmOut: requested.amOut,
+      requestedPmIn: requested.pmIn,
+      requestedPmOut: requested.pmOut,
+      requestedLabel,
+      reason,
+      createdBy: user.id,
+      requestIp: getIp(req),
+    },
+  );
+  await insertDtrCorrectionEvent(pool, {
+    requestId: id,
+    eventType: "Filed",
+    toStatus: "Pending",
+    actorId: user.id,
+    remarks: reason,
+    ipAddress: getIp(req),
+    original: dtrAuditSnapshot(existing),
+    requested:
+      requestType === "Times"
+        ? {
+            amIn: formatTime(requested.amIn),
+            amOut: formatTime(requested.amOut),
+            pmIn: formatTime(requested.pmIn),
+            pmOut: formatTime(requested.pmOut),
+            displayLabel: "",
+          }
+        : { displayLabel: requestedLabel },
+  });
+  await logAudit(
+    user.id,
+    "attendance.correction_request.create",
+    { id, employeeId, workDate, requestType },
+    req,
+  );
+  const requests = await readDtrCorrectionRequests({ employeeId, from: workDate, to: workDate });
+  const createdRequest = requests.find((item) => item.id === id);
+  await notifyRoles({
+    topic: "attendance",
+    title: "New DTR correction request",
+    message: `${createdRequest?.employeeName || "An employee"} filed a ${requestType === "Label" ? "DTR label" : "time correction"} request for ${workDate}.`,
+    path: `/attendance#dtr-request-${id}`,
+    sourceType: "dtr_correction_request",
+    sourceId: id,
+    roles: ["Admin", "HR"],
+    excludeUserId: user.id,
+  });
+  return json(res, 201, { request: createdRequest });
+}
+
+async function handleDecideDtrCorrectionRequest(req, res, id) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const status = String(body.status || "");
+  if (!["Approved", "Disapproved"].includes(status)) {
+    return json(res, 400, { error: "Decision must be Approved or Disapproved" });
+  }
+  const reviewRemarks = String(body.reviewRemarks || body.remarks || "").trim();
+  if (status === "Disapproved" && reviewRemarks.length < 3) {
+    return json(res, 400, { error: "Disapproval reason is required" });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[request]] = await connection.execute(
+      `SELECT * FROM dtr_correction_requests WHERE id = :id FOR UPDATE`,
+      { id },
+    );
+    if (!request) {
+      await connection.rollback();
+      return json(res, 404, { error: "DTR request not found" });
+    }
+    if (request.status !== "Pending") {
+      await connection.rollback();
+      return json(res, 409, { error: "This DTR request has already been decided" });
+    }
+
+    let beforeSnapshot = null;
+    let appliedSnapshot = null;
+    if (status === "Approved") {
+      const [[existing]] = await connection.execute(
+        `SELECT * FROM dtr_entries
+         WHERE employee_id = :employeeId AND work_date = :workDate
+         LIMIT 1 FOR UPDATE`,
+        { employeeId: request.employee_id, workDate: request.work_date },
+      );
+      if (existing?.locked) {
+        await connection.rollback();
+        return json(res, 409, { error: "Unlock the DTR entry before approving this request" });
+      }
+      if (!correctionOriginalStillMatches(request, existing)) {
+        await connection.rollback();
+        return json(res, 409, {
+          error:
+            "The DTR changed after this request was filed. Review the current record and ask the employee to file a new request.",
+        });
+      }
+
+      beforeSnapshot = dtrAuditSnapshot(existing);
+      if (request.request_type === "Times") {
+        await upsertDtrEntry(
+          connection,
+          {
+            id: existing?.id || crypto.randomUUID(),
+            employeeId: request.employee_id,
+            workDate: normalizeDate(request.work_date),
+            amIn: request.requested_am_in,
+            amOut: request.requested_am_out,
+            pmIn: request.requested_pm_in,
+            pmOut: request.requested_pm_out,
+            source: "Adjusted",
+            remarks: reviewRemarks || request.reason,
+          },
+          user.id,
+          false,
+        );
+      } else if (existing) {
+        await connection.execute(
+          `UPDATE dtr_entries
+           SET display_label = :label, display_label_request_id = :requestId,
+               status = 'Official Business', late_minutes = 0, undertime_minutes = 0,
+               source = 'Adjusted', remarks = :remarks, edited_by = :editedBy, edited_at = NOW()
+           WHERE id = :id`,
+          {
+            id: existing.id,
+            label: request.requested_label,
+            requestId: request.id,
+            remarks: reviewRemarks || request.reason,
+            editedBy: user.id,
+          },
+        );
+      } else {
+        await connection.execute(
+          `INSERT INTO dtr_entries (
+             id, employee_id, work_date, status, source, remarks,
+             display_label, display_label_request_id, edited_by, edited_at
+           ) VALUES (
+             :id, :employeeId, :workDate, 'Official Business', 'Adjusted', :remarks,
+             :label, :requestId, :editedBy, NOW()
+           )`,
+          {
+            id: crypto.randomUUID(),
+            employeeId: request.employee_id,
+            workDate: request.work_date,
+            remarks: reviewRemarks || request.reason,
+            label: request.requested_label,
+            requestId: request.id,
+            editedBy: user.id,
+          },
+        );
+      }
+      const [[applied]] = await connection.execute(
+        `SELECT * FROM dtr_entries
+         WHERE employee_id = :employeeId AND work_date = :workDate LIMIT 1`,
+        { employeeId: request.employee_id, workDate: request.work_date },
+      );
+      appliedSnapshot = dtrAuditSnapshot(applied);
+    }
+
+    await connection.execute(
+      `UPDATE dtr_correction_requests
+       SET status = :status, reviewed_by = :reviewedBy, review_remarks = :reviewRemarks,
+           reviewed_at = NOW(), review_ip = :reviewIp,
+           pre_approval_snapshot = :beforeSnapshot, applied_snapshot = :appliedSnapshot
+       WHERE id = :id`,
+      {
+        id,
+        status,
+        reviewedBy: user.id,
+        reviewRemarks: reviewRemarks || null,
+        reviewIp: getIp(req),
+        beforeSnapshot: beforeSnapshot ? JSON.stringify(beforeSnapshot) : null,
+        appliedSnapshot: appliedSnapshot ? JSON.stringify(appliedSnapshot) : null,
+      },
+    );
+    await insertDtrCorrectionEvent(connection, {
+      requestId: id,
+      eventType: status,
+      fromStatus: "Pending",
+      toStatus: status,
+      actorId: user.id,
+      remarks: reviewRemarks,
+      ipAddress: getIp(req),
+      original: beforeSnapshot,
+      requested:
+        request.request_type === "Times"
+          ? {
+              amIn: formatTime(request.requested_am_in),
+              amOut: formatTime(request.requested_am_out),
+              pmIn: formatTime(request.requested_pm_in),
+              pmOut: formatTime(request.requested_pm_out),
+            }
+          : { displayLabel: request.requested_label || "" },
+      applied: appliedSnapshot,
+    });
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  await logAudit(user.id, "attendance.correction_request.decision", { id, status }, req);
+  const requests = await readDtrCorrectionRequests({});
+  const decidedRequest = requests.find((item) => item.id === id);
+  if (decidedRequest) {
+    await notifyEmployees({
+      topic: "attendance",
+      title: `DTR request ${status.toLowerCase()}`,
+      message: `Your ${decidedRequest.requestType === "Label" ? "DTR label" : "time correction"} request for ${decidedRequest.workDate} was ${status.toLowerCase()}.`,
+      path: `/requests#request-${id}`,
+      sourceType: "dtr_correction_request",
+      sourceId: id,
+      employeeIds: [decidedRequest.employeeId],
+      excludeUserId: user.id,
+    });
+  }
+  return json(res, 200, { request: decidedRequest });
+}
+
+async function handleCancelDtrCorrectionRequest(req, res, id) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const [[request]] = await pool.execute(
+    `SELECT * FROM dtr_correction_requests WHERE id = :id LIMIT 1`,
+    { id },
+  );
+  if (!request) return json(res, 404, { error: "DTR request not found" });
+  if (request.status !== "Pending")
+    return json(res, 409, { error: "Only pending requests can be cancelled" });
+  if (!["Admin", "HR"].includes(user.role) && user.employeeId !== request.employee_id) {
+    return json(res, 403, { error: "You can only cancel your own request" });
+  }
+  await pool.execute(`UPDATE dtr_correction_requests SET status = 'Cancelled' WHERE id = :id`, {
+    id,
+  });
+  await insertDtrCorrectionEvent(pool, {
+    requestId: id,
+    eventType: "Cancelled",
+    fromStatus: "Pending",
+    toStatus: "Cancelled",
+    actorId: user.id,
+    remarks: "Request cancelled",
+    ipAddress: getIp(req),
+  });
+  await logAudit(user.id, "attendance.correction_request.cancel", { id }, req);
+  return json(res, 200, { ok: true });
+}
+
+async function handleReverseDtrCorrectionRequest(req, res, id) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const reason = String(body.reason || body.reverseReason || "").trim();
+  if (reason.length < 5) {
+    return json(res, 400, { error: "A clear reversal reason is required" });
+  }
+
+  let employeeId = "";
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[request]] = await connection.execute(
+      `SELECT * FROM dtr_correction_requests WHERE id = :id FOR UPDATE`,
+      { id },
+    );
+    if (!request) {
+      await connection.rollback();
+      return json(res, 404, { error: "DTR request not found" });
+    }
+    if (request.status !== "Approved") {
+      await connection.rollback();
+      return json(res, 409, { error: "Only an approved request can be reversed" });
+    }
+    employeeId = request.employee_id;
+    const beforeSnapshot = parseJson(request.pre_approval_snapshot, null);
+    const appliedSnapshot = parseJson(request.applied_snapshot, null);
+    if (!beforeSnapshot || !appliedSnapshot) {
+      await connection.rollback();
+      return json(res, 409, { error: "This approval has no safe reversal snapshot" });
+    }
+    const [[current]] = await connection.execute(
+      `SELECT * FROM dtr_entries
+       WHERE employee_id = :employeeId AND work_date = :workDate
+       LIMIT 1 FOR UPDATE`,
+      { employeeId: request.employee_id, workDate: request.work_date },
+    );
+    if (current?.locked) {
+      await connection.rollback();
+      return json(res, 409, { error: "Unlock the DTR entry before reversing this approval" });
+    }
+    if (!dtrSnapshotsMatch(dtrAuditSnapshot(current), appliedSnapshot)) {
+      await connection.rollback();
+      return json(res, 409, {
+        error:
+          "The DTR changed after approval. Reversal was blocked to avoid overwriting newer data.",
+      });
+    }
+
+    if (!beforeSnapshot.exists) {
+      await connection.execute(`DELETE FROM dtr_entries WHERE id = :id`, { id: current.id });
+    } else {
+      await connection.execute(
+        `UPDATE dtr_entries
+         SET am_in = :amIn, am_out = :amOut, pm_in = :pmIn, pm_out = :pmOut,
+             status = :status, late_minutes = :lateMinutes,
+             undertime_minutes = :undertimeMinutes, source = :source, remarks = :remarks,
+             display_label = :displayLabel,
+             display_label_request_id = :displayLabelRequestId,
+             edited_by = :editedBy, edited_at = NOW()
+         WHERE id = :id`,
+        {
+          id: current.id,
+          amIn: beforeSnapshot.amIn || null,
+          amOut: beforeSnapshot.amOut || null,
+          pmIn: beforeSnapshot.pmIn || null,
+          pmOut: beforeSnapshot.pmOut || null,
+          status: beforeSnapshot.status || "Incomplete",
+          lateMinutes: Number(beforeSnapshot.lateMinutes || 0),
+          undertimeMinutes: Number(beforeSnapshot.undertimeMinutes || 0),
+          source: beforeSnapshot.source || "Imported",
+          remarks: beforeSnapshot.remarks || null,
+          displayLabel: beforeSnapshot.displayLabel || null,
+          displayLabelRequestId: beforeSnapshot.displayLabelRequestId || null,
+          editedBy: user.id,
+        },
+      );
+    }
+    const restoredSnapshot = beforeSnapshot.exists
+      ? dtrAuditSnapshot({
+          ...beforeSnapshot,
+          am_in: beforeSnapshot.amIn,
+          am_out: beforeSnapshot.amOut,
+          pm_in: beforeSnapshot.pmIn,
+          pm_out: beforeSnapshot.pmOut,
+          late_minutes: beforeSnapshot.lateMinutes,
+          undertime_minutes: beforeSnapshot.undertimeMinutes,
+          display_label: beforeSnapshot.displayLabel,
+          display_label_request_id: beforeSnapshot.displayLabelRequestId,
+        })
+      : { exists: false };
+    await connection.execute(
+      `UPDATE dtr_correction_requests
+       SET status = 'Reversed', reversed_by = :reversedBy, reverse_reason = :reason,
+           reversal_ip = :reversalIp, reversed_at = NOW()
+       WHERE id = :id`,
+      { id, reversedBy: user.id, reason, reversalIp: getIp(req) },
+    );
+    await insertDtrCorrectionEvent(connection, {
+      requestId: id,
+      eventType: "Reversed",
+      fromStatus: "Approved",
+      toStatus: "Reversed",
+      actorId: user.id,
+      remarks: reason,
+      ipAddress: getIp(req),
+      original: appliedSnapshot,
+      applied: restoredSnapshot,
+    });
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  await logAudit(user.id, "attendance.correction_request.reverse", { id, reason }, req);
+  const requests = await readDtrCorrectionRequests({ employeeId });
+  const reversedRequest = requests.find((item) => item.id === id);
+  if (reversedRequest) {
+    await notifyEmployees({
+      topic: "attendance",
+      title: "DTR approval reversed",
+      message: `The approved DTR request for ${reversedRequest.workDate} was reversed.`,
+      path: `/requests#request-${id}`,
+      sourceType: "dtr_correction_request",
+      sourceId: id,
+      employeeIds: [employeeId],
+      excludeUserId: user.id,
+    });
+  }
+  return json(res, 200, { request: reversedRequest });
 }
 
 async function handleCreateDtrEntry(req, res) {
@@ -5250,7 +6486,18 @@ async function handleCreateLeaveApplication(req, res) {
   );
   await ensureLeaveBalance(employeeId, leaveTypeId);
   await logAudit(user.id, "leave.application_create", { id, employeeId, leaveTypeId }, req);
-  return json(res, 201, { application: await readLeaveApplication(id) });
+  const application = await readLeaveApplication(id);
+  await notifyRoles({
+    topic: "leave",
+    title: "New leave request",
+    message: `${application?.employeeName || "An employee"} filed a leave request.`,
+    path: `/leave#leave-request-${id}`,
+    sourceType: "leave_application",
+    sourceId: id,
+    roles: ["Admin", "HR"],
+    excludeUserId: user.id,
+  });
+  return json(res, 201, { application });
 }
 
 async function handleDecideLeaveApplication(req, res, id) {
@@ -5328,7 +6575,20 @@ async function handleDecideLeaveApplication(req, res, id) {
     },
   );
   await logAudit(user.id, "leave.application_decide", { id, status }, req);
-  return json(res, 200, { application: await readLeaveApplication(id) });
+  const application = await readLeaveApplication(id);
+  if (application) {
+    await notifyEmployees({
+      topic: "leave",
+      title: `Leave request ${status.toLowerCase()}`,
+      message: `Your leave request was ${status.toLowerCase()}.`,
+      path: `/requests#request-${id}`,
+      sourceType: "leave_application",
+      sourceId: id,
+      employeeIds: [application.employeeId],
+      excludeUserId: user.id,
+    });
+  }
+  return json(res, 200, { application });
 }
 
 async function handleDeleteLeaveApplication(req, res, id) {
@@ -5907,8 +7167,11 @@ async function logServerError(req, error) {
 
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
+  if (req.method === "GET" && url.pathname === "/api/realtime/events")
+    return handleRealtimeEvents(req, res);
   const userMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)$/);
   const resetPasswordMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/reset-password$/);
+  const unlockUserMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/unlock$/);
   const backupDownloadMatch = url.pathname.match(/^\/api\/admin\/backups\/([^/]+)\/download$/);
   const employeeMatch = url.pathname.match(/^\/api\/employees\/([A-Za-z0-9-]+)$/);
   const employeePdsExcelGenerateMatch = url.pathname.match(
@@ -5945,6 +7208,15 @@ async function route(req, res) {
     /^\/api\/leave\/forms\/form6\/pdf\/([^/]+)$/,
   );
   const dtrEntryMatch = url.pathname.match(/^\/api\/attendance\/dtr\/([A-Za-z0-9-]+)$/);
+  const dtrCorrectionDecisionMatch = url.pathname.match(
+    /^\/api\/attendance\/correction-requests\/([A-Za-z0-9-]+)\/decision$/,
+  );
+  const dtrCorrectionCancelMatch = url.pathname.match(
+    /^\/api\/attendance\/correction-requests\/([A-Za-z0-9-]+)\/cancel$/,
+  );
+  const dtrCorrectionReverseMatch = url.pathname.match(
+    /^\/api\/attendance\/correction-requests\/([A-Za-z0-9-]+)\/reverse$/,
+  );
   const dtrExcelMatch = url.pathname.match(/^\/api\/attendance\/dtr\/excel\/([^/]+)$/);
   const dtrPdfMatch = url.pathname.match(/^\/api\/attendance\/dtr\/pdf\/([^/]+)$/);
   const dtrNoterMatch = url.pathname.match(/^\/api\/attendance\/noters\/(\d+)$/);
@@ -5956,6 +7228,7 @@ async function route(req, res) {
   const departmentMatch = url.pathname.match(/^\/api\/settings\/departments\/(\d+)$/);
   const positionMatch = url.pathname.match(/^\/api\/settings\/positions\/(\d+)$/);
   const salaryGradeMatch = url.pathname.match(/^\/api\/settings\/salary-grades\/(\d+)$/);
+  const notificationReadMatch = url.pathname.match(/^\/api\/notifications\/([A-Za-z0-9-]+)\/read$/);
 
   if (isAdmsIclock) return handleAdmsIclock(req, res, url);
 
@@ -5977,6 +7250,13 @@ async function route(req, res) {
     return user ? json(res, 200, { user }) : json(res, 401, { error: "Not authenticated" });
   }
 
+  if (req.method === "GET" && url.pathname === "/api/notifications")
+    return handleListNotifications(req, res, url);
+  if (req.method === "PATCH" && notificationReadMatch)
+    return handleReadNotification(req, res, notificationReadMatch[1]);
+  if (req.method === "POST" && url.pathname === "/api/notifications/read-all")
+    return handleReadAllNotifications(req, res);
+
   if (req.method === "PATCH" && url.pathname === "/api/users/me")
     return handleProfileUpdate(req, res);
   if (req.method === "GET" && url.pathname === "/api/admin/users") return handleListUsers(req, res);
@@ -5986,6 +7266,8 @@ async function route(req, res) {
   if (req.method === "DELETE" && userMatch) return handleDeleteUser(req, res, userMatch[1]);
   if (req.method === "POST" && resetPasswordMatch)
     return handleResetUserPassword(req, res, resetPasswordMatch[1]);
+  if (req.method === "POST" && unlockUserMatch)
+    return handleUnlockUser(req, res, unlockUserMatch[1]);
   if (req.method === "GET" && url.pathname === "/api/admin/audit-logs")
     return handleListAuditLogs(req, res);
   if (req.method === "GET" && url.pathname === "/api/admin/error-logs")
@@ -6062,6 +7344,16 @@ async function route(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/attendance/dtr")
     return handleListDtrEntries(req, res, url);
+  if (req.method === "GET" && url.pathname === "/api/attendance/correction-requests")
+    return handleListDtrCorrectionRequests(req, res, url);
+  if (req.method === "POST" && url.pathname === "/api/attendance/correction-requests")
+    return handleCreateDtrCorrectionRequest(req, res);
+  if (req.method === "POST" && dtrCorrectionDecisionMatch)
+    return handleDecideDtrCorrectionRequest(req, res, dtrCorrectionDecisionMatch[1]);
+  if (req.method === "POST" && dtrCorrectionCancelMatch)
+    return handleCancelDtrCorrectionRequest(req, res, dtrCorrectionCancelMatch[1]);
+  if (req.method === "POST" && dtrCorrectionReverseMatch)
+    return handleReverseDtrCorrectionRequest(req, res, dtrCorrectionReverseMatch[1]);
   if (req.method === "POST" && url.pathname === "/api/attendance/dtr")
     return handleCreateDtrEntry(req, res);
   if (req.method === "PATCH" && dtrEntryMatch)
@@ -6143,9 +7435,32 @@ async function route(req, res) {
 
 await initializeDatabase();
 await cleanupPreviewFiles().catch(() => {});
+await cleanupNotifications().catch(() => {});
 setInterval(() => cleanupPreviewFiles().catch(() => {}), 10 * 60 * 1000).unref();
+setInterval(() => cleanupNotifications().catch(() => {}), 24 * 60 * 60 * 1000).unref();
 
 const server = http.createServer(async (req, res) => {
+  const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(req.method || "");
+  const shouldPublishMutation =
+    isMutation &&
+    !requestUrl.pathname.startsWith("/api/auth/") &&
+    !requestUrl.pathname.startsWith("/api/notifications") &&
+    !requestUrl.pathname.includes("/excel") &&
+    !requestUrl.pathname.includes("/pdf") &&
+    !requestUrl.pathname.includes("/export") &&
+    !requestUrl.pathname.endsWith("/check-status");
+  if (shouldPublishMutation) {
+    res.once("finish", () => {
+      if (res.statusCode >= 200 && res.statusCode < 400) {
+        publishRealtime({
+          kind: "refresh",
+          topic: realtimeTopic(requestUrl.pathname),
+          path: requestUrl.pathname,
+        });
+      }
+    });
+  }
   try {
     await route(req, res);
   } catch (error) {

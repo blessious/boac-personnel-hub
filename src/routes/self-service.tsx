@@ -60,6 +60,7 @@ import {
 import { listDtr, type DtrEntry, type DtrListResponse } from "@/lib/attendance-api";
 import { submitLeaveRequest } from "@/lib/requests-api";
 import { cn } from "@/lib/utils";
+import { useRealtimeRefresh } from "@/lib/realtime";
 
 export const Route = createFileRoute("/self-service")({
   component: SelfServicePage,
@@ -89,7 +90,7 @@ export function EmployeeDashboardHome() {
   const [loading, setLoading] = useState(Boolean(user?.employeeId));
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const loadDashboard = () => {
     if (!user?.employeeId) {
       setLoading(false);
       return;
@@ -124,7 +125,10 @@ export function EmployeeDashboardHome() {
       })
       .catch((err) => setError(err.message || "Unable to load your dashboard"))
       .finally(() => setLoading(false));
-  }, [user?.employeeId]);
+  };
+
+  useEffect(loadDashboard, [user?.employeeId]);
+  useRealtimeRefresh(loadDashboard, ["employees", "leave", "attendance"]);
 
   const employee = profile?.employee || leave?.employee || null;
   const pendingRequests =
@@ -598,6 +602,12 @@ function EmployeeServicesHome() {
                 icon={Clock}
                 title="Attendance Logs"
                 description="Review DTR, missed punches, and corrections."
+                onClick={() => navigate({ to: "/attendance" })}
+              />
+              <ActionButton
+                icon={ClipboardCheck}
+                title="Request DTR Correction"
+                description="Request corrected punches or an approved activity label on your DTR."
                 onClick={() => navigate({ to: "/attendance" })}
               />
               <ActionButton

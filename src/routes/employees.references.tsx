@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
+import { useRealtimeRefresh } from "@/lib/realtime";
 
 export const Route = createFileRoute("/employees/references")({
   component: EmployeeReferencesPage,
@@ -72,6 +73,7 @@ function EmployeeReferencesPage() {
   useEffect(() => {
     loadReferences();
   }, []);
+  useRealtimeRefresh(loadReferences, ["settings"]);
 
   const addDepartment = async () => {
     try {

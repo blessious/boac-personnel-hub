@@ -64,6 +64,7 @@ import {
   type DashboardResponse,
 } from "@/lib/employees-api";
 import { cn } from "@/lib/utils";
+import { useRealtimeRefresh } from "@/lib/realtime";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export const Route = createFileRoute("/employees")({
@@ -157,6 +158,7 @@ function EmployeesPage() {
   };
 
   useEffect(load, [q, dept, status, empStatus, gender, page, pageSize]);
+  useRealtimeRefresh(load, ["employees", "settings"]);
 
   useEffect(() => {
     setDept(selectedDepartment);

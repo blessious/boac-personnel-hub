@@ -35,6 +35,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
+import { useRealtimeRefresh } from "@/lib/realtime";
 import {
   createLeaveApplication,
   createLeaveType,
@@ -129,6 +130,7 @@ function LeavePage() {
   };
 
   useEffect(load, [status, q]);
+  useRealtimeRefresh(load, ["leave", "employees"]);
 
   useEffect(() => {
     if (view !== "ledger" || !ledgerEmployeeId) return;

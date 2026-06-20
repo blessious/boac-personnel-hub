@@ -21,8 +21,9 @@ function ChangePasswordPage() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (newPassword.length < 8) {
-      toast.error("New password must be at least 8 characters");
+    const passwordError = getPasswordError(newPassword);
+    if (passwordError) {
+      toast.error(passwordError);
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -77,6 +78,9 @@ function ChangePasswordPage() {
             autoComplete="new-password"
             required
           />
+          <p className="text-xs leading-5 text-muted-foreground">
+            Use at least 12 characters with uppercase, lowercase, number, and special character.
+          </p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="confirm-password">Confirm new password</Label>
@@ -108,4 +112,13 @@ function ChangePasswordPage() {
       </form>
     </div>
   );
+}
+
+function getPasswordError(password: string) {
+  if (password.length < 12) return "New password must be at least 12 characters";
+  if (!/[a-z]/.test(password)) return "New password must include a lowercase letter";
+  if (!/[A-Z]/.test(password)) return "New password must include an uppercase letter";
+  if (!/\d/.test(password)) return "New password must include a number";
+  if (!/[^A-Za-z0-9]/.test(password)) return "New password must include a special character";
+  return "";
 }

@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -47,6 +48,8 @@ import {
 } from "@/components/ui/select";
 import {
   createDtr,
+  createDtrCorrectionRequest,
+  decideDtrCorrectionRequest,
   deleteDtr,
   bulkUpdateSchedule,
   bulkUpdateScheduleOverrides,
@@ -64,8 +67,10 @@ import {
   listBiometricDevices,
   listDtrNoters,
   listDtr,
+  listDtrCorrectionRequests,
   openGeneratedFile,
   refreshDtr,
+  reverseDtrCorrectionRequest,
   syncBiometricNow,
   updateDtr,
   type BiometricRealtimeLog,
@@ -73,10 +78,14 @@ import {
   type BiometricDevice,
   type DtrNoter,
   type DtrEntry,
+  type DtrCorrectionPayload,
+  type DtrCorrectionRequest,
+  type DtrCorrectionStatus,
   type DtrPayload,
 } from "@/lib/attendance-api";
 import { useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
+import { useRealtimeRefresh } from "@/lib/realtime";
 
 export const Route = createFileRoute("/attendance")({
   component: AttendancePage,
@@ -127,6 +136,25 @@ const STATUS_CLASS: Record<string, string> = {
   Absent: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
+const CORRECTION_STATUS_CLASS: Record<DtrCorrectionStatus, string> = {
+  Pending: "border-amber-200 bg-amber-50 text-amber-700",
+  Approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  Disapproved: "border-rose-200 bg-rose-50 text-rose-700",
+  Cancelled: "border-slate-200 bg-slate-50 text-slate-600",
+  Reversed: "border-violet-200 bg-violet-50 text-violet-700",
+};
+
+const EMPTY_CORRECTION_FORM: DtrCorrectionPayload = {
+  workDate: formatLocalDate(new Date()),
+  requestType: "Times",
+  amIn: "",
+  amOut: "",
+  pmIn: "",
+  pmOut: "",
+  label: "",
+  reason: "",
+};
+
 function AttendancePage() {
   const { user } = useAuth();
   const canManage = user?.role === "Admin" || user?.role === "HR";
@@ -140,6 +168,15 @@ function AttendancePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [showDtrDialog, setShowDtrDialog] = useState(false);
+  const [showCorrectionDialog, setShowCorrectionDialog] = useState(false);
+  const [correctionForm, setCorrectionForm] = useState<DtrCorrectionPayload>(EMPTY_CORRECTION_FORM);
+  const [correctionRequests, setCorrectionRequests] = useState<DtrCorrectionRequest[]>([]);
+  const [selectedCorrection, setSelectedCorrection] = useState<DtrCorrectionRequest | null>(null);
+  const [reviewRemarks, setReviewRemarks] = useState("");
+  const [reverseReason, setReverseReason] = useState("");
+  const [correctionQuery, setCorrectionQuery] = useState("");
+  const [correctionStatus, setCorrectionStatus] = useState<DtrCorrectionStatus | "all">("all");
+  const [correctionType, setCorrectionType] = useState<"all" | "Times" | "Label">("all");
   const [showImportDialog, setShowImportDialog] = useState(false);
 
   const [showImportAllDialog, setShowImportAllDialog] = useState(false);
@@ -221,6 +258,35 @@ function AttendancePage() {
   };
 
   useEffect(load, [selectedEmployeeId, from, to, q, isEmployee]);
+
+  const loadCorrections = () => {
+    if (!canManage && !isEmployee) return;
+    listDtrCorrectionRequests({
+      employeeId: canManage ? selectedEmployeeId : undefined,
+      status: correctionStatus === "all" ? undefined : correctionStatus,
+      requestType: correctionType === "all" ? undefined : correctionType,
+      q: correctionQuery,
+      from,
+      to,
+    })
+      .then((result) => setCorrectionRequests(result.requests))
+      .catch((error) => toast.error(error.message || "Unable to load DTR requests"));
+  };
+
+  useEffect(loadCorrections, [
+    canManage,
+    isEmployee,
+    selectedEmployeeId,
+    correctionStatus,
+    correctionType,
+    correctionQuery,
+    from,
+    to,
+  ]);
+  useRealtimeRefresh(() => {
+    load();
+    loadCorrections();
+  }, ["attendance"]);
 
   useEffect(() => {
     if (!canManage && user?.role !== "Viewer") return;
@@ -375,6 +441,75 @@ function AttendancePage() {
     () => importEmployees.find((employee) => employee.id === selectedImportEmployeeId) || null,
     [importEmployees, selectedImportEmployeeId],
   );
+
+  const openCorrection = (entry?: DtrEntry) => {
+    setCorrectionForm({
+      ...EMPTY_CORRECTION_FORM,
+      employeeId: isEmployee ? user?.employeeId : entry?.employeeId || selectedEmployeeId,
+      workDate: entry?.workDate || formatLocalDate(new Date()),
+      amIn: entry?.amIn || "",
+      amOut: entry?.amOut || "",
+      pmIn: entry?.pmIn || "",
+      pmOut: entry?.pmOut || "",
+      label: entry?.displayLabel || "",
+    });
+    setShowCorrectionDialog(true);
+  };
+
+  const submitCorrection = async () => {
+    try {
+      setBusy(true);
+      await createDtrCorrectionRequest(correctionForm);
+      toast.success("DTR correction request submitted");
+      setShowCorrectionDialog(false);
+      loadCorrections();
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reviewCorrection = (request: DtrCorrectionRequest) => {
+    setSelectedCorrection(request);
+    setReviewRemarks(request.reviewRemarks || "");
+    setReverseReason("");
+  };
+
+  const decideCorrection = async (status: "Approved" | "Disapproved") => {
+    if (!selectedCorrection) return;
+    try {
+      setBusy(true);
+      const result = await decideDtrCorrectionRequest(selectedCorrection.id, {
+        status,
+        reviewRemarks,
+      });
+      setSelectedCorrection(result.request);
+      toast.success(`DTR request ${status.toLowerCase()}`);
+      load();
+      loadCorrections();
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reverseCorrection = async () => {
+    if (!selectedCorrection) return;
+    try {
+      setBusy(true);
+      const result = await reverseDtrCorrectionRequest(selectedCorrection.id, reverseReason);
+      setSelectedCorrection(result.request);
+      toast.success("DTR approval reversed");
+      load();
+      loadCorrections();
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const openAdd = () => {
     setEditing(null);
@@ -1090,6 +1225,116 @@ function AttendancePage() {
           </section>
         )}
 
+        {(canManage || isEmployee) && (
+          <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-border px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">DTR Correction Audit</h2>
+                <p className="text-xs text-muted-foreground">
+                  Original, requested, applied, and reversal history
+                </p>
+              </div>
+              <Button onClick={() => openCorrection()} size="sm">
+                <Plus className="mr-1.5 h-4 w-4" />
+                New Correction Request
+              </Button>
+            </div>
+            <div className="grid gap-2 border-b border-border p-4 md:grid-cols-3">
+              <Input
+                value={correctionQuery}
+                onChange={(event) => setCorrectionQuery(event.target.value)}
+                placeholder="Search employee, reason, or remarks"
+              />
+              <Select
+                value={correctionStatus}
+                onValueChange={(value) => setCorrectionStatus(value as DtrCorrectionStatus | "all")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {(["Pending", "Approved", "Disapproved", "Cancelled", "Reversed"] as const).map(
+                    (status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ),
+                  )}
+                </SelectContent>
+              </Select>
+              <Select
+                value={correctionType}
+                onValueChange={(value) => setCorrectionType(value as typeof correctionType)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All request types</SelectItem>
+                  <SelectItem value="Times">Time Correction</SelectItem>
+                  <SelectItem value="Label">DTR Activity Label</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-sm">
+                <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3">Employee</th>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Request</th>
+                    <th className="px-4 py-3">Reason</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {correctionRequests.map((request) => (
+                    <tr key={request.id} className="border-t border-border">
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{request.employeeName}</p>
+                        <p className="text-xs text-muted-foreground">{request.employeeNo}</p>
+                      </td>
+                      <td className="px-4 py-3">{request.workDate}</td>
+                      <td className="px-4 py-3">
+                        {request.requestType === "Label" ? "DTR Label" : "Time Correction"}
+                      </td>
+                      <td className="max-w-[260px] truncate px-4 py-3 text-muted-foreground">
+                        {request.reason}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge
+                          variant="outline"
+                          className={CORRECTION_STATUS_CLASS[request.status]}
+                        >
+                          {request.status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => reviewCorrection(request)}
+                        >
+                          {request.status === "Pending" && canManage ? "Review" : "View Audit"}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!correctionRequests.length && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                        No DTR correction requests found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
         <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="flex items-center gap-2">
@@ -1116,32 +1361,38 @@ function AttendancePage() {
                   </span>
                 </div>
 
-                <div className="mobile-record-card__grid">
-                  <div className="mobile-record-card__field">
-                    <span className="mobile-record-card__label">AM In</span>
-                    <span className="mobile-record-card__value text-emerald-700">
-                      {formatDtrTime(entry.amIn)}
-                    </span>
+                {entry.displayLabel ? (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-center text-sm font-semibold text-blue-800">
+                    {entry.displayLabel}
                   </div>
-                  <div className="mobile-record-card__field">
-                    <span className="mobile-record-card__label">AM Out</span>
-                    <span className="mobile-record-card__value text-emerald-700">
-                      {formatDtrTime(entry.amOut)}
-                    </span>
+                ) : (
+                  <div className="mobile-record-card__grid">
+                    <div className="mobile-record-card__field">
+                      <span className="mobile-record-card__label">AM In</span>
+                      <span className="mobile-record-card__value text-emerald-700">
+                        {formatDtrTime(entry.amIn)}
+                      </span>
+                    </div>
+                    <div className="mobile-record-card__field">
+                      <span className="mobile-record-card__label">AM Out</span>
+                      <span className="mobile-record-card__value text-emerald-700">
+                        {formatDtrTime(entry.amOut)}
+                      </span>
+                    </div>
+                    <div className="mobile-record-card__field">
+                      <span className="mobile-record-card__label">PM In</span>
+                      <span className="mobile-record-card__value text-emerald-700">
+                        {formatDtrTime(entry.pmIn)}
+                      </span>
+                    </div>
+                    <div className="mobile-record-card__field">
+                      <span className="mobile-record-card__label">PM Out</span>
+                      <span className="mobile-record-card__value text-emerald-700">
+                        {formatDtrTime(entry.pmOut)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="mobile-record-card__field">
-                    <span className="mobile-record-card__label">PM In</span>
-                    <span className="mobile-record-card__value text-emerald-700">
-                      {formatDtrTime(entry.pmIn)}
-                    </span>
-                  </div>
-                  <div className="mobile-record-card__field">
-                    <span className="mobile-record-card__label">PM Out</span>
-                    <span className="mobile-record-card__value text-emerald-700">
-                      {formatDtrTime(entry.pmOut)}
-                    </span>
-                  </div>
-                </div>
+                )}
 
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1199,18 +1450,29 @@ function AttendancePage() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{entry.department || "-"}</td>
                     <td className="px-4 py-3 font-medium text-foreground">{entry.workDate}</td>
-                    <td className="px-4 py-3 font-medium text-emerald-600">
-                      {formatDtrTime(entry.amIn)}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-emerald-600">
-                      {formatDtrTime(entry.amOut)}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-emerald-600">
-                      {formatDtrTime(entry.pmIn)}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-emerald-600">
-                      {formatDtrTime(entry.pmOut)}
-                    </td>
+                    {entry.displayLabel ? (
+                      <td
+                        colSpan={4}
+                        className="bg-blue-50 px-4 py-3 text-center font-semibold text-blue-800"
+                      >
+                        {entry.displayLabel}
+                      </td>
+                    ) : (
+                      <>
+                        <td className="px-4 py-3 font-medium text-emerald-600">
+                          {formatDtrTime(entry.amIn)}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-emerald-600">
+                          {formatDtrTime(entry.amOut)}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-emerald-600">
+                          {formatDtrTime(entry.pmIn)}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-emerald-600">
+                          {formatDtrTime(entry.pmOut)}
+                        </td>
+                      </>
+                    )}
                     <td className="px-4 py-3 text-destructive font-medium">
                       {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
                     </td>
@@ -2062,7 +2324,280 @@ function AttendancePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showCorrectionDialog} onOpenChange={setShowCorrectionDialog}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Request DTR Correction</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            {canManage && (
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>Employee</Label>
+                <Select
+                  value={correctionForm.employeeId || ""}
+                  onValueChange={(value) =>
+                    setCorrectionForm((current) => ({ ...current, employeeId: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select employee" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employeeOptions.map((employee) => (
+                      <SelectItem key={employee.id} value={employee.id}>
+                        {employee.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>DTR Date</Label>
+              <Input
+                type="date"
+                max={formatLocalDate(new Date())}
+                value={correctionForm.workDate}
+                onChange={(event) =>
+                  setCorrectionForm((current) => ({ ...current, workDate: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Request Type</Label>
+              <Select
+                value={correctionForm.requestType}
+                onValueChange={(value) =>
+                  setCorrectionForm((current) => ({
+                    ...current,
+                    requestType: value as "Times" | "Label",
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Times">Correct Time Entries</SelectItem>
+                  <SelectItem value="Label">Add DTR Activity Label</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {correctionForm.requestType === "Times" ? (
+              <>
+                <Field
+                  label="AM In"
+                  type="time"
+                  value={correctionForm.amIn || ""}
+                  onChange={(amIn) => setCorrectionForm((current) => ({ ...current, amIn }))}
+                />
+                <Field
+                  label="AM Out"
+                  type="time"
+                  value={correctionForm.amOut || ""}
+                  onChange={(amOut) => setCorrectionForm((current) => ({ ...current, amOut }))}
+                />
+                <Field
+                  label="PM In"
+                  type="time"
+                  value={correctionForm.pmIn || ""}
+                  onChange={(pmIn) => setCorrectionForm((current) => ({ ...current, pmIn }))}
+                />
+                <Field
+                  label="PM Out"
+                  type="time"
+                  value={correctionForm.pmOut || ""}
+                  onChange={(pmOut) => setCorrectionForm((current) => ({ ...current, pmOut }))}
+                />
+                <p className="text-xs text-muted-foreground md:col-span-2">
+                  Blank original punches are allowed. Leave a requested field blank only when it
+                  should remain blank.
+                </p>
+              </>
+            ) : (
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>Activity Label</Label>
+                <Input
+                  value={correctionForm.label || ""}
+                  placeholder="Example: Attended Seminar in Pasig City"
+                  onChange={(event) =>
+                    setCorrectionForm((current) => ({ ...current, label: event.target.value }))
+                  }
+                />
+              </div>
+            )}
+            <div className="space-y-1.5 md:col-span-2">
+              <Label>Reason</Label>
+              <Textarea
+                value={correctionForm.reason}
+                onChange={(event) =>
+                  setCorrectionForm((current) => ({ ...current, reason: event.target.value }))
+                }
+                placeholder="Explain why the DTR needs correction"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCorrectionDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={submitCorrection} disabled={busy}>
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(selectedCorrection)}
+        onOpenChange={(open) => !open && setSelectedCorrection(null)}
+      >
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>DTR Correction Audit</DialogTitle>
+          </DialogHeader>
+          {selectedCorrection && (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold">{selectedCorrection.employeeName}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedCorrection.workDate} ·{" "}
+                    {selectedCorrection.requestType === "Label" ? "DTR Label" : "Time Correction"}
+                  </p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={CORRECTION_STATUS_CLASS[selectedCorrection.status]}
+                >
+                  {selectedCorrection.status}
+                </Badge>
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <AuditValues title="Original" values={selectedCorrection.original} />
+                <AuditValues title="Requested" values={selectedCorrection.requested} />
+                <AuditValues title="Applied" values={selectedCorrection.applied} />
+              </div>
+              <div className="rounded-lg border border-border p-3 text-sm">
+                <p>
+                  <span className="font-medium">Employee reason:</span> {selectedCorrection.reason}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Filed by {selectedCorrection.createdByName || "Employee"} on{" "}
+                  {new Date(selectedCorrection.createdAt).toLocaleString()}
+                  {selectedCorrection.requestIp ? ` · IP ${selectedCorrection.requestIp}` : ""}
+                </p>
+                {selectedCorrection.reviewedAt && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Reviewed by {selectedCorrection.reviewedByName} on{" "}
+                    {new Date(selectedCorrection.reviewedAt).toLocaleString()}
+                    {selectedCorrection.reviewIp ? ` · IP ${selectedCorrection.reviewIp}` : ""}
+                  </p>
+                )}
+              </div>
+              {canManage && selectedCorrection.status === "Pending" && (
+                <div className="space-y-2">
+                  <Label>Review Remarks</Label>
+                  <Textarea
+                    value={reviewRemarks}
+                    onChange={(event) => setReviewRemarks(event.target.value)}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="destructive"
+                      onClick={() => decideCorrection("Disapproved")}
+                      disabled={busy}
+                    >
+                      Disapprove
+                    </Button>
+                    <Button onClick={() => decideCorrection("Approved")} disabled={busy}>
+                      Approve and Apply
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {canManage && selectedCorrection.status === "Approved" && (
+                <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50 p-3">
+                  <Label>Reverse Approval</Label>
+                  <Textarea
+                    value={reverseReason}
+                    onChange={(event) => setReverseReason(event.target.value)}
+                    placeholder="Required reason for restoring the previous DTR values"
+                  />
+                  <Button variant="destructive" onClick={reverseCorrection} disabled={busy}>
+                    Reverse and Restore Previous DTR
+                  </Button>
+                </div>
+              )}
+              <div>
+                <h3 className="mb-3 text-sm font-semibold">Immutable Timeline</h3>
+                <div className="space-y-3">
+                  {selectedCorrection.events.map((event) => (
+                    <div key={event.id} className="border-l-2 border-primary/30 pl-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium">{event.eventType}</p>
+                        <time className="text-xs text-muted-foreground">
+                          {new Date(event.createdAt).toLocaleString()}
+                        </time>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {event.actorName}
+                        {event.ipAddress ? ` · IP ${event.ipAddress}` : ""}
+                      </p>
+                      {event.remarks && <p className="mt-1 text-sm">{event.remarks}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AppShell>
+  );
+}
+
+function AuditValues({
+  title,
+  values,
+}: {
+  title: string;
+  values: {
+    amIn?: string;
+    amOut?: string;
+    pmIn?: string;
+    pmOut?: string;
+    label?: string;
+    status?: string;
+    remarks?: string;
+  };
+}) {
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">{title}</h3>
+      {values.label ? (
+        <p className="text-sm font-medium">{values.label}</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <span>
+            AM In: <b>{formatDtrTime(values.amIn)}</b>
+          </span>
+          <span>
+            AM Out: <b>{formatDtrTime(values.amOut)}</b>
+          </span>
+          <span>
+            PM In: <b>{formatDtrTime(values.pmIn)}</b>
+          </span>
+          <span>
+            PM Out: <b>{formatDtrTime(values.pmOut)}</b>
+          </span>
+        </div>
+      )}
+      {values.status && (
+        <p className="mt-2 text-xs text-muted-foreground">Status: {values.status}</p>
+      )}
+    </div>
   );
 }
 

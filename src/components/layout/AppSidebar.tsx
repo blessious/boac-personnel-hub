@@ -5,6 +5,7 @@ import { isSelfServiceRole, useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { getDashboard } from "@/lib/employees-api";
 import { listLeaveApplications } from "@/lib/leave-api";
+import { listDtrCorrectionRequests } from "@/lib/attendance-api";
 import { cn } from "@/lib/utils";
 import { navForRole } from "@/components/layout/navigation";
 
@@ -26,10 +27,16 @@ export function AppSidebar() {
     queryKey: ["leave-notifications", user?.role],
     queryFn: () => listLeaveApplications({ status: "Pending" }),
     enabled: canSeeLeaveNotifications,
-    refetchInterval: 30000,
+  });
+
+  const { data: dtrNotifications } = useQuery({
+    queryKey: ["dtr-correction-notifications", user?.role],
+    queryFn: () => listDtrCorrectionRequests({ status: "Pending" }),
+    enabled: canSeeLeaveNotifications,
   });
 
   const pendingLeaveCount = leaveNotifications?.summary.pending || 0;
+  const pendingDtrCount = dtrNotifications?.requests.length || 0;
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? path === to : path === to || path.startsWith(to + "/");
@@ -137,6 +144,16 @@ export function AppSidebar() {
                     )}
                   >
                     {pendingLeaveCount > 99 ? "99+" : pendingLeaveCount}
+                  </span>
+                )}
+                {item.to === "/attendance" && pendingDtrCount > 0 && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold shrink-0",
+                      collapsed ? "absolute right-2 top-1 h-4 min-w-4 px-1" : "px-2 py-0.5",
+                    )}
+                  >
+                    {pendingDtrCount > 99 ? "99+" : pendingDtrCount}
                   </span>
                 )}
               </Link>

@@ -16,6 +16,7 @@ import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { useDeviceProfile } from "@/hooks/use-mobile";
 import { useSettings } from "@/lib/settings-context";
 import { useEffect } from "react";
+import { RealtimeProvider } from "@/lib/realtime";
 
 import appCss from "../styles.css?url";
 
@@ -96,9 +97,11 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <SettingsProvider>
-          <AppLayout />
-        </SettingsProvider>
+        <RealtimeProvider>
+          <SettingsProvider>
+            <AppLayout />
+          </SettingsProvider>
+        </RealtimeProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

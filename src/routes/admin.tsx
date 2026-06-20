@@ -11,9 +11,11 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Unlock,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useRealtimeRefresh } from "@/lib/realtime";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +56,8 @@ interface AdminUser {
   employeeName: string;
   isActive: boolean;
   mustChangePassword: boolean;
+  failedLoginAttempts: number;
+  lockedAt: string | null;
 }
 
 interface AuditLog {
@@ -200,6 +204,12 @@ function AdminPage() {
     if (activeTab === "errors") loadErrorLogs();
     if (activeTab === "backup") loadBackups();
   }, [activeTab, isAdmin]);
+  useRealtimeRefresh(() => {
+    loadUsers();
+    if (activeTab === "audit") loadAuditLogs();
+    if (activeTab === "errors") loadErrorLogs();
+    if (activeTab === "backup") loadBackups();
+  }, ["admin", "employees"]);
 
   const openAddUser = () => {
     setTemporaryPassword("");
@@ -351,6 +361,20 @@ function AdminPage() {
     }
   };
 
+  const unlockUser = async (item: AdminUser) => {
+    try {
+      await api<{ ok: boolean }>(`/api/admin/users/${item.id}/unlock`, { method: "POST" });
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === item.id ? { ...user, failedLoginAttempts: 0, lockedAt: null } : user,
+        ),
+      );
+      toast.success(`${item.username} unlocked`);
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
+
   const createBackup = async () => {
     setCreatingBackup(true);
     try {
@@ -492,6 +516,14 @@ function AdminPage() {
                             Temp Password
                           </Badge>
                         )}
+                        {item.lockedAt && (
+                          <Badge
+                            variant="outline"
+                            className="bg-rose-50 text-rose-700 border-rose-200"
+                          >
+                            Locked
+                          </Badge>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -510,6 +542,16 @@ function AdminPage() {
                         >
                           <Lock className="h-3.5 w-3.5" />
                         </button>
+                        {item.lockedAt && (
+                          <button
+                            onClick={() => unlockUser(item)}
+                            className="h-7 w-7 grid place-items-center rounded-md hover:bg-emerald-50 text-muted-foreground hover:text-emerald-700 transition-colors"
+                            aria-label="Unlock user"
+                            title="Unlock user"
+                          >
+                            <Unlock className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         <button
                           onClick={() => deleteUser(item)}
                           className="h-7 w-7 grid place-items-center rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"

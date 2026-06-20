@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getDashboard, type DashboardResponse } from "@/lib/employees-api";
 import { EmployeeDashboardHome } from "@/routes/self-service";
+import { useRealtimeRefresh } from "@/lib/realtime";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
@@ -26,29 +27,22 @@ function Dashboard() {
   const [loading, setLoading] = useState(user?.role !== "Employee");
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const load = () => {
     if (user?.role === "Employee") {
       setLoading(false);
       setError("");
       return;
     }
 
-    let alive = true;
     setLoading(true);
     getDashboard()
-      .then((result) => {
-        if (alive) setData(result);
-      })
-      .catch((err) => {
-        if (alive) setError(err.message || "Unable to load dashboard");
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [user?.role]);
+      .then(setData)
+      .catch((err) => setError(err.message || "Unable to load dashboard"))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [user?.role]);
+  useRealtimeRefresh(load, ["employees", "leave", "attendance"]);
 
   if (user?.role === "Employee") {
     return <EmployeeDashboardHome />;
