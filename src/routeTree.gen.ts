@@ -13,6 +13,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SelfServiceRouteImport } from './routes/self-service'
 import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as PlantillaRouteImport } from './routes/plantilla'
 import { Route as MyProfileRouteImport } from './routes/my-profile'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeaveRouteImport } from './routes/leave'
@@ -42,6 +43,11 @@ const RequestsRoute = RequestsRouteImport.update({
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlantillaRoute = PlantillaRouteImport.update({
+  id: '/plantilla',
+  path: '/plantilla',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MyProfileRoute = MyProfileRouteImport.update({
@@ -104,6 +110,7 @@ export interface FileRoutesByFullPath {
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
   '/my-profile': typeof MyProfileRoute
+  '/plantilla': typeof PlantillaRoute
   '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
   '/self-service': typeof SelfServiceRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByTo {
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
   '/my-profile': typeof MyProfileRoute
+  '/plantilla': typeof PlantillaRoute
   '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
   '/self-service': typeof SelfServiceRoute
@@ -137,6 +145,7 @@ export interface FileRoutesById {
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
   '/my-profile': typeof MyProfileRoute
+  '/plantilla': typeof PlantillaRoute
   '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
   '/self-service': typeof SelfServiceRoute
@@ -155,6 +164,7 @@ export interface FileRouteTypes {
     | '/leave'
     | '/login'
     | '/my-profile'
+    | '/plantilla'
     | '/reports'
     | '/requests'
     | '/self-service'
@@ -171,6 +181,7 @@ export interface FileRouteTypes {
     | '/leave'
     | '/login'
     | '/my-profile'
+    | '/plantilla'
     | '/reports'
     | '/requests'
     | '/self-service'
@@ -187,6 +198,7 @@ export interface FileRouteTypes {
     | '/leave'
     | '/login'
     | '/my-profile'
+    | '/plantilla'
     | '/reports'
     | '/requests'
     | '/self-service'
@@ -204,6 +216,7 @@ export interface RootRouteChildren {
   LeaveRoute: typeof LeaveRoute
   LoginRoute: typeof LoginRoute
   MyProfileRoute: typeof MyProfileRoute
+  PlantillaRoute: typeof PlantillaRoute
   ReportsRoute: typeof ReportsRoute
   RequestsRoute: typeof RequestsRoute
   SelfServiceRoute: typeof SelfServiceRoute
@@ -238,6 +251,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/plantilla': {
+      id: '/plantilla'
+      path: '/plantilla'
+      fullPath: '/plantilla'
+      preLoaderRoute: typeof PlantillaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/my-profile': {
@@ -336,6 +356,7 @@ const rootRouteChildren: RootRouteChildren = {
   LeaveRoute: LeaveRoute,
   LoginRoute: LoginRoute,
   MyProfileRoute: MyProfileRoute,
+  PlantillaRoute: PlantillaRoute,
   ReportsRoute: ReportsRoute,
   RequestsRoute: RequestsRoute,
   SelfServiceRoute: SelfServiceRoute,

@@ -176,6 +176,7 @@ function canAccessPath(role: Role, pathname: string, employeeId?: string) {
     if (pathname === "/attendance") return true;
     return Boolean(employeeId && pathname === `/employees/${employeeId}`);
   }
-  if (pathname.startsWith("/admin") || pathname.startsWith("/settings")) return false;
+  if (pathname.startsWith("/admin")) return false;
+  if (pathname.startsWith("/settings")) return role === "HR";
   return role === "HR" || role === "Viewer";
 }

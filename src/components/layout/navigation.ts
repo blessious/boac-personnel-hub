@@ -1,8 +1,9 @@
-import {
+﻿import {
   BarChart3,
   CalendarDays,
   ClipboardCheck,
   LayoutDashboard,
+  Landmark,
   MonitorSmartphone,
   Settings,
   ShieldCheck,
@@ -17,6 +18,7 @@ export type AppNavItem = {
     | "/"
     | "/employees"
     | "/attendance"
+    | "/plantilla"
     | "/leave"
     | "/self-service"
     | "/reports"
@@ -35,6 +37,7 @@ export const APP_NAV: AppNavItem[] = [
   { to: "/my-profile", label: "My Profile", shortLabel: "Profile", icon: UserCircle },
   { to: "/employees", label: "Employee Management", shortLabel: "People", icon: Users },
   { to: "/attendance", label: "Attendance", shortLabel: "DTR", icon: CalendarDays },
+  { to: "/plantilla", label: "Plantilla & PSIPOP", shortLabel: "Plantilla", icon: Landmark },
   { to: "/leave", label: "Leave Management", shortLabel: "Leave", icon: ClipboardCheck },
   {
     to: "/self-service",
@@ -55,7 +58,9 @@ export function navForRole(role: string | undefined) {
     return APP_NAV.filter((item) => !["/admin", ...selfServiceOnly].includes(item.to));
   }
   if (role === "Viewer") {
-    return APP_NAV.filter((item) => ["/", "/employees", "/reports"].includes(item.to));
+    return APP_NAV.filter((item) =>
+      ["/", "/employees", "/plantilla", "/reports"].includes(item.to),
+    );
   }
   if (isSelfServiceRole(role)) {
     return APP_NAV.filter((item) =>

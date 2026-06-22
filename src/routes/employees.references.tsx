@@ -3,6 +3,12 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
+import { ReferenceLibraryPanel } from "@/components/reference/ReferenceLibraryPanel";
+import {
+  REFERENCE_LIBRARY_CONFIG,
+  type ReferenceCategory,
+  type ReferenceRow,
+} from "@/lib/reference-libraries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,10 +39,20 @@ interface SalaryGradeRow {
 }
 
 function EmployeeReferencesPage() {
-  const { can } = useAuth();
+  const { user } = useAuth();
+  const canManage = user?.role === "Admin";
   const [depts, setDepts] = useState<DepartmentRow[]>([]);
   const [pos, setPos] = useState<PositionRow[]>([]);
   const [salaryGrades, setSalaryGrades] = useState<SalaryGradeRow[]>([]);
+  const [referenceLibraries, setReferenceLibraries] = useState<
+    Record<ReferenceCategory, ReferenceRow[]>
+  >(
+    () =>
+      Object.fromEntries(REFERENCE_LIBRARY_CONFIG.map((config) => [config.category, []])) as Record<
+        ReferenceCategory,
+        ReferenceRow[]
+      >,
+  );
   const [newDept, setNewDept] = useState("");
   const [newPos, setNewPos] = useState("");
   const [deptQuery, setDeptQuery] = useState("");
@@ -55,14 +71,18 @@ function EmployeeReferencesPage() {
   const loadReferences = async () => {
     setLoading(true);
     try {
-      const data = await api<{
-        departments: DepartmentRow[];
-        positions: PositionRow[];
-        salaryGrades: SalaryGradeRow[];
-      }>("/api/settings");
+      const [data, references] = await Promise.all([
+        api<{
+          departments: DepartmentRow[];
+          positions: PositionRow[];
+          salaryGrades: SalaryGradeRow[];
+        }>("/api/settings"),
+        api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references"),
+      ]);
       setDepts(data.departments);
       setPos(data.positions);
       setSalaryGrades(data.salaryGrades);
+      setReferenceLibraries(references.libraries);
     } catch (error) {
       toast.error((error as Error).message);
     } finally {
@@ -157,7 +177,7 @@ function EmployeeReferencesPage() {
   return (
     <AppShell
       title="Employee References"
-      subtitle="Manage departments, positions, and salary grades used by employee records"
+      subtitle="Manage the table-driven organization, employment, position, and compensation libraries"
     >
       {loading && (
         <div className="mb-3 text-sm text-muted-foreground">Loading employee references...</div>
@@ -168,6 +188,11 @@ function EmployeeReferencesPage() {
             <TabsTrigger value="departments">Departments</TabsTrigger>
             <TabsTrigger value="positions">Positions</TabsTrigger>
             <TabsTrigger value="salary">Salary Grades</TabsTrigger>
+            {REFERENCE_LIBRARY_CONFIG.map((config) => (
+              <TabsTrigger key={config.category} value={config.category}>
+                {config.plural}
+              </TabsTrigger>
+            ))}
           </TabsList>
         </div>
 
@@ -181,7 +206,7 @@ function EmployeeReferencesPage() {
                   onChange={(e) => setNewDept(e.target.value)}
                 />
                 <Button
-                  disabled={!can("edit") || !newDept.trim()}
+                  disabled={!canManage || !newDept.trim()}
                   onClick={addDepartment}
                   className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
                 >
@@ -205,7 +230,7 @@ function EmployeeReferencesPage() {
                 >
                   <span>{d.name}</span>
                   <button
-                    disabled={!can("delete")}
+                    disabled={!canManage}
                     onClick={() => deleteDepartment(d.id)}
                     className="text-muted-foreground hover:text-destructive disabled:opacity-30"
                   >
@@ -232,7 +257,7 @@ function EmployeeReferencesPage() {
                   onChange={(e) => setNewPos(e.target.value)}
                 />
                 <Button
-                  disabled={!can("edit") || !newPos.trim()}
+                  disabled={!canManage || !newPos.trim()}
                   onClick={addPosition}
                   className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
                 >
@@ -256,7 +281,7 @@ function EmployeeReferencesPage() {
                 >
                   <span>{p.title}</span>
                   <button
-                    disabled={!can("delete")}
+                    disabled={!canManage}
                     onClick={() => deletePosition(p.id)}
                     className="text-muted-foreground hover:text-destructive disabled:opacity-30"
                   >
@@ -302,7 +327,7 @@ function EmployeeReferencesPage() {
                 />
                 <Button
                   disabled={
-                    !can("edit") ||
+                    !canManage ||
                     !newSalaryGrade.ordinance.trim() ||
                     !newSalaryGrade.grade.trim() ||
                     !newSalaryGrade.step.trim() ||
@@ -337,7 +362,7 @@ function EmployeeReferencesPage() {
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         <button
-                          disabled={!can("delete")}
+                          disabled={!canManage}
                           onClick={() => deleteSalaryGrade(s.id)}
                           className="text-muted-foreground hover:text-destructive disabled:opacity-30"
                         >
@@ -351,6 +376,20 @@ function EmployeeReferencesPage() {
             </div>
           </div>
         </TabsContent>
+
+        {REFERENCE_LIBRARY_CONFIG.map((config) => (
+          <TabsContent key={config.category} value={config.category} className="mt-4">
+            <ReferenceLibraryPanel
+              config={config}
+              rows={referenceLibraries[config.category] || []}
+              parentRows={
+                config.parentCategory ? referenceLibraries[config.parentCategory] || [] : []
+              }
+              canManage={canManage}
+              onChanged={loadReferences}
+            />
+          </TabsContent>
+        ))}
       </Tabs>
     </AppShell>
   );

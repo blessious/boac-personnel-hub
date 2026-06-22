@@ -7,6 +7,7 @@ import { createReadStream, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import mysql from "mysql2/promise";
+import { initializePlantillaSchema, createPlantillaHandlers } from "./plantilla.mjs";
 
 function loadServerEnv() {
   const candidates = [".env.local", ".env"];
@@ -90,6 +91,17 @@ const BIOMETRIC_PYTHON_EXE =
 const BIOMETRIC_SYNC_LOG_LIMIT = 200;
 
 const ROLES = ["Admin", "HR", "Employee", "Viewer"];
+const REFERENCE_LIBRARY_TYPES = {
+  sectors: { label: "Sector" },
+  offices: { label: "Office", parentCategory: "sectors" },
+  divisions: { label: "Division", parentCategory: "offices" },
+  sections: { label: "Section / Unit", parentCategory: "divisions" },
+  eligibilities: { label: "Eligibility" },
+  "employment-statuses": { label: "Employment Status" },
+  "job-levels": { label: "Job Level" },
+  "plantilla-types": { label: "Plantilla Classification" },
+  "budget-codes": { label: "Budget Code" },
+};
 const DEFAULT_AGENCY = {
   name: "STRH - HRIS",
   tagline: "DOH Southern Tagalog Regional Hospital",
@@ -1777,6 +1789,29 @@ async function initializeDatabase() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS hr_reference_values (
+      id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      category VARCHAR(50) NOT NULL,
+      code VARCHAR(80) NOT NULL,
+      name VARCHAR(200) NOT NULL,
+      description TEXT NULL,
+      parent_id INT UNSIGNED NULL,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      effective_from DATE NULL,
+      effective_to DATE NULL,
+      sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_hr_reference_category_code (category, code),
+      UNIQUE KEY uniq_hr_reference_category_name (category, name),
+      INDEX idx_hr_reference_category_active (category, is_active, sort_order),
+      INDEX idx_hr_reference_parent_id (parent_id),
+      CONSTRAINT fk_hr_reference_parent_id FOREIGN KEY (parent_id)
+        REFERENCES hr_reference_values(id) ON DELETE RESTRICT
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS employees (
       id CHAR(36) NOT NULL PRIMARY KEY,
       employee_no VARCHAR(80) NOT NULL UNIQUE,
@@ -1845,6 +1880,8 @@ async function initializeDatabase() {
     "fk_users_employee_id",
     "FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL",
   );
+
+  await initializePlantillaSchema(pool, employeeIdDefinition);
 
   for (const { table, single } of Object.values(EMPLOYEE_SECTION_TABLES)) {
     await pool.query(`
@@ -6982,6 +7019,255 @@ async function handleDeleteSalaryGrade(req, res, id) {
   return json(res, 200, { ok: true });
 }
 
+function getReferenceLibraryType(category) {
+  return REFERENCE_LIBRARY_TYPES[category] || null;
+}
+
+function referenceValueResponse(row) {
+  return {
+    id: row.id,
+    category: row.category,
+    code: row.code,
+    name: row.name,
+    description: row.description || "",
+    parentId: row.parent_id || null,
+    parentName: row.parent_name || "",
+    isActive: Boolean(row.is_active),
+    effectiveFrom: normalizeDate(row.effective_from),
+    effectiveTo: normalizeDate(row.effective_to),
+    sortOrder: Number(row.sort_order || 0),
+  };
+}
+
+async function readReferenceValue(id, category = "") {
+  const params = { id };
+  const categorySql = category ? "AND r.category = :category" : "";
+  if (category) params.category = category;
+  const [rows] = await pool.execute(
+    `SELECT r.*, p.name AS parent_name
+     FROM hr_reference_values r
+     LEFT JOIN hr_reference_values p ON p.id = r.parent_id
+     WHERE r.id = :id ${categorySql}
+     LIMIT 1`,
+    params,
+  );
+  return rows[0] ? referenceValueResponse(rows[0]) : null;
+}
+
+async function handleListReferenceValues(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (!["Admin", "HR", "Viewer"].includes(user.role)) {
+    return json(res, 403, { error: "Employee reference access required" });
+  }
+  const [rows] = await pool.query(
+    `SELECT r.*, p.name AS parent_name
+     FROM hr_reference_values r
+     LEFT JOIN hr_reference_values p ON p.id = r.parent_id
+     ORDER BY r.category ASC, r.sort_order ASC, r.name ASC`,
+  );
+  const libraries = Object.fromEntries(
+    Object.keys(REFERENCE_LIBRARY_TYPES).map((category) => [category, []]),
+  );
+  for (const row of rows) {
+    if (libraries[row.category]) libraries[row.category].push(referenceValueResponse(row));
+  }
+  return json(res, 200, { libraries });
+}
+
+async function validateReferenceParent(
+  category,
+  parentId,
+  { existingParentId = null, childIsActive = true } = {},
+) {
+  const config = getReferenceLibraryType(category);
+  if (!config?.parentCategory) {
+    if (parentId) throw new Error(`${config?.label || "This reference"} cannot have a parent`);
+    return null;
+  }
+  const parentLabel = REFERENCE_LIBRARY_TYPES[config.parentCategory].label;
+  if (!parentId) throw new Error(`${parentLabel} is required`);
+  const [rows] = await pool.execute(
+    `SELECT id, is_active FROM hr_reference_values
+     WHERE id = :parentId AND category = :parentCategory
+     LIMIT 1`,
+    { parentId, parentCategory: config.parentCategory },
+  );
+  if (!rows[0]) throw new Error(`Select a valid ${parentLabel}`);
+  if (!rows[0].is_active && (childIsActive || Number(existingParentId) !== Number(parentId))) {
+    throw new Error(`Select an active ${parentLabel}`);
+  }
+  return Number(parentId);
+}
+
+function parseReferenceDate(value, label) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const date = String(value).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error(`${label} must use YYYY-MM-DD format`);
+  }
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    throw new Error(`${label} must be a valid date`);
+  }
+  return date;
+}
+
+function referencePayload(body) {
+  const code = String(body.code || "")
+    .trim()
+    .toUpperCase();
+  const name = String(body.name || "").trim();
+  if (code.length > 80) throw new Error("Code cannot exceed 80 characters");
+  if (name.length > 200) throw new Error("Name cannot exceed 200 characters");
+
+  const effectiveFrom = parseReferenceDate(body.effectiveFrom, "Effective-from date");
+  const effectiveTo = parseReferenceDate(body.effectiveTo, "Effective-to date");
+  if (effectiveFrom && effectiveTo && effectiveTo < effectiveFrom) {
+    throw new Error("Effective-to date cannot be earlier than effective-from date");
+  }
+
+  const sortOrder = Number(body.sortOrder || 0);
+  if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 4294967295) {
+    throw new Error("Sort order must be a non-negative whole number");
+  }
+
+  const hasParentId =
+    body.parentId !== null && body.parentId !== undefined && String(body.parentId).trim() !== "";
+  const parentId = hasParentId ? Number(body.parentId) : null;
+  if (hasParentId && (!Number.isInteger(parentId) || parentId <= 0)) {
+    throw new Error("Parent ID must be a positive whole number");
+  }
+
+  if (body.isActive !== undefined && typeof body.isActive !== "boolean") {
+    throw new Error("Active status must be true or false");
+  }
+
+  return {
+    code,
+    name,
+    description: String(body.description || "").trim() || null,
+    parentId,
+    isActive: body.isActive === undefined || body.isActive ? 1 : 0,
+    effectiveFrom,
+    effectiveTo,
+    sortOrder,
+  };
+}
+
+function referenceMutationError(res, error, label) {
+  if (error?.code === "ER_DUP_ENTRY") {
+    return json(res, 409, { error: `${label} code or name already exists` });
+  }
+  if (error?.code === "ER_ROW_IS_REFERENCED_2") {
+    return json(res, 409, {
+      error: `${label} is in use and cannot be deleted; deactivate it instead`,
+    });
+  }
+  if (error instanceof Error && !error.code) return json(res, 400, { error: error.message });
+  throw error;
+}
+
+async function handleCreateReferenceValue(req, res, category) {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const config = getReferenceLibraryType(category);
+  if (!config) return json(res, 404, { error: "Reference library not found" });
+  try {
+    const payload = referencePayload(await readBody(req));
+    if (!payload.code || !payload.name) {
+      return json(res, 400, { error: `${config.label} code and name are required` });
+    }
+    payload.parentId = await validateReferenceParent(category, payload.parentId, {
+      childIsActive: Boolean(payload.isActive),
+    });
+    const [result] = await pool.execute(
+      `INSERT INTO hr_reference_values (
+         category, code, name, description, parent_id, is_active,
+         effective_from, effective_to, sort_order
+       ) VALUES (
+         :category, :code, :name, :description, :parentId, :isActive,
+         :effectiveFrom, :effectiveTo, :sortOrder
+       )`,
+      { category, ...payload },
+    );
+    const value = await readReferenceValue(result.insertId, category);
+    await logAudit(
+      admin.id,
+      "config.reference_create",
+      { category, id: result.insertId, code: payload.code },
+      req,
+    );
+    return json(res, 201, { value });
+  } catch (error) {
+    return referenceMutationError(res, error, config.label);
+  }
+}
+
+async function handleUpdateReferenceValue(req, res, category, id) {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const config = getReferenceLibraryType(category);
+  if (!config) return json(res, 404, { error: "Reference library not found" });
+  const existing = await readReferenceValue(id, category);
+  if (!existing) return json(res, 404, { error: `${config.label} not found` });
+  try {
+    const payload = referencePayload(await readBody(req));
+    if (!payload.code || !payload.name) {
+      return json(res, 400, { error: `${config.label} code and name are required` });
+    }
+    payload.parentId = await validateReferenceParent(category, payload.parentId, {
+      existingParentId: existing.parentId,
+      childIsActive: Boolean(payload.isActive),
+    });
+    if (existing.isActive && !payload.isActive) {
+      const [[children]] = await pool.execute(
+        `SELECT COUNT(*) AS count FROM hr_reference_values
+         WHERE parent_id = :id AND is_active = 1`,
+        { id },
+      );
+      if (Number(children.count) > 0) {
+        return json(res, 409, {
+          error: `${config.label} has ${Number(children.count)} active child record(s); deactivate or reassign them first`,
+        });
+      }
+    }
+    await pool.execute(
+      `UPDATE hr_reference_values
+       SET code = :code, name = :name, description = :description,
+           parent_id = :parentId, is_active = :isActive,
+           effective_from = :effectiveFrom, effective_to = :effectiveTo,
+           sort_order = :sortOrder
+       WHERE id = :id AND category = :category`,
+      { id, category, ...payload },
+    );
+    const value = await readReferenceValue(id, category);
+    await logAudit(admin.id, "config.reference_update", { category, id, code: payload.code }, req);
+    return json(res, 200, { value });
+  } catch (error) {
+    return referenceMutationError(res, error, config.label);
+  }
+}
+
+async function handleDeleteReferenceValue(req, res, category, id) {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const config = getReferenceLibraryType(category);
+  if (!config) return json(res, 404, { error: "Reference library not found" });
+  const existing = await readReferenceValue(id, category);
+  if (!existing) return json(res, 404, { error: `${config.label} not found` });
+  try {
+    await pool.execute(`DELETE FROM hr_reference_values WHERE id = :id AND category = :category`, {
+      id,
+      category,
+    });
+    await logAudit(admin.id, "config.reference_delete", { category, id, code: existing.code }, req);
+    return json(res, 200, { ok: true });
+  } catch (error) {
+    return referenceMutationError(res, error, config.label);
+  }
+}
+
 async function handleListAuditLogs(req, res) {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
@@ -7073,7 +7359,11 @@ async function handleCreateBackup(req, res) {
     "departments",
     "positions",
     "salary_grades",
+    "hr_reference_values",
     "employees",
+    "plantilla_items",
+    "plantilla_occupancies",
+    "plantilla_item_history",
     ...Object.values(EMPLOYEE_SECTION_TABLES).map((config) => config.table),
     "leave_types",
     "leave_balances",
@@ -7165,6 +7455,15 @@ async function logServerError(req, error) {
   }
 }
 
+const plantillaHandlers = createPlantillaHandlers({
+  pool,
+  requireEmployeeRead,
+  requireEmployeeWrite,
+  readBody,
+  json,
+  logAudit,
+});
+
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (req.method === "GET" && url.pathname === "/api/realtime/events")
@@ -7228,7 +7527,13 @@ async function route(req, res) {
   const departmentMatch = url.pathname.match(/^\/api\/settings\/departments\/(\d+)$/);
   const positionMatch = url.pathname.match(/^\/api\/settings\/positions\/(\d+)$/);
   const salaryGradeMatch = url.pathname.match(/^\/api\/settings\/salary-grades\/(\d+)$/);
+  const referenceValueMatch = url.pathname.match(/^\/api\/settings\/references\/([a-z-]+)\/(\d+)$/);
+  const referenceCollectionMatch = url.pathname.match(/^\/api\/settings\/references\/([a-z-]+)$/);
   const notificationReadMatch = url.pathname.match(/^\/api\/notifications\/([A-Za-z0-9-]+)\/read$/);
+  const plantillaItemMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)$/);
+  const plantillaAssignMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)\/assign$/);
+  const plantillaVacateMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)\/vacate$/);
+  const plantillaHistoryMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)\/history$/);
 
   if (isAdmsIclock) return handleAdmsIclock(req, res, url);
 
@@ -7414,6 +7719,27 @@ async function route(req, res) {
   if (req.method === "GET" && url.pathname === "/api/attendance/export/mass")
     return handleExportDtr(req, res, url, true);
 
+  if (req.method === "GET" && url.pathname === "/api/plantilla")
+    return plantillaHandlers.list(req, res, url);
+  if (req.method === "POST" && url.pathname === "/api/plantilla")
+    return plantillaHandlers.create(req, res);
+  if (req.method === "PATCH" && plantillaItemMatch)
+    return plantillaHandlers.update(req, res, plantillaItemMatch[1]);
+  if (req.method === "POST" && plantillaAssignMatch)
+    return plantillaHandlers.assign(req, res, plantillaAssignMatch[1]);
+  if (req.method === "POST" && plantillaVacateMatch)
+    return plantillaHandlers.vacate(req, res, plantillaVacateMatch[1]);
+  if (req.method === "GET" && plantillaHistoryMatch)
+    return plantillaHandlers.history(req, res, plantillaHistoryMatch[1]);
+
+  if (req.method === "GET" && url.pathname === "/api/settings/references")
+    return handleListReferenceValues(req, res);
+  if (req.method === "POST" && referenceCollectionMatch)
+    return handleCreateReferenceValue(req, res, referenceCollectionMatch[1]);
+  if ((req.method === "PUT" || req.method === "PATCH") && referenceValueMatch)
+    return handleUpdateReferenceValue(req, res, referenceValueMatch[1], referenceValueMatch[2]);
+  if (req.method === "DELETE" && referenceValueMatch)
+    return handleDeleteReferenceValue(req, res, referenceValueMatch[1], referenceValueMatch[2]);
   if (req.method === "GET" && url.pathname === "/api/settings") return handleGetConfig(req, res);
   if (req.method === "PUT" && url.pathname === "/api/settings/agency")
     return handleUpdateAgency(req, res);
