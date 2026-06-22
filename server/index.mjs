@@ -9,6 +9,7 @@ import path from "node:path";
 import mysql from "mysql2/promise";
 import { initializePlantillaSchema, createPlantillaHandlers } from "./plantilla.mjs";
 import { initializeMovementSchema, createMovementHandlers } from "./movements.mjs";
+import { initializeServiceRecordSchema, createServiceRecordHandlers } from "./service-records.mjs";
 
 function loadServerEnv() {
   const candidates = [".env.local", ".env"];
@@ -64,6 +65,7 @@ const PDS_TEMPLATE_XLSX = path.join(
   "Personal Data Sheet.xlsx",
 );
 const PDS_EXCEL_SCRIPT = path.join(process.cwd(), "server", "pds_excel.py");
+const SERVICE_RECORD_EXPORT_SCRIPT = path.join(process.cwd(), "server", "service_record_export.py");
 const BIOMETRIC_FETCH_SCRIPT = path.join(process.cwd(), "server", "fetch_biometric.py");
 const ADMS_PORT = Number(process.env.HRIS_ADMS_PORT || 6000);
 const LIBREOFFICE_EXE =
@@ -1884,6 +1886,7 @@ async function initializeDatabase() {
 
   await initializePlantillaSchema(pool, employeeIdDefinition);
   await initializeMovementSchema(pool, employeeIdDefinition);
+  await initializeServiceRecordSchema(pool, employeeIdDefinition);
 
   for (const { table, single } of Object.values(EMPLOYEE_SECTION_TABLES)) {
     await pool.query(`
@@ -7368,6 +7371,7 @@ async function handleCreateBackup(req, res) {
     "plantilla_item_history",
     "personnel_movements",
     "personnel_movement_events",
+    "service_record_entries",
     ...Object.values(EMPLOYEE_SECTION_TABLES).map((config) => config.table),
     "leave_types",
     "leave_balances",
@@ -7461,6 +7465,7 @@ async function logServerError(req, error) {
 
 let movementHandlers;
 let plantillaHandlers;
+let serviceRecordHandlers;
 
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -7528,6 +7533,16 @@ async function route(req, res) {
   const referenceValueMatch = url.pathname.match(/^\/api\/settings\/references\/([a-z-]+)\/(\d+)$/);
   const referenceCollectionMatch = url.pathname.match(/^\/api\/settings\/references\/([a-z-]+)$/);
   const notificationReadMatch = url.pathname.match(/^\/api\/notifications\/([A-Za-z0-9-]+)\/read$/);
+  const serviceRecordEmployeeMatch = url.pathname.match(
+    /^\/api\/service-records\/([A-Za-z0-9-]+)$/,
+  );
+  const serviceRecordEntryMatch = url.pathname.match(
+    /^\/api\/service-records\/entries\/([A-Za-z0-9-]+)$/,
+  );
+  const serviceRecordExportMatch = url.pathname.match(
+    /^\/api\/service-records\/([A-Za-z0-9-]+)\/export\/(xlsx|pdf)$/,
+  );
+  const serviceRecordFileMatch = url.pathname.match(/^\/api\/service-records\/files\/([^/]+)$/);
   const movementMatch = url.pathname.match(/^\/api\/movements\/([A-Za-z0-9-]+)$/);
   const movementEventsMatch = url.pathname.match(/^\/api\/movements\/([A-Za-z0-9-]+)\/events$/);
   const movementActionMatch = url.pathname.match(
@@ -7722,6 +7737,24 @@ async function route(req, res) {
   if (req.method === "GET" && url.pathname === "/api/attendance/export/mass")
     return handleExportDtr(req, res, url, true);
 
+  if (req.method === "GET" && serviceRecordFileMatch)
+    return serviceRecordHandlers.file(req, res, serviceRecordFileMatch[1]);
+  if (req.method === "GET" && serviceRecordEmployeeMatch)
+    return serviceRecordHandlers.list(req, res, serviceRecordEmployeeMatch[1]);
+  if (req.method === "POST" && serviceRecordEmployeeMatch)
+    return serviceRecordHandlers.create(req, res, serviceRecordEmployeeMatch[1]);
+  if (req.method === "PATCH" && serviceRecordEntryMatch)
+    return serviceRecordHandlers.update(req, res, serviceRecordEntryMatch[1]);
+  if (req.method === "DELETE" && serviceRecordEntryMatch)
+    return serviceRecordHandlers.remove(req, res, serviceRecordEntryMatch[1]);
+  if (req.method === "POST" && serviceRecordExportMatch)
+    return serviceRecordHandlers.export(
+      req,
+      res,
+      serviceRecordExportMatch[1],
+      serviceRecordExportMatch[2],
+    );
+
   if (req.method === "GET" && url.pathname === "/api/movements")
     return movementHandlers.list(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/movements")
@@ -7774,6 +7807,18 @@ async function route(req, res) {
 }
 
 await initializeDatabase();
+serviceRecordHandlers = createServiceRecordHandlers({
+  pool,
+  requireUser,
+  requireEmployeeWrite,
+  readBody,
+  json,
+  logAudit,
+  runPython,
+  previewDir: PREVIEW_DIR,
+  exportScript: SERVICE_RECORD_EXPORT_SCRIPT,
+  sendFile,
+});
 movementHandlers = createMovementHandlers({
   pool,
   requireEmployeeRead,

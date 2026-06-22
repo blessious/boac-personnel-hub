@@ -74,7 +74,7 @@ Government forms not yet supplied by STRH are deliberately classified as **Await
 | B07 | Compatibility with Windows Server 2019+ and/or open-source OS | Awaiting STRH | The Node application is potentially portable, while several export/device paths are Windows-oriented. No deployment certification exists. | Select the production OS and run installation, service, export, backup, and device-integration tests. |
 | B08 | Backward compatibility with legacy browsers/OS | Not implemented | The modern React/Vite stack is not intended for Internet Explorer or unspecified legacy browsers. | Ask STRH to replace this with an explicit supported-browser matrix or fund a separate compatibility solution. |
 | B09 | Library of authorized signatories for approvals | Partial | DTR noters and user roles exist, but a general effective-dated signatory/approval-routing library was not found. | Add configurable signatories by transaction, office, effective dates, sequence, and delegation. |
-| B10 | User-defined report templates, content, style, and output | Not implemented | `src/routes/reports.tsx` is a “Coming soon” catalog. | Build standard reports first, then add saved filters/templates and controlled export formats. |
+| B10 | User-defined report templates, content, style, and output | Not implemented | `src/routes/reports.tsx` is a â€œComing soonâ€ catalog. | Build standard reports first, then add saved filters/templates and controlled export formats. |
 | B11 | Policy changes configurable without source-code modification | Partial | Leave types/metadata, reference tables, schedules, and agency settings are configurable; many business rules remain coded. | Move approved rules, thresholds, leave accruals, workflows, and signatories into versioned configuration tables. |
 | B12 | Configurable access down to activity/action | Partial | Roles are Admin, HR, Employee, and Viewer with route/handler checks; fine-grained permissions are absent. | Add permission keys, role-permission mapping, optional user overrides, and deny-by-default enforcement in UI and API. |
 | B13 | Employee can extract own information | Partial | Employees can access profiles, leave data, DTR-related data, PDS export, and requests. A complete personal-data export is absent. | Add an authorized personal data package/export and audit every extraction. |
@@ -98,7 +98,7 @@ Government forms not yet supplied by STRH are deliberately classified as **Await
 | C12 | Appointment, assignment, designation, separation, qualification standard, and salary-action records | Partial | Structured personnel actions, approval lifecycle, authority data, document references, posting, and reversal are implemented; qualification evaluation and direct attachment upload remain. | Add approved attachment storage and qualification-standard checks after STRH supplies rules. |
 | C13 | Original appointment, promotion, transfer, renewal, reassignment, detail, job rotation, reclassification, step increment, resignation, retirement, termination, death, etc. | Implemented | TOR action types have snapshots, authority, effectivity, document references, review/approval/posting, audit events, conflict detection, and controlled reversal. | Complete UAT and confirm action-specific rules and separation of duties with STRH. |
 | C14 | Employee profile charts and statistics | Partial | Dashboard metrics exist, but detailed authorized HR profiles/statistics are incomplete. | Add drill-down statistics using validated dimensions and privacy-aware filters. |
-| C15 | Service record, COE, personnel statistics, plantilla, master list, salary/step/loyalty reports | Not implemented | Report cards exist, but generation actions are “Coming soon.” | Implement database-backed standard reports after reference, plantilla, and movement data are reliable. |
+| C15 | Service record, COE, personnel statistics, plantilla, master list, salary/step/loyalty reports | Partial | Service Record generation now combines posted movements, preserved legacy rows, controlled manual periods, overlap validation, and generic Excel/PDF exports. Other standard reports and the STRH-approved Service Record template remain pending. | Obtain the official STRH template, complete mapping/UAT, then implement the remaining prioritized reports. |
 | C16 | Payroll notification for step increment/loyalty actions | Not implemented | General notifications exist, but no personnel-action-to-payroll workflow was found. | Add configurable recipient roles/users and acknowledgement tracking when approved actions affect pay. |
 
 ## D. Attendance and Leave Credits
@@ -114,7 +114,7 @@ Government forms not yet supplied by STRH are deliberately classified as **Await
 | D07 | Automatic leave-credit accrual under defined policies | Not implemented | Manual adjustments and balances exist; no scheduled accrual engine was found. | Add versioned accrual policies, scheduled posting, preview, approval, ledger entries, and rerun protection. |
 | D08 | Low/critical leave-balance warning | Not implemented | No configurable threshold notification path was found. | Add threshold rules, recipient configuration, notification deduplication, and acknowledgement. |
 | D09 | Leave adjustments/manual editing | Implemented | Leave adjustments and ledger entries are available to authorized users. | Validate reason requirements, supporting documents, permissions, and reversal policy. |
-| D10 | Online/offline leave applications | Partial | Online employee and HR filing exists. A controlled offline capture/import workflow is not separately defined. | Confirm whether HR encoding on behalf of an employee satisfies “offline”; otherwise add signed-document capture and source tracking. |
+| D10 | Online/offline leave applications | Partial | Online employee and HR filing exists. A controlled offline capture/import workflow is not separately defined. | Confirm whether HR encoding on behalf of an employee satisfies â€œofflineâ€; otherwise add signed-document capture and source tracking. |
 | D11 | Multi-step leave recommendation, certification, and final action | Partial | Recommendation/final-action fields exist, but a complete configurable multi-level workflow and independent certification records are not evident. | Finalize routing, separation of duties, signatories, delegation, credit certification snapshot, and final approval rules. |
 | D12 | DTR/leave/tardiness/absence/overtime and other attendance reports | Partial | DTR exports exist; the broader report center is not functional. | Implement prioritized attendance and leave reports with filters, totals, drill-down, Excel/PDF, and audit. |
 | D13 | Payroll deduction support for LWOP, tardiness, and undertime | Partial | DTR stores tardiness and undertime and leave supports LWOP; no payroll integration or approved deduction export was found. | Define payroll interface, cutoff/locking, correction handling, and reconciliation with STRH. |
@@ -123,18 +123,18 @@ Government forms not yet supplied by STRH are deliberately classified as **Await
 
 | ID | TOR requirement | Status | Current evidence / finding | Required action / acceptance criterion |
 |---|---|---|---|---|
-| E01 | Secure employee login and role-defined access | Implemented | Authenticated employee routes, sessions, server authorization, and employee-to-record linking exist. | UAT privacy isolation so employees cannot access another employee’s records. |
+| E01 | Secure employee login and role-defined access | Implemented | Authenticated employee routes, sessions, server authorization, and employee-to-record linking exist. | UAT privacy isolation so employees cannot access another employeeâ€™s records. |
 | E02 | Leave application and history | Implemented | Employees can submit leave and view balances/application history. | Complete the validated multi-level workflow and exception rules. |
 | E03 | Employee profile, work profile, training, and related records | Partial | Self-service exposes profile and record summaries; editable scope and disciplinary-record visibility require final policy. | Define which fields employees may edit, propose for correction, view only, or never view. |
 | E04 | View/print DTR, leave credits, leave records, and related information | Partial | DTR/leave access and exports exist across attendance/profile/self-service paths; consolidate the employee experience and validate print permissions. | Add a clear self-service records/download center with audit entries. |
 | E05 | DTR correction requests | Implemented | Employee submission, HR review, approval/disapproval, event history, and reversal exist. | Validate lock/conflict and notification behavior in UAT. |
-| E06 | CTO, OB pass, schedule adjustment, certificate, and other HR requests | Not implemented | Self-service cards exist, but certificate and schedule actions call “Coming soon”; CTO/OB workflows were not found. | Build a generic request framework or separate workflows using configurable types, fields, approvers, status, attachments, and audit. |
+| E06 | CTO, OB pass, schedule adjustment, certificate, and other HR requests | Not implemented | Self-service cards exist, but certificate and schedule actions call â€œComing soonâ€; CTO/OB workflows were not found. | Build a generic request framework or separate workflows using configurable types, fields, approvers, status, attachments, and audit. |
 | E07 | Multi-level online approvals by immediate superior | Partial | Leave/DTR decisions exist, but a general organizational supervisor hierarchy and configurable multi-level routing are absent. | Add supervisor assignments, approval stages, delegation, escalation, and signatory configuration. |
 | E08 | News, policy, and announcements page management | Not implemented | No announcement/news publishing module was found. | Add draft/publish/archive, audience, schedule, attachment, priority, acknowledgement, and audit capabilities. |
 | E09 | Unlimited users with different functionalities | Partial | Admin user management exists. Functionalities are limited to four fixed roles rather than configurable permissions. | Retain scalable user creation and add action-level permission configuration. |
 | E10 | Lock account after three unsuccessful logins | Implemented | `MAX_FAILED_LOGIN_ATTEMPTS = 3`, account locking, session invalidation, and admin unlock are implemented. | UAT counting, lock messages, unlock, audit records, and simultaneous sessions. |
 | E11 | Administrator-configurable session timeout | Partial | Server sessions expire after a fixed eight hours (`SESSION_HOURS = 8`). No administrator setting was found. | Store timeout policy in settings and safely apply it to new/active sessions. |
-| E12 | Change/forgot password facility | Partial | Password change, temporary passwords, forced change, and reset by admin exist. A user-driven “forgot password” recovery flow was not found. | STRH must select secure recovery: HR/admin reset, verified email OTP/link, or another approved method. |
+| E12 | Change/forgot password facility | Partial | Password change, temporary passwords, forced change, and reset by admin exist. A user-driven â€œforgot passwordâ€ recovery flow was not found. | STRH must select secure recovery: HR/admin reset, verified email OTP/link, or another approved method. |
 
 ## F. Security, Audit, Backup, and Data Management
 
@@ -176,7 +176,7 @@ These decisions should be recorded during requirements validation before the aff
 
 1. **Technology stack acceptance:** Confirm whether the current React/Node/MySQL implementation satisfies the TOR or requires a formal deviation/approval.
 2. **Supported environment:** Identify production Windows/Linux version, database version, domain, SSL owner, reverse proxy, network zones, storage, and backup destination.
-3. **Browser support:** Replace “latest and old browsers/Internet Explorer” with a testable supported-browser/version matrix.
+3. **Browser support:** Replace â€œlatest and old browsers/Internet Explorerâ€ with a testable supported-browser/version matrix.
 4. **Organizational hierarchy:** Provide the official sector, office, division, section/unit structure, codes, and effective dates.
 5. **Plantilla source:** Provide current PSIPOP/plantilla data, item-number rules, funding/budget codes, vacancy definitions, and sample historical changes.
 6. **Personnel-action workflow:** Define preparer, reviewer, recommender, approving authority, posting rules, allowed reversals, and required supporting documents.
@@ -225,7 +225,7 @@ Build authorized position items, item numbers, position/salary/funding/assignmen
 
 Build the TOR action types with preparation, review, approval, posting, attachments, old/new snapshots, notifications, and controlled reversal.
 
-**Completion criterion:** An approved action updates the employee’s current profile and Plantilla occupancy atomically while preserving immutable before/after history and audit records.
+**Completion criterion:** An approved action updates the employeeâ€™s current profile and Plantilla occupancy atomically while preserving immutable before/after history and audit records.
 
 ### Phase 4 - Administrative and Disciplinary Cases
 
@@ -247,7 +247,7 @@ Begin **Phase 1 - Reference Libraries** only after STRH validates the hierarchy 
 4. Server-side validation and referential integrity
 5. Permission and audit events for every library change
 6. Mapping plan for current free-text employee data
-7. Seed/import worksheet for STRH’s official values
+7. Seed/import worksheet for STRHâ€™s official values
 8. Acceptance checklist for HR and IT reviewers
 
 Plantilla and personnel movement development should start immediately after these libraries pass validation because both modules depend on them.

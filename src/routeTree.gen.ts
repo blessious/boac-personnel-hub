@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ServiceRecordsRouteImport } from './routes/service-records'
 import { Route as SelfServiceRouteImport } from './routes/self-service'
 import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ReportsRouteImport } from './routes/reports'
@@ -29,6 +30,11 @@ import { Route as EmployeesIdRouteImport } from './routes/employees.$id'
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServiceRecordsRoute = ServiceRecordsRouteImport.update({
+  id: '/service-records',
+  path: '/service-records',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SelfServiceRoute = SelfServiceRouteImport.update({
@@ -121,6 +127,7 @@ export interface FileRoutesByFullPath {
   '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
   '/self-service': typeof SelfServiceRoute
+  '/service-records': typeof ServiceRecordsRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
   '/employees/references': typeof EmployeesReferencesRoute
@@ -139,6 +146,7 @@ export interface FileRoutesByTo {
   '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
   '/self-service': typeof SelfServiceRoute
+  '/service-records': typeof ServiceRecordsRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
   '/employees/references': typeof EmployeesReferencesRoute
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
   '/self-service': typeof SelfServiceRoute
+  '/service-records': typeof ServiceRecordsRoute
   '/settings': typeof SettingsRoute
   '/employees/$id': typeof EmployeesIdRoute
   '/employees/references': typeof EmployeesReferencesRoute
@@ -178,6 +187,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/requests'
     | '/self-service'
+    | '/service-records'
     | '/settings'
     | '/employees/$id'
     | '/employees/references'
@@ -196,6 +206,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/requests'
     | '/self-service'
+    | '/service-records'
     | '/settings'
     | '/employees/$id'
     | '/employees/references'
@@ -214,6 +225,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/requests'
     | '/self-service'
+    | '/service-records'
     | '/settings'
     | '/employees/$id'
     | '/employees/references'
@@ -233,6 +245,7 @@ export interface RootRouteChildren {
   ReportsRoute: typeof ReportsRoute
   RequestsRoute: typeof RequestsRoute
   SelfServiceRoute: typeof SelfServiceRoute
+  ServiceRecordsRoute: typeof ServiceRecordsRoute
   SettingsRoute: typeof SettingsRoute
 }
 
@@ -243,6 +256,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/service-records': {
+      id: '/service-records'
+      path: '/service-records'
+      fullPath: '/service-records'
+      preLoaderRoute: typeof ServiceRecordsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/self-service': {
@@ -381,6 +401,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReportsRoute: ReportsRoute,
   RequestsRoute: RequestsRoute,
   SelfServiceRoute: SelfServiceRoute,
+  ServiceRecordsRoute: ServiceRecordsRoute,
   SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport
