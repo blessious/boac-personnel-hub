@@ -1,4 +1,5 @@
 ﻿import {
+  ArrowRightLeft,
   BarChart3,
   CalendarDays,
   ClipboardCheck,
@@ -19,6 +20,7 @@ export type AppNavItem = {
     | "/employees"
     | "/attendance"
     | "/plantilla"
+    | "/movements"
     | "/leave"
     | "/self-service"
     | "/reports"
@@ -38,6 +40,7 @@ export const APP_NAV: AppNavItem[] = [
   { to: "/employees", label: "Employee Management", shortLabel: "People", icon: Users },
   { to: "/attendance", label: "Attendance", shortLabel: "DTR", icon: CalendarDays },
   { to: "/plantilla", label: "Plantilla & PSIPOP", shortLabel: "Plantilla", icon: Landmark },
+  { to: "/movements", label: "Employee Movements", shortLabel: "Movements", icon: ArrowRightLeft },
   { to: "/leave", label: "Leave Management", shortLabel: "Leave", icon: ClipboardCheck },
   {
     to: "/self-service",
@@ -59,7 +62,7 @@ export function navForRole(role: string | undefined) {
   }
   if (role === "Viewer") {
     return APP_NAV.filter((item) =>
-      ["/", "/employees", "/plantilla", "/reports"].includes(item.to),
+      ["/", "/employees", "/plantilla", "/movements", "/reports"].includes(item.to),
     );
   }
   if (isSelfServiceRole(role)) {

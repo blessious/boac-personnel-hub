@@ -8,6 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import mysql from "mysql2/promise";
 import { initializePlantillaSchema, createPlantillaHandlers } from "./plantilla.mjs";
+import { initializeMovementSchema, createMovementHandlers } from "./movements.mjs";
 
 function loadServerEnv() {
   const candidates = [".env.local", ".env"];
@@ -1882,6 +1883,7 @@ async function initializeDatabase() {
   );
 
   await initializePlantillaSchema(pool, employeeIdDefinition);
+  await initializeMovementSchema(pool, employeeIdDefinition);
 
   for (const { table, single } of Object.values(EMPLOYEE_SECTION_TABLES)) {
     await pool.query(`
@@ -7364,6 +7366,8 @@ async function handleCreateBackup(req, res) {
     "plantilla_items",
     "plantilla_occupancies",
     "plantilla_item_history",
+    "personnel_movements",
+    "personnel_movement_events",
     ...Object.values(EMPLOYEE_SECTION_TABLES).map((config) => config.table),
     "leave_types",
     "leave_balances",
@@ -7455,14 +7459,8 @@ async function logServerError(req, error) {
   }
 }
 
-const plantillaHandlers = createPlantillaHandlers({
-  pool,
-  requireEmployeeRead,
-  requireEmployeeWrite,
-  readBody,
-  json,
-  logAudit,
-});
+let movementHandlers;
+let plantillaHandlers;
 
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -7530,6 +7528,11 @@ async function route(req, res) {
   const referenceValueMatch = url.pathname.match(/^\/api\/settings\/references\/([a-z-]+)\/(\d+)$/);
   const referenceCollectionMatch = url.pathname.match(/^\/api\/settings\/references\/([a-z-]+)$/);
   const notificationReadMatch = url.pathname.match(/^\/api\/notifications\/([A-Za-z0-9-]+)\/read$/);
+  const movementMatch = url.pathname.match(/^\/api\/movements\/([A-Za-z0-9-]+)$/);
+  const movementEventsMatch = url.pathname.match(/^\/api\/movements\/([A-Za-z0-9-]+)\/events$/);
+  const movementActionMatch = url.pathname.match(
+    /^\/api\/movements\/([A-Za-z0-9-]+)\/(submit|review|approve|reject|post|reverse)$/,
+  );
   const plantillaItemMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)$/);
   const plantillaAssignMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)\/assign$/);
   const plantillaVacateMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)\/vacate$/);
@@ -7719,6 +7722,17 @@ async function route(req, res) {
   if (req.method === "GET" && url.pathname === "/api/attendance/export/mass")
     return handleExportDtr(req, res, url, true);
 
+  if (req.method === "GET" && url.pathname === "/api/movements")
+    return movementHandlers.list(req, res, url);
+  if (req.method === "POST" && url.pathname === "/api/movements")
+    return movementHandlers.create(req, res);
+  if (req.method === "PATCH" && movementMatch)
+    return movementHandlers.update(req, res, movementMatch[1]);
+  if (req.method === "GET" && movementEventsMatch)
+    return movementHandlers.events(req, res, movementEventsMatch[1]);
+  if (req.method === "POST" && movementActionMatch)
+    return movementHandlers.transition(req, res, movementActionMatch[1], movementActionMatch[2]);
+
   if (req.method === "GET" && url.pathname === "/api/plantilla")
     return plantillaHandlers.list(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/plantilla")
@@ -7760,6 +7774,23 @@ async function route(req, res) {
 }
 
 await initializeDatabase();
+movementHandlers = createMovementHandlers({
+  pool,
+  requireEmployeeRead,
+  requireEmployeeWrite,
+  requireAdmin,
+  readBody,
+  json,
+  logAudit,
+});
+plantillaHandlers = createPlantillaHandlers({
+  pool,
+  requireEmployeeRead,
+  requireEmployeeWrite,
+  readBody,
+  json,
+  logAudit,
+});
 await cleanupPreviewFiles().catch(() => {});
 await cleanupNotifications().catch(() => {});
 setInterval(() => cleanupPreviewFiles().catch(() => {}), 10 * 60 * 1000).unref();

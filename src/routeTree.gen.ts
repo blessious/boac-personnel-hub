@@ -15,6 +15,7 @@ import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as PlantillaRouteImport } from './routes/plantilla'
 import { Route as MyProfileRouteImport } from './routes/my-profile'
+import { Route as MovementsRouteImport } from './routes/movements'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeaveRouteImport } from './routes/leave'
 import { Route as EmployeesRouteImport } from './routes/employees'
@@ -53,6 +54,11 @@ const PlantillaRoute = PlantillaRouteImport.update({
 const MyProfileRoute = MyProfileRouteImport.update({
   id: '/my-profile',
   path: '/my-profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MovementsRoute = MovementsRouteImport.update({
+  id: '/movements',
+  path: '/movements',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
+  '/movements': typeof MovementsRoute
   '/my-profile': typeof MyProfileRoute
   '/plantilla': typeof PlantillaRoute
   '/reports': typeof ReportsRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByTo {
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
+  '/movements': typeof MovementsRoute
   '/my-profile': typeof MyProfileRoute
   '/plantilla': typeof PlantillaRoute
   '/reports': typeof ReportsRoute
@@ -144,6 +152,7 @@ export interface FileRoutesById {
   '/employees': typeof EmployeesRouteWithChildren
   '/leave': typeof LeaveRoute
   '/login': typeof LoginRoute
+  '/movements': typeof MovementsRoute
   '/my-profile': typeof MyProfileRoute
   '/plantilla': typeof PlantillaRoute
   '/reports': typeof ReportsRoute
@@ -163,6 +172,7 @@ export interface FileRouteTypes {
     | '/employees'
     | '/leave'
     | '/login'
+    | '/movements'
     | '/my-profile'
     | '/plantilla'
     | '/reports'
@@ -180,6 +190,7 @@ export interface FileRouteTypes {
     | '/employees'
     | '/leave'
     | '/login'
+    | '/movements'
     | '/my-profile'
     | '/plantilla'
     | '/reports'
@@ -197,6 +208,7 @@ export interface FileRouteTypes {
     | '/employees'
     | '/leave'
     | '/login'
+    | '/movements'
     | '/my-profile'
     | '/plantilla'
     | '/reports'
@@ -215,6 +227,7 @@ export interface RootRouteChildren {
   EmployeesRoute: typeof EmployeesRouteWithChildren
   LeaveRoute: typeof LeaveRoute
   LoginRoute: typeof LoginRoute
+  MovementsRoute: typeof MovementsRoute
   MyProfileRoute: typeof MyProfileRoute
   PlantillaRoute: typeof PlantillaRoute
   ReportsRoute: typeof ReportsRoute
@@ -265,6 +278,13 @@ declare module '@tanstack/react-router' {
       path: '/my-profile'
       fullPath: '/my-profile'
       preLoaderRoute: typeof MyProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/movements': {
+      id: '/movements'
+      path: '/movements'
+      fullPath: '/movements'
+      preLoaderRoute: typeof MovementsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -355,6 +375,7 @@ const rootRouteChildren: RootRouteChildren = {
   EmployeesRoute: EmployeesRouteWithChildren,
   LeaveRoute: LeaveRoute,
   LoginRoute: LoginRoute,
+  MovementsRoute: MovementsRoute,
   MyProfileRoute: MyProfileRoute,
   PlantillaRoute: PlantillaRoute,
   ReportsRoute: ReportsRoute,
