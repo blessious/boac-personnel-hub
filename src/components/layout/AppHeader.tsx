@@ -194,17 +194,6 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                 })}
               </nav>
               <div className="border-t border-sidebar-border/50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-                {user && (
-                  <div className="mb-3 rounded-2xl bg-muted/40 px-3 py-2.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Logged in as
-                    </div>
-                    <div className="break-words text-sm font-semibold text-sidebar-foreground">
-                      {user.name}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground">{user.role}</div>
-                  </div>
-                )}
                 <button
                   onClick={handleLogout}
                   className="group flex min-h-11 w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-destructive/10 hover:text-destructive"
