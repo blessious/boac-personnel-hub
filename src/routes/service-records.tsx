@@ -138,7 +138,7 @@ function ServiceRecordsPage() {
   return (
     <AppShell
       title="Service Records"
-      subtitle="Movement-derived service history, controlled legacy encoding, and generic exports"
+      subtitle="Movement-derived service history, controlled legacy encoding, and HRIS-generated exports"
     >
       <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
         <aside className="rounded-lg border bg-card p-3">

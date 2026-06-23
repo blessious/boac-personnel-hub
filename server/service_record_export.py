@@ -42,7 +42,7 @@ def xlsx(data,out):
     widths=[12,12,25,25,18,15,7,7,14,12,12,12]
     for c,w in enumerate(widths,1): ws.column_dimensions[get_column_letter(c)].width=w
     ws.freeze_panes="A9"; ws.auto_filter.ref=f"A8:L{max(8,8+len(data.get('records',[])))}"; ws.print_title_rows="1:8"; ws.page_setup.orientation="landscape"; ws.page_setup.fitToWidth=1; ws.sheet_properties.pageSetUpPr.fitToPage=True
-    note_row=10+len(data.get("records",[])); ws.merge_cells(start_row=note_row,start_column=1,end_row=note_row,end_column=12); ws.cell(note_row,1,"This generic export is for data validation. Use the STRH-approved template when supplied.").font=Font(italic=True,size=8,color="666666")
+    note_row=10+len(data.get("records",[])); ws.merge_cells(start_row=note_row,start_column=1,end_row=note_row,end_column=12); ws.cell(note_row,1,"Generated through STRH HRIS based on encoded employee service record data.").font=Font(italic=True,size=8,color="666666")
     wb.save(out)
 
 def pdf(data,out):
@@ -56,7 +56,7 @@ def pdf(data,out):
     for r in data.get("records",[]):
         sal=money(r.get("annualSalary")); rows.append([txt(r.get("serviceFrom")),txt(r.get("serviceTo") or "Present"),Paragraph(txt(r.get("positionTitle")),small),Paragraph(txt(r.get("department")),small),Paragraph(txt(r.get("appointmentStatus")),small),f"{sal:,.2f}" if sal is not None else "",f"{txt(r.get('salaryGrade'))}/{txt(r.get('salaryStep'))}".strip("/"),txt(r.get("itemNumber")),txt(r.get("leaveWithoutPay")),txt(r.get("source"))])
     table=Table(rows,repeatRows=1,colWidths=[18*mm,18*mm,43*mm,43*mm,31*mm,25*mm,14*mm,23*mm,18*mm,18*mm])
-    table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#17365D")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("FONT",(0,0),(-1,0),"Helvetica-Bold",6.5),("FONT",(0,1),(-1,-1),"Helvetica",6.5),("GRID",(0,0),(-1,-1),0.25,colors.HexColor("#B7C9D6")),("VALIGN",(0,0),(-1,-1),"TOP"),("ALIGN",(0,0),(1,-1),"CENTER"),("ALIGN",(5,1),(7,-1),"RIGHT"),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F5F9FC")]),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]));story.append(table);story+=[Spacer(1,3*mm),Paragraph("This generic export is for data validation. Use the STRH-approved template when supplied.",notice)]
+    table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#17365D")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("FONT",(0,0),(-1,0),"Helvetica-Bold",6.5),("FONT",(0,1),(-1,-1),"Helvetica",6.5),("GRID",(0,0),(-1,-1),0.25,colors.HexColor("#B7C9D6")),("VALIGN",(0,0),(-1,-1),"TOP"),("ALIGN",(0,0),(1,-1),"CENTER"),("ALIGN",(5,1),(7,-1),"RIGHT"),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F5F9FC")]),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]));story.append(table);story+=[Spacer(1,3*mm),Paragraph("Generated through STRH HRIS based on encoded employee service record data.",notice)]
     def footer(canvas,doc): canvas.saveState();canvas.setFont("Helvetica",7);canvas.setFillColor(colors.grey);canvas.drawRightString(287*mm,5*mm,f"Page {doc.page}");canvas.restoreState()
     doc.build(story,onFirstPage=footer,onLaterPages=footer)
 
