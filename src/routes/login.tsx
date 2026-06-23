@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router"
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ShieldCheck, Loader2, User, Lock } from "lucide-react";
+import { ShieldCheck, Loader2, User, Lock, Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -30,6 +30,7 @@ function LoginPage() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (user) navigate({ to: "/" });
@@ -135,7 +136,8 @@ function LoginPage() {
               <span className="text-white">Human Resources</span>
             </h1>
             <p className="mt-6 text-lg sm:text-xl text-white/80 max-w-lg font-light leading-relaxed text-pretty">
-              A secure and efficient platform for managing employee records, attendance, and personnel information in support of modern government HR administration.
+              A secure and efficient platform for managing employee records, attendance, and
+              personnel information in support of modern government HR administration.
             </p>
           </div>
         </div>
@@ -209,12 +211,21 @@ function LoginPage() {
                   </div>
                   <Input
                     id="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
                     placeholder="••••••••"
-                    className="h-12 pl-10 bg-card border-border/60 rounded-xl focus-visible:ring-1 focus-visible:ring-[#0033a0] focus-visible:border-[#0033a0] transition-colors shadow-sm text-sm"
+                    className="h-12 pl-10 pr-12 bg-card border-border/60 rounded-xl focus-visible:ring-1 focus-visible:ring-[#0033a0] focus-visible:border-[#0033a0] transition-colors shadow-sm text-sm"
                     {...form.register("password")}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((value) => !value)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-muted-foreground/70 transition-colors hover:text-foreground focus:outline-none focus-visible:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
                 {form.formState.errors.password && (
                   <p className="text-xs font-medium text-destructive mt-1">

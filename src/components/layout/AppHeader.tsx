@@ -51,6 +51,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
   const path = useRouterState({ select: (s) => s.location.pathname });
 
   const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", photoUrl: "" });
   const canSeeLeaveNotifications = user?.role === "Admin" || user?.role === "HR";
   const { connected, notifications, unreadCount, markRead, markAllRead } = useRealtime();
@@ -113,7 +114,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
     <>
       <header className="mobile-app-header flex h-16 items-center justify-between gap-3 border-b border-border/50 bg-background/90 px-3 backdrop-blur-md md:px-6">
         <div className="flex items-center gap-3 min-w-0">
-          <Sheet>
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
               <Button
                 variant="ghost"
@@ -166,6 +167,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                     <Link
                       key={item.to}
                       to={item.to}
+                      onClick={() => setMobileMenuOpen(false)}
                       className={cn(
                         "group flex min-h-12 items-center gap-3 rounded-2xl px-3.5 py-3 text-[14px] font-medium transition-all duration-200",
                         active

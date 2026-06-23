@@ -1,4 +1,4 @@
-﻿import {
+import {
   ArrowRightLeft,
   BarChart3,
   CalendarDays,
@@ -79,13 +79,5 @@ export function navForRole(role: string | undefined) {
 }
 
 export function mobileTabsForRole(role: string | undefined) {
-  const nav = navForRole(role);
-  const preferred = isSelfServiceRole(role)
-    ? ["/", "/my-profile", "/attendance", "/requests", "/self-service"]
-    : ["/", "/employees", "/attendance", "/leave", "/reports"];
-
-  return preferred
-    .map((to) => nav.find((item) => item.to === to))
-    .filter((item): item is AppNavItem => Boolean(item))
-    .slice(0, 5);
+  return navForRole(role).slice(0, 5);
 }
