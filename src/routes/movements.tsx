@@ -1,4 +1,4 @@
-﻿import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRightLeft,
@@ -237,7 +237,143 @@ function MovementsPage() {
           </Button>
         )}
       </div>
-      <div className="mt-4 overflow-x-auto rounded-lg border">
+      <div className="mobile-record-list mt-4 md:hidden">
+        {movements.map((m) => (
+          <article className="mobile-record-card" key={m.id}>
+            <div className="mobile-record-card__header">
+              <div>
+                <div className="mobile-record-card__title">{m.controlNumber}</div>
+                <div className="mobile-record-card__meta">
+                  {m.employeeName} - {m.employeeNo}
+                </div>
+              </div>
+              <Status value={m.status} />
+            </div>
+            <div className="mobile-record-card__grid">
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">Action</span>
+                <span className="mobile-record-card__value">{m.actionType}</span>
+              </div>
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">Effectivity</span>
+                <span className="mobile-record-card__value">
+                  {m.effectiveDate}
+                  {m.endDate ? ` to ${m.endDate}` : ""}
+                </span>
+              </div>
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">Authority</span>
+                <span className="mobile-record-card__value">{m.authorityNumber || "-"}</span>
+              </div>
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">Target</span>
+                <span className="mobile-record-card__value">
+                  {m.targetItemNumber ||
+                    m.targetPositionTitle ||
+                    (m.targetSalaryGrade
+                      ? `SG ${m.targetSalaryGrade.grade}, Step ${m.targetSalaryGrade.step}`
+                      : "-")}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-1">
+              <Button size="icon" variant="ghost" title="History" onClick={() => showEvents(m)}>
+                <History className="h-4 w-4" />
+              </Button>
+              {canPrepare && ["Draft", "Rejected"].includes(m.status) && (
+                <Button size="icon" variant="ghost" title="Edit" onClick={() => openForm(m)}>
+                  <ArrowRightLeft className="h-4 w-4" />
+                </Button>
+              )}
+              {canPrepare && m.status === "Draft" && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Submit"
+                  onClick={() => runAction(m, "submit")}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              )}
+              {isAdmin && m.status === "Submitted" && (
+                <>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Review"
+                    onClick={() => runAction(m, "review")}
+                  >
+                    <Clock3 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Reject"
+                    onClick={() => setDecision({ movement: m, action: "reject" })}
+                  >
+                    <XCircle className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+              {isAdmin && m.status === "Reviewed" && (
+                <>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Approve"
+                    onClick={() => runAction(m, "approve")}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Reject"
+                    onClick={() => setDecision({ movement: m, action: "reject" })}
+                  >
+                    <XCircle className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+              {isAdmin && m.status === "Approved" && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDecision({ movement: m, action: "post" })}
+                  >
+                    Post
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Reject"
+                    onClick={() => setDecision({ movement: m, action: "reject" })}
+                  >
+                    <XCircle className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+              {isAdmin && m.status === "Posted" && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Reverse"
+                  onClick={() => setDecision({ movement: m, action: "reverse" })}
+                >
+                  <Undo2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </article>
+        ))}
+        {!movements.length && (
+          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+            No personnel movements found.
+          </div>
+        )}
+      </div>
+      <div className="mobile-desktop-table mt-4 overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left">
             <tr>
@@ -281,7 +417,7 @@ function MovementsPage() {
                     m.targetPositionTitle ||
                     (m.targetSalaryGrade
                       ? `SG ${m.targetSalaryGrade.grade}, Step ${m.targetSalaryGrade.step}`
-                      : "—")}
+                      : "-")}
                 </td>
                 <td className="p-3">
                   <Status value={m.status} />
@@ -410,7 +546,7 @@ function MovementsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {titleCase(decision?.action || "")} movement — {decision?.movement.controlNumber}
+              {titleCase(decision?.action || "")} movement - {decision?.movement.controlNumber}
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
@@ -447,16 +583,16 @@ function MovementsPage() {
       <Dialog open={!!eventMovement} onOpenChange={(o) => !o && setEventMovement(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Action history — {eventMovement?.controlNumber}</DialogTitle>
+            <DialogTitle>Action history - {eventMovement?.controlNumber}</DialogTitle>
           </DialogHeader>
           <div className="max-h-[60vh] space-y-2 overflow-y-auto">
             {events.map((e) => (
               <div className="rounded border p-3" key={e.id}>
                 <div className="font-medium">
-                  {e.eventType}: {e.fromStatus || "New"} → {e.toStatus}
+                  {e.eventType}: {e.fromStatus || "New"} to {e.toStatus}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {new Date(e.createdAt).toLocaleString()} · {e.actor}
+                  {new Date(e.createdAt).toLocaleString()} - {e.actor}
                 </div>
                 {e.remarks && <p className="mt-1 text-sm">{e.remarks}</p>}
               </div>
@@ -564,7 +700,7 @@ function MovementDialog({
               set={(v) => setForm({ ...form, targetPlantillaItemId: v })}
               rows={items
                 .filter((i) => !i.occupant)
-                .map((i) => [i.id, `${i.itemNumber} — ${i.positionTitle}`])}
+                .map((i) => [i.id, `${i.itemNumber} - ${i.positionTitle}`])}
             />
           )}{" "}
           {needsPosition && (
@@ -582,7 +718,7 @@ function MovementDialog({
               set={(v) => setForm({ ...form, targetSalaryGradeId: v })}
               rows={settings.salaryGrades.map((s) => [
                 String(s.id),
-                `SG ${s.grade}, Step ${s.step} — ₱${s.amount.toLocaleString()}`,
+                `SG ${s.grade}, Step ${s.step} - PHP ${s.amount.toLocaleString()}`,
               ])}
             />
           )}{" "}
@@ -647,7 +783,7 @@ function SelectField({
   return (
     <Field label={label}>
       <select className={selectClass} value={value} onChange={(e) => set(e.target.value)}>
-        <option value="">Select…</option>
+        <option value="">Select...</option>
         {rows.map(([id, name]) => (
           <option value={id} key={id}>
             {name}

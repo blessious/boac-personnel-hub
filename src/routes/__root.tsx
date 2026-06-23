@@ -139,6 +139,23 @@ function AppLayout() {
     document.body.dataset.device = deviceProfile.device;
     document.body.dataset.touch = String(deviceProfile.isTouch);
   }, [deviceProfile.device, deviceProfile.isTouch]);
+  useEffect(() => {
+    const payload = {
+      path: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+      title: document.title,
+      referrer: document.referrer || "direct",
+      userAgent: navigator.userAgent,
+      at: new Date().toISOString(),
+    };
+    console.info("[visit]", payload);
+    fetch("/api/visit-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      keepalive: true,
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  }, [location.pathname, location.search, location.hash]);
 
   if ((!user && !isLoginPage) || !authorized) return null;
 

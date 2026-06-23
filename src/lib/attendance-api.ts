@@ -1,4 +1,4 @@
-﻿import { api } from "@/lib/api";
+import { api } from "@/lib/api";
 
 export type DtrEntry = {
   id: string;
@@ -483,6 +483,27 @@ export async function generateDtrPdf(payload: {
   );
 }
 
+
+export async function generateMassDtrPdf(payload: {
+  office: string;
+  employeeType: "all" | "regular" | "jobOrder";
+  noterSignatory: string;
+  noterPosition: string;
+  firstMonth: number;
+  firstYear: number;
+  firstCut: "full" | "first" | "last";
+  secondMonth?: number;
+  secondYear?: number;
+  secondCut?: "full" | "first" | "last";
+}) {
+  return api<{ fileName: string; previewUrl: string; employeeCount: number; rowCount: number }>(
+    "/api/attendance/dtr/mass/pdf",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
 export function openGeneratedFile(url: string) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
@@ -522,3 +543,4 @@ export async function downloadDtrCsv(params: {
   anchor.click();
   URL.revokeObjectURL(url);
 }
+

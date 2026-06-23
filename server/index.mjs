@@ -1,4 +1,4 @@
-﻿import http from "node:http";
+import http from "node:http";
 import crypto from "node:crypto";
 import net from "node:net";
 import { spawn } from "node:child_process";
@@ -52,6 +52,7 @@ const PREVIEW_DIR = path.join(EXPORT_DIR, "previews");
 const TEMPLATE_DIR = path.join(process.cwd(), "server", "templates");
 const DTR_TEMPLATE_XLSX = path.join(TEMPLATE_DIR, "format.xlsx");
 const DTR_EXCEL_SCRIPT = path.join(process.cwd(), "server", "dtr_excel.py");
+const PDF_MERGE_SCRIPT = path.join(process.cwd(), "server", "merge_pdfs.py");
 const DTR_PARSE_SCRIPT = path.join(process.cwd(), "server", "dtr_parse.py");
 const LEAVE_FORM6_TEMPLATE_XLSX = path.join(
   process.cwd(),
@@ -1319,6 +1320,25 @@ function readBody(req) {
     });
     req.on("error", reject);
   });
+}
+
+async function handleVisitLog(req, res) {
+  const body = await readBody(req).catch(() => ({}));
+  const forwardedFor = req.headers["x-forwarded-for"];
+  const ip =
+    String(Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor || "")
+      .split(",")[0]
+      .trim() ||
+    req.socket.remoteAddress ||
+    "unknown";
+  console.info("[visit]", {
+    at: new Date().toISOString(),
+    ip,
+    path: body.path || "unknown",
+    referrer: body.referrer || "direct",
+    userAgent: body.userAgent || req.headers["user-agent"] || "unknown",
+  });
+  return json(res, 200, { ok: true });
 }
 
 function readRawBody(req) {
@@ -5510,6 +5530,172 @@ async function handleGenerateDtrPdf(req, res) {
   });
 }
 
+async function handleGenerateMassDtrPdf(req, res) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  if (user.role === "Employee") {
+    return json(res, 403, { error: "Mass DTR PDF requires HR access" });
+  }
+
+  const body = await readBody(req);
+  const office = String(body.office || body.department || "").trim();
+  const employeeType = String(body.employeeType || "all");
+  if (!office) return json(res, 400, { error: "Office is required" });
+
+  const periods = dtrExportPeriodsFromBody(body);
+  let ranges;
+  let bounds;
+  try {
+    ranges = periods.map(monthPeriodBounds);
+    bounds = {
+      from: ranges.map((range) => range.from).sort()[0],
+      to: ranges
+        .map((range) => range.to)
+        .sort()
+        .at(-1),
+    };
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+
+  const where = ["department = :office", "emp_status = 'Active'"];
+  const params = { office };
+  if (employeeType === "regular") where.push("regular = 1");
+  if (employeeType === "jobOrder") where.push("regular = 0");
+
+  const [employeeRows] = await pool.execute(
+    `SELECT * FROM employees
+     WHERE ${where.join(" AND ")}
+     ORDER BY lastname ASC, firstname ASC, employee_no ASC`,
+    params,
+  );
+  if (!employeeRows.length) {
+    return json(res, 404, { error: "No employees found for the selected criteria" });
+  }
+
+  await cleanupPreviewFiles().catch(() => {});
+  await fs.mkdir(PREVIEW_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safeOffice = office.replace(/[^A-Za-z0-9_-]+/g, "-");
+  const fileName = `mass-dtr-${safeOffice}-${stamp}.pdf`;
+  const outputPath = path.join(PREVIEW_DIR, fileName);
+  const individualPaths = [];
+  let rowCount = 0;
+
+  try {
+    for (const employeeRowData of employeeRows) {
+      const employee = employeeRow(employeeRowData);
+      const rows = await readAttendanceRows({
+        employeeId: employee.id,
+        from: bounds.from,
+        to: bounds.to,
+        limit: 1000,
+      });
+      rowCount += rows.length;
+      const employeeName = [employee.firstname, employee.middlename, employee.lastname, employee.nameExt]
+        .filter(Boolean)
+        .join(" ");
+      const payload = {
+        employee: {
+          id: employee.id,
+          name: employeeName,
+          position: employee.position,
+          department: employee.department,
+          signatory: employee.dtrSignatory || employeeName,
+          scheduleAmIn: employee.scheduleAmIn,
+          scheduleAmOut: employee.scheduleAmOut,
+          schedulePmIn: employee.schedulePmIn,
+          schedulePmOut: employee.schedulePmOut,
+        },
+        noter: {
+          signatory: String(
+            body.noterSignatory ||
+              body.noter_signatory ||
+              employee.dtrSignatory ||
+              employee.lastname ||
+              "",
+          ).trim(),
+          position: String(body.noterPosition || body.noter_position || "Immediate Supervisor").trim(),
+        },
+        periods: periods.map((period, index) => ({
+          ...ranges[index],
+          month: period.month ? Number(period.month) : undefined,
+          year: period.year ? Number(period.year) : undefined,
+          cut: period.cut ? String(period.cut) : undefined,
+        })),
+        entries: rows,
+      };
+
+      const employeeSafeName = `${employee.lastname || "employee"}-${employee.firstname || employee.id}`
+        .replace(/[^A-Za-z0-9_-]+/g, "-")
+        .slice(0, 80);
+      const individualPdfPath = path.join(
+        PREVIEW_DIR,
+        `mass-dtr-part-${employeeSafeName}-${crypto.randomUUID()}.pdf`,
+      );
+      const individualJsonPath = `${individualPdfPath}.json`;
+      const individualWorkbookPath = individualPdfPath.replace(/\.pdf$/i, ".xlsx");
+      await fs.writeFile(individualJsonPath, JSON.stringify(payload), "utf8");
+      try {
+        await runPython([DTR_EXCEL_SCRIPT, individualJsonPath, individualWorkbookPath, DTR_TEMPLATE_XLSX]);
+        const convertedPath = await convertSpreadsheetToPdf(individualWorkbookPath);
+        if (path.resolve(convertedPath) !== path.resolve(individualPdfPath)) {
+          await fs.rename(convertedPath, individualPdfPath);
+        }
+      } finally {
+        await fs.rm(individualJsonPath, { force: true }).catch(() => {});
+        await fs.rm(individualWorkbookPath, { force: true }).catch(() => {});
+      }
+      individualPaths.push(individualPdfPath);
+    }
+
+    await runPython([PDF_MERGE_SCRIPT, outputPath, ...individualPaths]);
+  } catch (error) {
+    await fs.rm(outputPath, { force: true }).catch(() => {});
+    return json(res, 500, { error: error.message });
+  } finally {
+    await Promise.all(individualPaths.map((filePath) => fs.rm(filePath, { force: true }).catch(() => {})));
+  }
+
+  await pool.execute(
+    `INSERT INTO dtr_export_jobs (id, scope, employee_id, period_from, period_to, file_name, row_count, created_by)
+     VALUES (:id, 'Mass', NULL, :from, :to, :fileName, :rowCount, :createdBy)`,
+    {
+      id: crypto.randomUUID(),
+      from: bounds.from,
+      to: bounds.to,
+      fileName,
+      rowCount,
+      createdBy: user.id,
+    },
+  );
+
+  return json(res, 200, {
+    fileName,
+    previewUrl: `/api/attendance/dtr/mass/pdf/${encodeURIComponent(fileName)}`,
+    employeeCount: employeeRows.length,
+    rowCount,
+  });
+}
+
+async function handlePreviewMassDtrPdf(req, res, fileName) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  const decoded = decodeURIComponent(fileName);
+  if (!/^mass-dtr-[A-Za-z0-9_.-]+\.pdf$/.test(decoded)) {
+    return json(res, 400, { error: "Invalid mass DTR PDF file name" });
+  }
+  const resolved = path.resolve(PREVIEW_DIR, decoded);
+  if (!resolved.startsWith(path.resolve(PREVIEW_DIR))) {
+    return json(res, 400, { error: "Invalid mass DTR PDF path" });
+  }
+  try {
+    await fs.access(resolved);
+  } catch {
+    return json(res, 404, { error: "Mass DTR PDF file not found" });
+  }
+  return sendInlinePdfAndDelete(res, resolved, decoded);
+}
 async function handlePreviewDtrPdf(req, res, fileName) {
   const user = await requireAttendanceRead(req, res);
   if (!user) return;
@@ -8004,6 +8190,7 @@ async function route(req, res) {
   );
   const dtrExcelMatch = url.pathname.match(/^\/api\/attendance\/dtr\/excel\/([^/]+)$/);
   const dtrPdfMatch = url.pathname.match(/^\/api\/attendance\/dtr\/pdf\/([^/]+)$/);
+  const dtrMassPdfMatch = url.pathname.match(/^\/api\/attendance\/dtr\/mass\/pdf\/([^/]+)$/);
   const dtrNoterMatch = url.pathname.match(/^\/api\/attendance\/noters\/(\d+)$/);
   const biometricDeviceMatch = url.pathname.match(/^\/api\/attendance\/biometrics\/(\d+)$/);
   const isAdmsIclock = url.pathname === "/iclock/cdata" || url.pathname === "/iclock/getrequest";
@@ -8040,6 +8227,9 @@ async function route(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/health") {
     return json(res, 200, { ok: true, database: DB_NAME });
+  }
+  if (req.method === "POST" && url.pathname === "/api/visit-log") {
+    return handleVisitLog(req, res);
   }
 
   if (req.method === "GET" && url.pathname === "/api/dashboard") return handleDashboard(req, res);
@@ -8214,6 +8404,10 @@ async function route(req, res) {
     return handleDownloadDtrExcel(req, res, dtrExcelMatch[1]);
   if (req.method === "POST" && url.pathname === "/api/attendance/dtr/pdf")
     return handleGenerateDtrPdf(req, res);
+  if (req.method === "POST" && url.pathname === "/api/attendance/dtr/mass/pdf")
+    return handleGenerateMassDtrPdf(req, res);
+  if (req.method === "GET" && dtrMassPdfMatch)
+    return handlePreviewMassDtrPdf(req, res, dtrMassPdfMatch[1]);
   if (req.method === "GET" && dtrPdfMatch) return handlePreviewDtrPdf(req, res, dtrPdfMatch[1]);
   if (req.method === "GET" && url.pathname === "/api/attendance/export")
     return handleExportDtr(req, res, url, false);
@@ -8387,3 +8581,5 @@ if (ADMS_PORT && ADMS_PORT !== PORT) {
     addBiometricSyncLog("info", `ADMS live receiver listening on port ${ADMS_PORT}`);
   });
 }
+
+

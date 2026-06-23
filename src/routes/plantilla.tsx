@@ -1,4 +1,4 @@
-﻿import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BriefcaseBusiness, History, Plus, Search, UserMinus, UserPlus } from "lucide-react";
 import { toast } from "sonner";
@@ -256,7 +256,83 @@ function PlantillaPage() {
           </Button>
         )}
       </div>
-      <div className="mt-4 overflow-x-auto rounded-lg border">
+      <div className="mobile-record-list mt-4 md:hidden">
+        {items.map((i) => (
+          <article className="mobile-record-card" key={i.id}>
+            <div className="mobile-record-card__header">
+              <div>
+                <div className="mobile-record-card__title">{i.itemNumber}</div>
+                <div className="mobile-record-card__meta">
+                  {i.positionTitle} -{" "}
+                  {i.salaryGrade
+                    ? `SG ${i.salaryGrade.grade}, Step ${i.salaryGrade.step}`
+                    : "No salary grade"}
+                </div>
+              </div>
+              <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs font-medium">
+                {i.itemStatus}
+              </span>
+            </div>
+            <div className="mobile-record-card__grid">
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">Occupancy</span>
+                <span className="mobile-record-card__value">
+                  {i.occupant ? i.occupant.employeeName : "Vacant"}
+                </span>
+              </div>
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">Employee no.</span>
+                <span className="mobile-record-card__value">{i.occupant?.employeeNo || "-"}</span>
+              </div>
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">Organization</span>
+                <span className="mobile-record-card__value">
+                  {[i.sectorName, i.officeName, i.divisionName, i.sectionName]
+                    .filter(Boolean)
+                    .join(" / ") || "-"}
+                </span>
+              </div>
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">Class / fund</span>
+                <span className="mobile-record-card__value">
+                  {[i.plantillaTypeName, i.budgetCodeName].filter(Boolean).join(" / ") || "-"}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-1">
+              <Button size="icon" variant="ghost" title="History" onClick={() => showHistory(i)}>
+                <History className="h-4 w-4" />
+              </Button>
+              {canManage && (
+                <>
+                  <Button size="icon" variant="ghost" title="Edit" onClick={() => openEdit(i)}>
+                    <BriefcaseBusiness className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title={i.occupant ? "Vacate" : "Assign"}
+                    disabled={i.itemStatus !== "Active"}
+                    onClick={() => setAction({ kind: i.occupant ? "vacate" : "assign", item: i })}
+                  >
+                    {i.occupant ? (
+                      <UserMinus className="h-4 w-4" />
+                    ) : (
+                      <UserPlus className="h-4 w-4" />
+                    )}
+                  </Button>
+                </>
+              )}
+            </div>
+          </article>
+        ))}
+        {!items.length && (
+          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+            No plantilla items found.
+          </div>
+        )}
+      </div>
+      <div className="mobile-desktop-table mt-4 overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left">
             <tr>
@@ -290,10 +366,10 @@ function PlantillaPage() {
                 <td className="p-3">
                   {[i.sectorName, i.officeName, i.divisionName, i.sectionName]
                     .filter(Boolean)
-                    .join(" / ") || "—"}
+                    .join(" / ") || "-"}
                 </td>
                 <td className="p-3">
-                  {i.plantillaTypeName || "—"}
+                  {i.plantillaTypeName || "-"}
                   <div className="text-xs text-muted-foreground">
                     {i.budgetCodeName || "No fund code"}
                   </div>
@@ -384,7 +460,7 @@ function PlantillaPage() {
               set={(v) => setForm({ ...form, salaryGradeId: v })}
               rows={settings.salaryGrades.map((x) => [
                 String(x.id),
-                `SG ${x.grade} Step ${x.step} — ₱${x.amount.toLocaleString()}`,
+                `SG ${x.grade} Step ${x.step} - PHP ${x.amount.toLocaleString()}`,
               ])}
             />
             <F l="Authorized salary">
@@ -479,7 +555,7 @@ function PlantillaPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {action?.kind === "assign" ? "Assign employee" : "Vacate item"} —{" "}
+              {action?.kind === "assign" ? "Assign employee" : "Vacate item"} -{" "}
               {action?.item.itemNumber}
             </DialogTitle>
           </DialogHeader>
@@ -523,14 +599,14 @@ function PlantillaPage() {
       <Dialog open={!!historyItem} onOpenChange={(o) => !o && setHistoryItem(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Movement history — {historyItem?.itemNumber}</DialogTitle>
+            <DialogTitle>Movement history - {historyItem?.itemNumber}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
             {history.map((h) => (
               <div className="rounded border p-3" key={h.id}>
                 <div className="font-medium">{h.action}</div>
                 <div className="text-xs text-muted-foreground">
-                  {new Date(h.createdAt).toLocaleString()} · {h.changedBy || "System"}
+                  {new Date(h.createdAt).toLocaleString()} - {h.changedBy || "System"}
                 </div>
               </div>
             ))}

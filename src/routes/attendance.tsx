@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
+import { MassDtrPrintModal } from "@/components/MassDtrPrintModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -187,6 +188,7 @@ function AttendancePage() {
   const [massImportEndDate, setMassImportEndDate] = useState(to);
   const [showBiometricDialog, setShowBiometricDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showMassPrintDialog, setShowMassPrintDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [editing, setEditing] = useState<DtrEntry | null>(null);
   const [form, setForm] = useState<DtrPayload>(EMPTY_DTR_FORM);
@@ -794,6 +796,10 @@ function AttendancePage() {
     setShowExportDialog(true);
   };
 
+  const openMassPrint = () => {
+    setShowMassPrintDialog(true);
+  };
+
   const buildDtrExportPayload = () => {
     const targetEmployeeId = isEmployee
       ? user?.employeeId || ""
@@ -1081,7 +1087,7 @@ function AttendancePage() {
                       <Download className="h-4 w-4" />
                       Quick CSV
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => exportRows(true)}>
+                    <DropdownMenuItem onClick={openMassPrint}>
                       <FileDown className="h-4 w-4" />
                       Mass Export
                     </DropdownMenuItem>
@@ -1131,7 +1137,7 @@ function AttendancePage() {
                         <SelectItem value="all">All active devices</SelectItem>
                         {biometricDevices.map((device) => (
                           <SelectItem key={device.id} value={device.id} disabled={!device.active}>
-                            {device.name} - {device.ip_address}:{device.port}
+                        {device.name} - {device.ip_address}:{device.port}
                             {!device.active ? " (Inactive)" : ""}
                           </SelectItem>
                         ))}
@@ -1353,7 +1359,7 @@ function AttendancePage() {
                   <div className="min-w-0">
                     <h3 className="mobile-record-card__title">{entry.employeeName}</h3>
                     <p className="mobile-record-card__meta">
-                      {entry.workDate} · {entry.department || "No office"}
+                      {entry.workDate} - {entry.department || "No office"}
                     </p>
                   </div>
                   <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
@@ -1724,7 +1730,7 @@ function AttendancePage() {
                     <SelectContent>
                       {biometricDevices.map((device) => (
                         <SelectItem key={device.id} value={device.id} disabled={!device.active}>
-                          {device.name} - {device.ip_address}:{device.port}
+                        {device.name} - {device.ip_address}:{device.port}
                           {!device.active ? " (Inactive)" : ""}
                         </SelectItem>
                       ))}
@@ -1806,8 +1812,7 @@ function AttendancePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* â”€â”€â”€ MASS IMPORT DTR (all employees) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* MASS IMPORT DTR (all employees) */}
       <Dialog open={showImportAllDialog} onOpenChange={setShowImportAllDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -1856,7 +1861,7 @@ function AttendancePage() {
                   <SelectContent>
                     {biometricDevices.map((device) => (
                       <SelectItem key={device.id} value={device.id} disabled={!device.active}>
-                        {device.name} â€” {device.ip_address}:{device.port}
+                        {device.name} - {device.ip_address}:{device.port}
                         {!device.active ? " (Inactive)" : ""}
                       </SelectItem>
                     ))}
@@ -1877,7 +1882,7 @@ function AttendancePage() {
                     {massImportFile ? massImportFile.name : "Click to upload DTR file"}
                   </span>
                   <span className="mt-1 text-xs text-muted-foreground">
-                    TXT, XLSX, or DAT â€” max 10 MB
+                    TXT, XLSX, or DAT - max 10 MB
                   </span>
                   <Input
                     type="file"
@@ -1919,7 +1924,7 @@ function AttendancePage() {
             </div>
 
             <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
-              <strong>All employees</strong> â€” punches are matched by Employee No. or Biometric
+              <strong>All employees</strong> - punches are matched by Employee No. or Biometric
               ID. Unmatched records are skipped. DTR is refreshed automatically after import.
             </div>
           </div>
@@ -1932,7 +1937,7 @@ function AttendancePage() {
               disabled={busy}
               className="bg-emerald-600 text-white hover:bg-emerald-700"
             >
-              {busy ? "Importingâ€¦" : "Import DTR"}
+              {busy ? "Importing..." : "Import DTR"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2463,7 +2468,7 @@ function AttendancePage() {
                 <div>
                   <p className="font-semibold">{selectedCorrection.employeeName}</p>
                   <p className="text-sm text-muted-foreground">
-                    {selectedCorrection.workDate} ·{" "}
+                    {selectedCorrection.workDate} -{" "}
                     {selectedCorrection.requestType === "Label" ? "DTR Label" : "Time Correction"}
                   </p>
                 </div>
@@ -2486,13 +2491,13 @@ function AttendancePage() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   Filed by {selectedCorrection.createdByName || "Employee"} on{" "}
                   {new Date(selectedCorrection.createdAt).toLocaleString()}
-                  {selectedCorrection.requestIp ? ` · IP ${selectedCorrection.requestIp}` : ""}
+                  {selectedCorrection.requestIp ? ` - IP ${selectedCorrection.requestIp}` : ""}
                 </p>
                 {selectedCorrection.reviewedAt && (
                   <p className="mt-2 text-xs text-muted-foreground">
                     Reviewed by {selectedCorrection.reviewedByName} on{" "}
                     {new Date(selectedCorrection.reviewedAt).toLocaleString()}
-                    {selectedCorrection.reviewIp ? ` · IP ${selectedCorrection.reviewIp}` : ""}
+                    {selectedCorrection.reviewIp ? ` - IP ${selectedCorrection.reviewIp}` : ""}
                   </p>
                 )}
               </div>
@@ -2543,7 +2548,7 @@ function AttendancePage() {
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {event.actorName}
-                        {event.ipAddress ? ` · IP ${event.ipAddress}` : ""}
+                        {event.ipAddress ? ` - IP ${event.ipAddress}` : ""}
                       </p>
                       {event.remarks && <p className="mt-1 text-sm">{event.remarks}</p>}
                     </div>
@@ -2554,6 +2559,20 @@ function AttendancePage() {
           )}
         </DialogContent>
       </Dialog>
+
+        {!isEmployee && (
+          <MassDtrPrintModal
+            open={showMassPrintDialog}
+            onOpenChange={setShowMassPrintDialog}
+            employees={employees}
+            noters={noters}
+            defaultOffice={
+              employeeId === "all"
+                ? ""
+                : employees.find((employee) => employee.id === employeeId)?.department || ""
+            }
+          />
+        )}
     </AppShell>
   );
 }

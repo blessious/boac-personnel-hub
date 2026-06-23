@@ -1,4 +1,4 @@
-﻿import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Download, FileClock, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -151,7 +151,7 @@ function ServiceRecordsPage() {
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <div className="mt-2 max-h-[70vh] space-y-1 overflow-y-auto">
+          <div className="mt-2 max-h-[38vh] space-y-1 overflow-y-auto lg:max-h-[70vh]">
             {filteredEmployees.map((e) => (
               <button
                 key={e.id}
@@ -179,7 +179,7 @@ function ServiceRecordsPage() {
                     {selected?.lastname}, {selected?.firstname}
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    {selected?.employeeId} · {records.length} service period(s)
+                    {selected?.employeeId} - {records.length} service period(s)
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -212,7 +212,79 @@ function ServiceRecordsPage() {
                   ))}
                 </div>
               )}
-              <div className="mt-3 overflow-x-auto rounded-lg border">
+              <div className="mobile-record-list mt-3 md:hidden">
+                {records.map((r) => (
+                  <article className="mobile-record-card" key={r.id}>
+                    <div className="mobile-record-card__header">
+                      <div>
+                        <div className="mobile-record-card__title">{r.positionTitle}</div>
+                        <div className="mobile-record-card__meta">
+                          {r.serviceFrom} to {r.serviceTo || "Present"}
+                        </div>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-1 text-xs ${r.source === "Automatic" ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"}`}
+                      >
+                        {r.source}
+                      </span>
+                    </div>
+                    <div className="mobile-record-card__grid">
+                      <div className="mobile-record-card__field">
+                        <span className="mobile-record-card__label">Department</span>
+                        <span className="mobile-record-card__value">{r.department || "-"}</span>
+                      </div>
+                      <div className="mobile-record-card__field">
+                        <span className="mobile-record-card__label">Status</span>
+                        <span className="mobile-record-card__value">
+                          {r.appointmentStatus || "-"}
+                        </span>
+                      </div>
+                      <div className="mobile-record-card__field">
+                        <span className="mobile-record-card__label">Salary / SG</span>
+                        <span className="mobile-record-card__value">
+                          {r.annualSalary != null ? `PHP ${r.annualSalary.toLocaleString()}` : "-"}
+                          {r.salaryGrade != null
+                            ? ` - SG ${r.salaryGrade}, Step ${r.salaryStep ?? "-"}`
+                            : ""}
+                        </span>
+                      </div>
+                      <div className="mobile-record-card__field">
+                        <span className="mobile-record-card__label">Item no.</span>
+                        <span className="mobile-record-card__value">{r.itemNumber || "-"}</span>
+                      </div>
+                    </div>
+                    {r.separationCause && (
+                      <p className="text-sm text-red-700">{r.separationCause}</p>
+                    )}
+                    {canManage && r.source === "Manual" && (
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Edit"
+                          onClick={() => openForm(r)}
+                        >
+                          <FileClock className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Delete"
+                          onClick={() => remove(r)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </article>
+                ))}
+                {!records.length && (
+                  <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                    {loading ? "Loading..." : "No service periods available."}
+                  </div>
+                )}
+              </div>
+              <div className="mobile-desktop-table mt-3 overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left">
                     <tr>
@@ -243,22 +315,22 @@ function ServiceRecordsPage() {
                           </span>
                         </td>
                         <td className="p-3 font-medium">{r.positionTitle}</td>
-                        <td className="p-3">{r.department || "—"}</td>
+                        <td className="p-3">{r.department || "-"}</td>
                         <td className="p-3">
-                          {r.appointmentStatus || "—"}
+                          {r.appointmentStatus || "-"}
                           {r.separationCause && (
                             <div className="text-xs text-red-700">{r.separationCause}</div>
                           )}
                         </td>
                         <td className="p-3">
-                          {r.annualSalary != null ? `₱${r.annualSalary.toLocaleString()}` : "—"}
+                          {r.annualSalary != null ? `PHP ${r.annualSalary.toLocaleString()}` : "-"}
                           <div className="text-xs text-muted-foreground">
                             {r.salaryGrade != null
-                              ? `SG ${r.salaryGrade}, Step ${r.salaryStep ?? "—"}`
+                              ? `SG ${r.salaryGrade}, Step ${r.salaryStep ?? "-"}`
                               : ""}
                           </div>
                         </td>
-                        <td className="p-3">{r.itemNumber || "—"}</td>
+                        <td className="p-3">{r.itemNumber || "-"}</td>
                         <td className="p-3">
                           <span
                             className={`rounded-full px-2 py-1 text-xs ${r.source === "Automatic" ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"}`}
@@ -293,7 +365,7 @@ function ServiceRecordsPage() {
                     {!records.length && (
                       <tr>
                         <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                          {loading ? "Loading…" : "No service periods available."}
+                          {loading ? "Loading..." : "No service periods available."}
                         </td>
                       </tr>
                     )}
