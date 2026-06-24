@@ -1331,7 +1331,7 @@ function AttendancePage() {
             value="corrections"
             className="m-0 focus-visible:outline-none focus-visible:ring-0"
           >
-            {(canManage || isEmployee) && (
+            {(canApprove || isEmployee) && (
               <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
                 <div className="flex flex-col gap-3 border-b border-border px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>
