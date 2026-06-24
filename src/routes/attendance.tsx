@@ -451,21 +451,44 @@ function AttendancePage() {
     [importEmployees, selectedImportEmployeeId],
   );
 
-  const openCorrection = (entry?: DtrEntry) => {
+  const openCorrection = (entry: DtrEntry, requestType: "Times" | "Label") => {
     setCorrectionForm({
       ...EMPTY_CORRECTION_FORM,
-      employeeId: isEmployee ? user?.employeeId : entry?.employeeId || selectedEmployeeId,
-      workDate: entry?.workDate || formatLocalDate(new Date()),
-      amIn: entry?.amIn || "",
-      amOut: entry?.amOut || "",
-      pmIn: entry?.pmIn || "",
-      pmOut: entry?.pmOut || "",
-      label: entry?.displayLabel || "",
+      employeeId: isEmployee ? user?.employeeId : entry.employeeId || selectedEmployeeId,
+      workDate: entry.workDate,
+      requestType,
+      amIn: entry.amIn || "",
+      amOut: entry.amOut || "",
+      pmIn: entry.pmIn || "",
+      pmOut: entry.pmOut || "",
+      label: requestType === "Label" ? entry.displayLabel || "" : "",
+    });
+    setShowCorrectionDialog(true);
+  };
+
+  const openActivityLabelRequest = () => {
+    setCorrectionForm({
+      ...EMPTY_CORRECTION_FORM,
+      employeeId: isEmployee ? user?.employeeId : selectedEmployeeId,
+      workDate: formatLocalDate(new Date()),
+      requestType: "Label",
     });
     setShowCorrectionDialog(true);
   };
 
   const submitCorrection = async () => {
+    if (!correctionForm.workDate) {
+      toast.error("Select a DTR date");
+      return;
+    }
+    if (correctionForm.requestType === "Label" && !correctionForm.label?.trim()) {
+      toast.error("Enter the DTR activity label");
+      return;
+    }
+    if (!correctionForm.reason.trim()) {
+      toast.error("Enter the reason for the DTR correction");
+      return;
+    }
     try {
       setBusy(true);
       await createDtrCorrectionRequest(correctionForm);
@@ -969,7 +992,9 @@ function AttendancePage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {!isEmployee && (
                 <div className="space-y-1.5">
-                  <Label className="text-xs uppercase text-muted-foreground font-semibold">Employee</Label>
+                  <Label className="text-xs uppercase text-muted-foreground font-semibold">
+                    Employee
+                  </Label>
                   <Select value={employeeId} onValueChange={setEmployeeId}>
                     <SelectTrigger className="h-9">
                       <SelectValue placeholder="All employees" />
@@ -1003,16 +1028,30 @@ function AttendancePage() {
                 </div>
               )}
               <div className="space-y-1.5">
-                <Label className="text-xs uppercase text-muted-foreground font-semibold">From</Label>
-                <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="h-9" />
+                <Label className="text-xs uppercase text-muted-foreground font-semibold">
+                  From
+                </Label>
+                <Input
+                  type="date"
+                  value={from}
+                  onChange={(event) => setFrom(event.target.value)}
+                  className="h-9"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs uppercase text-muted-foreground font-semibold">To</Label>
-                <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="h-9" />
+                <Input
+                  type="date"
+                  value={to}
+                  onChange={(event) => setTo(event.target.value)}
+                  className="h-9"
+                />
               </div>
               {!isEmployee && (
                 <div className="space-y-1.5">
-                  <Label className="text-xs uppercase text-muted-foreground font-semibold">Search</Label>
+                  <Label className="text-xs uppercase text-muted-foreground font-semibold">
+                    Search
+                  </Label>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -1031,7 +1070,13 @@ function AttendancePage() {
               </Button>
               {canManage && (
                 <>
-                  <Button variant="outline" size="sm" onClick={refresh} disabled={busy} className="h-9">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={refresh}
+                    disabled={busy}
+                    className="h-9"
+                  >
                     <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh DTR
                   </Button>
                   <Button
@@ -1107,424 +1152,490 @@ function AttendancePage() {
             )}
           </TabsList>
 
-          <TabsContent value="biometrics" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+          <TabsContent
+            value="biometrics"
+            className="m-0 focus-visible:outline-none focus-visible:ring-0"
+          >
             {canManage && (
-          <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
-            <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <RadioTower className="h-4 w-4 text-emerald-700" />
-                    <div>
-                      <h2 className="text-sm font-semibold text-foreground">Real-Time Biometric</h2>
-                      <p className="text-xs text-muted-foreground">
-                        ADMS receiver on port {realtimeStatus?.admsPort || 6000}; active devices are
-                        synced by biometric ID or employee number.
-                      </p>
+              <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <RadioTower className="h-4 w-4 text-emerald-700" />
+                        <div>
+                          <h2 className="text-sm font-semibold text-foreground">
+                            Real-Time Biometric
+                          </h2>
+                          <p className="text-xs text-muted-foreground">
+                            ADMS receiver on port {realtimeStatus?.admsPort || 6000}; active devices
+                            are synced by biometric ID or employee number.
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className={realtimeBadgeClass}>
+                        <Activity className="mr-1 h-3.5 w-3.5" />
+                        {realtimeState}
+                      </Badge>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-4">
+                      <RealtimeStat label="Active Devices" value={activeBiometricDevices.length} />
+                      <RealtimeStat label="Fetched" value={realtimeStatus?.recordsFetched || 0} />
+                      <RealtimeStat label="Imported" value={realtimeStatus?.recordsInserted || 0} />
+                      <RealtimeStat
+                        label="DTR Queue"
+                        value={realtimeQueue?.pendingEmployees || 0}
+                      />
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+                      <div className="space-y-1.5">
+                        <Label>Manual Sync Device</Label>
+                        <Select value={manualSyncDeviceId} onValueChange={setManualSyncDeviceId}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All active devices</SelectItem>
+                            {biometricDevices.map((device) => (
+                              <SelectItem
+                                key={device.id}
+                                value={device.id}
+                                disabled={!device.active}
+                              >
+                                {device.name} - {device.ip_address}:{device.port}
+                                {!device.active ? " (Inactive)" : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowRealtimeLogs((value) => !value)}
+                      >
+                        <SquareTerminal className="mr-1.5 h-4 w-4" />
+                        {showRealtimeLogs ? "Hide Logs" : "Logs"}
+                      </Button>
+                      <Button
+                        onClick={runManualBiometricSync}
+                        disabled={
+                          busy || !activeBiometricDevices.length || realtimeState === "syncing"
+                        }
+                        className="bg-emerald-600 text-white hover:bg-emerald-700"
+                      >
+                        <RefreshCw className="mr-1.5 h-4 w-4" />
+                        Sync Now
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {activeBiometricDevices.length ? (
+                        activeBiometricDevices.map((device) => (
+                          <div
+                            key={device.id}
+                            className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-foreground">{device.name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {device.ip_address}:{device.port}
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground md:col-span-2">
+                          No active biometric devices configured. Add the 2nd Floor device, then
+                          keep ADMS pointed to this computer on port{" "}
+                          {realtimeStatus?.admsPort || 6000}.
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <Badge variant="outline" className={realtimeBadgeClass}>
-                    <Activity className="mr-1 h-3.5 w-3.5" />
-                    {realtimeState}
-                  </Badge>
-                </div>
 
-                <div className="grid gap-3 md:grid-cols-4">
-                  <RealtimeStat label="Active Devices" value={activeBiometricDevices.length} />
-                  <RealtimeStat label="Fetched" value={realtimeStatus?.recordsFetched || 0} />
-                  <RealtimeStat label="Imported" value={realtimeStatus?.recordsInserted || 0} />
-                  <RealtimeStat label="DTR Queue" value={realtimeQueue?.pendingEmployees || 0} />
+                  {showRealtimeLogs && (
+                    <div className="rounded-md border border-border bg-muted/30">
+                      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">
+                          Recent Events
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {realtimeStatus?.lastSyncTime
+                            ? new Date(realtimeStatus.lastSyncTime).toLocaleString()
+                            : "Waiting for ADMS"}
+                        </p>
+                      </div>
+                      <div className="max-h-56 overflow-y-auto px-3 py-2 font-mono text-xs">
+                        {realtimeLogs.length ? (
+                          realtimeLogs
+                            .slice()
+                            .reverse()
+                            .map((log, index) => (
+                              <div key={`${log.time}-${index}`} className="mb-1 flex gap-2">
+                                <span className="shrink-0 text-muted-foreground">
+                                  {new Date(log.time).toLocaleTimeString()}
+                                </span>
+                                <span
+                                  className={
+                                    log.level === "error"
+                                      ? "text-rose-600"
+                                      : log.level === "warn"
+                                        ? "text-amber-600"
+                                        : log.level === "success"
+                                          ? "text-emerald-600"
+                                          : "text-foreground"
+                                  }
+                                >
+                                  {log.message}
+                                </span>
+                              </div>
+                            ))
+                        ) : (
+                          <p className="py-6 text-center font-sans text-sm text-muted-foreground">
+                            No biometric events yet.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
+              </section>
+            )}
+          </TabsContent>
 
-                <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
-                  <div className="space-y-1.5">
-                    <Label>Manual Sync Device</Label>
-                    <Select value={manualSyncDeviceId} onValueChange={setManualSyncDeviceId}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All active devices</SelectItem>
-                        {biometricDevices.map((device) => (
-                          <SelectItem key={device.id} value={device.id} disabled={!device.active}>
-                        {device.name} - {device.ip_address}:{device.port}
-                            {!device.active ? " (Inactive)" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+          <TabsContent
+            value="corrections"
+            className="m-0 focus-visible:outline-none focus-visible:ring-0"
+          >
+            {(canManage || isEmployee) && (
+              <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+                <div className="flex flex-col gap-3 border-b border-border px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-foreground">DTR Correction Audit</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Original, requested, applied, and reversal history
+                    </p>
                   </div>
-                  <Button variant="outline" onClick={() => setShowRealtimeLogs((value) => !value)}>
-                    <SquareTerminal className="mr-1.5 h-4 w-4" />
-                    {showRealtimeLogs ? "Hide Logs" : "Logs"}
-                  </Button>
-                  <Button
-                    onClick={runManualBiometricSync}
-                    disabled={busy || !activeBiometricDevices.length || realtimeState === "syncing"}
-                    className="bg-emerald-600 text-white hover:bg-emerald-700"
-                  >
-                    <RefreshCw className="mr-1.5 h-4 w-4" />
-                    Sync Now
-                  </Button>
                 </div>
+                <div className="grid gap-2 border-b border-border p-4 md:grid-cols-3">
+                  <Input
+                    value={correctionQuery}
+                    onChange={(event) => setCorrectionQuery(event.target.value)}
+                    placeholder="Search employee, reason, or remarks"
+                  />
+                  <Select
+                    value={correctionStatus}
+                    onValueChange={(value) =>
+                      setCorrectionStatus(value as DtrCorrectionStatus | "all")
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      {(
+                        ["Pending", "Approved", "Disapproved", "Cancelled", "Reversed"] as const
+                      ).map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={correctionType}
+                    onValueChange={(value) => setCorrectionType(value as typeof correctionType)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All request types</SelectItem>
+                      <SelectItem value="Times">Time Correction</SelectItem>
+                      <SelectItem value="Label">DTR Activity Label</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-sm">
+                    <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3">Employee</th>
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3">Request</th>
+                        <th className="px-4 py-3">Reason</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {correctionRequests.map((request) => (
+                        <tr key={request.id} className="border-t border-border">
+                          <td className="px-4 py-3">
+                            <p className="font-medium">{request.employeeName}</p>
+                            <p className="text-xs text-muted-foreground">{request.employeeNo}</p>
+                          </td>
+                          <td className="px-4 py-3">{request.workDate}</td>
+                          <td className="px-4 py-3">
+                            {request.requestType === "Label" ? "DTR Label" : "Time Correction"}
+                          </td>
+                          <td className="max-w-[260px] truncate px-4 py-3 text-muted-foreground">
+                            {request.reason}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge
+                              variant="outline"
+                              className={CORRECTION_STATUS_CLASS[request.status]}
+                            >
+                              {request.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => reviewCorrection(request)}
+                            >
+                              {request.status === "Pending" && canApprove ? "Review" : "View Audit"}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                      {!correctionRequests.length && (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                            No DTR correction requests found.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+          </TabsContent>
 
-                <div className="grid gap-2 md:grid-cols-2">
-                  {activeBiometricDevices.length ? (
-                    activeBiometricDevices.map((device) => (
-                      <div
-                        key={device.id}
-                        className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium text-foreground">{device.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {device.ip_address}:{device.port}
+          <TabsContent
+            value="records"
+            className="m-0 focus-visible:outline-none focus-visible:ring-0"
+          >
+            <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+              <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="h-4 w-4 text-blue-700" />
+                  <h2 className="text-sm font-semibold text-foreground">Daily Time Records</h2>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <p className="text-xs text-muted-foreground">
+                    {loading ? "Loading..." : `${entries.length} record(s)`}
+                  </p>
+                  {isEmployee && (
+                    <Button variant="outline" size="sm" onClick={openActivityLabelRequest}>
+                      <Plus className="mr-1.5 h-4 w-4" />
+                      Add DTR Activity Label
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="mobile-record-list">
+                {entries.map((entry) => (
+                  <article key={entry.id} className="mobile-record-card">
+                    <div className="mobile-record-card__header">
+                      <div className="min-w-0">
+                        <h3 className="mobile-record-card__title">{entry.employeeName}</h3>
+                        <p className="mobile-record-card__meta">
+                          {entry.workDate} - {entry.department || "No office"}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                        {entry.biometricId || "No ID"}
+                      </span>
+                    </div>
+
+                    {entry.displayLabel ? (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-center text-sm font-semibold text-blue-800">
+                        {entry.displayLabel}
+                      </div>
+                    ) : (
+                      <div className="mobile-record-card__grid">
+                        <div className="mobile-record-card__field">
+                          <span className="mobile-record-card__label">AM In</span>
+                          <span className="mobile-record-card__value text-emerald-700">
+                            {formatDtrTime(entry.amIn)}
+                          </span>
+                        </div>
+                        <div className="mobile-record-card__field">
+                          <span className="mobile-record-card__label">AM Out</span>
+                          <span className="mobile-record-card__value text-emerald-700">
+                            {formatDtrTime(entry.amOut)}
+                          </span>
+                        </div>
+                        <div className="mobile-record-card__field">
+                          <span className="mobile-record-card__label">PM In</span>
+                          <span className="mobile-record-card__value text-emerald-700">
+                            {formatDtrTime(entry.pmIn)}
+                          </span>
+                        </div>
+                        <div className="mobile-record-card__field">
+                          <span className="mobile-record-card__label">PM Out</span>
+                          <span className="mobile-record-card__value text-emerald-700">
+                            {formatDtrTime(entry.pmOut)}
                           </span>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground md:col-span-2">
-                      No active biometric devices configured. Add the 2nd Floor device, then keep
-                      ADMS pointed to this computer on port {realtimeStatus?.admsPort || 6000}.
-                    </p>
-                  )}
-                </div>
-              </div>
+                    )}
 
-              {showRealtimeLogs && (
-                <div className="rounded-md border border-border bg-muted/30">
-                  <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">
-                      Recent Events
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {realtimeStatus?.lastSyncTime
-                        ? new Date(realtimeStatus.lastSyncTime).toLocaleString()
-                        : "Waiting for ADMS"}
-                    </p>
-                  </div>
-                  <div className="max-h-56 overflow-y-auto px-3 py-2 font-mono text-xs">
-                    {realtimeLogs.length ? (
-                      realtimeLogs
-                        .slice()
-                        .reverse()
-                        .map((log, index) => (
-                          <div key={`${log.time}-${index}`} className="mb-1 flex gap-2">
-                            <span className="shrink-0 text-muted-foreground">
-                              {new Date(log.time).toLocaleTimeString()}
-                            </span>
-                            <span
-                              className={
-                                log.level === "error"
-                                  ? "text-rose-600"
-                                  : log.level === "warn"
-                                    ? "text-amber-600"
-                                    : log.level === "success"
-                                      ? "text-emerald-600"
-                                      : "text-foreground"
-                              }
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <span className="mobile-record-card__label">Tardiness</span>
+                        <span className="text-sm font-semibold text-destructive">
+                          {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
+                        </span>
+                      </div>
+                      {(canManage || isEmployee) && (
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {isEmployee && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => openCorrection(entry, "Times")}
+                              title="Correct Time Entries"
+                              aria-label={`Correct time entries for ${entry.workDate}`}
                             >
-                              {log.message}
-                            </span>
-                          </div>
-                        ))
-                    ) : (
-                      <p className="py-6 text-center font-sans text-sm text-muted-foreground">
-                        No biometric events yet.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-            )}
-          </TabsContent>
-
-          <TabsContent value="corrections" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-            {(canManage || isEmployee) && (
-              <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-border px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">DTR Correction Audit</h2>
-                <p className="text-xs text-muted-foreground">
-                  Original, requested, applied, and reversal history
-                </p>
-              </div>
-              {isEmployee && (
-                <Button onClick={() => openCorrection()} size="sm">
-                  <Plus className="mr-1.5 h-4 w-4" />
-                  New Correction Request
-                </Button>
-              )}
-            </div>
-            <div className="grid gap-2 border-b border-border p-4 md:grid-cols-3">
-              <Input
-                value={correctionQuery}
-                onChange={(event) => setCorrectionQuery(event.target.value)}
-                placeholder="Search employee, reason, or remarks"
-              />
-              <Select
-                value={correctionStatus}
-                onValueChange={(value) => setCorrectionStatus(value as DtrCorrectionStatus | "all")}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  {(["Pending", "Approved", "Disapproved", "Cancelled", "Reversed"] as const).map(
-                    (status) => (
-                      <SelectItem key={status} value={status}>
-                        {status}
-                      </SelectItem>
-                    ),
-                  )}
-                </SelectContent>
-              </Select>
-              <Select
-                value={correctionType}
-                onValueChange={(value) => setCorrectionType(value as typeof correctionType)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All request types</SelectItem>
-                  <SelectItem value="Times">Time Correction</SelectItem>
-                  <SelectItem value="Label">DTR Activity Label</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
-                <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3">Employee</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Request</th>
-                    <th className="px-4 py-3">Reason</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {correctionRequests.map((request) => (
-                    <tr key={request.id} className="border-t border-border">
-                      <td className="px-4 py-3">
-                        <p className="font-medium">{request.employeeName}</p>
-                        <p className="text-xs text-muted-foreground">{request.employeeNo}</p>
-                      </td>
-                      <td className="px-4 py-3">{request.workDate}</td>
-                      <td className="px-4 py-3">
-                        {request.requestType === "Label" ? "DTR Label" : "Time Correction"}
-                      </td>
-                      <td className="max-w-[260px] truncate px-4 py-3 text-muted-foreground">
-                        {request.reason}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          variant="outline"
-                          className={CORRECTION_STATUS_CLASS[request.status]}
-                        >
-                          {request.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => reviewCorrection(request)}
-                        >
-                          {request.status === "Pending" && canApprove ? "Review" : "View Audit"}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                  {!correctionRequests.length && (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
-                        No DTR correction requests found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-            )}
-          </TabsContent>
-
-          <TabsContent value="records" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-            <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-              <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <div className="flex items-center gap-2">
-              <CalendarClock className="h-4 w-4 text-blue-700" />
-              <h2 className="text-sm font-semibold text-foreground">Daily Time Records</h2>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {loading ? "Loading..." : `${entries.length} record(s)`}
-            </p>
-          </div>
-
-          <div className="mobile-record-list">
-            {entries.map((entry) => (
-              <article key={entry.id} className="mobile-record-card">
-                <div className="mobile-record-card__header">
-                  <div className="min-w-0">
-                    <h3 className="mobile-record-card__title">{entry.employeeName}</h3>
-                    <p className="mobile-record-card__meta">
-                      {entry.workDate} - {entry.department || "No office"}
-                    </p>
-                  </div>
-                  <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-                    {entry.biometricId || "No ID"}
-                  </span>
-                </div>
-
-                {entry.displayLabel ? (
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-center text-sm font-semibold text-blue-800">
-                    {entry.displayLabel}
-                  </div>
-                ) : (
-                  <div className="mobile-record-card__grid">
-                    <div className="mobile-record-card__field">
-                      <span className="mobile-record-card__label">AM In</span>
-                      <span className="mobile-record-card__value text-emerald-700">
-                        {formatDtrTime(entry.amIn)}
-                      </span>
-                    </div>
-                    <div className="mobile-record-card__field">
-                      <span className="mobile-record-card__label">AM Out</span>
-                      <span className="mobile-record-card__value text-emerald-700">
-                        {formatDtrTime(entry.amOut)}
-                      </span>
-                    </div>
-                    <div className="mobile-record-card__field">
-                      <span className="mobile-record-card__label">PM In</span>
-                      <span className="mobile-record-card__value text-emerald-700">
-                        {formatDtrTime(entry.pmIn)}
-                      </span>
-                    </div>
-                    <div className="mobile-record-card__field">
-                      <span className="mobile-record-card__label">PM Out</span>
-                      <span className="mobile-record-card__value text-emerald-700">
-                        {formatDtrTime(entry.pmOut)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <span className="mobile-record-card__label">Tardiness</span>
-                    <span className="text-sm font-semibold text-destructive">
-                      {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
-                    </span>
-                  </div>
-                  {canManage && (
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => openEdit(entry)}>
-                        <Pencil className="mr-1.5 h-4 w-4" />
-                        Edit
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => remove(entry)}>
-                        <Trash2 className="mr-1.5 h-4 w-4 text-destructive" />
-                        Delete
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </article>
-            ))}
-            {!entries.length && !loading && (
-              <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-                No DTR records found for this filter.
-              </div>
-            )}
-          </div>
-
-          <div className="mobile-desktop-table overflow-x-auto">
-            <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
-              <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Biometric ID</th>
-                  <th className="w-[260px] px-4 py-3 font-semibold">Name</th>
-                  <th className="w-[360px] px-4 py-3 font-semibold">Office</th>
-                  <th className="px-4 py-3 font-semibold">Date</th>
-                  <th className="px-4 py-3 font-semibold">AM In</th>
-                  <th className="px-4 py-3 font-semibold">AM Out</th>
-                  <th className="px-4 py-3 font-semibold">PM In</th>
-                  <th className="px-4 py-3 font-semibold">PM Out</th>
-                  <th className="px-4 py-3 font-semibold">Tardiness</th>
-                  {canManage && <th className="px-4 py-3 text-right font-semibold">Actions</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((entry) => (
-                  <tr key={entry.id} className="border-t border-border">
-                    <td className="px-4 py-3 font-medium text-muted-foreground">
-                      {entry.biometricId || "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-foreground">{entry.employeeName}</p>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{entry.department || "-"}</td>
-                    <td className="px-4 py-3 font-medium text-foreground">{entry.workDate}</td>
-                    {entry.displayLabel ? (
-                      <td
-                        colSpan={4}
-                        className="bg-blue-50 px-4 py-3 text-center font-semibold text-blue-800"
-                      >
-                        {entry.displayLabel}
-                      </td>
-                    ) : (
-                      <>
-                        <td className="px-4 py-3 font-medium text-emerald-600">
-                          {formatDtrTime(entry.amIn)}
-                        </td>
-                        <td className="px-4 py-3 font-medium text-emerald-600">
-                          {formatDtrTime(entry.amOut)}
-                        </td>
-                        <td className="px-4 py-3 font-medium text-emerald-600">
-                          {formatDtrTime(entry.pmIn)}
-                        </td>
-                        <td className="px-4 py-3 font-medium text-emerald-600">
-                          {formatDtrTime(entry.pmOut)}
-                        </td>
-                      </>
-                    )}
-                    <td className="px-4 py-3 text-destructive font-medium">
-                      {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
-                    </td>
-                    {canManage && (
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(entry)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => remove(entry)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canManage && (
+                            <>
+                              <Button variant="outline" size="sm" onClick={() => openEdit(entry)}>
+                                <Pencil className="mr-1.5 h-4 w-4" />
+                                Edit
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => remove(entry)}>
+                                <Trash2 className="mr-1.5 h-4 w-4 text-destructive" />
+                                Delete
+                              </Button>
+                            </>
+                          )}
                         </div>
-                      </td>
-                    )}
-                  </tr>
+                      )}
+                    </div>
+                  </article>
                 ))}
                 {!entries.length && !loading && (
-                  <tr>
-                    <td
-                      colSpan={canManage ? 10 : 9}
-                      className="px-4 py-10 text-center text-muted-foreground"
-                    >
-                      No DTR records found for this filter.
-                    </td>
-                  </tr>
+                  <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                    No DTR records found for this filter.
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
+              </div>
+
+              <div className="mobile-desktop-table overflow-x-auto">
+                <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
+                  <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Biometric ID</th>
+                      <th className="w-[260px] px-4 py-3 font-semibold">Name</th>
+                      <th className="w-[360px] px-4 py-3 font-semibold">Office</th>
+                      <th className="px-4 py-3 font-semibold">Date</th>
+                      <th className="px-4 py-3 font-semibold">AM In</th>
+                      <th className="px-4 py-3 font-semibold">AM Out</th>
+                      <th className="px-4 py-3 font-semibold">PM In</th>
+                      <th className="px-4 py-3 font-semibold">PM Out</th>
+                      <th className="px-4 py-3 font-semibold">Tardiness</th>
+                      {(canManage || isEmployee) && (
+                        <th className="w-[110px] px-4 py-3 text-right font-semibold">Actions</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entries.map((entry) => (
+                      <tr key={entry.id} className="border-t border-border">
+                        <td className="px-4 py-3 font-medium text-muted-foreground">
+                          {entry.biometricId || "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-foreground">{entry.employeeName}</p>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {entry.department || "-"}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-foreground">{entry.workDate}</td>
+                        {entry.displayLabel ? (
+                          <td
+                            colSpan={4}
+                            className="bg-blue-50 px-4 py-3 text-center font-semibold text-blue-800"
+                          >
+                            {entry.displayLabel}
+                          </td>
+                        ) : (
+                          <>
+                            <td className="px-4 py-3 font-medium text-emerald-600">
+                              {formatDtrTime(entry.amIn)}
+                            </td>
+                            <td className="px-4 py-3 font-medium text-emerald-600">
+                              {formatDtrTime(entry.amOut)}
+                            </td>
+                            <td className="px-4 py-3 font-medium text-emerald-600">
+                              {formatDtrTime(entry.pmIn)}
+                            </td>
+                            <td className="px-4 py-3 font-medium text-emerald-600">
+                              {formatDtrTime(entry.pmOut)}
+                            </td>
+                          </>
+                        )}
+                        <td className="px-4 py-3 text-destructive font-medium">
+                          {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
+                        </td>
+                        {(canManage || isEmployee) && (
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap justify-end gap-2">
+                              {isEmployee && (
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={() => openCorrection(entry, "Times")}
+                                  title="Correct Time Entries"
+                                  aria-label={`Correct time entries for ${entry.workDate}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {canManage && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => openEdit(entry)}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" onClick={() => remove(entry)}>
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {!entries.length && !loading && (
+                      <tr>
+                        <td
+                          colSpan={canManage || isEmployee ? 10 : 9}
+                          className="px-4 py-10 text-center text-muted-foreground"
+                        >
+                          No DTR records found for this filter.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </section>
           </TabsContent>
         </Tabs>
@@ -1748,7 +1859,7 @@ function AttendancePage() {
                     <SelectContent>
                       {biometricDevices.map((device) => (
                         <SelectItem key={device.id} value={device.id} disabled={!device.active}>
-                        {device.name} - {device.ip_address}:{device.port}
+                          {device.name} - {device.ip_address}:{device.port}
                           {!device.active ? " (Inactive)" : ""}
                         </SelectItem>
                       ))}
@@ -1943,8 +2054,8 @@ function AttendancePage() {
             </div>
 
             <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
-              <strong>All employees</strong> - punches are matched by Employee No. or Biometric
-              ID. Unmatched records are skipped. DTR is refreshed automatically after import.
+              <strong>All employees</strong> - punches are matched by Employee No. or Biometric ID.
+              Unmatched records are skipped. DTR is refreshed automatically after import.
             </div>
           </div>
           <DialogFooter>
@@ -2160,13 +2271,21 @@ function AttendancePage() {
                 disabled={busy}
                 className="bg-blue-600 text-white hover:bg-blue-700"
               >
-                {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 h-4 w-4" />}
+                {busy ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="mr-1.5 h-4 w-4" />
+                )}
                 {busy ? "Generating..." : "View DTR PDF"}
               </Button>
             ) : (
               <>
                 <Button onClick={viewPdf} disabled={busy} variant="outline">
-                  {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 h-4 w-4" />}
+                  {busy ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileText className="mr-1.5 h-4 w-4" />
+                  )}
                   {busy ? "Generating..." : "View PDF"}
                 </Button>
                 <Button
@@ -2174,7 +2293,11 @@ function AttendancePage() {
                   disabled={busy}
                   className="border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
                 >
-                  {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1.5 h-4 w-4" />}
+                  {busy ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="mr-1.5 h-4 w-4" />
+                  )}
                   {busy ? "Generating..." : "Generate Excel"}
                 </Button>
                 <Button
@@ -2182,7 +2305,11 @@ function AttendancePage() {
                   disabled={busy}
                   className="border-red-600 bg-red-600 text-white hover:bg-red-700"
                 >
-                  {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 h-4 w-4" />}
+                  {busy ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileText className="mr-1.5 h-4 w-4" />
+                  )}
                   {busy ? "Generating..." : "Generate PDF"}
                 </Button>
               </>
@@ -2580,19 +2707,19 @@ function AttendancePage() {
         </DialogContent>
       </Dialog>
 
-        {!isEmployee && (
-          <MassDtrPrintModal
-            open={showMassPrintDialog}
-            onOpenChange={setShowMassPrintDialog}
-            employees={employees}
-            noters={noters}
-            defaultOffice={
-              employeeId === "all"
-                ? ""
-                : employees.find((employee) => employee.id === employeeId)?.department || ""
-            }
-          />
-        )}
+      {!isEmployee && (
+        <MassDtrPrintModal
+          open={showMassPrintDialog}
+          onOpenChange={setShowMassPrintDialog}
+          employees={employees}
+          noters={noters}
+          defaultOffice={
+            employeeId === "all"
+              ? ""
+              : employees.find((employee) => employee.id === employeeId)?.department || ""
+          }
+        />
+      )}
     </AppShell>
   );
 }
