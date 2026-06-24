@@ -562,7 +562,14 @@ function EmployeesPage() {
                       const avatarColor = avatarColors[index % avatarColors.length];
 
                       return (
-                        <tr key={employee.id} className="hover:bg-muted/30 transition-colors">
+                        <tr
+                          key={employee.id}
+                          className="cursor-pointer transition-colors hover:bg-blue-50/80 dark:hover:bg-white/[0.06]"
+                          title="Double-click to open 201 file"
+                          onDoubleClick={() =>
+                            navigate({ to: "/employees/$id", params: { id: employee.id } })
+                          }
+                        >
                           <td className="px-5 py-4 text-muted-foreground font-medium whitespace-nowrap">
                             {employee.itemNo || employee.employeeId || "-"}
                           </td>
@@ -624,7 +631,10 @@ function EmployeesPage() {
                           <td className="px-5 py-4 text-muted-foreground">
                             {formatDate(employee.dateHired)}
                           </td>
-                          <td className="px-5 py-4 text-right">
+                          <td
+                            className="px-5 py-4 text-right"
+                            onDoubleClick={(event) => event.stopPropagation()}
+                          >
                             <div className="inline-flex items-center gap-2 justify-end">
                               <Link
                                 to="/employees/$id"
