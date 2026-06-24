@@ -109,6 +109,12 @@ export type AttendanceImport = {
 export type DtrListResponse = {
   entries: DtrEntry[];
   imports: AttendanceImport[];
+  pagination: {
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
   summary: {
     total: number;
     present: number;
@@ -176,12 +182,23 @@ export type BiometricRealtimeStatus = {
   devices: BiometricDevice[];
 };
 
-export function listDtr(params: { employeeId?: string; from?: string; to?: string; q?: string }) {
+export function listDtr(params: {
+  employeeId?: string;
+  from?: string;
+  to?: string;
+  q?: string;
+  recordSearch?: string;
+  page?: number;
+  pageSize?: number;
+}) {
   const query = new URLSearchParams();
   if (params.employeeId) query.set("employeeId", params.employeeId);
   if (params.from) query.set("from", params.from);
   if (params.to) query.set("to", params.to);
   if (params.q) query.set("q", params.q);
+  if (params.recordSearch) query.set("recordSearch", params.recordSearch);
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("pageSize", String(params.pageSize));
   return api<DtrListResponse>(`/api/attendance/dtr?${query.toString()}`);
 }
 

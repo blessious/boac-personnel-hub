@@ -163,7 +163,7 @@ export function MassDtrPrintModal({
 
   const monthSelect = (value: number, onChange: (value: number) => void) => (
     <Select value={String(value)} onValueChange={(next) => onChange(Number(next))}>
-      <SelectTrigger>
+      <SelectTrigger className="h-9">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -178,6 +178,7 @@ export function MassDtrPrintModal({
 
   const yearInput = (value: number, onChange: (value: number) => void) => (
     <Input
+      className="h-9"
       type="number"
       value={value}
       min={1900}
@@ -188,7 +189,7 @@ export function MassDtrPrintModal({
 
   const cutSelect = (value: Cut, onChange: (value: Cut) => void) => (
     <Select value={value} onValueChange={(next) => onChange(next as Cut)}>
-      <SelectTrigger>
+      <SelectTrigger className="h-9">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -203,128 +204,131 @@ export function MassDtrPrintModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader className="border-b pb-4">
+      <DialogContent className="sm:max-w-5xl">
+        <DialogHeader className="border-b pb-3">
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-blue-600" />
             Mass Print DTR
           </DialogTitle>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Generate DTRs for multiple employees (PDF format)
           </p>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          <section className="rounded-lg border p-4">
-            <div className="mb-3 flex items-center gap-2 font-semibold">
-              <Building2 className="h-4 w-4 text-blue-600" />
-              Employee Selection
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Office *</Label>
-                <Select value={office} onValueChange={setOffice}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Office" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {offices.map((item) => (
-                      <SelectItem key={item} value={item}>
-                        {item}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        <div className="grid gap-3 py-1 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="space-y-3">
+            <section className="rounded-lg border p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                <Building2 className="h-4 w-4 text-blue-600" />
+                Employee Selection
               </div>
-              <div className="space-y-2">
-                <Label>Employee Type</Label>
-                <Select
-                  value={employeeType}
-                  onValueChange={(next) => setEmployeeType(next as EmployeeType)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Employees</SelectItem>
-                    <SelectItem value="regular">Regular Only</SelectItem>
-                    <SelectItem value="jobOrder">Job Order Only</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Office *</Label>
+                  <Select value={office} onValueChange={setOffice}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select Office" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {offices.map((item) => (
+                        <SelectItem key={item} value={item}>
+                          {item}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Employee Type</Label>
+                  <Select
+                    value={employeeType}
+                    onValueChange={(next) => setEmployeeType(next as EmployeeType)}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Employees</SelectItem>
+                      <SelectItem value="regular">Regular Only</SelectItem>
+                      <SelectItem value="jobOrder">Job Order Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
-            <div className="mt-3 flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
-              <span>Employees to include:</span>
-              <span className="rounded bg-blue-600 px-2 py-1 font-bold text-white">
-                {selectedEmployees.length} employees
-              </span>
-            </div>
-          </section>
+              <div className="mt-3 flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                <span>Employees to include</span>
+                <span className="rounded bg-blue-600 px-2 py-1 font-bold text-white">
+                  {selectedEmployees.length}
+                </span>
+              </div>
+            </section>
 
-          <section className="rounded-lg border p-4">
-            <div className="mb-3 flex items-center gap-2 font-semibold">
-              <Users className="h-4 w-4 text-emerald-600" />
-              Noter Information
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Noter Signatory *</Label>
-                <Select
-                  value={noterSignatory}
-                  onValueChange={(value) => {
-                    const selected = noters.find((noter) => noter.signatory === value);
-                    setNoterSignatory(value);
-                    setNoterPosition(selected?.position || "");
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select noter" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {noters.map((noter) => (
-                      <SelectItem key={noter.id} value={noter.signatory}>
-                        {noter.signatory} - {noter.position}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <section className="rounded-lg border p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                <Users className="h-4 w-4 text-emerald-600" />
+                Noter Information
               </div>
-              <div className="space-y-2">
-                <Label>Noter Position *</Label>
-                <Input
-                  value={noterPosition}
-                  onChange={(event) => setNoterPosition(event.target.value)}
-                />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Noter Signatory *</Label>
+                  <Select
+                    value={noterSignatory}
+                    onValueChange={(value) => {
+                      const selected = noters.find((noter) => noter.signatory === value);
+                      setNoterSignatory(value);
+                      setNoterPosition(selected?.position || "");
+                    }}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select noter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {noters.map((noter) => (
+                        <SelectItem key={noter.id} value={noter.signatory}>
+                          {noter.signatory} - {noter.position}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Noter Position *</Label>
+                  <Input
+                    className="h-9"
+                    value={noterPosition}
+                    onChange={(event) => setNoterPosition(event.target.value)}
+                  />
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+          </div>
 
-          <section className="rounded-lg border p-4">
-            <div className="mb-3 flex items-center gap-2 font-semibold">
+          <section className="rounded-lg border p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
               <Filter className="h-4 w-4 text-violet-600" />
               Period Settings
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-3">
               <div className="rounded-md border p-3">
-                <div className="mb-3 text-sm font-semibold">First Period</div>
+                <div className="mb-2 text-sm font-semibold">First Period</div>
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="space-y-2">
-                    <Label>Month</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Month</Label>
                     {monthSelect(firstMonth, setFirstMonth)}
                   </div>
-                  <div className="space-y-2">
-                    <Label>Year</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Year</Label>
                     {yearInput(firstYear, setFirstYear)}
                   </div>
-                  <div className="space-y-2">
-                    <Label>Cut-off</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Cut-off</Label>
                     {cutSelect(firstCut, setFirstCut)}
                   </div>
                 </div>
               </div>
 
               <div className="rounded-md border p-3">
-                <label className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                <label className="mb-2 flex items-center gap-2 text-sm font-semibold">
                   <input
                     type="checkbox"
                     checked={useSecondPeriod}
@@ -334,16 +338,16 @@ export function MassDtrPrintModal({
                   Include Second Period
                 </label>
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="space-y-2">
-                    <Label>Month</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Month</Label>
                     {monthSelect(secondMonth, setSecondMonth)}
                   </div>
-                  <div className="space-y-2">
-                    <Label>Year</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Year</Label>
                     {yearInput(secondYear, setSecondYear)}
                   </div>
-                  <div className="space-y-2">
-                    <Label>Cut-off</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Cut-off</Label>
                     {cutSelect(secondCut, setSecondCut)}
                   </div>
                 </div>
@@ -352,8 +356,8 @@ export function MassDtrPrintModal({
           </section>
         </div>
 
-        <DialogFooter className="border-t pt-4 sm:justify-between">
-          <div className="text-sm text-muted-foreground">
+        <DialogFooter className="border-t pt-3 sm:justify-between">
+          <div className="text-xs text-muted-foreground">
             Ready to generate PDF for {selectedEmployees.length} employees
           </div>
           <div className="flex gap-2">

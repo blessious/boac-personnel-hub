@@ -3652,7 +3652,7 @@ async function handleListEmployees(req, res, url) {
   });
 }
 
-async function readAttendanceRows({ employeeId, from, to, q = "", limit = 500 }) {
+function attendanceWhereClause({ employeeId, from, to, q = "", recordSearch = "" }) {
   const where = [];
   const params = {};
   if (employeeId) {
@@ -3673,7 +3673,28 @@ async function readAttendanceRows({ employeeId, from, to, q = "", limit = 500 })
     );
     params.q = `%${q}%`;
   }
+  if (recordSearch) {
+    where.push(
+      `(e.employee_no LIKE :recordSearch OR e.biometric_id LIKE :recordSearch OR e.firstname LIKE :recordSearch OR e.lastname LIKE :recordSearch OR e.department LIKE :recordSearch OR d.work_date LIKE :recordSearch OR d.am_in LIKE :recordSearch OR d.am_out LIKE :recordSearch OR d.pm_in LIKE :recordSearch OR d.pm_out LIKE :recordSearch OR d.status LIKE :recordSearch OR d.remarks LIKE :recordSearch OR d.display_label LIKE :recordSearch OR d.late_minutes LIKE :recordSearch)`,
+    );
+    params.recordSearch = `%${recordSearch}%`;
+  }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  return { whereSql, params };
+}
+
+async function readAttendanceRows({
+  employeeId,
+  from,
+  to,
+  q = "",
+  recordSearch = "",
+  limit = 500,
+  offset = 0,
+}) {
+  const { whereSql, params } = attendanceWhereClause({ employeeId, from, to, q, recordSearch });
+  const safeLimit = Math.min(2000, Math.max(1, Number(limit || 500)));
+  const safeOffset = Math.max(0, Number(offset || 0));
   const [rows] = await pool.execute(
     `SELECT d.*, e.employee_no, e.biometric_id, e.department, e.position,
             CONCAT(e.lastname, ', ', e.firstname) AS employee_name,
@@ -3683,19 +3704,71 @@ async function readAttendanceRows({ employeeId, from, to, q = "", limit = 500 })
      LEFT JOIN users u ON u.id = d.edited_by
      ${whereSql}
      ORDER BY d.work_date DESC, e.lastname ASC, e.firstname ASC
-     LIMIT ${Math.min(2000, Math.max(1, Number(limit || 500)))}`,
+     LIMIT ${safeLimit} OFFSET ${safeOffset}`,
     params,
   );
   return rows.map(attendanceDtrRow);
 }
 
+async function readAttendancePage({
+  employeeId,
+  from,
+  to,
+  q = "",
+  recordSearch = "",
+  page,
+  pageSize,
+}) {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safePageSize = Math.min(200, Math.max(10, Number(pageSize) || 50));
+  const offset = (safePage - 1) * safePageSize;
+  const { whereSql, params } = attendanceWhereClause({ employeeId, from, to, q, recordSearch });
+  const [[countRow]] = await pool.execute(
+    `SELECT COUNT(*) AS total
+     FROM dtr_entries d
+     INNER JOIN employees e ON e.id = d.employee_id
+     ${whereSql}`,
+    params,
+  );
+  const [[summaryRow]] = await pool.execute(
+    `SELECT
+       SUM(CASE WHEN d.status IN ('Present', 'Late') THEN 1 ELSE 0 END) AS present,
+       SUM(CASE WHEN d.status = 'Incomplete' THEN 1 ELSE 0 END) AS incomplete,
+       COALESCE(SUM(d.late_minutes), 0) AS late_minutes
+     FROM dtr_entries d
+     INNER JOIN employees e ON e.id = d.employee_id
+     ${whereSql}`,
+    params,
+  );
+  const rows = await readAttendanceRows({
+    employeeId,
+    from,
+    to,
+    q,
+    recordSearch,
+    limit: safePageSize,
+    offset,
+  });
+
+  return {
+    rows,
+    total: Number(countRow.total || 0),
+    page: safePage,
+    pageSize: safePageSize,
+    summary: {
+      present: Number(summaryRow.present || 0),
+      incomplete: Number(summaryRow.incomplete || 0),
+      lateMinutes: Number(summaryRow.late_minutes || 0),
+    },
+  };
+}
+
 function defaultAttendanceRange(url) {
   const now = new Date();
-  const first = formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
-  const last = formatLocalDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const today = formatLocalDate(now);
   return {
-    from: String(url.searchParams.get("from") || first).slice(0, 10),
-    to: String(url.searchParams.get("to") || last).slice(0, 10),
+    from: String(url.searchParams.get("from") || today).slice(0, 10),
+    to: String(url.searchParams.get("to") || today).slice(0, 10),
   };
 }
 
@@ -4030,6 +4103,9 @@ async function handleListDtrEntries(req, res, url) {
   const { from, to } = defaultAttendanceRange(url);
   let employeeId = String(url.searchParams.get("employeeId") || "").trim();
   const q = String(url.searchParams.get("q") || "").trim();
+  const recordSearch = String(url.searchParams.get("recordSearch") || "").trim();
+  const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
+  const pageSize = Math.min(200, Math.max(10, Number(url.searchParams.get("pageSize")) || 50));
 
   if (user.role === "Employee") {
     if (!user.employeeId)
@@ -4040,7 +4116,15 @@ async function handleListDtrEntries(req, res, url) {
     return json(res, 403, { error: "You can only view your own DTR" });
   }
 
-  const rows = await readAttendanceRows({ employeeId, from, to, q });
+  const pageResult = await readAttendancePage({
+    employeeId,
+    from,
+    to,
+    q,
+    recordSearch,
+    page,
+    pageSize,
+  });
   const [imports] = await pool.execute(
     `SELECT ai.*, u.name AS imported_by_name
      FROM attendance_imports ai
@@ -4050,13 +4134,19 @@ async function handleListDtrEntries(req, res, url) {
   );
 
   return json(res, 200, {
-    entries: rows,
+    entries: pageResult.rows,
     imports: imports.map(attendanceImportRow),
+    pagination: {
+      total: pageResult.total,
+      page: pageResult.page,
+      pageSize: pageResult.pageSize,
+      totalPages: Math.max(1, Math.ceil(pageResult.total / pageResult.pageSize)),
+    },
     summary: {
-      total: rows.length,
-      present: rows.filter((row) => row.status === "Present" || row.status === "Late").length,
-      incomplete: rows.filter((row) => row.status === "Incomplete").length,
-      lateMinutes: rows.reduce((sum, row) => sum + row.lateMinutes, 0),
+      total: pageResult.total,
+      present: pageResult.summary.present,
+      incomplete: pageResult.summary.incomplete,
+      lateMinutes: pageResult.summary.lateMinutes,
     },
   });
 }

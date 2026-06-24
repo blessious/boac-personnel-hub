@@ -4,6 +4,7 @@ import { ArrowLeft, Pencil, Plus, Save, Search, Trash2, Upload } from "lucide-re
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -45,6 +46,8 @@ import {
   createLeaveAdjustment,
   getEmployeeLeave,
   type EmployeeLeaveResponse,
+  type LeaveBalance,
+  type LeaveStatus,
 } from "@/lib/leave-api";
 import { cn } from "@/lib/utils";
 
@@ -102,6 +105,13 @@ type FieldConfig = {
 };
 
 const MAX_201_FILE_BYTES = 8 * 1024 * 1024;
+
+const LEAVE_STATUS_COLOR: Record<LeaveStatus, string> = {
+  Pending: "border-amber-200 bg-amber-50 text-amber-700",
+  Approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  Disapproved: "border-red-200 bg-red-50 text-red-700",
+  Cancelled: "border-slate-200 bg-slate-50 text-slate-600",
+};
 
 const SECTION_FIELDS: Record<string, FieldConfig[]> = {
   family: [
@@ -1149,80 +1159,78 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
     );
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {data.balances.map((balance) => (
-          <div
-            key={balance.leaveTypeId}
-            className="rounded-xl border border-border bg-card p-4 shadow-sm"
-          >
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {balance.code}
-            </div>
-            <div className="mt-1 min-h-10 text-sm font-semibold text-foreground">
-              {balance.name}
-            </div>
-            <div className="mt-3 text-2xl font-semibold text-primary">
-              {formatLeaveNumber(balance.balance)}
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-              <span>Earned {formatLeaveNumber(balance.earned)}</span>
-              <span>Used {formatLeaveNumber(balance.used)}</span>
-              <span>Adj {formatLeaveNumber(balance.adjusted)}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+  const totalBalance = sumLeaveField(data.balances, "balance");
+  const totalEarned = sumLeaveField(data.balances, "earned");
+  const totalUsed = sumLeaveField(data.balances, "used");
+  const totalAdjusted = sumLeaveField(data.balances, "adjusted");
+  const latestLedgerEntries = data.ledger.slice(0, 8);
 
-      <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="border-b border-border px-4 py-3">
-          <h3 className="text-sm font-semibold text-foreground">Leave Credit Ledger</h3>
+  return (
+    <div className="space-y-5">
+      <section className="rounded-xl border border-border bg-card shadow-sm">
+        <div className="border-b border-border px-4 py-4">
+          <h3 className="text-sm font-semibold text-foreground">Leave Balance Overview</h3>
           <p className="text-xs text-muted-foreground">
-            Every credit addition, deduction, adjustment, and reversal is recorded here.
+            Available credits are shown first. Earned, used, and manual adjustments are kept in the
+            same row for easy checking.
           </p>
         </div>
+
+        <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
+          <LeaveSummaryTile label="Available credits" value={totalBalance} tone="primary" />
+          <LeaveSummaryTile label="Total earned" value={totalEarned} />
+          <LeaveSummaryTile label="Total used" value={totalUsed} />
+          <LeaveSummaryTile label="Adjustments" value={totalAdjusted} signed />
+        </div>
+
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-3 py-2.5 font-medium">Date</th>
-                <th className="px-3 py-2.5 font-medium">Type</th>
-                <th className="px-3 py-2.5 font-medium">Entry</th>
-                <th className="px-3 py-2.5 font-medium">Amount</th>
-                <th className="px-3 py-2.5 font-medium">Balance Change</th>
-                <th className="px-3 py-2.5 font-medium">Balance After</th>
-                <th className="px-3 py-2.5 font-medium">Description</th>
-                <th className="px-3 py-2.5 font-medium">By</th>
+                <th className="px-4 py-3 font-medium">Leave Type</th>
+                <th className="px-4 py-3 text-right font-medium">Available</th>
+                <th className="px-4 py-3 text-right font-medium">Earned</th>
+                <th className="px-4 py-3 text-right font-medium">Used</th>
+                <th className="px-4 py-3 text-right font-medium">Adjustments</th>
               </tr>
             </thead>
             <tbody>
-              {data.ledger.length === 0 ? (
+              {data.balances.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
-                    No ledger entries recorded yet.
+                  <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                    No active leave types found.
                   </td>
                 </tr>
               ) : (
-                data.ledger.map((entry) => (
-                  <tr key={entry.id} className="border-b border-border/50 last:border-0">
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {new Date(entry.createdAt).toLocaleDateString()}
+                data.balances.map((balance) => (
+                  <tr
+                    key={balance.leaveTypeId}
+                    className="border-b border-border/50 last:border-0 hover:bg-muted/20"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="min-w-0">
+                        <div className="font-medium leading-5 text-foreground">{balance.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Updated {new Date(balance.updatedAt).toLocaleDateString()}
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-3 py-2.5">{entry.name}</td>
-                    <td className="px-3 py-2.5">{formatLedgerType(entry.entryType)}</td>
-                    <td className="px-3 py-2.5 font-medium">{formatLeaveNumber(entry.amount)}</td>
-                    <td className="px-3 py-2.5 font-medium">
-                      {formatLeaveNumber(entry.balanceDelta)}
+                    <td
+                      className={cn(
+                        "px-4 py-3 text-right text-lg font-semibold",
+                        getBalanceTone(balance.balance),
+                      )}
+                    >
+                      {formatLeaveNumber(balance.balance)}
                     </td>
-                    <td className="px-3 py-2.5 font-semibold text-primary">
-                      {formatLeaveNumber(entry.balanceAfter)}
+                    <td className="px-4 py-3 text-right text-muted-foreground">
+                      {formatLeaveNumber(balance.earned)}
                     </td>
-                    <td className="max-w-[260px] truncate px-3 py-2.5 text-muted-foreground">
-                      {entry.description || "-"}
+                    <td className="px-4 py-3 text-right text-muted-foreground">
+                      {formatLeaveNumber(balance.used)}
                     </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {entry.createdByName || "-"}
+                    <td className="px-4 py-3 text-right text-muted-foreground">
+                      {formatSignedLeaveNumber(balance.adjusted)}
                     </td>
                   </tr>
                 ))
@@ -1232,56 +1240,131 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Leave Credit Adjustment</h3>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border px-4 py-3">
+            <h3 className="text-sm font-semibold text-foreground">Recent Leave Credit Activity</h3>
             <p className="text-xs text-muted-foreground">
-              Use positive values to add credits and negative values to deduct corrections.
+              Latest credit additions, deductions, adjustments, and reversals.
             </p>
           </div>
-        </div>
-        <div className="grid gap-3 md:grid-cols-[220px_160px_minmax(0,1fr)_auto] md:items-end">
-          <Field label="Leave Type">
-            <Select
-              value={form.leaveTypeId}
-              onValueChange={(value) => setForm({ ...form, leaveTypeId: value })}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-2.5 font-medium">Date</th>
+                  <th className="px-3 py-2.5 font-medium">Leave</th>
+                  <th className="px-3 py-2.5 font-medium">Entry</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Change</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Balance</th>
+                  <th className="px-3 py-2.5 font-medium">Notes</th>
+                  <th className="px-3 py-2.5 font-medium">By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {latestLedgerEntries.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                      No ledger entries recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  latestLedgerEntries.map((entry) => (
+                    <tr key={entry.id} className="border-b border-border/50 last:border-0">
+                      <td className="px-3 py-2.5 text-muted-foreground">
+                        {new Date(entry.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="font-medium">{entry.code}</div>
+                        <div className="max-w-[160px] truncate text-xs text-muted-foreground">
+                          {entry.name}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5">{formatLedgerType(entry.entryType)}</td>
+                      <td
+                        className={cn(
+                          "px-3 py-2.5 text-right font-semibold",
+                          getBalanceTone(entry.balanceDelta),
+                        )}
+                      >
+                        {formatSignedLeaveNumber(entry.balanceDelta)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-semibold text-primary">
+                        {formatLeaveNumber(entry.balanceAfter)}
+                      </td>
+                      <td className="max-w-[220px] truncate px-3 py-2.5 text-muted-foreground">
+                        {entry.description || "-"}
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground">
+                        {entry.createdByName || "-"}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          {data.ledger.length > latestLedgerEntries.length ? (
+            <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+              Showing latest {latestLedgerEntries.length} of {data.ledger.length} ledger entries.
+            </div>
+          ) : null}
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-foreground">Leave Credit Adjustment</h3>
+            <p className="text-xs text-muted-foreground">
+              Add credits with a positive value or deduct corrections with a negative value.
+            </p>
+          </div>
+          <div className="grid gap-3">
+            <Field label="Leave Type">
+              <Select
+                value={form.leaveTypeId}
+                onValueChange={(value) => setForm({ ...form, leaveTypeId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {data.balances.map((balance) => (
+                    <SelectItem key={balance.leaveTypeId} value={String(balance.leaveTypeId)}>
+                      {balance.code} - {balance.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Amount">
+              <Input
+                type="number"
+                step="0.001"
+                value={form.amount}
+                onChange={(event) => setForm({ ...form, amount: event.target.value })}
+              />
+            </Field>
+            <Field label="Reason">
+              <Input
+                value={form.reason}
+                onChange={(event) => setForm({ ...form, reason: event.target.value })}
+              />
+            </Field>
+            <Button
+              disabled={!canEdit}
+              onClick={submitAdjustment}
+              className="w-full bg-blue-600 text-white hover:bg-blue-700"
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Select type" />
-              </SelectTrigger>
-              <SelectContent>
-                {data.balances.map((balance) => (
-                  <SelectItem key={balance.leaveTypeId} value={String(balance.leaveTypeId)}>
-                    {balance.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Amount">
-            <Input
-              type="number"
-              step="0.001"
-              value={form.amount}
-              onChange={(event) => setForm({ ...form, amount: event.target.value })}
-            />
-          </Field>
-          <Field label="Reason">
-            <Input
-              value={form.reason}
-              onChange={(event) => setForm({ ...form, reason: event.target.value })}
-            />
-          </Field>
-          <Button
-            disabled={!canEdit}
-            onClick={submitAdjustment}
-            className="bg-blue-600 text-white hover:bg-blue-700"
-          >
-            <Save className="mr-1.5 h-4 w-4" /> Apply
-          </Button>
-        </div>
-      </section>
+              <Save className="mr-1.5 h-4 w-4" /> Apply Adjustment
+            </Button>
+            {!canEdit ? (
+              <p className="text-xs text-muted-foreground">
+                You can view balances, but your role cannot adjust leave credits.
+              </p>
+            ) : null}
+          </div>
+        </section>
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -1315,7 +1398,11 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
                       <td className="px-3 py-2.5">
                         {formatLeaveNumber(application.daysRequested)}
                       </td>
-                      <td className="px-3 py-2.5">{application.status}</td>
+                      <td className="px-3 py-2.5">
+                        <Badge variant="outline" className={LEAVE_STATUS_COLOR[application.status]}>
+                          {application.status}
+                        </Badge>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -1370,10 +1457,56 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
   );
 }
 
+function LeaveSummaryTile({
+  label,
+  value,
+  tone = "default",
+  signed = false,
+}: {
+  label: string;
+  value: number;
+  tone?: "default" | "primary";
+  signed?: boolean;
+}) {
+  return (
+    <div className="bg-card p-4">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-2 text-2xl font-semibold",
+          tone === "primary" ? "text-primary" : getBalanceTone(value),
+        )}
+      >
+        {signed ? formatSignedLeaveNumber(value) : formatLeaveNumber(value)}
+      </div>
+    </div>
+  );
+}
+
+function sumLeaveField(
+  balances: LeaveBalance[],
+  field: keyof Pick<LeaveBalance, "balance" | "earned" | "used" | "adjusted">,
+) {
+  return balances.reduce((total, balance) => total + Number(balance[field] || 0), 0);
+}
+
 function formatLeaveNumber(value: number) {
   return Number.isInteger(value)
     ? String(value)
     : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatSignedLeaveNumber(value: number) {
+  if (value > 0) return `+${formatLeaveNumber(value)}`;
+  return formatLeaveNumber(value);
+}
+
+function getBalanceTone(value: number) {
+  if (value < 0) return "text-red-600";
+  if (value > 0) return "text-emerald-700";
+  return "text-muted-foreground";
 }
 
 function formatLedgerType(value: string) {

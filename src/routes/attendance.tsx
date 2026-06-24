@@ -5,6 +5,8 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileDown,
   FileSpreadsheet,
@@ -25,6 +27,17 @@ import { AppShell } from "@/components/layout/AppShell";
 import { MassDtrPrintModal } from "@/components/MassDtrPrintModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,6 +73,7 @@ import {
   checkUnimportedDtrs,
   closeGeneratedFileTab,
   createBiometricDevice,
+  deleteBiometricDevice,
   downloadGeneratedFile,
   generateDtrExcel,
   generateDtrPdf,
@@ -76,6 +90,7 @@ import {
   refreshDtr,
   reverseDtrCorrectionRequest,
   syncBiometricNow,
+  updateBiometricDevice,
   updateDtr,
   type BiometricRealtimeLog,
   type BiometricRealtimeStatus,
@@ -102,8 +117,9 @@ const formatLocalDate = (date: Date) =>
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
-const DEFAULT_FROM = formatLocalDate(new Date(today.getFullYear(), today.getMonth(), 1));
-const DEFAULT_TO = formatLocalDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+const DEFAULT_FROM = formatLocalDate(today);
+const DEFAULT_TO = formatLocalDate(today);
+const DTR_PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 
 function formatDtrTime(value?: string | null) {
   if (!value) return "-";
@@ -167,6 +183,16 @@ function AttendancePage() {
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(DEFAULT_TO);
   const [q, setQ] = useState("");
+  const [recordSearch, setRecordSearch] = useState("");
+  const [debouncedRecordSearch, setDebouncedRecordSearch] = useState("");
+  const [dtrPage, setDtrPage] = useState(1);
+  const [dtrPageSize, setDtrPageSize] = useState(50);
+  const [dtrPagination, setDtrPagination] = useState({
+    total: 0,
+    page: 1,
+    pageSize: 50,
+    totalPages: 1,
+  });
   const [employeeId, setEmployeeId] = useState("all");
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [entries, setEntries] = useState<DtrEntry[]>([]);
@@ -191,6 +217,12 @@ function AttendancePage() {
   const [massImportStartDate, setMassImportStartDate] = useState(from);
   const [massImportEndDate, setMassImportEndDate] = useState(to);
   const [showBiometricDialog, setShowBiometricDialog] = useState(false);
+  const [editingBiometricDevice, setEditingBiometricDevice] = useState<BiometricDevice | null>(
+    null,
+  );
+  const [biometricDeviceToDelete, setBiometricDeviceToDelete] = useState<BiometricDevice | null>(
+    null,
+  );
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showMassPrintDialog, setShowMassPrintDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
@@ -203,11 +235,13 @@ function AttendancePage() {
   const [formEmployeeSearch, setFormEmployeeSearch] = useState("");
   const [exportEmployeeSearch, setExportEmployeeSearch] = useState("");
   const [exportNoterSearch, setExportNoterSearch] = useState("");
+  const [scheduleDepartment, setScheduleDepartment] = useState("all");
   const [scheduleEmployeeSearch, setScheduleEmployeeSearch] = useState("");
   const [selectedImportEmployeeId, setSelectedImportEmployeeId] = useState("");
   const [biometricDevices, setBiometricDevices] = useState<BiometricDevice[]>([]);
   const [selectedBiometricId, setSelectedBiometricId] = useState("");
   const [deviceStatus, setDeviceStatus] = useState<Record<string, "online" | "offline">>({});
+  const [checkingBiometricDeviceId, setCheckingBiometricDeviceId] = useState("");
   const [unimportedCount, setUnimportedCount] = useState<number | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<BiometricRealtimeStatus["status"] | null>(
     null,
@@ -255,15 +289,53 @@ function AttendancePage() {
 
   const load = () => {
     setLoading(true);
-    listDtr({ employeeId: selectedEmployeeId, from, to, q: isEmployee ? "" : q })
+    listDtr({
+      employeeId: selectedEmployeeId,
+      from,
+      to,
+      q: isEmployee ? "" : q,
+      recordSearch: debouncedRecordSearch,
+      page: dtrPage,
+      pageSize: dtrPageSize,
+    })
       .then((result) => {
         setEntries(result.entries);
+        const nextPagination = result.pagination || {
+          total: result.summary.total,
+          page: dtrPage,
+          pageSize: dtrPageSize,
+          totalPages: Math.max(1, Math.ceil(result.summary.total / dtrPageSize)),
+        };
+        setDtrPagination(nextPagination);
+        if (nextPagination.total > 0 && dtrPage > nextPagination.totalPages) {
+          setDtrPage(nextPagination.totalPages);
+        }
       })
       .catch((err) => toast.error(err.message || "Unable to load DTR"))
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [selectedEmployeeId, from, to, q, isEmployee]);
+  useEffect(load, [
+    selectedEmployeeId,
+    from,
+    to,
+    q,
+    debouncedRecordSearch,
+    dtrPage,
+    dtrPageSize,
+    isEmployee,
+  ]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedRecordSearch(recordSearch.trim());
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [recordSearch]);
+
+  useEffect(() => {
+    setDtrPage(1);
+  }, [selectedEmployeeId, from, to, q, debouncedRecordSearch, dtrPageSize]);
 
   const loadCorrections = () => {
     if (!canApprove && !isEmployee) {
@@ -430,10 +502,31 @@ function AttendancePage() {
     () => filterEmployeeOptions(employeeOptions, exportEmployeeSearch),
     [employeeOptions, exportEmployeeSearch],
   );
-  const filteredScheduleEmployeeOptions = useMemo(
-    () => filterEmployeeOptions(employeeOptions, scheduleEmployeeSearch),
-    [employeeOptions, scheduleEmployeeSearch],
+  const scheduleDepartments = useMemo(
+    () =>
+      Array.from(new Set(employees.map((employee) => employee.department).filter(Boolean))).sort(
+        (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }),
+      ),
+    [employees],
   );
+  const scheduleEmployeeOptions = useMemo(
+    () =>
+      employees.map((employee) => ({
+        id: employee.id,
+        label: `${employee.lastname}, ${employee.firstname} (${employee.employeeId})`,
+        department: employee.department || "",
+      })),
+    [employees],
+  );
+  const filteredScheduleEmployeeOptions = useMemo(() => {
+    const search = scheduleEmployeeSearch.trim().toLowerCase();
+    return scheduleEmployeeOptions.filter((employee) => {
+      const matchesDepartment =
+        scheduleDepartment === "all" || employee.department === scheduleDepartment;
+      const matchesSearch = !search || employee.label.toLowerCase().includes(search);
+      return matchesDepartment && matchesSearch;
+    });
+  }, [scheduleDepartment, scheduleEmployeeOptions, scheduleEmployeeSearch]);
   const filteredExportNoters = useMemo(() => {
     const search = exportNoterSearch.trim().toLowerCase();
     if (!search) return noters;
@@ -707,15 +800,27 @@ function AttendancePage() {
   const reloadBiometricDevices = async (selectId = "") => {
     const result = await listBiometricDevices();
     setBiometricDevices(result.devices);
-    setSelectedBiometricId(selectId || result.devices.find((device) => device.active)?.id || "");
+    const selectedDevice = result.devices.find((device) => device.id === selectId && device.active);
+    const fallbackDevice = result.devices.find((device) => device.active);
+    setSelectedBiometricId(selectedDevice?.id || fallbackDevice?.id || "");
+    setMassImportBiometricId((current) => {
+      const currentDevice = result.devices.find((device) => device.id === current && device.active);
+      return currentDevice?.id || selectedDevice?.id || fallbackDevice?.id || "";
+    });
+    setManualSyncDeviceId((current) => {
+      if (current === "all") return current;
+      return result.devices.some((device) => device.id === current && device.active)
+        ? current
+        : "all";
+    });
   };
 
-  const checkSelectedDevice = async () => {
-    const device = biometricDevices.find((item) => item.id === selectedBiometricId);
+  const checkBiometricDevice = async (device: BiometricDevice | undefined) => {
     if (!device) {
       toast.error("Select a biometric device first");
       return;
     }
+    setCheckingBiometricDeviceId(device.id);
     try {
       const result = await checkBiometricStatus({
         ip_address: device.ip_address,
@@ -727,7 +832,13 @@ function AttendancePage() {
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to check device");
+    } finally {
+      setCheckingBiometricDeviceId("");
     }
+  };
+
+  const checkSelectedDevice = async () => {
+    await checkBiometricDevice(biometricDevices.find((item) => item.id === selectedBiometricId));
   };
 
   const runManualBiometricSync = async () => {
@@ -751,6 +862,23 @@ function AttendancePage() {
     }
   };
 
+  const openAddBiometricDevice = () => {
+    setEditingBiometricDevice(null);
+    setDeviceForm({ name: "", ip_address: "", port: "4370", active: true });
+    setShowBiometricDialog(true);
+  };
+
+  const openEditBiometricDevice = (device: BiometricDevice) => {
+    setEditingBiometricDevice(device);
+    setDeviceForm({
+      name: device.name,
+      ip_address: device.ip_address,
+      port: String(device.port || 4370),
+      active: device.active,
+    });
+    setShowBiometricDialog(true);
+  };
+
   const saveBiometricDevice = async () => {
     const name = deviceForm.name.trim();
     const ipAddress = deviceForm.ip_address.trim();
@@ -771,18 +899,63 @@ function AttendancePage() {
     }
     setBusy(true);
     try {
-      const result = await createBiometricDevice({
+      const payload = {
         name,
         ip_address: ipAddress,
         port,
         active: deviceForm.active,
-      });
-      toast.success("Biometric device added");
+      };
+      const result = editingBiometricDevice
+        ? await updateBiometricDevice(editingBiometricDevice.id, payload)
+        : await createBiometricDevice(payload);
+      toast.success(editingBiometricDevice ? "Biometric device updated" : "Biometric device added");
       setShowBiometricDialog(false);
+      setEditingBiometricDevice(null);
       setDeviceForm({ name: "", ip_address: "", port: "4370", active: true });
       await reloadBiometricDevices(result.device.id);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Unable to add biometric device");
+      toast.error(err instanceof Error ? err.message : "Unable to save biometric device");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleBiometricDevice = async (device: BiometricDevice, active: boolean) => {
+    setBusy(true);
+    try {
+      await updateBiometricDevice(device.id, {
+        name: device.name,
+        ip_address: device.ip_address,
+        port: device.port,
+        active,
+      });
+      toast.success(active ? "Biometric device activated" : "Biometric device deactivated");
+      await reloadBiometricDevices(active ? device.id : "");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to update biometric device");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeBiometricDevice = async () => {
+    if (!biometricDeviceToDelete) return;
+    setBusy(true);
+    try {
+      await deleteBiometricDevice(biometricDeviceToDelete.id);
+      toast.success("Biometric device deleted");
+      setDeviceStatus((current) => {
+        const next = { ...current };
+        delete next[biometricDeviceToDelete.id];
+        return next;
+      });
+      if (selectedBiometricId === biometricDeviceToDelete.id) setSelectedBiometricId("");
+      if (massImportBiometricId === biometricDeviceToDelete.id) setMassImportBiometricId("");
+      if (manualSyncDeviceId === biometricDeviceToDelete.id) setManualSyncDeviceId("all");
+      setBiometricDeviceToDelete(null);
+      await reloadBiometricDevices();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to delete biometric device");
     } finally {
       setBusy(false);
     }
@@ -998,6 +1171,10 @@ function AttendancePage() {
         : realtimeState === "success"
           ? "border-emerald-200 bg-emerald-50 text-emerald-700"
           : "border-slate-200 bg-slate-50 text-slate-700";
+  const dtrTotal = dtrPagination.total;
+  const dtrTotalPages = Math.max(1, dtrPagination.totalPages);
+  const dtrStart = dtrTotal === 0 ? 0 : (dtrPagination.page - 1) * dtrPagination.pageSize + 1;
+  const dtrEnd = Math.min(dtrTotal, dtrStart + entries.length - 1);
 
   return (
     <AppShell
@@ -1169,7 +1346,7 @@ function AttendancePage() {
             {canManage && (
               <TabsTrigger value="biometrics" className="flex items-center gap-2 py-2">
                 <RadioTower className="h-4 w-4" />
-                Biometric Sync
+                Biometric Management
               </TabsTrigger>
             )}
           </TabsList>
@@ -1252,26 +1429,126 @@ function AttendancePage() {
                       </Button>
                     </div>
 
-                    <div className="grid gap-2 md:grid-cols-2">
-                      {activeBiometricDevices.length ? (
-                        activeBiometricDevices.map((device) => (
-                          <div
-                            key={device.id}
-                            className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm"
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-foreground">{device.name}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {device.ip_address}:{device.port}
-                              </span>
+                    <div className="rounded-md border border-border">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
+                        <div>
+                          <h3 className="text-sm font-semibold text-foreground">
+                            Biometric Devices
+                          </h3>
+                          <p className="text-xs text-muted-foreground">
+                            Manage device names, network addresses, ports, and sync availability.
+                          </p>
+                        </div>
+                        <Button type="button" size="sm" onClick={openAddBiometricDevice}>
+                          <Plus className="mr-1.5 h-3.5 w-3.5" />
+                          Add Device
+                        </Button>
+                      </div>
+
+                      {biometricDevices.length ? (
+                        <div className="divide-y divide-border">
+                          {biometricDevices.map((device) => (
+                            <div
+                              key={device.id}
+                              className="grid gap-3 px-3 py-3 md:grid-cols-[1fr_auto] md:items-center"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="truncate text-sm font-medium text-foreground">
+                                    {device.name}
+                                  </p>
+                                  <Badge
+                                    variant="outline"
+                                    className={
+                                      device.active
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                        : "border-slate-200 bg-slate-50 text-slate-600"
+                                    }
+                                  >
+                                    {device.active ? "Active" : "Inactive"}
+                                  </Badge>
+                                  {deviceStatus[device.id] && (
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        deviceStatus[device.id] === "online"
+                                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                          : "border-rose-200 bg-rose-50 text-rose-700"
+                                      }
+                                    >
+                                      {deviceStatus[device.id]}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {device.ip_address}:{device.port}
+                                </p>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                                <div className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5">
+                                  <Label
+                                    htmlFor={`biometric-active-${device.id}`}
+                                    className="text-xs text-muted-foreground"
+                                  >
+                                    Active
+                                  </Label>
+                                  <Switch
+                                    id={`biometric-active-${device.id}`}
+                                    checked={device.active}
+                                    disabled={busy}
+                                    onCheckedChange={(checked) =>
+                                      toggleBiometricDevice(device, checked)
+                                    }
+                                  />
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setSelectedBiometricId(device.id);
+                                    void checkBiometricDevice(device);
+                                  }}
+                                  disabled={busy || checkingBiometricDeviceId === device.id}
+                                >
+                                  {checkingBiometricDeviceId === device.id ? (
+                                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                                  ) : null}
+                                  {checkingBiometricDeviceId === device.id
+                                    ? "Checking..."
+                                    : "Check"}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  title="Edit device"
+                                  onClick={() => openEditBiometricDevice(device)}
+                                  disabled={busy}
+                                  className="h-9 w-9"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  title="Delete device"
+                                  onClick={() => setBiometricDeviceToDelete(device)}
+                                  disabled={busy}
+                                  className="h-9 w-9"
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
                             </div>
-                          </div>
-                        ))
+                          ))}
+                        </div>
                       ) : (
-                        <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground md:col-span-2">
-                          No active biometric devices configured. Add the 2nd Floor device, then
-                          keep ADMS pointed to this computer on port{" "}
-                          {realtimeStatus?.admsPort || 6000}.
+                        <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                          No biometric devices configured. Add a device, then point ADMS devices to
+                          this computer on port {realtimeStatus?.admsPort || 6000}.
                         </p>
                       )}
                     </div>
@@ -1450,9 +1727,22 @@ function AttendancePage() {
                   <CalendarClock className="h-4 w-4 text-blue-700" />
                   <h2 className="text-sm font-semibold text-foreground">Daily Time Records</h2>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  <p className="text-xs text-muted-foreground">
-                    {loading ? "Loading..." : `${entries.length} record(s)`}
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                  <div className="relative w-full sm:w-[260px]">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={recordSearch}
+                      onChange={(event) => setRecordSearch(event.target.value)}
+                      placeholder="Search DTR records"
+                      className="h-9 pl-9"
+                    />
+                  </div>
+                  <p className="whitespace-nowrap text-xs text-muted-foreground">
+                    {loading
+                      ? "Loading..."
+                      : dtrTotal
+                        ? `Showing ${dtrStart}-${dtrEnd} of ${dtrTotal}`
+                        : "0 record(s)"}
                   </p>
                   {isEmployee && (
                     <Button variant="outline" size="sm" onClick={openActivityLabelRequest}>
@@ -1550,26 +1840,40 @@ function AttendancePage() {
                 ))}
                 {!entries.length && !loading && (
                   <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-                    No DTR records found for this filter.
+                    {debouncedRecordSearch
+                      ? "No DTR records match this table search."
+                      : "No DTR records found for this filter."}
                   </div>
                 )}
               </div>
 
               <div className="mobile-desktop-table overflow-x-auto">
-                <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
+                <table className="w-full min-w-[1180px] table-fixed text-left text-sm">
+                  <colgroup>
+                    <col className="w-[120px]" />
+                    <col className="w-[240px]" />
+                    <col className="w-[280px]" />
+                    <col className="w-[120px]" />
+                    <col className="w-[95px]" />
+                    <col className="w-[95px]" />
+                    <col className="w-[95px]" />
+                    <col className="w-[95px]" />
+                    <col className="w-[120px]" />
+                    {(canManage || isEmployee) && <col className="w-[120px]" />}
+                  </colgroup>
                   <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Biometric ID</th>
-                      <th className="w-[260px] px-4 py-3 font-semibold">Name</th>
-                      <th className="w-[360px] px-4 py-3 font-semibold">Office</th>
-                      <th className="px-4 py-3 font-semibold">Date</th>
-                      <th className="px-4 py-3 font-semibold">AM In</th>
-                      <th className="px-4 py-3 font-semibold">AM Out</th>
-                      <th className="px-4 py-3 font-semibold">PM In</th>
-                      <th className="px-4 py-3 font-semibold">PM Out</th>
-                      <th className="px-4 py-3 font-semibold">Tardiness</th>
+                      <th className="px-4 py-3 font-semibold">Name</th>
+                      <th className="px-4 py-3 font-semibold">Office</th>
+                      <th className="px-4 py-3 text-center font-semibold">Date</th>
+                      <th className="px-3 py-3 text-center font-semibold">AM In</th>
+                      <th className="px-3 py-3 text-center font-semibold">AM Out</th>
+                      <th className="px-3 py-3 text-center font-semibold">PM In</th>
+                      <th className="px-3 py-3 text-center font-semibold">PM Out</th>
+                      <th className="px-3 py-3 text-center font-semibold">Tardiness</th>
                       {(canManage || isEmployee) && (
-                        <th className="w-[128px] px-3 py-3 text-right font-semibold">Actions</th>
+                        <th className="px-3 py-3 text-right font-semibold">Actions</th>
                       )}
                     </tr>
                   </thead>
@@ -1580,12 +1884,16 @@ function AttendancePage() {
                           {entry.biometricId || "-"}
                         </td>
                         <td className="px-4 py-3">
-                          <p className="font-medium text-foreground">{entry.employeeName}</p>
+                          <p className="truncate font-medium text-foreground">
+                            {entry.employeeName}
+                          </p>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="truncate px-4 py-3 text-muted-foreground">
                           {entry.department || "-"}
                         </td>
-                        <td className="px-4 py-3 font-medium text-foreground">{entry.workDate}</td>
+                        <td className="px-4 py-3 text-center font-medium text-foreground">
+                          {entry.workDate}
+                        </td>
                         {entry.displayLabel ? (
                           <td
                             colSpan={4}
@@ -1595,21 +1903,21 @@ function AttendancePage() {
                           </td>
                         ) : (
                           <>
-                            <td className="px-4 py-3 font-medium text-emerald-600">
+                            <td className="px-3 py-3 text-center font-medium text-emerald-600">
                               {formatDtrTime(entry.amIn)}
                             </td>
-                            <td className="px-4 py-3 font-medium text-emerald-600">
+                            <td className="px-3 py-3 text-center font-medium text-emerald-600">
                               {formatDtrTime(entry.amOut)}
                             </td>
-                            <td className="px-4 py-3 font-medium text-emerald-600">
+                            <td className="px-3 py-3 text-center font-medium text-emerald-600">
                               {formatDtrTime(entry.pmIn)}
                             </td>
-                            <td className="px-4 py-3 font-medium text-emerald-600">
+                            <td className="px-3 py-3 text-center font-medium text-emerald-600">
                               {formatDtrTime(entry.pmOut)}
                             </td>
                           </>
                         )}
-                        <td className="px-4 py-3 text-destructive font-medium">
+                        <td className="px-3 py-3 text-center font-medium text-destructive">
                           {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
                         </td>
                         {(canManage || isEmployee) && (
@@ -1651,12 +1959,65 @@ function AttendancePage() {
                           colSpan={canManage || isEmployee ? 10 : 9}
                           className="px-4 py-10 text-center text-muted-foreground"
                         >
-                          No DTR records found for this filter.
+                          {debouncedRecordSearch
+                            ? "No DTR records match this table search."
+                            : "No DTR records found for this filter."}
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
+              </div>
+              <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span>
+                    Page {dtrPagination.page} of {dtrTotalPages}
+                  </span>
+                  <span className="hidden sm:inline">-</span>
+                  <span>
+                    {dtrTotal ? `${dtrStart}-${dtrEnd} of ${dtrTotal} record(s)` : "No records"}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <Select
+                    value={String(dtrPageSize)}
+                    onValueChange={(value) => {
+                      setDtrPageSize(Number(value));
+                      setDtrPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="h-9 w-[120px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DTR_PAGE_SIZE_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={String(option)}>
+                          {option} / page
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9"
+                    disabled={loading || dtrPagination.page <= 1}
+                    onClick={() => setDtrPage((page) => Math.max(1, page - 1))}
+                  >
+                    <ChevronLeft className="mr-1 h-4 w-4" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9"
+                    disabled={loading || dtrPagination.page >= dtrTotalPages}
+                    onClick={() => setDtrPage((page) => Math.min(dtrTotalPages, page + 1))}
+                  >
+                    Next
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </section>
           </TabsContent>
@@ -1868,7 +2229,7 @@ function AttendancePage() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => setShowBiometricDialog(true)}
+                      onClick={openAddBiometricDevice}
                     >
                       <Plus className="mr-1.5 h-3.5 w-3.5" />
                       Add Device
@@ -1893,8 +2254,17 @@ function AttendancePage() {
                         ? `Status: ${deviceStatus[selectedBiometricId]}`
                         : "Select a device or add one first."}
                     </span>
-                    <Button type="button" size="sm" variant="outline" onClick={checkSelectedDevice}>
-                      Check
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={checkSelectedDevice}
+                      disabled={Boolean(checkingBiometricDeviceId)}
+                    >
+                      {checkingBiometricDeviceId === selectedBiometricId ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : null}
+                      {checkingBiometricDeviceId === selectedBiometricId ? "Checking..." : "Check"}
                     </Button>
                   </div>
                 </div>
@@ -2000,7 +2370,7 @@ function AttendancePage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() => setShowBiometricDialog(true)}
+                    onClick={openAddBiometricDevice}
                   >
                     <Plus className="mr-1.5 h-3.5 w-3.5" />
                     Add Device
@@ -2096,10 +2466,21 @@ function AttendancePage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showBiometricDialog} onOpenChange={setShowBiometricDialog}>
+      <Dialog
+        open={showBiometricDialog}
+        onOpenChange={(open) => {
+          setShowBiometricDialog(open);
+          if (!open) {
+            setEditingBiometricDevice(null);
+            setDeviceForm({ name: "", ip_address: "", port: "4370", active: true });
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Biometric Device</DialogTitle>
+            <DialogTitle>
+              {editingBiometricDevice ? "Edit Biometric Device" : "Add Biometric Device"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <Field
@@ -2120,14 +2501,16 @@ function AttendancePage() {
               value={deviceForm.port}
               onChange={(port) => setDeviceForm({ ...deviceForm, port })}
             />
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+              <Label htmlFor="biometric-device-active" className="text-sm">
+                Active for sync and imports
+              </Label>
+              <Switch
+                id="biometric-device-active"
                 checked={deviceForm.active}
-                onChange={(event) => setDeviceForm({ ...deviceForm, active: event.target.checked })}
+                onCheckedChange={(active) => setDeviceForm({ ...deviceForm, active })}
               />
-              Active
-            </label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowBiometricDialog(false)}>
@@ -2138,11 +2521,44 @@ function AttendancePage() {
               disabled={busy}
               className="bg-blue-600 text-white hover:bg-blue-700"
             >
-              Add Device
+              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              {editingBiometricDevice ? "Save Changes" : "Add Device"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={Boolean(biometricDeviceToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setBiometricDeviceToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete biometric device?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {biometricDeviceToDelete
+                ? `${biometricDeviceToDelete.name} will be removed from biometric sync and import device selections. Existing attendance logs will remain unchanged.`
+                : "This device will be removed from biometric sync and import device selections."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void removeBiometricDevice();
+              }}
+              disabled={busy}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              Delete Device
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
         <DialogContent className="grid max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
@@ -2349,7 +2765,20 @@ function AttendancePage() {
             <div className="space-y-3">
               <Label>Employees</Label>
               <div className="max-h-80 overflow-y-auto rounded-md border border-border p-2">
-                <div className="sticky top-0 z-10 bg-card pb-2">
+                <div className="sticky top-0 z-10 space-y-2 bg-card pb-2">
+                  <Select value={scheduleDepartment} onValueChange={setScheduleDepartment}>
+                    <SelectTrigger className="h-8">
+                      <SelectValue placeholder="Filter by department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All departments</SelectItem>
+                      {scheduleDepartments.map((department) => (
+                        <SelectItem key={department} value={department}>
+                          {department}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
                     <Input
@@ -2387,6 +2816,12 @@ function AttendancePage() {
                   />
                   Select all visible
                 </label>
+                <div className="mb-2 px-2 text-xs text-muted-foreground">
+                  Showing {filteredScheduleEmployeeOptions.length} employee(s)
+                  {scheduleForm.employeeIds.length
+                    ? ` - ${scheduleForm.employeeIds.length} selected`
+                    : ""}
+                </div>
                 {filteredScheduleEmployeeOptions.map((employee) => (
                   <label
                     key={employee.id}
