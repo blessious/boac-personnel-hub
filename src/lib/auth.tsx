@@ -17,12 +17,20 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   "Super Admin": "Full access to all system, HR, approval, reporting, and self-service functions.",
   Admin: "Manages users, settings, audit logs, backups, and system configuration.",
   HR: "Maintains employee records, attendance, leave setup, plantilla, movements, and service records.",
-  Approver: "Reviews dashboards and HR records, approves leave and personnel movements, but cannot edit master data.",
+  Approver:
+    "Reviews dashboards and HR records, approves leave and personnel movements, but cannot edit master data.",
   Employee: "Accesses only their own profile, requests, attendance, and self-service tools.",
   Viewer: "Read-only access to dashboard, reports, and non-administrative HR records.",
 };
 
-export const ROLE_OPTIONS: Role[] = ["Super Admin", "Admin", "HR", "Approver", "Employee", "Viewer"];
+export const ROLE_OPTIONS: Role[] = [
+  "Super Admin",
+  "Admin",
+  "HR",
+  "Approver",
+  "Employee",
+  "Viewer",
+];
 
 export function isSelfServiceRole(role: Role | string | undefined): role is "Employee" {
   return role === "Employee";

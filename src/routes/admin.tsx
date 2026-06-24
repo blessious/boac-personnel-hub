@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -137,7 +137,7 @@ function AdminPage() {
     isActive: true,
   });
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     if (!isAdmin) return;
     try {
       const result = await api<{ users: AdminUser[] }>("/api/admin/users");
@@ -145,11 +145,11 @@ function AdminPage() {
     } catch (error) {
       toast.error((error as Error).message);
     }
-  };
+  }, [isAdmin]);
 
   useEffect(() => {
     loadUsers();
-  }, [isAdmin]);
+  }, [loadUsers]);
 
   const loadEmployeeCandidates = async () => {
     if (!isAdmin) return;
@@ -163,7 +163,7 @@ function AdminPage() {
     }
   };
 
-  const loadAuditLogs = async () => {
+  const loadAuditLogs = useCallback(async () => {
     if (!isAdmin) return;
     setLoadingAudit(true);
     try {
@@ -174,9 +174,9 @@ function AdminPage() {
     } finally {
       setLoadingAudit(false);
     }
-  };
+  }, [isAdmin]);
 
-  const loadErrorLogs = async () => {
+  const loadErrorLogs = useCallback(async () => {
     if (!isAdmin) return;
     setLoadingErrors(true);
     try {
@@ -187,9 +187,9 @@ function AdminPage() {
     } finally {
       setLoadingErrors(false);
     }
-  };
+  }, [isAdmin]);
 
-  const loadBackups = async () => {
+  const loadBackups = useCallback(async () => {
     if (!isAdmin) return;
     setLoadingBackups(true);
     try {
@@ -200,13 +200,13 @@ function AdminPage() {
     } finally {
       setLoadingBackups(false);
     }
-  };
+  }, [isAdmin]);
 
   useEffect(() => {
     if (activeTab === "audit") loadAuditLogs();
     if (activeTab === "errors") loadErrorLogs();
     if (activeTab === "backup") loadBackups();
-  }, [activeTab, isAdmin]);
+  }, [activeTab, loadAuditLogs, loadBackups, loadErrorLogs]);
   useRealtimeRefresh(() => {
     loadUsers();
     if (activeTab === "audit") loadAuditLogs();
@@ -899,7 +899,7 @@ function UserDialog({
                 <SelectItem value="none">No linked employee</SelectItem>
                 {employeeCandidates.map((employee) => (
                   <SelectItem key={employee.id} value={employee.id}>
-                    {employee.lastname}, {employee.firstname} · {employee.employeeId}
+                    {employee.lastname}, {employee.firstname} - {employee.employeeId}
                   </SelectItem>
                 ))}
               </SelectContent>

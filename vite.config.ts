@@ -9,6 +9,9 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 export default defineConfig({
   vite: {
     server: {
+      watch: {
+        ignored: ["**/server/exports/**"],
+      },
       proxy: {
         "/api": "http://localhost:47101",
       },

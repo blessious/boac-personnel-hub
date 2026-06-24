@@ -489,14 +489,16 @@ export function createMovementHandlers({
         if (!allowed.includes(row.status))
           throw new Error(`A ${row.status} movement cannot be ${action}ed`);
         if (action === "reject" && !remarks) throw new Error("Rejection remarks are required");
-        if (action === "return" && !remarks) throw new Error("Return-to-draft remarks are required");
+        if (action === "return" && !remarks)
+          throw new Error("Return-to-draft remarks are required");
         const fields = {
           submit: "submitted",
           review: "reviewed",
           approve: "approved",
           reject: "rejected",
         };
-        const source = action === "return" ? await currentSnapshot(row.employee_id, connection, true) : null;
+        const source =
+          action === "return" ? await currentSnapshot(row.employee_id, connection, true) : null;
         if (action === "return") {
           await connection.execute(
             `UPDATE personnel_movements

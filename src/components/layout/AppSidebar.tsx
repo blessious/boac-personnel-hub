@@ -150,7 +150,6 @@ export function AppSidebar() {
             );
           })}
         </nav>
-
       </div>
 
       <div className="p-3 border-t border-sidebar-border/50">

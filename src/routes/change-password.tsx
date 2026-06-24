@@ -78,9 +78,7 @@ function ChangePasswordPage() {
             autoComplete="new-password"
             required
           />
-          <p className="text-xs leading-5 text-muted-foreground">
-            Use at least 8 characters.
-          </p>
+          <p className="text-xs leading-5 text-muted-foreground">Use at least 8 characters.</p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="confirm-password">Confirm new password</Label>

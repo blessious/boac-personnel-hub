@@ -326,12 +326,12 @@ function MovementsPage() {
                 </Button>
               )}
               {canPrepare && m.status === "Draft" && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    title="Submit"
-                    onClick={() => setDecision({ movement: m, action: "submit" })}
-                  >
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Submit"
+                  onClick={() => setDecision({ movement: m, action: "submit" })}
+                >
                   <Send className="h-4 w-4" />
                 </Button>
               )}
@@ -467,9 +467,7 @@ function MovementsPage() {
                 </td>
                 <td className="p-3">
                   {m.actionType}
-                  <div className="text-xs text-muted-foreground">
-                    {m.authorityNumber || "-"}
-                  </div>
+                  <div className="text-xs text-muted-foreground">{m.authorityNumber || "-"}</div>
                 </td>
                 <td className="p-3">
                   <div className="font-medium">{fromText(m)}</div>
@@ -513,8 +511,8 @@ function MovementsPage() {
                         <Send className="h-4 w-4" />
                       </Button>
                     )}
-                      {canApprove && m.status === "Submitted" && (
-                        <>
+                    {canApprove && m.status === "Submitted" && (
+                      <>
                         <Button
                           size="icon"
                           variant="ghost"
@@ -523,24 +521,24 @@ function MovementsPage() {
                         >
                           <Clock3 className="h-4 w-4" />
                         </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title="Reject"
-                            onClick={() => setDecision({ movement: m, action: "reject" })}
-                          >
-                            <XCircle className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title="Return to Draft"
-                            onClick={() => setDecision({ movement: m, action: "return" })}
-                          >
-                            <Undo2 className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Reject"
+                          onClick={() => setDecision({ movement: m, action: "reject" })}
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Return to Draft"
+                          onClick={() => setDecision({ movement: m, action: "return" })}
+                        >
+                          <Undo2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
                     {canApprove && m.status === "Reviewed" && (
                       <>
                         <Button
@@ -551,24 +549,24 @@ function MovementsPage() {
                         >
                           <CheckCircle2 className="h-4 w-4" />
                         </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title="Reject"
-                            onClick={() => setDecision({ movement: m, action: "reject" })}
-                          >
-                            <XCircle className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title="Return to Draft"
-                            onClick={() => setDecision({ movement: m, action: "return" })}
-                          >
-                            <Undo2 className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Reject"
+                          onClick={() => setDecision({ movement: m, action: "reject" })}
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Return to Draft"
+                          onClick={() => setDecision({ movement: m, action: "return" })}
+                        >
+                          <Undo2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
                     {canPost && m.status === "Approved" && (
                       <>
                         <Button
@@ -646,9 +644,9 @@ function MovementsPage() {
                 ? "Reversal restores the recorded before-state and is blocked if a later movement exists."
                 : decision?.action === "return"
                   ? "Returning to Draft refreshes the source employee/occupancy snapshot and clears prior approvals."
-                : decision?.action === "reject"
-                  ? "Record the reason for this decision."
-                  : "Confirm this workflow step before the movement continues."}
+                  : decision?.action === "reject"
+                    ? "Record the reason for this decision."
+                    : "Confirm this workflow step before the movement continues."}
           </p>
           <div className="space-y-1">
             <Label>

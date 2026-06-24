@@ -483,7 +483,6 @@ export async function generateDtrPdf(payload: {
   );
 }
 
-
 export async function generateMassDtrPdf(payload: {
   office: string;
   employeeType: "all" | "regular" | "jobOrder";
@@ -565,4 +564,3 @@ export async function downloadDtrCsv(params: {
   anchor.click();
   URL.revokeObjectURL(url);
 }
-

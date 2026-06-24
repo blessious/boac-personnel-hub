@@ -173,11 +173,7 @@ function LoginPage() {
           </div>
 
           <div className="mt-10">
-            <form
-              onSubmit={form.handleSubmit(onSubmit)}
-              className="space-y-5"
-              autoComplete="off"
-            >
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" autoComplete="off">
               <div className="space-y-2">
                 <Label
                   htmlFor="username"

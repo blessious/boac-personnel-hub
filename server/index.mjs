@@ -2371,6 +2371,11 @@ async function initializeDatabase() {
     "idx_employees_is_hidden",
     "INDEX idx_employees_is_hidden (is_hidden)",
   );
+  await ensureIndex(
+    "employees",
+    "idx_employees_dashboard_position",
+    "INDEX idx_employees_dashboard_position (department, position, emp_status)",
+  );
 
   const employeeIdDefinition = await getEmployeeIdDefinition();
   const nullableEmployeeIdDefinition = employeeIdDefinition.replace(/\s+NOT NULL$/i, " NULL");
@@ -5667,7 +5672,12 @@ async function handleGenerateMassDtrPdf(req, res) {
         limit: 1000,
       });
       rowCount += rows.length;
-      const employeeName = [employee.firstname, employee.middlename, employee.lastname, employee.nameExt]
+      const employeeName = [
+        employee.firstname,
+        employee.middlename,
+        employee.lastname,
+        employee.nameExt,
+      ]
         .filter(Boolean)
         .join(" ");
       const payload = {
@@ -5690,7 +5700,9 @@ async function handleGenerateMassDtrPdf(req, res) {
               employee.lastname ||
               "",
           ).trim(),
-          position: String(body.noterPosition || body.noter_position || "Immediate Supervisor").trim(),
+          position: String(
+            body.noterPosition || body.noter_position || "Immediate Supervisor",
+          ).trim(),
         },
         periods: periods.map((period, index) => ({
           ...ranges[index],
@@ -5701,9 +5713,10 @@ async function handleGenerateMassDtrPdf(req, res) {
         entries: rows,
       };
 
-      const employeeSafeName = `${employee.lastname || "employee"}-${employee.firstname || employee.id}`
-        .replace(/[^A-Za-z0-9_-]+/g, "-")
-        .slice(0, 80);
+      const employeeSafeName =
+        `${employee.lastname || "employee"}-${employee.firstname || employee.id}`
+          .replace(/[^A-Za-z0-9_-]+/g, "-")
+          .slice(0, 80);
       const individualPdfPath = path.join(
         PREVIEW_DIR,
         `mass-dtr-part-${employeeSafeName}-${crypto.randomUUID()}.pdf`,
@@ -5712,7 +5725,12 @@ async function handleGenerateMassDtrPdf(req, res) {
       const individualWorkbookPath = individualPdfPath.replace(/\.pdf$/i, ".xlsx");
       await fs.writeFile(individualJsonPath, JSON.stringify(payload), "utf8");
       try {
-        await runPython([DTR_EXCEL_SCRIPT, individualJsonPath, individualWorkbookPath, DTR_TEMPLATE_XLSX]);
+        await runPython([
+          DTR_EXCEL_SCRIPT,
+          individualJsonPath,
+          individualWorkbookPath,
+          DTR_TEMPLATE_XLSX,
+        ]);
         const convertedPath = await convertSpreadsheetToPdf(individualWorkbookPath);
         if (path.resolve(convertedPath) !== path.resolve(individualPdfPath)) {
           await fs.rename(convertedPath, individualPdfPath);
@@ -5729,7 +5747,9 @@ async function handleGenerateMassDtrPdf(req, res) {
     await fs.rm(outputPath, { force: true }).catch(() => {});
     return json(res, 500, { error: error.message });
   } finally {
-    await Promise.all(individualPaths.map((filePath) => fs.rm(filePath, { force: true }).catch(() => {})));
+    await Promise.all(
+      individualPaths.map((filePath) => fs.rm(filePath, { force: true }).catch(() => {})),
+    );
   }
 
   await pool.execute(
@@ -7453,10 +7473,7 @@ function httpError(statusCode, message) {
 async function buildLeaveForm6Payload(id, user) {
   const application = await readLeaveApplication(id);
   if (!application) throw httpError(404, "Leave application not found");
-  if (
-    !LEAVE_READ_ROLES.includes(user.role) &&
-    user.employeeId !== application.employeeId
-  ) {
+  if (!LEAVE_READ_ROLES.includes(user.role) && user.employeeId !== application.employeeId) {
     throw httpError(403, "You can only export your own leave application");
   }
   try {
@@ -8676,5 +8693,3 @@ if (ADMS_PORT && ADMS_PORT !== PORT) {
     addBiometricSyncLog("info", `ADMS live receiver listening on port ${ADMS_PORT}`);
   });
 }
-
-

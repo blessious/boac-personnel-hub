@@ -68,12 +68,29 @@ export function navForRole(role: string | undefined) {
   }
   if (role === "Approver") {
     return APP_NAV.filter((item) =>
-      ["/", "/employees", "/attendance", "/plantilla", "/movements", "/service-records", "/leave", "/reports"].includes(item.to),
+      [
+        "/",
+        "/employees",
+        "/attendance",
+        "/plantilla",
+        "/movements",
+        "/service-records",
+        "/leave",
+        "/reports",
+      ].includes(item.to),
     );
   }
   if (canReadHrRecords(role)) {
     return APP_NAV.filter((item) =>
-      ["/", "/employees", "/attendance", "/plantilla", "/movements", "/service-records", "/reports"].includes(item.to),
+      [
+        "/",
+        "/employees",
+        "/attendance",
+        "/plantilla",
+        "/movements",
+        "/service-records",
+        "/reports",
+      ].includes(item.to),
     );
   }
   if (isSelfServiceRole(role)) {

@@ -146,8 +146,14 @@ function mockSections(employee, index) {
         spouseLastname: spouseLast,
         spouseFirstname: spouseFirst,
         spouseMiddlename: pick(MIDDLE_NAMES, index + 1),
-        spouseOccupation: pick(["Teacher", "Registered Nurse", "Accountant", "Entrepreneur"], index),
-        spouseEmployer: pick(["DepEd Marinduque", "STRH", "Provincial Government", "Self-employed"], index),
+        spouseOccupation: pick(
+          ["Teacher", "Registered Nurse", "Accountant", "Entrepreneur"],
+          index,
+        ),
+        spouseEmployer: pick(
+          ["DepEd Marinduque", "STRH", "Provincial Government", "Self-employed"],
+          index,
+        ),
         spouseBusinessTel: `0917${pad(2200000 + index * 913, 7)}`,
         spouseBusinessAddress: `${pick(BARANGAYS, index + 1)}, Boac, Marinduque`,
         fatherLastname: employee.lastname || pick(LAST_NAMES, index),
@@ -270,9 +276,12 @@ function mockSections(employee, index) {
         hours: 72 + index * 3,
       },
     ],
-    training: TRAININGS.slice(index % 2, index % 2 + 4).map((name, trainingIndex) => ({
+    training: TRAININGS.slice(index % 2, (index % 2) + 4).map((name, trainingIndex) => ({
       name,
-      conductedBy: trainingIndex % 2 === 0 ? "Civil Service Commission" : "DOH Center for Health Development IV-B",
+      conductedBy:
+        trainingIndex % 2 === 0
+          ? "Civil Service Commission"
+          : "DOH Center for Health Development IV-B",
       yearFrom: date(2021 + trainingIndex, 3 + trainingIndex, 10 + index),
       yearTo: date(2021 + trainingIndex, 3 + trainingIndex, 11 + index),
       hours: trainingIndex === 0 ? 16 : 8,
@@ -471,7 +480,8 @@ async function main() {
       };
       const birthday = employee.birthday || date(1984 + index, 4 + (index % 6), 10 + index);
       const gender = employee.gender || (index % 2 === 0 ? "Female" : "Male");
-      const civilStatus = employee.civil_status || pick(["Married", "Single", "Married", "Separated"], index);
+      const civilStatus =
+        employee.civil_status || pick(["Married", "Single", "Married", "Separated"], index);
       const email =
         employee.email ||
         `${String(employee.firstname || "employee").toLowerCase()}.${String(employee.lastname || index).toLowerCase()}@strh.example`;

@@ -27,20 +27,7 @@ import {
 } from "@/lib/attendance-api";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const CUTS = [
   { value: "full", label: "Full Month" },
   { value: "first", label: "1st Half" },
@@ -69,9 +56,9 @@ export function MassDtrPrintModal({
   const [modalEmployees, setModalEmployees] = useState<EmployeeRecord[]>(employees);
   const offices = useMemo(
     () =>
-      Array.from(new Set(modalEmployees.map((employee) => employee.department).filter(Boolean))).sort(
-        (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }),
-      ),
+      Array.from(
+        new Set(modalEmployees.map((employee) => employee.department).filter(Boolean)),
+      ).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
     [modalEmployees],
   );
 
@@ -143,8 +130,10 @@ export function MassDtrPrintModal({
 
   const runMassPrint = async () => {
     if (!office) return toast.error("Select an office");
-    if (!selectedEmployees.length) return toast.error("No employees found for the selected criteria");
-    if (!noterSignatory || !noterPosition) return toast.error("Select a noter signatory and position");
+    if (!selectedEmployees.length)
+      return toast.error("No employees found for the selected criteria");
+    if (!noterSignatory || !noterPosition)
+      return toast.error("Select a noter signatory and position");
 
     const previewWindow = openGeneratedFileTab("Preparing mass DTR PDF preview...");
     setBusy(true);
@@ -220,7 +209,9 @@ export function MassDtrPrintModal({
             <FileText className="h-5 w-5 text-blue-600" />
             Mass Print DTR
           </DialogTitle>
-          <p className="text-sm text-muted-foreground">Generate DTRs for multiple employees (PDF format)</p>
+          <p className="text-sm text-muted-foreground">
+            Generate DTRs for multiple employees (PDF format)
+          </p>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -247,7 +238,10 @@ export function MassDtrPrintModal({
               </div>
               <div className="space-y-2">
                 <Label>Employee Type</Label>
-                <Select value={employeeType} onValueChange={(next) => setEmployeeType(next as EmployeeType)}>
+                <Select
+                  value={employeeType}
+                  onValueChange={(next) => setEmployeeType(next as EmployeeType)}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -297,7 +291,10 @@ export function MassDtrPrintModal({
               </div>
               <div className="space-y-2">
                 <Label>Noter Position *</Label>
-                <Input value={noterPosition} onChange={(event) => setNoterPosition(event.target.value)} />
+                <Input
+                  value={noterPosition}
+                  onChange={(event) => setNoterPosition(event.target.value)}
+                />
               </div>
             </div>
           </section>
@@ -363,8 +360,16 @@ export function MassDtrPrintModal({
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
               Cancel
             </Button>
-            <Button onClick={runMassPrint} disabled={busy} className="bg-blue-600 text-white hover:bg-blue-700">
-              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 h-4 w-4" />}
+            <Button
+              onClick={runMassPrint}
+              disabled={busy}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {busy ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="mr-1.5 h-4 w-4" />
+              )}
               {busy ? "Generating..." : "View PDF"}
             </Button>
           </div>

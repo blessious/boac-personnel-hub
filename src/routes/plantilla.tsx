@@ -54,8 +54,8 @@ function PlantillaPage() {
     salaryGrades: [],
   });
   const [refs, setRefs] = useState<Record<ReferenceCategory, ReferenceRow[]>>(
-      {} as Record<ReferenceCategory, ReferenceRow[]>,
-    );
+    {} as Record<ReferenceCategory, ReferenceRow[]>,
+  );
   const [q, setQ] = useState(""),
     [status, setStatus] = useState("all"),
     [occupancy, setOccupancy] = useState("all"),

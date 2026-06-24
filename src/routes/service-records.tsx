@@ -43,8 +43,7 @@ function ServiceRecordsPage() {
     loadAllEmployees()
       .then((x) => {
         setEmployees(x);
-        if (user?.employeeId && !canReadHrRecords(user.role))
-          setEmployeeId(user.employeeId);
+        if (user?.employeeId && !canReadHrRecords(user.role)) setEmployeeId(user.employeeId);
       })
       .catch((e) => toast.error(e.message));
   }, [user]);

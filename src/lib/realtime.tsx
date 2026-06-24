@@ -1,5 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -48,7 +56,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const invalidateTimer = useRef<number | null>(null);
   const knownNotificationIds = useRef(new Set<string>());
 
-  const refreshNotifications = async () => {
+  const refreshNotifications = useCallback(async () => {
     if (!user) return;
     try {
       const result = await listNotifications(30);
@@ -58,7 +66,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     } catch {
       // The realtime connection can recover this list after a reconnect.
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -68,7 +76,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       return;
     }
     refreshNotifications();
-  }, [user]);
+  }, [refreshNotifications, user]);
 
   useEffect(() => {
     if (!user || typeof window === "undefined") {
@@ -120,7 +128,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       if (invalidateTimer.current !== null) window.clearTimeout(invalidateTimer.current);
       setConnected(false);
     };
-  }, [queryClient, user]);
+  }, [queryClient, refreshNotifications, user]);
 
   return (
     <RealtimeContext.Provider

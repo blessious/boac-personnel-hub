@@ -31,7 +31,11 @@ const connection = await mysql.createConnection({
   multipleStatements: true,
 });
 
-const migrationPath = path.join("server", "migrations", "2026-06-23_seed_employee_reference_values.sql");
+const migrationPath = path.join(
+  "server",
+  "migrations",
+  "2026-06-23_seed_employee_reference_values.sql",
+);
 const sql = readFileSync(migrationPath, "utf8");
 await connection.query(sql);
 
