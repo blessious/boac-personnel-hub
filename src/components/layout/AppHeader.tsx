@@ -41,7 +41,7 @@ import { listLeaveApplications } from "@/lib/leave-api";
 import { listDtrCorrectionRequests } from "@/lib/attendance-api";
 import { useRealtime } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
-import { navForRole } from "@/components/layout/navigation";
+import { groupNavItems, navForRole } from "@/components/layout/navigation";
 
 export function AppHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   const { user, logout, updateProfile } = useAuth();
@@ -109,6 +109,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
     exact ? path === to : path === to || path.startsWith(to + "/");
 
   const mobileNav = navForRole(user?.role);
+  const mobileNavSections = groupNavItems(mobileNav);
 
   return (
     <>
@@ -153,45 +154,54 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
               <div className="px-4 pt-5 pb-2 text-[10px] tracking-widest uppercase text-muted-foreground">
                 Menu
               </div>
-              <nav className="flex-1 space-y-1.5 overflow-y-auto px-4 py-2">
-                {mobileNav.map((item) => {
-                  const active = isActive(item.to, item.exact);
-                  const Icon = item.icon;
-                  const itemPendingCount =
-                    item.to === "/leave"
-                      ? pendingLeaveCount
-                      : item.to === "/attendance"
-                        ? pendingDtrCount
-                        : 0;
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={cn(
-                        "group flex min-h-12 items-center gap-3 rounded-2xl px-3.5 py-3 text-[14px] font-medium transition-all duration-200",
-                        active
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                      )}
-                    >
-                      <Icon
-                        className={cn(
-                          "h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110",
-                          active
-                            ? "text-primary-foreground"
-                            : "text-muted-foreground group-hover:text-foreground",
-                        )}
-                      />
-                      <span className="truncate">{item.label}</span>
-                      {itemPendingCount > 0 && (
-                        <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">
-                          {itemPendingCount > 99 ? "99+" : itemPendingCount}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
+              <nav className="flex-1 space-y-3 overflow-y-auto px-4 py-2">
+                {mobileNavSections.map((section) => (
+                  <div key={section.label}>
+                    <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+                      {section.label}
+                    </div>
+                    <div className="space-y-1.5">
+                      {section.items.map((item) => {
+                        const active = isActive(item.to, item.exact);
+                        const Icon = item.icon;
+                        const itemPendingCount =
+                          item.to === "/leave"
+                            ? pendingLeaveCount
+                            : item.to === "/attendance"
+                              ? pendingDtrCount
+                              : 0;
+                        return (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            onClick={() => setMobileMenuOpen(false)}
+                            className={cn(
+                              "group flex min-h-12 items-center gap-3 rounded-2xl px-3.5 py-3 text-[14px] font-medium transition-all duration-200",
+                              active
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                            )}
+                          >
+                            <Icon
+                              className={cn(
+                                "h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110",
+                                active
+                                  ? "text-primary-foreground"
+                                  : "text-muted-foreground group-hover:text-foreground",
+                              )}
+                            />
+                            <span className="truncate">{item.label}</span>
+                            {itemPendingCount > 0 && (
+                              <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">
+                                {itemPendingCount > 99 ? "99+" : itemPendingCount}
+                              </span>
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </nav>
               <div className="border-t border-sidebar-border/50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                 <button

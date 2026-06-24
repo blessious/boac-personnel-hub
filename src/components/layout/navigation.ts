@@ -36,6 +36,11 @@ export type AppNavItem = {
   exact?: boolean;
 };
 
+export type AppNavSection = {
+  label: string;
+  items: AppNavItem[];
+};
+
 export const APP_NAV: AppNavItem[] = [
   { to: "/", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard, exact: true },
   { to: "/my-profile", label: "My Profile", shortLabel: "Profile", icon: UserCircle },
@@ -56,6 +61,35 @@ export const APP_NAV: AppNavItem[] = [
   { to: "/admin", label: "System Administration", shortLabel: "Admin", icon: ShieldCheck },
   { to: "/settings", label: "Settings", shortLabel: "Settings", icon: Settings },
 ];
+
+const NAV_SECTION_ORDER = [
+  "Overview",
+  "Employee Records",
+  "Attendance & Leave",
+  "Reports",
+  "Administration",
+] as const;
+
+function sectionForNavItem(item: AppNavItem): (typeof NAV_SECTION_ORDER)[number] {
+  if (item.to === "/") return "Overview";
+  if (
+    ["/employees", "/my-profile", "/plantilla", "/movements", "/service-records"].includes(item.to)
+  ) {
+    return "Employee Records";
+  }
+  if (["/attendance", "/leave", "/self-service", "/requests"].includes(item.to)) {
+    return "Attendance & Leave";
+  }
+  if (item.to === "/reports") return "Reports";
+  return "Administration";
+}
+
+export function groupNavItems(items: AppNavItem[]): AppNavSection[] {
+  return NAV_SECTION_ORDER.map((label) => ({
+    label,
+    items: items.filter((item) => sectionForNavItem(item) === label),
+  })).filter((section) => section.items.length > 0);
+}
 
 export function navForRole(role: string | undefined) {
   const selfServiceOnly = ["/my-profile", "/self-service", "/requests"];
