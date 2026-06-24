@@ -299,9 +299,31 @@ function AttendancePage() {
 
   useEffect(() => {
     if (!canManage && !canReadHrRecords(user?.role)) return;
-    listEmployees({ pageSize: 200 })
-      .then((result) => setEmployees(result.employees))
-      .catch(() => setEmployees([]));
+    let cancelled = false;
+
+    const loadEmployees = async () => {
+      const pageSize = 100;
+      const loadedEmployees: EmployeeRecord[] = [];
+      let page = 1;
+      let total = 0;
+
+      do {
+        const result = await listEmployees({ page, pageSize });
+        total = result.total;
+        loadedEmployees.push(...result.employees);
+        page += 1;
+      } while (loadedEmployees.length < total);
+
+      if (!cancelled) setEmployees(loadedEmployees);
+    };
+
+    loadEmployees().catch(() => {
+      if (!cancelled) setEmployees([]);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [canManage, user?.role]);
 
   useEffect(() => {
@@ -1547,7 +1569,7 @@ function AttendancePage() {
                       <th className="px-4 py-3 font-semibold">PM Out</th>
                       <th className="px-4 py-3 font-semibold">Tardiness</th>
                       {(canManage || isEmployee) && (
-                        <th className="w-[110px] px-4 py-3 text-right font-semibold">Actions</th>
+                        <th className="w-[128px] px-3 py-3 text-right font-semibold">Actions</th>
                       )}
                     </tr>
                   </thead>
@@ -1591,8 +1613,8 @@ function AttendancePage() {
                           {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
                         </td>
                         {(canManage || isEmployee) && (
-                          <td className="px-4 py-3">
-                            <div className="flex flex-wrap justify-end gap-2">
+                          <td className="px-3 py-3">
+                            <div className="flex flex-nowrap items-center justify-end gap-2">
                               {isEmployee && (
                                 <Button
                                   variant="outline"
