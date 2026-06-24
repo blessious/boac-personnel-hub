@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ShieldCheck, Loader2, User, Lock, Eye, EyeOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
@@ -31,20 +31,30 @@ function LoginPage() {
   const search = useSearch({ from: "/login" });
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-
-  useEffect(() => {
-    if (user) navigate({ to: "/" });
-  }, [user, navigate]);
+  const passwordInputRef = useRef<HTMLInputElement | null>(null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { username: "", password: "" },
   });
+  const passwordField = form.register("password");
+
+  useEffect(() => {
+    if (user) {
+      navigate({ to: "/" });
+      return;
+    }
+    form.reset({ username: "", password: "" });
+    window.setTimeout(() => {
+      if (passwordInputRef.current) passwordInputRef.current.value = "";
+    }, 0);
+  }, [user, navigate, form]);
 
   const onSubmit = async (data: FormData) => {
     setSubmitting(true);
     try {
       await login(data.username, data.password);
+      form.reset({ username: "", password: "" });
       toast.success("Welcome back!");
       const redirect = search.redirect || "/";
       if (redirect.startsWith("/employees/")) {
@@ -163,7 +173,11 @@ function LoginPage() {
           </div>
 
           <div className="mt-10">
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-5"
+              autoComplete="off"
+            >
               <div className="space-y-2">
                 <Label
                   htmlFor="username"
@@ -204,10 +218,16 @@ function LoginPage() {
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
+                    autoComplete="new-password"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
                     placeholder="••••••••"
                     className="h-12 pl-10 pr-12 bg-card border-border/60 rounded-xl focus-visible:ring-1 focus-visible:ring-[#0033a0] focus-visible:border-[#0033a0] transition-colors shadow-sm text-sm"
-                    {...form.register("password")}
+                    {...passwordField}
+                    ref={(element) => {
+                      passwordField.ref(element);
+                      passwordInputRef.current = element;
+                    }}
                   />
                   <button
                     type="button"

@@ -266,9 +266,12 @@ function AttendancePage() {
   useEffect(load, [selectedEmployeeId, from, to, q, isEmployee]);
 
   const loadCorrections = () => {
-    if (!canManage && !canApprove && !isEmployee) return;
+    if (!canApprove && !isEmployee) {
+      setCorrectionRequests([]);
+      return;
+    }
     listDtrCorrectionRequests({
-      employeeId: canManage ? selectedEmployeeId : undefined,
+      employeeId: isEmployee ? undefined : selectedEmployeeId,
       status: correctionStatus === "all" ? undefined : correctionStatus,
       requestType: correctionType === "all" ? undefined : correctionType,
       q: correctionQuery,
@@ -280,7 +283,6 @@ function AttendancePage() {
   };
 
   useEffect(loadCorrections, [
-    canManage,
     canApprove,
     isEmployee,
     selectedEmployeeId,
