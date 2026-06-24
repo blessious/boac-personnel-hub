@@ -67,6 +67,7 @@ const STATUS_COLOR: Record<LeaveStatus, string> = {
 function LeavePage() {
   const { can } = useAuth();
   const canEdit = can("edit");
+  const canApprove = can("approve");
   const [status, setStatus] = useState("all");
   const [q, setQ] = useState("");
   const [applications, setApplications] = useState<LeaveApplication[]>([]);
@@ -386,7 +387,7 @@ function LeavePage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={!canEdit || application.status === "Approved"}
+                      disabled={!canApprove || application.status === "Approved"}
                       onClick={() =>
                         setDecision({
                           application,
@@ -409,7 +410,7 @@ function LeavePage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={!canEdit || application.status === "Disapproved"}
+                      disabled={!canApprove || application.status === "Disapproved"}
                       onClick={() =>
                         setDecision({
                           application,
@@ -519,7 +520,7 @@ function LeavePage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={!canEdit || application.status === "Approved"}
+                            disabled={!canApprove || application.status === "Approved"}
                             onClick={() =>
                               setDecision({
                                 application,
@@ -542,7 +543,7 @@ function LeavePage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={!canEdit || application.status === "Disapproved"}
+                            disabled={!canApprove || application.status === "Disapproved"}
                             onClick={() =>
                               setDecision({
                                 application,

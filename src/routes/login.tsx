@@ -191,20 +191,12 @@ function LoginPage() {
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label
-                    htmlFor="password"
-                    className="text-xs font-bold uppercase tracking-wider text-muted-foreground"
-                  >
-                    Password
-                  </Label>
-                  <a
-                    href="#"
-                    className="text-xs font-bold text-[#0033a0] dark:text-[#6699ff] hover:text-[#002270] dark:hover:text-[#99bbff] transition-colors hover:underline"
-                  >
-                    Forgot Password?
-                  </a>
-                </div>
+                <Label
+                  htmlFor="password"
+                  className="text-xs font-bold uppercase tracking-wider text-muted-foreground"
+                >
+                  Password
+                </Label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
                     <Lock className="h-4 w-4 text-muted-foreground/50" />

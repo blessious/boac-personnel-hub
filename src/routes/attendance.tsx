@@ -9,6 +9,7 @@ import {
   FileDown,
   FileSpreadsheet,
   FileText,
+  Loader2,
   Pencil,
   Plus,
   RadioTower,
@@ -47,6 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   createDtr,
   createDtrCorrectionRequest,
@@ -56,9 +58,9 @@ import {
   bulkUpdateScheduleOverrides,
   checkBiometricStatus,
   checkUnimportedDtrs,
+  closeGeneratedFileTab,
   createBiometricDevice,
   downloadGeneratedFile,
-  downloadDtrCsv,
   generateDtrExcel,
   generateDtrPdf,
   getBiometricRealtimeLogs,
@@ -70,6 +72,7 @@ import {
   listDtr,
   listDtrCorrectionRequests,
   openGeneratedFile,
+  openGeneratedFileTab,
   refreshDtr,
   reverseDtrCorrectionRequest,
   syncBiometricNow,
@@ -84,7 +87,7 @@ import {
   type DtrCorrectionStatus,
   type DtrPayload,
 } from "@/lib/attendance-api";
-import { useAuth } from "@/lib/auth";
+import { canReadHrRecords, canWriteHrRecords, useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 import { useRealtimeRefresh } from "@/lib/realtime";
 
@@ -157,8 +160,9 @@ const EMPTY_CORRECTION_FORM: DtrCorrectionPayload = {
 };
 
 function AttendancePage() {
-  const { user } = useAuth();
-  const canManage = user?.role === "Admin" || user?.role === "HR";
+  const { user, can } = useAuth();
+  const canManage = canWriteHrRecords(user?.role);
+  const canApprove = can("approve");
   const isEmployee = user?.role === "Employee";
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(DEFAULT_TO);
@@ -227,7 +231,7 @@ function AttendancePage() {
     noterPosition: "",
     firstStartDate: DEFAULT_FROM,
     firstEndDate: DEFAULT_TO,
-    useSecondPeriod: false,
+    useSecondPeriod: true,
     secondStartDate: DEFAULT_FROM,
     secondEndDate: DEFAULT_TO,
   });
@@ -262,7 +266,7 @@ function AttendancePage() {
   useEffect(load, [selectedEmployeeId, from, to, q, isEmployee]);
 
   const loadCorrections = () => {
-    if (!canManage && !isEmployee) return;
+    if (!canManage && !canApprove && !isEmployee) return;
     listDtrCorrectionRequests({
       employeeId: canManage ? selectedEmployeeId : undefined,
       status: correctionStatus === "all" ? undefined : correctionStatus,
@@ -277,6 +281,7 @@ function AttendancePage() {
 
   useEffect(loadCorrections, [
     canManage,
+    canApprove,
     isEmployee,
     selectedEmployeeId,
     correctionStatus,
@@ -291,7 +296,7 @@ function AttendancePage() {
   }, ["attendance"]);
 
   useEffect(() => {
-    if (!canManage && user?.role !== "Viewer") return;
+    if (!canManage && !canReadHrRecords(user?.role)) return;
     listEmployees({ pageSize: 200 })
       .then((result) => setEmployees(result.employees))
       .catch(() => setEmployees([]));
@@ -585,15 +590,6 @@ function AttendancePage() {
     }
   };
 
-  const exportRows = async (mass = false) => {
-    try {
-      await downloadDtrCsv({ employeeId: selectedEmployeeId, from, to, mass });
-      toast.success(mass ? "Mass export downloaded" : "DTR export downloaded");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Unable to export DTR");
-    }
-  };
-
   const openImport = () => {
     setImportSource("biometric");
     setImportSearch("");
@@ -792,6 +788,7 @@ function AttendancePage() {
     setExportForm((current) => ({
       ...current,
       employeeId: targetEmployeeId || "all",
+      useSecondPeriod: true,
     }));
     setShowExportDialog(true);
   };
@@ -870,18 +867,15 @@ function AttendancePage() {
   const viewPdf = async () => {
     const payload = buildDtrExportPayload();
     if (!payload) return;
+    const previewWindow = openGeneratedFileTab("Preparing DTR PDF preview...");
     setBusy(true);
     try {
       const result = await generateDtrPdf(payload);
-      if (isEmployee) {
-        downloadGeneratedFile(result.previewUrl, result.fileName);
-        toast.success(`DTR PDF downloaded with ${result.rowCount} row(s)`);
-      } else {
-        openGeneratedFile(result.previewUrl);
-        toast.success(`DTR PDF generated with ${result.rowCount} row(s)`);
-      }
+      openGeneratedFile(result.previewUrl, previewWindow);
+      toast.success(`DTR PDF generated with ${result.rowCount} row(s)`);
       setShowExportDialog(false);
     } catch (err) {
+      closeGeneratedFileTab(previewWindow);
       toast.error(err instanceof Error ? err.message : "Unable to generate DTR PDF");
     } finally {
       setBusy(false);
@@ -932,13 +926,15 @@ function AttendancePage() {
   const generatePdf = async () => {
     const payload = buildDtrExportPayload();
     if (!payload) return;
+    const previewWindow = openGeneratedFileTab("Preparing DTR PDF preview...");
     setBusy(true);
     try {
       const result = await generateDtrPdf(payload);
-      downloadGeneratedFile(result.previewUrl, result.fileName);
+      openGeneratedFile(result.previewUrl, previewWindow);
       toast.success(`DTR PDF generated with ${result.rowCount} row(s)`);
       setShowExportDialog(false);
     } catch (err) {
+      closeGeneratedFileTab(previewWindow);
       toast.error(err instanceof Error ? err.message : "Unable to generate DTR PDF");
     } finally {
       setBusy(false);
@@ -961,19 +957,19 @@ function AttendancePage() {
       title={isEmployee ? "My Attendance" : "Attendance DTR"}
       subtitle={
         isEmployee
-          ? "View your daily time record and download your DTR when needed"
+          ? "View your daily time record and preview your DTR when needed"
           : "Import, refresh, view, edit, delete, and export daily time records"
       }
     >
       <div className="space-y-4">
         <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <div className="grid gap-3 xl:grid-cols-[1fr_auto] xl:items-end">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {!isEmployee && (
                 <div className="space-y-1.5">
-                  <Label>Employee</Label>
+                  <Label className="text-xs uppercase text-muted-foreground font-semibold">Employee</Label>
                   <Select value={employeeId} onValueChange={setEmployeeId}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9">
                       <SelectValue placeholder="All employees" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1005,100 +1001,112 @@ function AttendancePage() {
                 </div>
               )}
               <div className="space-y-1.5">
-                <Label>From</Label>
-                <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+                <Label className="text-xs uppercase text-muted-foreground font-semibold">From</Label>
+                <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="h-9" />
               </div>
               <div className="space-y-1.5">
-                <Label>To</Label>
-                <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+                <Label className="text-xs uppercase text-muted-foreground font-semibold">To</Label>
+                <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="h-9" />
               </div>
               {!isEmployee && (
                 <div className="space-y-1.5">
-                  <Label>Search</Label>
+                  <Label className="text-xs uppercase text-muted-foreground font-semibold">Search</Label>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       placeholder="Name, ID, department"
                       value={q}
                       onChange={(event) => setQ(event.target.value)}
-                      className="pl-9"
+                      className="h-9 pl-9"
                     />
                   </div>
                 </div>
               )}
             </div>
-            <div className="mobile-action-row flex flex-wrap justify-end gap-2">
-              <Button variant="outline" onClick={load} disabled={loading}>
+            <div className="mobile-action-row flex flex-wrap items-center justify-end gap-2 border-t border-border/50 pt-4 mt-2">
+              <Button variant="outline" size="sm" onClick={load} disabled={loading} className="h-9">
                 <RefreshCw className="mr-1.5 h-4 w-4" /> Reload
               </Button>
               {canManage && (
                 <>
-                  <Button variant="outline" onClick={refresh} disabled={busy}>
+                  <Button variant="outline" size="sm" onClick={refresh} disabled={busy} className="h-9">
                     <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh DTR
                   </Button>
                   <Button
                     variant="outline"
+                    size="sm"
                     onClick={() => setShowScheduleDialog(true)}
                     disabled={busy}
+                    className="h-9"
                   >
                     <Settings2 className="mr-1.5 h-4 w-4" /> Schedule
                   </Button>
                   <Button
+                    variant="outline"
+                    size="sm"
                     onClick={openImportAll}
                     disabled={busy}
-                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    className="h-9"
                   >
                     <Upload className="mr-1.5 h-4 w-4" /> Import DTR
                   </Button>
-                  <Button onClick={openAdd} className="bg-blue-600 text-white hover:bg-blue-700">
+                  <Button variant="outline" size="sm" onClick={openAdd} className="h-9">
                     <Plus className="mr-1.5 h-4 w-4" /> Add DTR
                   </Button>
                 </>
               )}
               {isEmployee ? (
                 <Button
+                  variant="outline"
+                  size="sm"
                   onClick={openExport}
                   disabled={busy}
-                  className="bg-blue-600 text-white hover:bg-blue-700"
+                  className="h-9"
                 >
                   <FileText className="mr-1.5 h-4 w-4" />
-                  Download DTR PDF
+                  View DTR PDF
                 </Button>
               ) : (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline">
-                      Actions
-                      <ChevronDown className="ml-1.5 h-4 w-4" />
+                <>
+                  {canManage && (
+                    <Button variant="outline" size="sm" onClick={openImport} className="h-9">
+                      <Upload className="mr-1.5 h-4 w-4" /> Import Single DTR
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
-                    {canManage && (
-                      <DropdownMenuItem onClick={openImport}>
-                        <Upload className="h-4 w-4" />
-                        Import Single DTR
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={openExport}>
-                      <FileSpreadsheet className="h-4 w-4" />
-                      View DTR
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => exportRows(false)}>
-                      <Download className="h-4 w-4" />
-                      Quick CSV
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={openMassPrint}>
-                      <FileDown className="h-4 w-4" />
-                      Mass Export
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  )}
+                  <Button variant="outline" size="sm" onClick={openExport} className="h-9">
+                    <FileSpreadsheet className="mr-1.5 h-4 w-4" /> View DTR
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={openMassPrint} className="h-9">
+                    <FileDown className="mr-1.5 h-4 w-4" /> Mass Export
+                  </Button>
+                </>
               )}
             </div>
           </div>
         </section>
 
-        {canManage && (
+        <Tabs defaultValue="records" className="space-y-4">
+          <TabsList className="bg-muted/50 border border-border w-full justify-start overflow-x-auto h-auto p-1">
+            <TabsTrigger value="records" className="flex items-center gap-2 py-2">
+              <CalendarClock className="h-4 w-4" />
+              Daily Time Records
+            </TabsTrigger>
+            {(canApprove || isEmployee) && (
+              <TabsTrigger value="corrections" className="flex items-center gap-2 py-2">
+                <FileText className="h-4 w-4" />
+                Correction Requests
+              </TabsTrigger>
+            )}
+            {canManage && (
+              <TabsTrigger value="biometrics" className="flex items-center gap-2 py-2">
+                <RadioTower className="h-4 w-4" />
+                Biometric Sync
+              </TabsTrigger>
+            )}
+          </TabsList>
+
+          <TabsContent value="biometrics" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+            {canManage && (
           <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
             <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
               <div className="space-y-3">
@@ -1229,10 +1237,12 @@ function AttendancePage() {
               )}
             </div>
           </section>
-        )}
+            )}
+          </TabsContent>
 
-        {(canManage || isEmployee) && (
-          <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <TabsContent value="corrections" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+            {(canManage || isEmployee) && (
+              <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             <div className="flex flex-col gap-3 border-b border-border px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-foreground">DTR Correction Audit</h2>
@@ -1240,10 +1250,12 @@ function AttendancePage() {
                   Original, requested, applied, and reversal history
                 </p>
               </div>
-              <Button onClick={() => openCorrection()} size="sm">
-                <Plus className="mr-1.5 h-4 w-4" />
-                New Correction Request
-              </Button>
+              {isEmployee && (
+                <Button onClick={() => openCorrection()} size="sm">
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  New Correction Request
+                </Button>
+              )}
             </div>
             <div className="grid gap-2 border-b border-border p-4 md:grid-cols-3">
               <Input
@@ -1323,7 +1335,7 @@ function AttendancePage() {
                           size="sm"
                           onClick={() => reviewCorrection(request)}
                         >
-                          {request.status === "Pending" && canManage ? "Review" : "View Audit"}
+                          {request.status === "Pending" && canApprove ? "Review" : "View Audit"}
                         </Button>
                       </td>
                     </tr>
@@ -1339,10 +1351,12 @@ function AttendancePage() {
               </table>
             </div>
           </section>
-        )}
+            )}
+          </TabsContent>
 
-        <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <TabsContent value="records" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+            <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div className="flex items-center gap-2">
               <CalendarClock className="h-4 w-4 text-blue-700" />
               <h2 className="text-sm font-semibold text-foreground">Daily Time Records</h2>
@@ -1509,7 +1523,9 @@ function AttendancePage() {
               </tbody>
             </table>
           </div>
-        </section>
+            </section>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <Dialog open={showDtrDialog} onOpenChange={setShowDtrDialog}>
@@ -1807,7 +1823,8 @@ function AttendancePage() {
               disabled={busy}
               className="bg-blue-600 text-white hover:bg-blue-700"
             >
-              Import Single DTR
+              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              {busy ? "Importing..." : "Import Single DTR"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1937,6 +1954,7 @@ function AttendancePage() {
               disabled={busy}
               className="bg-emerald-600 text-white hover:bg-emerald-700"
             >
+              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
               {busy ? "Importing..." : "Import DTR"}
             </Button>
           </DialogFooter>
@@ -1994,7 +2012,7 @@ function AttendancePage() {
       <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
         <DialogContent className="grid max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
           <DialogHeader className="border-b border-border px-5 py-4 pr-12">
-            <DialogTitle>{isEmployee ? "Download DTR PDF" : "View DTR"}</DialogTitle>
+            <DialogTitle>{isEmployee ? "View DTR PDF" : "View DTR"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-5 overflow-y-auto px-5 py-4">
             {!isEmployee && (
@@ -2140,30 +2158,30 @@ function AttendancePage() {
                 disabled={busy}
                 className="bg-blue-600 text-white hover:bg-blue-700"
               >
-                <FileText className="mr-1.5 h-4 w-4" />
-                Download DTR PDF
+                {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 h-4 w-4" />}
+                {busy ? "Generating..." : "View DTR PDF"}
               </Button>
             ) : (
               <>
                 <Button onClick={viewPdf} disabled={busy} variant="outline">
-                  <FileText className="mr-1.5 h-4 w-4" />
-                  View PDF
+                  {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 h-4 w-4" />}
+                  {busy ? "Generating..." : "View PDF"}
                 </Button>
                 <Button
                   onClick={exportExcel}
                   disabled={busy}
                   className="border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
                 >
-                  <FileSpreadsheet className="mr-1.5 h-4 w-4" />
-                  Generate Excel
+                  {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1.5 h-4 w-4" />}
+                  {busy ? "Generating..." : "Generate Excel"}
                 </Button>
                 <Button
                   onClick={generatePdf}
                   disabled={busy}
                   className="border-red-600 bg-red-600 text-white hover:bg-red-700"
                 >
-                  <FileText className="mr-1.5 h-4 w-4" />
-                  Generate PDF
+                  {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 h-4 w-4" />}
+                  {busy ? "Generating..." : "Generate PDF"}
                 </Button>
               </>
             )}
@@ -2501,7 +2519,7 @@ function AttendancePage() {
                   </p>
                 )}
               </div>
-              {canManage && selectedCorrection.status === "Pending" && (
+              {canApprove && selectedCorrection.status === "Pending" && (
                 <div className="space-y-2">
                   <Label>Review Remarks</Label>
                   <Textarea
@@ -2522,7 +2540,7 @@ function AttendancePage() {
                   </div>
                 </div>
               )}
-              {canManage && selectedCorrection.status === "Approved" && (
+              {canApprove && selectedCorrection.status === "Approved" && (
                 <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50 p-3">
                   <Label>Reverse Approval</Label>
                   <Textarea

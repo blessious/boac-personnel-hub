@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/lib/auth";
+import { canWriteHrRecords, useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { useRealtimeRefresh } from "@/lib/realtime";
 
@@ -40,7 +40,7 @@ interface SalaryGradeRow {
 
 function EmployeeReferencesPage() {
   const { user } = useAuth();
-  const canManage = user?.role === "Admin";
+  const canManage = canWriteHrRecords(user?.role);
   const [depts, setDepts] = useState<DepartmentRow[]>([]);
   const [pos, setPos] = useState<PositionRow[]>([]);
   const [salaryGrades, setSalaryGrades] = useState<SalaryGradeRow[]>([]);

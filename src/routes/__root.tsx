@@ -8,7 +8,14 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
-import { AuthProvider, isSelfServiceRole, useAuth, type Role } from "@/lib/auth";
+import {
+  AuthProvider,
+  canReadHrRecords,
+  canSeeApprovals,
+  isSelfServiceRole,
+  useAuth,
+  type Role,
+} from "@/lib/auth";
 import { SettingsProvider } from "@/lib/settings-context";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppHeader } from "@/components/layout/AppHeader";
@@ -186,14 +193,17 @@ function canAccessPath(role: Role, pathname: string, employeeId?: string) {
     pathname.startsWith("/my-profile") ||
     pathname.startsWith("/requests");
 
+  if (role === "Super Admin") return true;
   if (pathname === "/") return true;
   if (isSelfServicePath) return isSelfServiceRole(role);
-  if (role === "Admin") return true;
+  if (role === "Admin") return pathname.startsWith("/admin") || pathname.startsWith("/settings");
   if (isSelfServiceRole(role)) {
     if (pathname === "/attendance") return true;
     return Boolean(employeeId && pathname === `/employees/${employeeId}`);
   }
   if (pathname.startsWith("/admin")) return false;
-  if (pathname.startsWith("/settings")) return role === "HR";
-  return role === "HR" || role === "Viewer";
+  if (pathname.startsWith("/settings")) return false;
+  if (pathname.startsWith("/leave")) return role === "HR" || canSeeApprovals(role);
+  if (pathname.startsWith("/attendance")) return canReadHrRecords(role);
+  return canReadHrRecords(role);
 }

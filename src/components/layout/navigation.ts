@@ -13,7 +13,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { isSelfServiceRole } from "@/lib/auth";
+import { canReadHrRecords, isSelfServiceRole } from "@/lib/auth";
 
 export type AppNavItem = {
   to:
@@ -59,15 +59,21 @@ export const APP_NAV: AppNavItem[] = [
 
 export function navForRole(role: string | undefined) {
   const selfServiceOnly = ["/my-profile", "/self-service", "/requests"];
-  if (role === "Admin") return APP_NAV.filter((item) => !selfServiceOnly.includes(item.to));
-  if (role === "HR") {
-    return APP_NAV.filter((item) => !["/admin", ...selfServiceOnly].includes(item.to));
+  if (role === "Super Admin") return APP_NAV;
+  if (role === "Admin") {
+    return APP_NAV.filter((item) => ["/", "/admin", "/settings"].includes(item.to));
   }
-  if (role === "Viewer") {
+  if (role === "HR") {
+    return APP_NAV.filter((item) => !["/admin", "/settings", ...selfServiceOnly].includes(item.to));
+  }
+  if (role === "Approver") {
     return APP_NAV.filter((item) =>
-      ["/", "/employees", "/plantilla", "/movements", "/service-records", "/reports"].includes(
-        item.to,
-      ),
+      ["/", "/employees", "/attendance", "/plantilla", "/movements", "/service-records", "/leave", "/reports"].includes(item.to),
+    );
+  }
+  if (canReadHrRecords(role)) {
+    return APP_NAV.filter((item) =>
+      ["/", "/employees", "/attendance", "/plantilla", "/movements", "/service-records", "/reports"].includes(item.to),
     );
   }
   if (isSelfServiceRole(role)) {

@@ -232,7 +232,7 @@ export function createServiceRecordHandlers({
   const authorize = async (req, res, employeeId) => {
     const u = await requireUser(req, res);
     if (!u) return null;
-    if (!["Admin", "HR", "Viewer"].includes(u.role) && u.employeeId !== employeeId) {
+    if (!["Super Admin", "HR", "Approver", "Viewer"].includes(u.role) && u.employeeId !== employeeId) {
       json(res, 403, { error: "You can only view your own service record" });
       return null;
     }

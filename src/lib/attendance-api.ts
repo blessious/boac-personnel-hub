@@ -504,8 +504,30 @@ export async function generateMassDtrPdf(payload: {
     },
   );
 }
-export function openGeneratedFile(url: string) {
+export function openGeneratedFile(url: string, targetWindow?: Window | null) {
+  if (targetWindow && !targetWindow.closed) {
+    targetWindow.location.href = url;
+    return;
+  }
   window.open(url, "_blank", "noopener,noreferrer");
+}
+
+export function openGeneratedFileTab(label = "Preparing file preview...") {
+  const targetWindow = window.open("about:blank", "_blank");
+  if (!targetWindow) return null;
+  targetWindow.opener = null;
+  targetWindow.document.title = label;
+  targetWindow.document.body.style.fontFamily =
+    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  targetWindow.document.body.style.margin = "24px";
+  targetWindow.document.body.textContent = label;
+  return targetWindow;
+}
+
+export function closeGeneratedFileTab(targetWindow?: Window | null) {
+  if (targetWindow && !targetWindow.closed && targetWindow.location.href === "about:blank") {
+    targetWindow.close();
+  }
 }
 
 export function downloadGeneratedFile(downloadUrl: string, fileName: string) {

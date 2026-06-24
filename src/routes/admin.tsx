@@ -10,6 +10,7 @@ import {
   Lock,
   Plus,
   RefreshCw,
+  ShieldCheck,
   Trash2,
   Unlock,
   Users,
@@ -35,7 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { type Role, useAuth } from "@/lib/auth";
+import { ROLE_DESCRIPTIONS, ROLE_LABELS, ROLE_OPTIONS, type Role, useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import type { EmployeeRecord } from "@/lib/employees-api";
 import { cn } from "@/lib/utils";
@@ -96,15 +97,17 @@ const ADMIN_TABS: { key: AdminTab; label: string; icon: typeof Users }[] = [
 ];
 
 const ROLE_COLORS: Record<Role, string> = {
+  "Super Admin": "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200",
   Admin: "bg-rose-100 text-rose-700 border-rose-200",
   HR: "bg-blue-100 text-blue-700 border-blue-200",
+  Approver: "bg-violet-100 text-violet-700 border-violet-200",
   Employee: "bg-emerald-100 text-emerald-700 border-emerald-200",
   Viewer: "bg-muted text-muted-foreground border-border",
 };
 
 function AdminPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "Admin";
+  const isAdmin = user?.role === "Super Admin" || user?.role === "Admin";
   const [activeTab, setActiveTab] = useState<AdminTab>("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [employeeCandidates, setEmployeeCandidates] = useState<EmployeeRecord[]>([]);
@@ -397,7 +400,12 @@ function AdminPage() {
   };
 
   const activeUsers = users.filter((item) => item.isActive).length;
-  const employeeUsers = users.filter((item) => item.role === "Employee").length;
+  const approverUsers = users.filter((item) => item.role === "Approver").length;
+  const hasSuperAdmin = users.some((item) => item.role === "Super Admin" && item.isActive);
+  const roleOptions =
+    user?.role === "Super Admin" || !hasSuperAdmin
+      ? ROLE_OPTIONS
+      : ROLE_OPTIONS.filter((role) => role !== "Super Admin");
 
   return (
     <AppShell
@@ -406,15 +414,15 @@ function AdminPage() {
     >
       <div className="mb-4 grid gap-3 md:grid-cols-3">
         <AdminSummaryCard label="Active Users" value={activeUsers} icon={Users} />
-        <AdminSummaryCard label="Employee Accounts" value={employeeUsers} icon={Lock} />
+        <AdminSummaryCard label="Approvers" value={approverUsers} icon={ShieldCheck} />
         <AdminSummaryCard label="Backups" value={backups.length} icon={Database} />
       </div>
 
       <div className="flex items-center gap-3 rounded-xl bg-amber-50 border border-amber-200 p-4 mb-4">
         <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
         <p className="text-sm text-amber-800 font-medium">
-          System Administration is restricted to authorized administrators only. All actions are
-          logged.
+          System Administration is restricted to administrators. HR maintains records, Approvers
+          decide workflows, Viewers are read-only, and every privileged action is logged.
         </p>
       </div>
 
@@ -492,6 +500,7 @@ function AdminPage() {
                       <Badge
                         variant="outline"
                         className={cn("text-[11px]", ROLE_COLORS[item.role])}
+                        title={ROLE_DESCRIPTIONS[item.role]}
                       >
                         {item.role}
                       </Badge>
@@ -803,6 +812,7 @@ function AdminPage() {
         open={showAddUser}
         mode="add"
         form={form}
+        roleOptions={roleOptions}
         employeeCandidates={employeeCandidates}
         temporaryPassword={temporaryPassword}
         onOpenChange={handleAddUserOpenChange}
@@ -813,6 +823,7 @@ function AdminPage() {
         open={showEditUser}
         mode="edit"
         form={form}
+        roleOptions={roleOptions}
         employeeCandidates={employeeCandidates}
         temporaryPassword={temporaryPassword}
         onOpenChange={setShowEditUser}
@@ -827,6 +838,7 @@ function UserDialog({
   open,
   mode,
   form,
+  roleOptions,
   employeeCandidates,
   temporaryPassword,
   onOpenChange,
@@ -836,6 +848,7 @@ function UserDialog({
   open: boolean;
   mode: "add" | "edit";
   form: { name: string; username: string; role: Role; employeeId: string; isActive: boolean };
+  roleOptions: Role[];
   employeeCandidates: EmployeeRecord[];
   temporaryPassword: string;
   onOpenChange: (open: boolean) => void;
@@ -911,12 +924,16 @@ function UserDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Admin">Admin</SelectItem>
-                <SelectItem value="HR">HR</SelectItem>
-                <SelectItem value="Employee">Employee</SelectItem>
-                <SelectItem value="Viewer">Viewer</SelectItem>
+                {roleOptions.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {role}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {ROLE_LABELS[form.role]}: {ROLE_DESCRIPTIONS[form.role]}
+            </p>
           </div>
           {mode === "edit" && (
             <div className="space-y-1">

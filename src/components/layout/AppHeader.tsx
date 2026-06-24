@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   CheckCheck,
 } from "lucide-react";
-import { useAuth } from "@/lib/auth";
+import { canSeeApprovals, useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect } from "react";
@@ -53,7 +53,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", photoUrl: "" });
-  const canSeeLeaveNotifications = user?.role === "Admin" || user?.role === "HR";
+  const canSeeLeaveNotifications = canSeeApprovals(user?.role);
   const { connected, notifications, unreadCount, markRead, markAllRead } = useRealtime();
 
   const { data: leaveNotifications } = useQuery({

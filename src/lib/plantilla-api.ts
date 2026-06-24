@@ -83,3 +83,5 @@ export const savePlantilla = (value: PlantillaPayload, id?: string) =>
     method: id ? "PATCH" : "POST",
     body: JSON.stringify(value),
   });
+export const deletePlantilla = (id: string) =>
+  api<{ ok: true }>(`/api/plantilla/${id}`, { method: "DELETE" });

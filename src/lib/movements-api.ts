@@ -24,6 +24,18 @@ export type MovementStatus =
   | "Posted"
   | "Rejected"
   | "Reversed";
+export type MovementSnapshot = {
+  employee?: {
+    position?: string;
+    department?: string;
+    itemNo?: string;
+    empStatus?: string;
+  };
+  occupancy?: {
+    itemNumber?: string;
+    salaryGradeId?: number | null;
+  } | null;
+} | null;
 export type Movement = {
   id: string;
   controlNumber: string;
@@ -45,6 +57,9 @@ export type Movement = {
   targetDepartment: string;
   remarks: string;
   supportingDocuments: Array<{ name: string; reference: string }>;
+  sourceSnapshot: MovementSnapshot;
+  beforeSnapshot: MovementSnapshot;
+  afterSnapshot: MovementSnapshot;
   preparedBy: string;
   reviewedBy: string;
   approvedBy: string;

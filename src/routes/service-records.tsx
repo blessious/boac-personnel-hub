@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useAuth } from "@/lib/auth";
+import { canReadHrRecords, canWriteHrRecords, useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 import {
   deleteServiceRecord,
@@ -29,7 +29,7 @@ export const Route = createFileRoute("/service-records")({ component: ServiceRec
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 function ServiceRecordsPage() {
   const { user } = useAuth(),
-    canManage = user?.role === "Admin" || user?.role === "HR";
+    canManage = canWriteHrRecords(user?.role);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]),
     [employeeId, setEmployeeId] = useState(""),
     [records, setRecords] = useState<ServiceRecord[]>([]),
@@ -43,7 +43,7 @@ function ServiceRecordsPage() {
     loadAllEmployees()
       .then((x) => {
         setEmployees(x);
-        if (user?.employeeId && !["Admin", "HR", "Viewer"].includes(user.role))
+        if (user?.employeeId && !canReadHrRecords(user.role))
           setEmployeeId(user.employeeId);
       })
       .catch((e) => toast.error(e.message));

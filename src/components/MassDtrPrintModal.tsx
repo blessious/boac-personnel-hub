@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Building2, FileText, Filter, Users } from "lucide-react";
+import { Building2, FileText, Filter, Users, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { generateMassDtrPdf, openGeneratedFile, type DtrNoter } from "@/lib/attendance-api";
+import {
+  closeGeneratedFileTab,
+  generateMassDtrPdf,
+  openGeneratedFile,
+  openGeneratedFileTab,
+  type DtrNoter,
+} from "@/lib/attendance-api";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 
 const MONTHS = [
@@ -140,6 +146,7 @@ export function MassDtrPrintModal({
     if (!selectedEmployees.length) return toast.error("No employees found for the selected criteria");
     if (!noterSignatory || !noterPosition) return toast.error("Select a noter signatory and position");
 
+    const previewWindow = openGeneratedFileTab("Preparing mass DTR PDF preview...");
     setBusy(true);
     try {
       const result = await generateMassDtrPdf({
@@ -154,10 +161,11 @@ export function MassDtrPrintModal({
         secondYear: useSecondPeriod ? secondYear : 0,
         secondCut: useSecondPeriod ? secondCut : "full",
       });
-      openGeneratedFile(result.previewUrl);
+      openGeneratedFile(result.previewUrl, previewWindow);
       toast.success(`PDF generated for ${result.employeeCount} employee(s)`);
       onOpenChange(false);
     } catch (error) {
+      closeGeneratedFileTab(previewWindow);
       toast.error(error instanceof Error ? error.message : "Unable to generate mass DTR PDF");
     } finally {
       setBusy(false);
@@ -356,7 +364,7 @@ export function MassDtrPrintModal({
               Cancel
             </Button>
             <Button onClick={runMassPrint} disabled={busy} className="bg-blue-600 text-white hover:bg-blue-700">
-              <FileText className="mr-1.5 h-4 w-4" />
+              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 h-4 w-4" />}
               {busy ? "Generating..." : "View PDF"}
             </Button>
           </div>

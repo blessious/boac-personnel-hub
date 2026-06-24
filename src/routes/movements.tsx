@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { canWriteHrRecords, useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord, type SettingsOptions } from "@/lib/employees-api";
 import {
   emptyMovement,
@@ -62,9 +62,10 @@ const statuses = [
   "Reversed",
 ];
 function MovementsPage() {
-  const { user } = useAuth(),
-    isAdmin = user?.role === "Admin",
-    canPrepare = isAdmin || user?.role === "HR";
+  const { user, can } = useAuth(),
+    canPrepare = canWriteHrRecords(user?.role),
+    canApprove = can("approve"),
+    canPost = canPrepare;
   const [movements, setMovements] = useState<Movement[]>([]),
     [summary, setSummary] = useState<Record<string, number>>({}),
     [q, setQ] = useState(""),
@@ -184,6 +185,39 @@ function MovementsPage() {
     k,
     summary[k] || 0,
   ]);
+  const fromText = (m: Movement) => {
+    const source = m.beforeSnapshot?.employee || m.sourceSnapshot?.employee;
+    return source?.position || "-";
+  };
+  const fromMeta = (m: Movement) => {
+    const source = m.beforeSnapshot?.employee || m.sourceSnapshot?.employee;
+    return [source?.itemNo, source?.department].filter(Boolean).join(" / ") || "No current item";
+  };
+  const toText = (m: Movement) => {
+    const afterEmployee = m.afterSnapshot?.employee;
+    if (SEPARATIONS.has(m.actionType)) return "Vacate current item";
+    if (afterEmployee?.position && m.status === "Posted") return afterEmployee.position;
+    if (m.targetItemNumber || m.targetPositionTitle)
+      return m.targetPositionTitle || m.targetItemNumber;
+    if (m.targetSalaryGrade) {
+      return `SG ${m.targetSalaryGrade.grade}, Step ${m.targetSalaryGrade.step}`;
+    }
+    return m.targetDepartment || "-";
+  };
+  const toMeta = (m: Movement) => {
+    const afterEmployee = m.afterSnapshot?.employee;
+    if (afterEmployee && m.status === "Posted") {
+      return [afterEmployee.itemNo, afterEmployee.department].filter(Boolean).join(" / ");
+    }
+    if (m.targetItemNumber && m.targetPositionTitle) {
+      return [m.targetItemNumber, m.targetDepartment].filter(Boolean).join(" / ");
+    }
+    if (m.targetItemNumber) return m.targetItemNumber;
+    if (m.targetSalaryGrade) {
+      return `PHP ${m.targetSalaryGrade.amount.toLocaleString()}`;
+    }
+    return m.targetDepartment || "";
+  };
   return (
     <AppShell
       title="Employee Movements"
@@ -266,13 +300,19 @@ function MovementsPage() {
                 <span className="mobile-record-card__value">{m.authorityNumber || "-"}</span>
               </div>
               <div className="mobile-record-card__field">
-                <span className="mobile-record-card__label">Target</span>
+                <span className="mobile-record-card__label">From</span>
                 <span className="mobile-record-card__value">
-                  {m.targetItemNumber ||
-                    m.targetPositionTitle ||
-                    (m.targetSalaryGrade
-                      ? `SG ${m.targetSalaryGrade.grade}, Step ${m.targetSalaryGrade.step}`
-                      : "-")}
+                  {fromText(m)}
+                  <span className="block text-[11px] text-muted-foreground">{fromMeta(m)}</span>
+                </span>
+              </div>
+              <div className="mobile-record-card__field">
+                <span className="mobile-record-card__label">To</span>
+                <span className="mobile-record-card__value">
+                  {toText(m)}
+                  {toMeta(m) && (
+                    <span className="block text-[11px] text-muted-foreground">{toMeta(m)}</span>
+                  )}
                 </span>
               </div>
             </div>
@@ -286,22 +326,22 @@ function MovementsPage() {
                 </Button>
               )}
               {canPrepare && m.status === "Draft" && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  title="Submit"
-                  onClick={() => runAction(m, "submit")}
-                >
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Submit"
+                    onClick={() => setDecision({ movement: m, action: "submit" })}
+                  >
                   <Send className="h-4 w-4" />
                 </Button>
               )}
-              {isAdmin && m.status === "Submitted" && (
+              {canApprove && m.status === "Submitted" && (
                 <>
                   <Button
                     size="icon"
                     variant="ghost"
                     title="Review"
-                    onClick={() => runAction(m, "review")}
+                    onClick={() => setDecision({ movement: m, action: "review" })}
                   >
                     <Clock3 className="h-4 w-4" />
                   </Button>
@@ -313,15 +353,23 @@ function MovementsPage() {
                   >
                     <XCircle className="h-4 w-4" />
                   </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Return to Draft"
+                    onClick={() => setDecision({ movement: m, action: "return" })}
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
                 </>
               )}
-              {isAdmin && m.status === "Reviewed" && (
+              {canApprove && m.status === "Reviewed" && (
                 <>
                   <Button
                     size="icon"
                     variant="ghost"
                     title="Approve"
-                    onClick={() => runAction(m, "approve")}
+                    onClick={() => setDecision({ movement: m, action: "approve" })}
                   >
                     <CheckCircle2 className="h-4 w-4" />
                   </Button>
@@ -333,9 +381,17 @@ function MovementsPage() {
                   >
                     <XCircle className="h-4 w-4" />
                   </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Return to Draft"
+                    onClick={() => setDecision({ movement: m, action: "return" })}
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
                 </>
               )}
-              {isAdmin && m.status === "Approved" && (
+              {canPost && m.status === "Approved" && (
                 <>
                   <Button
                     size="sm"
@@ -352,9 +408,17 @@ function MovementsPage() {
                   >
                     <XCircle className="h-4 w-4" />
                   </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Return to Draft"
+                    onClick={() => setDecision({ movement: m, action: "return" })}
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
                 </>
               )}
-              {isAdmin && m.status === "Posted" && (
+              {canPost && m.status === "Posted" && (
                 <Button
                   size="icon"
                   variant="ghost"
@@ -381,8 +445,9 @@ function MovementsPage() {
                 "Control no.",
                 "Employee",
                 "Personnel action",
+                "From",
+                "To",
                 "Effectivity",
-                "Target",
                 "Status",
                 "Actions",
               ].map((x) => (
@@ -395,7 +460,7 @@ function MovementsPage() {
           <tbody>
             {movements.map((m) => (
               <tr className="border-t" key={m.id}>
-                <td className="p-3 font-medium">{m.controlNumber}</td>
+                <td className="whitespace-nowrap p-3 font-medium">{m.controlNumber}</td>
                 <td className="p-3">
                   {m.employeeName}
                   <div className="text-xs text-muted-foreground">{m.employeeNo}</div>
@@ -403,21 +468,22 @@ function MovementsPage() {
                 <td className="p-3">
                   {m.actionType}
                   <div className="text-xs text-muted-foreground">
-                    {m.authorityNumber || "No authority number"}
+                    {m.authorityNumber || "-"}
                   </div>
                 </td>
                 <td className="p-3">
+                  <div className="font-medium">{fromText(m)}</div>
+                  <div className="text-xs text-muted-foreground">{fromMeta(m)}</div>
+                </td>
+                <td className="p-3">
+                  <div className="font-medium">{toText(m)}</div>
+                  {toMeta(m) && <div className="text-xs text-muted-foreground">{toMeta(m)}</div>}
+                </td>
+                <td className="whitespace-nowrap p-3">
                   {m.effectiveDate}
                   {m.endDate && (
                     <div className="text-xs text-muted-foreground">until {m.endDate}</div>
                   )}
-                </td>
-                <td className="p-3">
-                  {m.targetItemNumber ||
-                    m.targetPositionTitle ||
-                    (m.targetSalaryGrade
-                      ? `SG ${m.targetSalaryGrade.grade}, Step ${m.targetSalaryGrade.step}`
-                      : "-")}
                 </td>
                 <td className="p-3">
                   <Status value={m.status} />
@@ -442,52 +508,68 @@ function MovementsPage() {
                         size="icon"
                         variant="ghost"
                         title="Submit"
-                        onClick={() => runAction(m, "submit")}
+                        onClick={() => setDecision({ movement: m, action: "submit" })}
                       >
                         <Send className="h-4 w-4" />
                       </Button>
                     )}
-                    {isAdmin && m.status === "Submitted" && (
-                      <>
+                      {canApprove && m.status === "Submitted" && (
+                        <>
                         <Button
                           size="icon"
                           variant="ghost"
                           title="Review"
-                          onClick={() => runAction(m, "review")}
+                          onClick={() => setDecision({ movement: m, action: "review" })}
                         >
                           <Clock3 className="h-4 w-4" />
                         </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title="Reject"
-                          onClick={() => setDecision({ movement: m, action: "reject" })}
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
-                    {isAdmin && m.status === "Reviewed" && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Reject"
+                            onClick={() => setDecision({ movement: m, action: "reject" })}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Return to Draft"
+                            onClick={() => setDecision({ movement: m, action: "return" })}
+                          >
+                            <Undo2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    {canApprove && m.status === "Reviewed" && (
                       <>
                         <Button
                           size="icon"
                           variant="ghost"
                           title="Approve"
-                          onClick={() => runAction(m, "approve")}
+                          onClick={() => setDecision({ movement: m, action: "approve" })}
                         >
                           <CheckCircle2 className="h-4 w-4" />
                         </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title="Reject"
-                          onClick={() => setDecision({ movement: m, action: "reject" })}
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
-                    {isAdmin && m.status === "Approved" && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Reject"
+                            onClick={() => setDecision({ movement: m, action: "reject" })}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Return to Draft"
+                            onClick={() => setDecision({ movement: m, action: "return" })}
+                          >
+                            <Undo2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    {canPost && m.status === "Approved" && (
                       <>
                         <Button
                           size="sm"
@@ -504,9 +586,17 @@ function MovementsPage() {
                         >
                           <XCircle className="h-4 w-4" />
                         </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Return to Draft"
+                          onClick={() => setDecision({ movement: m, action: "return" })}
+                        >
+                          <Undo2 className="h-4 w-4" />
+                        </Button>
                       </>
                     )}
-                    {isAdmin && m.status === "Posted" && (
+                    {canPost && m.status === "Posted" && (
                       <Button
                         size="icon"
                         variant="ghost"
@@ -522,7 +612,7 @@ function MovementsPage() {
             ))}
             {!movements.length && (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                <td colSpan={8} className="p-8 text-center text-muted-foreground">
                   No personnel movements found.
                 </td>
               </tr>
@@ -554,11 +644,19 @@ function MovementsPage() {
               ? "Posting atomically updates the employee and Plantilla occupancy. Confirm that the approved action is ready for effectivity."
               : decision?.action === "reverse"
                 ? "Reversal restores the recorded before-state and is blocked if a later movement exists."
-                : "Record the reason for this decision."}
+                : decision?.action === "return"
+                  ? "Returning to Draft refreshes the source employee/occupancy snapshot and clears prior approvals."
+                : decision?.action === "reject"
+                  ? "Record the reason for this decision."
+                  : "Confirm this workflow step before the movement continues."}
           </p>
           <div className="space-y-1">
             <Label>
-              {decision?.action === "post" ? "Posting remarks (optional)" : "Reason (required)"}
+              {decision?.action === "reject" ||
+              decision?.action === "reverse" ||
+              decision?.action === "return"
+                ? "Reason (required)"
+                : "Remarks (optional)"}
             </Label>
             <Textarea
               value={decisionRemarks}
@@ -570,7 +668,13 @@ function MovementsPage() {
               Cancel
             </Button>
             <Button
-              disabled={busy || (decision?.action !== "post" && !decisionRemarks.trim())}
+              disabled={
+                busy ||
+                ((decision?.action === "reject" ||
+                  decision?.action === "reverse" ||
+                  decision?.action === "return") &&
+                  !decisionRemarks.trim())
+              }
               onClick={() =>
                 decision && runAction(decision.movement, decision.action, decisionRemarks)
               }

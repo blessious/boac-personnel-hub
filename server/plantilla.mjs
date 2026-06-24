@@ -52,6 +52,41 @@ const selectSql = `SELECT pi.*,p.title position_title,sg.ordinance,sg.grade,sg.s
  LEFT JOIN hr_reference_values pt ON pt.id=pi.plantilla_type_ref_id LEFT JOIN hr_reference_values b ON b.id=pi.budget_code_ref_id
  LEFT JOIN plantilla_occupancies po ON po.plantilla_item_id=pi.id AND po.status='Active' LEFT JOIN employees e ON e.id=po.employee_id`;
 const day = (v) => (v ? new Date(v).toISOString().slice(0, 10) : null);
+const directAssignmentActions = new Set([
+  "Original Appointment",
+  "Promotion",
+  "Transfer",
+  "Reassignment",
+  "Job Rotation",
+  "Reclassification",
+]);
+const directAssignmentAction = (value) => {
+  const action = String(value || "").trim();
+  return directAssignmentActions.has(action) ? action : "Original Appointment";
+};
+const movementControlNumber = () =>
+  `PA-${new Date().getFullYear()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+const employeeSnapshot = (employee, occupancy = null) => ({
+  employee: {
+    id: employee.id,
+    employeeNo: employee.employee_no,
+    department: employee.department,
+    position: employee.position,
+    itemNo: employee.item_no,
+    empStatus: employee.emp_status,
+  },
+  occupancy: occupancy
+    ? {
+        id: occupancy.id,
+        itemId: occupancy.plantilla_item_id,
+        itemNumber: occupancy.item_number,
+        dateFrom: day(occupancy.date_from),
+        salaryGradeId: occupancy.salary_grade_id ? Number(occupancy.salary_grade_id) : null,
+        authorizedSalary:
+          occupancy.authorized_salary === null ? null : Number(occupancy.authorized_salary),
+      }
+    : null,
+});
 const date = (v, n, required = false) => {
   if (!v) {
     if (required) throw Error(`${n} is required`);
@@ -138,6 +173,65 @@ export function createPlantillaHandlers({
       "INSERT INTO plantilla_item_history(plantilla_item_id,action,snapshot_json,changed_by) VALUES(:id,:action,:snapshot,:userId)",
       { id, action, snapshot: JSON.stringify(snapshot), userId },
     );
+  const movementEvent = (
+    c,
+    movementId,
+    eventType,
+    fromStatus,
+    toStatus,
+    actorId,
+    remarks,
+    snapshot,
+  ) =>
+    c.execute(
+      "INSERT INTO personnel_movement_events(id,movement_id,event_type,from_status,to_status,actor_id,remarks,snapshot_json) VALUES(:id,:movementId,:eventType,:fromStatus,:toStatus,:actorId,:remarks,:snapshot)",
+      {
+        id: crypto.randomUUID(),
+        movementId,
+        eventType,
+        fromStatus,
+        toStatus,
+        actorId,
+        remarks: remarks || null,
+        snapshot: snapshot ? JSON.stringify(snapshot) : null,
+      },
+    );
+  const postedMovement = async (c, data) => {
+    const movementId = crypto.randomUUID();
+    await c.execute(
+      `INSERT INTO personnel_movements(id,control_number,employee_id,action_type,status,effective_date,end_date,authority_number,authority_date,target_plantilla_item_id,target_position_id,target_salary_grade_id,target_department,remarks,supporting_documents,source_snapshot_json,posted_before_snapshot_json,posted_after_snapshot_json,prepared_by,submitted_by,reviewed_by,approved_by,posted_by,submitted_at,reviewed_at,approved_at,posted_at,decision_remarks) VALUES(:id,:controlNumber,:employeeId,:actionType,'Posted',:effectiveDate,:endDate,:authorityNumber,NULL,:targetPlantillaItemId,:targetPositionId,:targetSalaryGradeId,:targetDepartment,:remarks,:supportingDocuments,:sourceSnapshot,:beforeSnapshot,:afterSnapshot,:userId,:userId,:userId,:userId,:userId,NOW(),NOW(),NOW(),NOW(),:decisionRemarks)`,
+      {
+        id: movementId,
+        controlNumber: data.controlNumber || movementControlNumber(),
+        employeeId: data.employeeId,
+        actionType: data.actionType,
+        effectiveDate: data.effectiveDate,
+        endDate: data.endDate || null,
+        authorityNumber: data.authorityNumber || null,
+        targetPlantillaItemId: data.targetPlantillaItemId || null,
+        targetPositionId: data.targetPositionId || null,
+        targetSalaryGradeId: data.targetSalaryGradeId || null,
+        targetDepartment: data.targetDepartment || null,
+        remarks: data.remarks || null,
+        supportingDocuments: JSON.stringify(data.supportingDocuments || []),
+        sourceSnapshot: JSON.stringify(data.before),
+        beforeSnapshot: JSON.stringify(data.before),
+        afterSnapshot: JSON.stringify(data.after),
+        userId: data.userId,
+        decisionRemarks: data.decisionRemarks || data.remarks || null,
+      },
+    );
+    await movementEvent(c, movementId, "Created", null, "Draft", data.userId, data.remarks, {
+      source: data.before,
+      createdFrom: "Plantilla direct action",
+    });
+    await movementEvent(c, movementId, "Posted", "Approved", "Posted", data.userId, data.remarks, {
+      before: data.before,
+      after: data.after,
+      createdFrom: "Plantilla direct action",
+    });
+    return movementId;
+  };
   const fail = (res, e) => {
     if (e?.code === "ER_DUP_ENTRY")
       return json(res, 409, { error: "Duplicate item number or active occupancy conflict" });
@@ -289,6 +383,48 @@ export function createPlantillaHandlers({
       return fail(res, e);
     }
   };
+  handlers.remove = async (req, res, id) => {
+    const u = await requireEmployeeWrite(req, res);
+    if (!u) return;
+    const c = await pool.getConnection();
+    try {
+      await c.beginTransaction();
+      const [[item]] = await c.execute(
+        "SELECT id,item_number FROM plantilla_items WHERE id=:id FOR UPDATE",
+        { id },
+      );
+      if (!item) {
+        await c.rollback();
+        return json(res, 404, { error: "Plantilla item not found" });
+      }
+      const [[occupancy]] = await c.execute(
+        "SELECT COUNT(*) total FROM plantilla_occupancies WHERE plantilla_item_id=:id",
+        { id },
+      );
+      if (Number(occupancy.total || 0) > 0)
+        throw Error(
+          "This item has occupancy history. Mark it Inactive or Abolished instead of deleting it.",
+        );
+      const [[movement]] = await c.execute(
+        "SELECT COUNT(*) total FROM personnel_movements WHERE target_plantilla_item_id=:id",
+        { id },
+      );
+      if (Number(movement.total || 0) > 0)
+        throw Error(
+          "This item is referenced by employee movements. Mark it Inactive or Abolished instead of deleting it.",
+        );
+      await c.execute("DELETE FROM plantilla_item_history WHERE plantilla_item_id=:id", { id });
+      await c.execute("DELETE FROM plantilla_items WHERE id=:id", { id });
+      await c.commit();
+      await logAudit(u.id, "plantilla.delete", { id, itemNumber: item.item_number }, req);
+      return json(res, 200, { ok: true });
+    } catch (e) {
+      await c.rollback().catch(() => {});
+      return fail(res, e);
+    } finally {
+      c.release();
+    }
+  };
   handlers.assign = async (req, res, id) => {
     const u = await requireEmployeeWrite(req, res);
     if (!u) return;
@@ -299,13 +435,20 @@ export function createPlantillaHandlers({
         dateFrom = date(b.dateFrom, "Assignment date", true);
       await c.beginTransaction();
       const [[i]] = await c.execute(
-        "SELECT pi.*,p.title position_title FROM plantilla_items pi JOIN positions p ON p.id=pi.position_id WHERE pi.id=:id FOR UPDATE",
+        `SELECT pi.*,p.title position_title,COALESCE(sec.name,divi.name,off.name,s.name) organization_name
+         FROM plantilla_items pi
+         JOIN positions p ON p.id=pi.position_id
+         LEFT JOIN hr_reference_values sec ON sec.id=pi.section_ref_id
+         LEFT JOIN hr_reference_values divi ON divi.id=pi.division_ref_id
+         LEFT JOIN hr_reference_values off ON off.id=pi.office_ref_id
+         LEFT JOIN hr_reference_values s ON s.id=pi.sector_ref_id
+         WHERE pi.id=:id FOR UPDATE`,
         { id },
       );
       if (!i) throw Error("Plantilla item not found");
       if (i.item_status !== "Active") throw Error("Only active items can be occupied");
       const [[e]] = await c.execute(
-        "SELECT id FROM employees WHERE id=:employeeId AND is_hidden=0 FOR UPDATE",
+        "SELECT id,employee_no,department,position,item_no,emp_status FROM employees WHERE id=:employeeId AND is_hidden=0 FOR UPDATE",
         { employeeId },
       );
       if (!e) throw Error("Select a valid employee");
@@ -318,6 +461,8 @@ export function createPlantillaHandlers({
         )[0][0]
       )
         throw Error("The item or employee already has an active occupancy");
+      const assignmentAction = directAssignmentAction(b.movementType);
+      const before = employeeSnapshot(e, null);
       const occupancyId = crypto.randomUUID();
       await c.execute(
         `INSERT INTO plantilla_occupancies(id,plantilla_item_id,employee_id,date_from,movement_type,appointment_number,remarks,created_by) VALUES(:occupancyId,:id,:employeeId,:dateFrom,:movementType,:appointmentNumber,:remarks,:userId)`,
@@ -326,16 +471,55 @@ export function createPlantillaHandlers({
           id,
           employeeId,
           dateFrom,
-          movementType: String(b.movementType || "").trim() || null,
+          movementType: assignmentAction,
           appointmentNumber: String(b.appointmentNumber || "").trim() || null,
           remarks: String(b.remarks || "").trim() || null,
           userId: u.id,
         },
       );
       await c.execute(
-        "UPDATE employees SET item_no=:itemNumber,position=:title WHERE id=:employeeId",
-        { itemNumber: i.item_number, title: i.position_title, employeeId },
+        "UPDATE employees SET item_no=:itemNumber,position=:title,department=COALESCE(:department,department),emp_status='Active' WHERE id=:employeeId",
+        {
+          itemNumber: i.item_number,
+          title: i.position_title,
+          department: i.organization_name || null,
+          employeeId,
+        },
       );
+      const [[updatedEmployee]] = await c.execute(
+        "SELECT id,employee_no,department,position,item_no,emp_status FROM employees WHERE id=:employeeId",
+        { employeeId },
+      );
+      const after = employeeSnapshot(updatedEmployee, {
+        id: occupancyId,
+        plantilla_item_id: id,
+        item_number: i.item_number,
+        date_from: dateFrom,
+        salary_grade_id: i.salary_grade_id,
+        authorized_salary: i.authorized_salary,
+      });
+      await postedMovement(c, {
+        employeeId,
+        actionType: assignmentAction,
+        effectiveDate: dateFrom,
+        authorityNumber: String(b.appointmentNumber || "").trim() || null,
+        targetPlantillaItemId: id,
+        targetPositionId: i.position_id,
+        targetSalaryGradeId: i.salary_grade_id,
+        targetDepartment: i.organization_name || null,
+        remarks: String(b.remarks || "").trim() || "Posted from Plantilla direct assignment",
+        supportingDocuments: String(b.appointmentNumber || "").trim()
+          ? [
+              {
+                name: "Appointment / authority number",
+                reference: String(b.appointmentNumber).trim(),
+              },
+            ]
+          : [],
+        before,
+        after,
+        userId: u.id,
+      });
       const item = await read(id, c);
       await history(c, id, "Assigned", item, u.id);
       await c.commit();
@@ -357,12 +541,17 @@ export function createPlantillaHandlers({
         dateTo = date(b.dateTo, "Vacancy date", true);
       await c.beginTransaction();
       const [[o]] = await c.execute(
-        "SELECT po.*,pi.item_number FROM plantilla_occupancies po JOIN plantilla_items pi ON pi.id=po.plantilla_item_id WHERE po.plantilla_item_id=:id AND po.status='Active' FOR UPDATE",
+        "SELECT po.*,pi.item_number,pi.position_id,pi.salary_grade_id,pi.authorized_salary FROM plantilla_occupancies po JOIN plantilla_items pi ON pi.id=po.plantilla_item_id WHERE po.plantilla_item_id=:id AND po.status='Active' FOR UPDATE",
         { id },
       );
       if (!o) throw Error("This item is already vacant");
       const from = day(o.date_from);
       if (dateTo < from) throw Error("Vacancy date cannot be earlier than assignment date");
+      const [[employeeBefore]] = await c.execute(
+        "SELECT id,employee_no,department,position,item_no,emp_status FROM employees WHERE id=:employeeId FOR UPDATE",
+        { employeeId: o.employee_id },
+      );
+      const before = employeeSnapshot(employeeBefore, o);
       await c.execute(
         "UPDATE plantilla_occupancies SET status='Ended',date_to=:dateTo,ended_by=:userId,ended_at=NOW(),remarks=COALESCE(:remarks,remarks) WHERE id=:oid",
         { dateTo, userId: u.id, remarks: String(b.remarks || "").trim() || null, oid: o.id },
@@ -371,6 +560,26 @@ export function createPlantillaHandlers({
         "UPDATE employees SET item_no=NULL WHERE id=:employeeId AND item_no=:itemNumber",
         { employeeId: o.employee_id, itemNumber: o.item_number },
       );
+      const [[employeeAfter]] = await c.execute(
+        "SELECT id,employee_no,department,position,item_no,emp_status FROM employees WHERE id=:employeeId",
+        { employeeId: o.employee_id },
+      );
+      const after = employeeSnapshot(employeeAfter, null);
+      await postedMovement(c, {
+        employeeId: o.employee_id,
+        actionType: "Other",
+        effectiveDate: dateTo,
+        endDate: dateTo,
+        authorityNumber: null,
+        targetPlantillaItemId: null,
+        targetPositionId: null,
+        targetSalaryGradeId: null,
+        remarks: String(b.remarks || "").trim() || "Plantilla item vacated by direct action",
+        before,
+        after,
+        userId: u.id,
+        decisionRemarks: `Direct vacancy effective ${dateTo}`,
+      });
       const item = await read(id, c);
       await history(
         c,

@@ -129,12 +129,13 @@ export async function initializeMovementSchema(pool, employeeIdDefinition) {
 
 const MOVEMENT_SELECT = `SELECT m.*,
  CONCAT(e.lastname,', ',e.firstname) employee_name,e.employee_no,
- tp.title target_position_title,pi.item_number target_item_number,
+ COALESCE(tp.title,ip.title) target_position_title,pi.item_number target_item_number,
  sg.grade target_grade,sg.step target_step,sg.amount target_salary,
  prep.name prepared_by_name,rev.name reviewed_by_name,app.name approved_by_name,post.name posted_by_name
  FROM personnel_movements m JOIN employees e ON e.id=m.employee_id
  LEFT JOIN positions tp ON tp.id=m.target_position_id
  LEFT JOIN plantilla_items pi ON pi.id=m.target_plantilla_item_id
+ LEFT JOIN positions ip ON ip.id=pi.position_id
  LEFT JOIN salary_grades sg ON sg.id=m.target_salary_grade_id
  LEFT JOIN users prep ON prep.id=m.prepared_by LEFT JOIN users rev ON rev.id=m.reviewed_by
  LEFT JOIN users app ON app.id=m.approved_by LEFT JOIN users post ON post.id=m.posted_by`;
@@ -190,7 +191,7 @@ export function createMovementHandlers({
   pool,
   requireEmployeeRead,
   requireEmployeeWrite,
-  requireAdmin,
+  requireApproval,
   readBody,
   json,
   logAudit,
@@ -457,9 +458,9 @@ export function createMovementHandlers({
     }
   };
   handlers.transition = async (req, res, id, action) => {
-    const adminActions = new Set(["review", "approve", "reject", "post", "reverse"]);
-    const user = adminActions.has(action)
-      ? await requireAdmin(req, res)
+    const approvalActions = new Set(["review", "approve", "reject", "return"]);
+    const user = approvalActions.has(action)
+      ? await requireApproval(req, res)
       : await requireEmployeeWrite(req, res);
     if (!user) return;
     const body = await readBody(req),
@@ -469,6 +470,7 @@ export function createMovementHandlers({
       review: ["Submitted", "Reviewed"],
       approve: ["Reviewed", "Approved"],
       reject: [["Submitted", "Reviewed", "Approved"], "Rejected"],
+      return: [["Submitted", "Reviewed", "Approved"], "Draft"],
     };
     if (rules[action]) {
       const [fromAllowed, toStatus] = rules[action];
@@ -487,25 +489,42 @@ export function createMovementHandlers({
         if (!allowed.includes(row.status))
           throw new Error(`A ${row.status} movement cannot be ${action}ed`);
         if (action === "reject" && !remarks) throw new Error("Rejection remarks are required");
+        if (action === "return" && !remarks) throw new Error("Return-to-draft remarks are required");
         const fields = {
           submit: "submitted",
           review: "reviewed",
           approve: "approved",
           reject: "rejected",
         };
-        const prefix = fields[action];
-        await connection.execute(
-          `UPDATE personnel_movements SET status=:toStatus,${prefix}_by=:userId,${prefix}_at=NOW(),decision_remarks=:remarks WHERE id=:id`,
-          { id, toStatus, userId: user.id, remarks: remarks || null },
-        );
+        const source = action === "return" ? await currentSnapshot(row.employee_id, connection, true) : null;
+        if (action === "return") {
+          await connection.execute(
+            `UPDATE personnel_movements
+             SET status='Draft',
+                 source_snapshot_json=:sourceSnapshot,
+                 submitted_by=NULL,reviewed_by=NULL,approved_by=NULL,rejected_by=NULL,
+                 submitted_at=NULL,reviewed_at=NULL,approved_at=NULL,rejected_at=NULL,
+                 decision_remarks=:remarks,
+                 version=version+1
+             WHERE id=:id`,
+            { id, sourceSnapshot: JSON.stringify(source), remarks },
+          );
+        } else {
+          const prefix = fields[action];
+          await connection.execute(
+            `UPDATE personnel_movements SET status=:toStatus,${prefix}_by=:userId,${prefix}_at=NOW(),decision_remarks=:remarks WHERE id=:id`,
+            { id, toStatus, userId: user.id, remarks: remarks || null },
+          );
+        }
         await event(
           connection,
           id,
-          action[0].toUpperCase() + action.slice(1),
+          action === "return" ? "Returned to Draft" : action[0].toUpperCase() + action.slice(1),
           row.status,
           toStatus,
           user.id,
           remarks,
+          source ? { refreshedSource: source } : null,
         );
         await connection.commit();
         await logAudit(

@@ -24,7 +24,7 @@
             	<value xml:lang="ckb">Languages and Locales</value>
             	<value xml:lang="cs">Jazyky a národní prostředí</value>
             	<value xml:lang="cy">Ieithoedd a Locales</value>
-            	<value xml:lang="da">Sprog og lokalitetsindstillinger</value>
+            	<value xml:lang="da">Sprog og sprogindstillinger</value>
             	<value xml:lang="de">Sprachen und Gebietsschemata</value>
             	<value xml:lang="dgo">Languages and Locales</value>
             	<value xml:lang="dsb">Rěcy a narodne šemy</value>
@@ -40,7 +40,7 @@
             	<value xml:lang="fi">Kielet ja lokaalit</value>
             	<value xml:lang="fr">Langues et locales</value>
             	<value xml:lang="fur">Languages and Locales</value>
-            	<value xml:lang="fy">Languages and Locales</value>
+            	<value xml:lang="fy">Taal ynstellingen</value>
             	<value xml:lang="ga">Teangacha agus Logánuithe</value>
             	<value xml:lang="gd">Cànain is sgeamannan ionadail</value>
             	<value xml:lang="gl">Idiomas e configuración local</value>
@@ -66,7 +66,7 @@
             	<value xml:lang="kok">Languages and Locales</value>
             	<value xml:lang="ks">Languages and Locales</value>
             	<value xml:lang="lb">Languages and Locales</value>
-            	<value xml:lang="lo">Languages and Locales</value>
+            	<value xml:lang="lo">ພາສາ ແລະ ທ້ອງຖິ່ນ</value>
             	<value xml:lang="lt">Languages and Locales</value>
             	<value xml:lang="lv">Languages and Locales</value>
             	<value xml:lang="mai">Languages and Locales</value>
@@ -89,6 +89,7 @@
             	<value xml:lang="pl">Języki i ustawienia regionalne</value>
             	<value xml:lang="pt">Idiomas e Regiões</value>
             	<value xml:lang="pt-BR">Idiomas e localidades</value>
+            	<value xml:lang="qtz">Hf44z‖Languages and Locales</value>
             	<value xml:lang="ro">Limbi și setări regionale</value>
             	<value xml:lang="ru">Языки и локали</value>
             	<value xml:lang="rw">Languages and Locales</value>
@@ -111,7 +112,7 @@
             	<value xml:lang="ta">Languages and Locales</value>
             	<value xml:lang="te">Languages and Locales</value>
             	<value xml:lang="tg">Languages and Locales</value>
-            	<value xml:lang="th">Languages and Locales</value>
+            	<value xml:lang="th">ภาษาและท้องถิ่น</value>
             	<value xml:lang="tl">Mga Wika at Lokal</value>
             	<value xml:lang="tn">Languages and Locales</value>
             	<value xml:lang="tr">Diller ve Yereller</value>
@@ -196,7 +197,7 @@
                     	<value xml:lang="kok">English Sentence Checking</value>
                     	<value xml:lang="ks">English Sentence Checking</value>
                     	<value xml:lang="lb">English Sentence Checking</value>
-                    	<value xml:lang="lo">English Sentence Checking</value>
+                    	<value xml:lang="lo">ການກວດສອບປະໂຫຍກພາສາອັງກິດ</value>
                     	<value xml:lang="lt">Anglų kalbos sakinių tikrinimas</value>
                     	<value xml:lang="lv">Gramatikas pārbaude angļu valodā</value>
                     	<value xml:lang="mai">English Sentence Checking</value>
@@ -219,6 +220,7 @@
                     	<value xml:lang="pl">Sprawdzanie zdań w języku angielskim</value>
                     	<value xml:lang="pt">Análise de frases em inglês</value>
                     	<value xml:lang="pt-BR">Verificação de frases em inglês</value>
+                    	<value xml:lang="qtz">NTrTn‖English Sentence Checking</value>
                     	<value xml:lang="ro">Verificare de propoziții în limba engleză</value>
                     	<value xml:lang="ru">Грамматика (английский)</value>
                     	<value xml:lang="rw">English Sentence Checking</value>

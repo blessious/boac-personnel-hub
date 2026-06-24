@@ -6,13 +6,15 @@ import {
   Calendar as CalendarIcon,
   Clock,
   FileText,
+  Settings,
+  ShieldCheck,
   UserCheck,
   UserPlus,
   Users,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth";
+import { canReadHrRecords, canSeeApprovals, canWriteHrRecords, useAuth } from "@/lib/auth";
 import { getDashboard, type DashboardResponse } from "@/lib/employees-api";
 import { EmployeeDashboardHome } from "@/routes/self-service";
 import { useRealtimeRefresh } from "@/lib/realtime";
@@ -26,6 +28,82 @@ function Dashboard() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(user?.role !== "Employee");
   const [error, setError] = useState("");
+  const quickLinks =
+    user?.role === "Admin"
+      ? [
+          {
+            to: "/admin" as const,
+            icon: <ShieldCheck className="h-5 w-5 text-rose-600" />,
+            label: "System Admin",
+            bg: "bg-rose-50",
+          },
+          {
+            to: "/settings" as const,
+            icon: <Settings className="h-5 w-5 text-slate-600" />,
+            label: "Settings",
+            bg: "bg-slate-50",
+          },
+        ]
+      : [
+          ...(user?.role === "Super Admin"
+            ? [
+                {
+                  to: "/admin" as const,
+                  icon: <ShieldCheck className="h-5 w-5 text-fuchsia-600" />,
+                  label: "System Admin",
+                  bg: "bg-fuchsia-50",
+                },
+                {
+                  to: "/settings" as const,
+                  icon: <Settings className="h-5 w-5 text-slate-600" />,
+                  label: "Settings",
+                  bg: "bg-slate-50",
+                },
+              ]
+            : []),
+          ...(canWriteHrRecords(user?.role)
+            ? [
+                {
+                  to: "/employees" as const,
+                  icon: <UserPlus className="h-5 w-5 text-blue-600" />,
+                  label: "Add Employee",
+                  bg: "bg-blue-50",
+                },
+              ]
+            : []),
+          ...(user?.role === "HR" || canSeeApprovals(user?.role)
+            ? [
+                {
+                  to: "/leave" as const,
+                  icon: <CalendarIcon className="h-5 w-5 text-emerald-600" />,
+                  label: "Leave Requests",
+                  bg: "bg-emerald-50",
+                },
+              ]
+            : []),
+          ...(canReadHrRecords(user?.role)
+            ? [
+                {
+                  to: "/employees" as const,
+                  icon: <FileText className="h-5 w-5 text-purple-600" />,
+                  label: "Employee Directory",
+                  bg: "bg-purple-50",
+                },
+                {
+                  to: "/reports" as const,
+                  icon: <BarChart3 className="h-5 w-5 text-amber-600" />,
+                  label: "Reports",
+                  bg: "bg-amber-50",
+                },
+                {
+                  to: "/attendance" as const,
+                  icon: <Clock className="h-5 w-5 text-teal-600" />,
+                  label: "Attendance",
+                  bg: "bg-teal-50",
+                },
+              ]
+            : []),
+        ];
 
   const load = () => {
     if (user?.role === "Employee") {
@@ -341,36 +419,9 @@ function Dashboard() {
               <h3 className="text-base font-semibold text-foreground">Quick Links</h3>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-              <QuickLink
-                to="/employees"
-                icon={<UserPlus className="h-5 w-5 text-blue-600" />}
-                label="Add Employee"
-                bg="bg-blue-50"
-              />
-              <QuickLink
-                to="/leave"
-                icon={<CalendarIcon className="h-5 w-5 text-emerald-600" />}
-                label="Leave Requests"
-                bg="bg-emerald-50"
-              />
-              <QuickLink
-                to="/employees"
-                icon={<FileText className="h-5 w-5 text-purple-600" />}
-                label="Employee Directory"
-                bg="bg-purple-50"
-              />
-              <QuickLink
-                to="/reports"
-                icon={<BarChart3 className="h-5 w-5 text-amber-600" />}
-                label="Reports"
-                bg="bg-amber-50"
-              />
-              <QuickLink
-                to="/attendance"
-                icon={<Clock className="h-5 w-5 text-teal-600" />}
-                label="Attendance"
-                bg="bg-teal-50"
-              />
+              {quickLinks.map((link) => (
+                <QuickLink key={`${link.to}-${link.label}`} {...link} />
+              ))}
             </div>
           </section>
         </div>
@@ -560,7 +611,7 @@ function QuickLink({
   label,
   bg,
 }: {
-  to: "/" | "/employees" | "/attendance" | "/leave" | "/reports";
+  to: "/" | "/employees" | "/attendance" | "/leave" | "/reports" | "/admin" | "/settings";
   icon: React.ReactNode;
   label: string;
   bg: string;

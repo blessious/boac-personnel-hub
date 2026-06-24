@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BriefcaseBusiness, History, Plus, Search, UserMinus, UserPlus } from "lucide-react";
+import { BriefcaseBusiness, History, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -15,10 +15,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
-import { type EmployeeRecord, listEmployees, type SettingsOptions } from "@/lib/employees-api";
+import { canWriteHrRecords, useAuth } from "@/lib/auth";
+import { type SettingsOptions } from "@/lib/employees-api";
 import {
   emptyPlantilla,
+  deletePlantilla,
   listPlantilla,
   savePlantilla,
   type PlantillaItem,
@@ -38,7 +39,7 @@ const categories: ReferenceCategory[] = [
 ];
 function PlantillaPage() {
   const { user } = useAuth(),
-    canManage = user?.role === "Admin" || user?.role === "HR";
+    canManage = canWriteHrRecords(user?.role);
   const [items, setItems] = useState<PlantillaItem[]>([]),
     [summary, setSummary] = useState({
       authorized: 0,
@@ -54,23 +55,14 @@ function PlantillaPage() {
   });
   const [refs, setRefs] = useState<Record<ReferenceCategory, ReferenceRow[]>>(
       {} as Record<ReferenceCategory, ReferenceRow[]>,
-    ),
-    [employees, setEmployees] = useState<EmployeeRecord[]>([]);
+    );
   const [q, setQ] = useState(""),
     [status, setStatus] = useState("all"),
     [occupancy, setOccupancy] = useState("all"),
     [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<PlantillaItem | null | undefined>(undefined),
     [form, setForm] = useState<PlantillaPayload>(emptyPlantilla);
-  const [action, setAction] = useState<{ kind: "assign" | "vacate"; item: PlantillaItem } | null>(
-      null,
-    ),
-    [employeeId, setEmployeeId] = useState(""),
-    [actionDate, setActionDate] = useState(new Date().toISOString().slice(0, 10));
-  const [movement, setMovement] = useState("Appointment"),
-    [appointment, setAppointment] = useState(""),
-    [remarks, setRemarks] = useState(""),
-    [history, setHistory] = useState<
+  const [history, setHistory] = useState<
       Array<{ id: number; action: string; changedBy: string; createdAt: string }>
     >([]),
     [historyItem, setHistoryItem] = useState<PlantillaItem | null>(null);
@@ -87,21 +79,10 @@ function PlantillaPage() {
     Promise.all([
       api<SettingsOptions>("/api/settings"),
       api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references"),
-      listEmployees({ pageSize: 100 }).then(async (first) => {
-        const pages = Math.ceil(first.total / first.pageSize);
-        if (pages <= 1) return first;
-        const rest = await Promise.all(
-          Array.from({ length: pages - 1 }, (_, index) =>
-            listEmployees({ page: index + 2, pageSize: first.pageSize }),
-          ),
-        );
-        return { ...first, employees: [first, ...rest].flatMap((page) => page.employees) };
-      }),
     ])
-      .then(([s, r, e]) => {
+      .then(([s, r]) => {
         setSettings(s);
         setRefs(r.libraries);
-        setEmployees(e.employees);
       })
       .catch((e) => toast.error(e.message));
   }, []);
@@ -167,28 +148,17 @@ function PlantillaPage() {
       setBusy(false);
     }
   };
-  const submitAction = async () => {
-    if (!action) return;
+  const remove = async (item: PlantillaItem) => {
+    if (
+      !window.confirm(
+        `Delete plantilla item ${item.itemNumber}? This is only allowed for mistaken entries with no occupancy or movement history. Used items should be marked Inactive or Abolished.`,
+      )
+    )
+      return;
     setBusy(true);
     try {
-      await api(`/api/plantilla/${action.item.id}/${action.kind}`, {
-        method: "POST",
-        body: JSON.stringify(
-          action.kind === "assign"
-            ? {
-                employeeId,
-                dateFrom: actionDate,
-                movementType: movement,
-                appointmentNumber: appointment,
-                remarks,
-              }
-            : { dateTo: actionDate, remarks },
-        ),
-      });
-      toast.success(action.kind === "assign" ? "Employee assigned" : "Item vacated");
-      setAction(null);
-      setEmployeeId("");
-      setRemarks("");
+      await deletePlantilla(item.id);
+      toast.success("Plantilla item deleted");
       await load();
     } catch (e) {
       toast.error((e as Error).message);
@@ -311,15 +281,12 @@ function PlantillaPage() {
                   <Button
                     size="icon"
                     variant="ghost"
-                    title={i.occupant ? "Vacate" : "Assign"}
-                    disabled={i.itemStatus !== "Active"}
-                    onClick={() => setAction({ kind: i.occupant ? "vacate" : "assign", item: i })}
+                    title="Delete"
+                    disabled={busy}
+                    onClick={() => remove(i)}
+                    className="text-destructive hover:text-destructive"
                   >
-                    {i.occupant ? (
-                      <UserMinus className="h-4 w-4" />
-                    ) : (
-                      <UserPlus className="h-4 w-4" />
-                    )}
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </>
               )}
@@ -408,17 +375,12 @@ function PlantillaPage() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          title={i.occupant ? "Vacate" : "Assign"}
-                          disabled={i.itemStatus !== "Active"}
-                          onClick={() =>
-                            setAction({ kind: i.occupant ? "vacate" : "assign", item: i })
-                          }
+                          title="Delete"
+                          disabled={busy}
+                          onClick={() => remove(i)}
+                          className="text-destructive hover:text-destructive"
                         >
-                          {i.occupant ? (
-                            <UserMinus className="h-4 w-4" />
-                          ) : (
-                            <UserPlus className="h-4 w-4" />
-                          )}
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </>
                     )}
@@ -547,51 +509,6 @@ function PlantillaPage() {
             </Button>
             <Button disabled={busy} onClick={save}>
               Save item
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={!!action} onOpenChange={(o) => !o && setAction(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {action?.kind === "assign" ? "Assign employee" : "Vacate item"} -{" "}
-              {action?.item.itemNumber}
-            </DialogTitle>
-          </DialogHeader>
-          {action?.kind === "assign" && (
-            <>
-              <Sel
-                l="Employee"
-                v={employeeId}
-                set={setEmployeeId}
-                rows={employees
-                  .filter((e) => e.empStatus === "Active")
-                  .map((e) => [e.id, `${e.lastname}, ${e.firstname} (${e.employeeId})`])}
-              />
-              <F l="Movement type">
-                <Input value={movement} onChange={(e) => setMovement(e.target.value)} />
-              </F>
-              <F l="Appointment number">
-                <Input value={appointment} onChange={(e) => setAppointment(e.target.value)} />
-              </F>
-            </>
-          )}
-          <F l={action?.kind === "assign" ? "Assignment date" : "Vacancy date"}>
-            <Input type="date" value={actionDate} onChange={(e) => setActionDate(e.target.value)} />
-          </F>
-          <F l="Remarks">
-            <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-          </F>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAction(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={busy || (action?.kind === "assign" && !employeeId)}
-              onClick={submitAction}
-            >
-              Confirm
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { LogOut, ChevronLeft, ChevronRight, Stethoscope } from "lucide-react";
-import { isSelfServiceRole, useAuth } from "@/lib/auth";
+import { canSeeApprovals, isSelfServiceRole, useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { getDashboard } from "@/lib/employees-api";
 import { listLeaveApplications } from "@/lib/leave-api";
@@ -14,7 +14,7 @@ export function AppSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { user, logout } = useAuth();
   const nav = navForRole(user?.role);
-  const canSeeLeaveNotifications = user?.role === "Admin" || user?.role === "HR";
+  const canSeeLeaveNotifications = canSeeApprovals(user?.role);
   const canSeeEmployeeStats = !isSelfServiceRole(user?.role);
 
   const { data: dashboard } = useQuery({
@@ -40,16 +40,6 @@ export function AppSidebar() {
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? path === to : path === to || path.startsWith(to + "/");
-
-  const deptColors = [
-    "bg-blue-400",
-    "bg-emerald-400",
-    "bg-amber-400",
-    "bg-purple-400",
-    "bg-cyan-400",
-    "bg-rose-400",
-    "bg-indigo-400",
-  ];
 
   return (
     <aside
@@ -161,35 +151,6 @@ export function AppSidebar() {
           })}
         </nav>
 
-        {/* Departments Section */}
-        {!collapsed && canSeeEmployeeStats && dashboard && dashboard.byDivision.length > 0 && (
-          <>
-            <div className="px-4 pt-4 pb-1 text-[10px] tracking-widest uppercase text-muted-foreground font-semibold">
-              Departments
-            </div>
-            <nav className="px-2 space-y-0.5 py-1">
-              {dashboard.byDivision.map((dept, idx) => (
-                <Link
-                  key={dept.department}
-                  to="/employees"
-                  search={{ department: dept.department }}
-                  className="flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium text-muted-foreground hover:text-sidebar-foreground hover:bg-muted/50 transition-all duration-150"
-                >
-                  <div
-                    className={cn(
-                      "h-2.5 w-2.5 rounded-full shrink-0",
-                      deptColors[idx % deptColors.length],
-                    )}
-                  />
-                  <span className="flex-1 leading-snug">{dept.department}</span>
-                  <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-primary/10 text-primary shrink-0">
-                    {dept.filled}
-                  </span>
-                </Link>
-              ))}
-            </nav>
-          </>
-        )}
       </div>
 
       <div className="p-3 border-t border-sidebar-border/50">

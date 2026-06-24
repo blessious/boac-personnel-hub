@@ -94,7 +94,34 @@ const BIOMETRIC_PYTHON_EXE =
   process.env.HRIS_BIOMETRIC_PYTHON_EXE || process.env.PYTHON_EXE || "python";
 const BIOMETRIC_SYNC_LOG_LIMIT = 200;
 
-const ROLES = ["Admin", "HR", "Employee", "Viewer"];
+const ROLES = ["Super Admin", "Admin", "HR", "Approver", "Employee", "Viewer"];
+const HR_READ_ROLES = ["Super Admin", "HR", "Approver", "Viewer"];
+const HR_WRITE_ROLES = ["Super Admin", "HR"];
+const APPROVAL_ROLES = ["Super Admin", "Approver"];
+const LEAVE_READ_ROLES = ["Super Admin", "HR", "Approver"];
+const SYSTEM_ADMIN_ROLES = ["Super Admin", "Admin"];
+const ROLE_ALIASES = new Map([
+  ["super admin", "Super Admin"],
+  ["super administrator", "Super Admin"],
+  ["super-admin", "Super Admin"],
+  ["superadmin", "Super Admin"],
+  ["admin", "Admin"],
+  ["administrator", "Admin"],
+  ["system administrator", "Admin"],
+  ["hr", "HR"],
+  ["hr officer", "HR"],
+  ["approver", "Approver"],
+  ["employee", "Employee"],
+  ["viewer", "Viewer"],
+  ["read-only viewer", "Viewer"],
+]);
+
+function normalizeRole(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (ROLES.includes(raw)) return raw;
+  return ROLE_ALIASES.get(raw.toLowerCase()) || raw;
+}
 const REFERENCE_LIBRARY_TYPES = {
   sectors: { label: "Sector" },
   offices: { label: "Office", parentCategory: "sectors" },
@@ -1393,11 +1420,7 @@ function verifyPassword(password, stored) {
 
 function validatePassword(password) {
   const errors = [];
-  if (password.length < 12) errors.push("at least 12 characters");
-  if (!/[a-z]/.test(password)) errors.push("a lowercase letter");
-  if (!/[A-Z]/.test(password)) errors.push("an uppercase letter");
-  if (!/\d/.test(password)) errors.push("a number");
-  if (!/[^A-Za-z0-9]/.test(password)) errors.push("a special character");
+  if (password.length < 8) errors.push("at least 8 characters");
   return errors;
 }
 
@@ -1939,7 +1962,7 @@ function attendanceImportRow(row) {
 async function requireLeaveRead(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!["Admin", "HR", "Viewer"].includes(user.role)) {
+  if (!LEAVE_READ_ROLES.includes(user.role)) {
     json(res, 403, { error: "Leave Management access required" });
     return null;
   }
@@ -1949,8 +1972,18 @@ async function requireLeaveRead(req, res) {
 async function requireLeaveWrite(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!["Admin", "HR"].includes(user.role)) {
+  if (!HR_WRITE_ROLES.includes(user.role)) {
     json(res, 403, { error: "HR access required" });
+    return null;
+  }
+  return user;
+}
+
+async function requireApproval(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  if (!APPROVAL_ROLES.includes(user.role)) {
+    json(res, 403, { error: "Approval access required" });
     return null;
   }
   return user;
@@ -2041,7 +2074,7 @@ function validateSection(section) {
 async function requireEmployeeRead(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!["Admin", "HR", "Viewer"].includes(user.role)) {
+  if (!HR_READ_ROLES.includes(user.role)) {
     json(res, 403, { error: "Employee Management access required" });
     return null;
   }
@@ -2051,7 +2084,7 @@ async function requireEmployeeRead(req, res) {
 async function requireEmployeeWrite(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!["Admin", "HR"].includes(user.role)) {
+  if (!HR_WRITE_ROLES.includes(user.role)) {
     json(res, 403, { error: "HR access required" });
     return null;
   }
@@ -2059,13 +2092,13 @@ async function requireEmployeeWrite(req, res) {
 }
 
 function canWriteEmployeeRecord(user, employeeId) {
-  return ["Admin", "HR"].includes(user.role) || user.employeeId === employeeId;
+  return HR_WRITE_ROLES.includes(user.role) || user.employeeId === employeeId;
 }
 
 async function requireAttendanceRead(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!["Admin", "HR", "Viewer", "Employee"].includes(user.role)) {
+  if (![...HR_READ_ROLES, "Employee"].includes(user.role)) {
     json(res, 403, { error: "Attendance access required" });
     return null;
   }
@@ -2075,7 +2108,7 @@ async function requireAttendanceRead(req, res) {
 async function requireAttendanceWrite(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!["Admin", "HR"].includes(user.role)) {
+  if (!HR_WRITE_ROLES.includes(user.role)) {
     json(res, 403, { error: "HR attendance access required" });
     return null;
   }
@@ -2083,7 +2116,7 @@ async function requireAttendanceWrite(req, res) {
 }
 
 function canReadEmployeeAttendance(user, employeeId) {
-  return ["Admin", "HR", "Viewer"].includes(user.role) || user.employeeId === employeeId;
+  return HR_READ_ROLES.includes(user.role) || user.employeeId === employeeId;
 }
 
 async function readEmployeeById(id) {
@@ -2092,7 +2125,8 @@ async function readEmployeeById(id) {
 }
 
 function generateTemporaryPassword() {
-  return `Strh-${crypto.randomBytes(6).toString("hex")}!A1`;
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  return Array.from({ length: 8 }, () => alphabet[crypto.randomInt(alphabet.length)]).join("");
 }
 
 async function initializeDatabase() {
@@ -2125,7 +2159,7 @@ async function initializeDatabase() {
       username VARCHAR(50) NOT NULL UNIQUE,
       password_hash VARCHAR(255) NOT NULL,
       name VARCHAR(150) NOT NULL,
-      role ENUM('Admin', 'HR', 'Employee', 'Viewer') NOT NULL,
+      role ENUM('Super Admin', 'Admin', 'HR', 'Approver', 'Employee', 'Viewer') NOT NULL,
       photo_url LONGTEXT NULL,
       must_change_password TINYINT(1) NOT NULL DEFAULT 0,
       failed_login_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
@@ -2139,6 +2173,9 @@ async function initializeDatabase() {
   await ensureColumn("users", "must_change_password", "TINYINT(1) NOT NULL DEFAULT 0");
   await ensureColumn("users", "failed_login_attempts", "TINYINT UNSIGNED NOT NULL DEFAULT 0");
   await ensureColumn("users", "locked_at", "DATETIME NULL");
+  await pool.query(
+    `ALTER TABLE users MODIFY role ENUM('Super Admin', 'Admin', 'HR', 'Approver', 'Employee', 'Viewer') NOT NULL`,
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS password_history (
@@ -2995,7 +3032,7 @@ async function requireUser(req, res) {
 async function requireAdmin(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (user.role !== "Admin") {
+  if (!SYSTEM_ADMIN_ROLES.includes(user.role)) {
     json(res, 403, { error: "Admin access required" });
     return null;
   }
@@ -3028,7 +3065,7 @@ async function handleLogin(req, res) {
     .trim()
     .toLowerCase();
   const password = String(body.password || "");
-  const expectedRole = body.role ? String(body.role) : "";
+  const expectedRole = normalizeRole(body.role);
 
   if (!username || !password) {
     return json(res, 400, { error: "Username and password are required" });
@@ -3218,6 +3255,20 @@ async function handleListUsers(req, res) {
   return json(res, 200, { users: rows.map(adminUser) });
 }
 
+async function hasActiveSuperAdmin(excludeUserId = null) {
+  const params = {};
+  let excludeSql = "";
+  if (excludeUserId !== null && excludeUserId !== undefined) {
+    params.excludeUserId = excludeUserId;
+    excludeSql = "AND id <> :excludeUserId";
+  }
+  const [[row]] = await pool.execute(
+    `SELECT COUNT(*) AS total FROM users WHERE role = 'Super Admin' AND is_active = 1 ${excludeSql}`,
+    params,
+  );
+  return Number(row.total || 0) > 0;
+}
+
 async function handleCreateUser(req, res) {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
@@ -3227,7 +3278,7 @@ async function handleCreateUser(req, res) {
     .trim()
     .toLowerCase();
   const name = String(body.name || "").trim();
-  const role = String(body.role || "");
+  const role = normalizeRole(body.role);
   const employeeId = body.employeeId ? String(body.employeeId).trim() : null;
   const temporaryPassword = generateTemporaryPassword();
 
@@ -3238,6 +3289,9 @@ async function handleCreateUser(req, res) {
   }
   if (!name || name.length > 150) return json(res, 400, { error: "Full name is required" });
   if (!ROLES.includes(role)) return json(res, 400, { error: "Invalid role" });
+  if (role === "Super Admin" && admin.role !== "Super Admin" && (await hasActiveSuperAdmin())) {
+    return json(res, 403, { error: "Only a Super Admin can create more Super Admin accounts" });
+  }
   if (employeeId) {
     const employee = await readEmployeeById(employeeId);
     if (!employee) return json(res, 400, { error: "Linked employee not found" });
@@ -3279,7 +3333,7 @@ async function handleUpdateUser(req, res, id) {
 
   const body = await readBody(req);
   const name = String(body.name || "").trim();
-  const role = String(body.role || "");
+  const role = normalizeRole(body.role);
   const employeeId = body.employeeId ? String(body.employeeId).trim() : null;
   const isActive = body.isActive === false ? 0 : 1;
 
@@ -3298,6 +3352,12 @@ async function handleUpdateUser(req, res, id) {
   );
   const existing = existingRows[0];
   if (!existing) return json(res, 404, { error: "User not found" });
+  if (
+    admin.role !== "Super Admin" &&
+    (existing.role === "Super Admin" || (role === "Super Admin" && (await hasActiveSuperAdmin(id))))
+  ) {
+    return json(res, 403, { error: "Only a Super Admin can manage Super Admin accounts" });
+  }
 
   await pool.execute(
     `UPDATE users SET name = :name, role = :role, employee_id = :employeeId, is_active = :isActive WHERE id = :id`,
@@ -3331,6 +3391,12 @@ async function handleDeleteUser(req, res, id) {
   if (Number(id) === admin.id)
     return json(res, 400, { error: "You cannot delete your own account" });
 
+  const [[existing]] = await pool.execute(`SELECT role FROM users WHERE id = :id LIMIT 1`, { id });
+  if (!existing) return json(res, 404, { error: "User not found" });
+  if (existing.role === "Super Admin" && admin.role !== "Super Admin") {
+    return json(res, 403, { error: "Only a Super Admin can delete Super Admin accounts" });
+  }
+
   const [result] = await pool.execute(`DELETE FROM users WHERE id = :id`, { id });
   if (result.affectedRows === 0) return json(res, 404, { error: "User not found" });
   await logAudit(admin.id, "users.delete", { userId: id }, req);
@@ -3344,10 +3410,13 @@ async function handleResetUserPassword(req, res, id) {
   const temporaryPassword = generateTemporaryPassword();
   const passwordHash = hashPassword(temporaryPassword);
   const [existingRows] = await pool.execute(
-    `SELECT password_hash FROM users WHERE id = :id LIMIT 1`,
+    `SELECT password_hash, role FROM users WHERE id = :id LIMIT 1`,
     { id },
   );
   if (!existingRows[0]) return json(res, 404, { error: "User not found" });
+  if (existingRows[0].role === "Super Admin" && admin.role !== "Super Admin") {
+    return json(res, 403, { error: "Only a Super Admin can reset Super Admin passwords" });
+  }
   await recordPasswordHistory(id, existingRows[0].password_hash);
   const [result] = await pool.execute(
     `UPDATE users
@@ -3366,6 +3435,12 @@ async function handleUnlockUser(req, res, id) {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
 
+  const [[existing]] = await pool.execute(`SELECT role FROM users WHERE id = :id LIMIT 1`, { id });
+  if (!existing) return json(res, 404, { error: "User not found" });
+  if (existing.role === "Super Admin" && admin.role !== "Super Admin") {
+    return json(res, 403, { error: "Only a Super Admin can unlock Super Admin accounts" });
+  }
+
   const [result] = await pool.execute(
     `UPDATE users SET failed_login_attempts = 0, locked_at = NULL WHERE id = :id`,
     { id },
@@ -3378,6 +3453,9 @@ async function handleUnlockUser(req, res, id) {
 async function handleDashboard(req, res) {
   const user = await requireUser(req, res);
   if (!user) return;
+  if (![...SYSTEM_ADMIN_ROLES, ...HR_READ_ROLES].includes(user.role)) {
+    return json(res, 403, { error: "Dashboard access required" });
+  }
 
   const [[totals]] = await pool.query(`
     SELECT
@@ -5531,11 +5609,8 @@ async function handleGenerateDtrPdf(req, res) {
 }
 
 async function handleGenerateMassDtrPdf(req, res) {
-  const user = await requireAttendanceRead(req, res);
+  const user = await requireAttendanceWrite(req, res);
   if (!user) return;
-  if (user.role === "Employee") {
-    return json(res, 403, { error: "Mass DTR PDF requires HR access" });
-  }
 
   const body = await readBody(req);
   const office = String(body.office || body.department || "").trim();
@@ -5813,7 +5888,7 @@ async function readDtrCorrectionRequests({
 async function handleListDtrCorrectionRequests(req, res, url) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!["Admin", "HR", "Employee"].includes(user.role)) {
+  if (![...APPROVAL_ROLES, "Employee"].includes(user.role)) {
     return json(res, 403, { error: "DTR correction request access required" });
   }
   const requestedEmployeeId = String(url.searchParams.get("employeeId") || "").trim();
@@ -5846,12 +5921,11 @@ async function handleListDtrCorrectionRequests(req, res, url) {
 async function handleCreateDtrCorrectionRequest(req, res) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!["Admin", "HR", "Employee"].includes(user.role)) {
+  if (user.role !== "Employee") {
     return json(res, 403, { error: "DTR correction request access required" });
   }
   const body = await readBody(req);
-  const employeeId =
-    user.role === "Employee" ? user.employeeId || "" : String(body.employeeId || "").trim();
+  const employeeId = user.employeeId || "";
   if (!employeeId) return json(res, 400, { error: "Employee is required" });
   const workDate = normalizeDate(body.workDate || body.date);
   if (!workDate) return json(res, 400, { error: "DTR date is required" });
@@ -5986,14 +6060,14 @@ async function handleCreateDtrCorrectionRequest(req, res) {
     path: `/attendance#dtr-request-${id}`,
     sourceType: "dtr_correction_request",
     sourceId: id,
-    roles: ["Admin", "HR"],
+    roles: APPROVAL_ROLES,
     excludeUserId: user.id,
   });
   return json(res, 201, { request: createdRequest });
 }
 
 async function handleDecideDtrCorrectionRequest(req, res, id) {
-  const user = await requireAttendanceWrite(req, res);
+  const user = await requireApproval(req, res);
   if (!user) return;
   const body = await readBody(req);
   const status = String(body.status || "");
@@ -6175,7 +6249,7 @@ async function handleCancelDtrCorrectionRequest(req, res, id) {
   if (!request) return json(res, 404, { error: "DTR request not found" });
   if (request.status !== "Pending")
     return json(res, 409, { error: "Only pending requests can be cancelled" });
-  if (!["Admin", "HR"].includes(user.role) && user.employeeId !== request.employee_id) {
+  if (!HR_WRITE_ROLES.includes(user.role) && user.employeeId !== request.employee_id) {
     return json(res, 403, { error: "You can only cancel your own request" });
   }
   await pool.execute(`UPDATE dtr_correction_requests SET status = 'Cancelled' WHERE id = :id`, {
@@ -6195,7 +6269,7 @@ async function handleCancelDtrCorrectionRequest(req, res, id) {
 }
 
 async function handleReverseDtrCorrectionRequest(req, res, id) {
-  const user = await requireAttendanceWrite(req, res);
+  const user = await requireApproval(req, res);
   if (!user) return;
   const body = await readBody(req);
   const reason = String(body.reason || body.reverseReason || "").trim();
@@ -6444,7 +6518,7 @@ async function handleExportDtr(req, res, url, mass = false) {
       return json(res, 400, { error: "No employee record linked to this user" });
     employeeId = user.employeeId;
   }
-  if (mass && user.role === "Employee")
+  if (mass && !HR_WRITE_ROLES.includes(user.role))
     return json(res, 403, { error: "Mass export requires HR access" });
   if (employeeId && !canReadEmployeeAttendance(user, employeeId)) {
     return json(res, 403, { error: "You can only export your own DTR" });
@@ -6531,7 +6605,7 @@ async function handleCreateEmployee(req, res) {
 async function handleGetEmployee(req, res, id) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!["Admin", "HR", "Viewer"].includes(user.role) && user.employeeId !== id) {
+  if (!HR_READ_ROLES.includes(user.role) && user.employeeId !== id) {
     return json(res, 403, { error: "You can only view your own employee record" });
   }
 
@@ -6551,7 +6625,7 @@ async function handleGetEmployee(req, res, id) {
 }
 
 async function buildEmployeePdsPayload(id, user) {
-  if (!["Admin", "HR", "Viewer"].includes(user.role) && user.employeeId !== id) {
+  if (!HR_READ_ROLES.includes(user.role) && user.employeeId !== id) {
     throw httpError(403, "You can only export your own Personal Data Sheet");
   }
   try {
@@ -6658,6 +6732,31 @@ async function handleUpdateEmployee(req, res, id) {
     data = employeeDbPayload(body, existing);
   } catch (error) {
     return json(res, 400, { error: error.message });
+  }
+  const [[activeOccupancy]] = await pool.execute(
+    `SELECT po.id
+     FROM plantilla_occupancies po
+     WHERE po.employee_id = :id AND po.status = 'Active'
+     LIMIT 1`,
+    { id },
+  );
+  if (activeOccupancy) {
+    const plantillaOwnedFields = [
+      ["department", "department"],
+      ["position", "position"],
+      ["itemNo", "item number"],
+      ["empStatus", "employee active status"],
+    ];
+    const changed = plantillaOwnedFields
+      .filter(([field]) => String(data[field] || "") !== String(existing[field] || ""))
+      .map(([, label]) => label);
+    if (changed.length) {
+      return json(res, 409, {
+        error: `This employee has an active Plantilla occupancy. Change ${changed.join(
+          ", ",
+        )} through Employee Movements instead.`,
+      });
+    }
   }
   const employeeNo = data.employeeNo || existing.employeeId || `EMP-${Date.now()}`;
 
@@ -6893,7 +6992,7 @@ async function handleDeleteLeaveType(req, res, id) {
 async function handleEmployeeLeave(req, res, employeeId) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!["Admin", "HR", "Viewer"].includes(user.role) && user.employeeId !== employeeId) {
+  if (!HR_READ_ROLES.includes(user.role) && user.employeeId !== employeeId) {
     return json(res, 403, { error: "Leave Management access required" });
   }
   const employee = await readEmployeeById(employeeId);
@@ -7112,7 +7211,7 @@ async function handleCreateLeaveApplication(req, res) {
       error: "Employee, leave type, dates, and days requested are required",
     });
   }
-  if (!["Admin", "HR"].includes(user.role) && user.employeeId !== employeeId) {
+  if (!HR_WRITE_ROLES.includes(user.role) && user.employeeId !== employeeId) {
     return json(res, 403, { error: "You can only file leave for your own employee record" });
   }
   const employee = await readEmployeeById(employeeId);
@@ -7205,14 +7304,14 @@ async function handleCreateLeaveApplication(req, res) {
     path: `/leave#leave-request-${id}`,
     sourceType: "leave_application",
     sourceId: id,
-    roles: ["Admin", "HR"],
+    roles: APPROVAL_ROLES,
     excludeUserId: user.id,
   });
   return json(res, 201, { application });
 }
 
 async function handleDecideLeaveApplication(req, res, id) {
-  const user = await requireLeaveWrite(req, res);
+  const user = await requireApproval(req, res);
   if (!user) return;
   const body = await readBody(req);
   const status = String(body.status || "").trim();
@@ -7355,7 +7454,7 @@ async function buildLeaveForm6Payload(id, user) {
   const application = await readLeaveApplication(id);
   if (!application) throw httpError(404, "Leave application not found");
   if (
-    !["Admin", "HR", "Viewer"].includes(user.role) &&
+    !LEAVE_READ_ROLES.includes(user.role) &&
     user.employeeId !== application.employeeId
   ) {
     throw httpError(403, "You can only export your own leave application");
@@ -7606,14 +7705,14 @@ async function handleUpdateAgency(req, res) {
 }
 
 async function handleCreateDepartment(req, res) {
-  const admin = await requireAdmin(req, res);
-  if (!admin) return;
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
   const body = await readBody(req);
   const name = String(body.name || "").trim();
   if (!name) return json(res, 400, { error: "Department name is required" });
   try {
     const [result] = await pool.execute(`INSERT INTO departments (name) VALUES (:name)`, { name });
-    await logAudit(admin.id, "config.department_create", { name }, req);
+    await logAudit(user.id, "config.department_create", { name }, req);
     return json(res, 201, { department: { id: result.insertId, name } });
   } catch (error) {
     if (error?.code === "ER_DUP_ENTRY")
@@ -7623,22 +7722,22 @@ async function handleCreateDepartment(req, res) {
 }
 
 async function handleDeleteDepartment(req, res, id) {
-  const admin = await requireAdmin(req, res);
-  if (!admin) return;
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
   await pool.execute(`DELETE FROM departments WHERE id = :id`, { id });
-  await logAudit(admin.id, "config.department_delete", { id }, req);
+  await logAudit(user.id, "config.department_delete", { id }, req);
   return json(res, 200, { ok: true });
 }
 
 async function handleCreatePosition(req, res) {
-  const admin = await requireAdmin(req, res);
-  if (!admin) return;
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
   const body = await readBody(req);
   const title = String(body.title || "").trim();
   if (!title) return json(res, 400, { error: "Position title is required" });
   try {
     const [result] = await pool.execute(`INSERT INTO positions (title) VALUES (:title)`, { title });
-    await logAudit(admin.id, "config.position_create", { title }, req);
+    await logAudit(user.id, "config.position_create", { title }, req);
     return json(res, 201, { position: { id: result.insertId, title } });
   } catch (error) {
     if (error?.code === "ER_DUP_ENTRY") return json(res, 409, { error: "Position already exists" });
@@ -7647,16 +7746,16 @@ async function handleCreatePosition(req, res) {
 }
 
 async function handleDeletePosition(req, res, id) {
-  const admin = await requireAdmin(req, res);
-  if (!admin) return;
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
   await pool.execute(`DELETE FROM positions WHERE id = :id`, { id });
-  await logAudit(admin.id, "config.position_delete", { id }, req);
+  await logAudit(user.id, "config.position_delete", { id }, req);
   return json(res, 200, { ok: true });
 }
 
 async function handleCreateSalaryGrade(req, res) {
-  const admin = await requireAdmin(req, res);
-  if (!admin) return;
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
   const body = await readBody(req);
   const ordinance = String(body.ordinance || "").trim();
   const grade = Number(body.grade);
@@ -7676,7 +7775,7 @@ async function handleCreateSalaryGrade(req, res) {
        VALUES (:ordinance, :grade, :step, :amount)`,
       { ordinance, grade, step, amount },
     );
-    await logAudit(admin.id, "config.salary_grade_create", { ordinance, grade, step }, req);
+    await logAudit(user.id, "config.salary_grade_create", { ordinance, grade, step }, req);
     return json(res, 201, { salaryGrade: { id: result.insertId, ordinance, grade, step, amount } });
   } catch (error) {
     if (error?.code === "ER_DUP_ENTRY")
@@ -7686,10 +7785,10 @@ async function handleCreateSalaryGrade(req, res) {
 }
 
 async function handleDeleteSalaryGrade(req, res, id) {
-  const admin = await requireAdmin(req, res);
-  if (!admin) return;
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
   await pool.execute(`DELETE FROM salary_grades WHERE id = :id`, { id });
-  await logAudit(admin.id, "config.salary_grade_delete", { id }, req);
+  await logAudit(user.id, "config.salary_grade_delete", { id }, req);
   return json(res, 200, { ok: true });
 }
 
@@ -7731,7 +7830,7 @@ async function readReferenceValue(id, category = "") {
 async function handleListReferenceValues(req, res) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!["Admin", "HR", "Viewer"].includes(user.role)) {
+  if (!HR_READ_ROLES.includes(user.role)) {
     return json(res, 403, { error: "Employee reference access required" });
   }
   const [rows] = await pool.query(
@@ -7843,8 +7942,8 @@ function referenceMutationError(res, error, label) {
 }
 
 async function handleCreateReferenceValue(req, res, category) {
-  const admin = await requireAdmin(req, res);
-  if (!admin) return;
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
   const config = getReferenceLibraryType(category);
   if (!config) return json(res, 404, { error: "Reference library not found" });
   try {
@@ -7867,7 +7966,7 @@ async function handleCreateReferenceValue(req, res, category) {
     );
     const value = await readReferenceValue(result.insertId, category);
     await logAudit(
-      admin.id,
+      user.id,
       "config.reference_create",
       { category, id: result.insertId, code: payload.code },
       req,
@@ -7879,8 +7978,8 @@ async function handleCreateReferenceValue(req, res, category) {
 }
 
 async function handleUpdateReferenceValue(req, res, category, id) {
-  const admin = await requireAdmin(req, res);
-  if (!admin) return;
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
   const config = getReferenceLibraryType(category);
   if (!config) return json(res, 404, { error: "Reference library not found" });
   const existing = await readReferenceValue(id, category);
@@ -7916,7 +8015,7 @@ async function handleUpdateReferenceValue(req, res, category, id) {
       { id, category, ...payload },
     );
     const value = await readReferenceValue(id, category);
-    await logAudit(admin.id, "config.reference_update", { category, id, code: payload.code }, req);
+    await logAudit(user.id, "config.reference_update", { category, id, code: payload.code }, req);
     return json(res, 200, { value });
   } catch (error) {
     return referenceMutationError(res, error, config.label);
@@ -7924,8 +8023,8 @@ async function handleUpdateReferenceValue(req, res, category, id) {
 }
 
 async function handleDeleteReferenceValue(req, res, category, id) {
-  const admin = await requireAdmin(req, res);
-  if (!admin) return;
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
   const config = getReferenceLibraryType(category);
   if (!config) return json(res, 404, { error: "Reference library not found" });
   const existing = await readReferenceValue(id, category);
@@ -7935,7 +8034,7 @@ async function handleDeleteReferenceValue(req, res, category, id) {
       id,
       category,
     });
-    await logAudit(admin.id, "config.reference_delete", { category, id, code: existing.code }, req);
+    await logAudit(user.id, "config.reference_delete", { category, id, code: existing.code }, req);
     return json(res, 200, { ok: true });
   } catch (error) {
     return referenceMutationError(res, error, config.label);
@@ -8216,11 +8315,9 @@ async function route(req, res) {
   const movementMatch = url.pathname.match(/^\/api\/movements\/([A-Za-z0-9-]+)$/);
   const movementEventsMatch = url.pathname.match(/^\/api\/movements\/([A-Za-z0-9-]+)\/events$/);
   const movementActionMatch = url.pathname.match(
-    /^\/api\/movements\/([A-Za-z0-9-]+)\/(submit|review|approve|reject|post|reverse)$/,
+    /^\/api\/movements\/([A-Za-z0-9-]+)\/(submit|review|approve|reject|return|post|reverse)$/,
   );
   const plantillaItemMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)$/);
-  const plantillaAssignMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)\/assign$/);
-  const plantillaVacateMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)\/vacate$/);
   const plantillaHistoryMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)\/history$/);
 
   if (isAdmsIclock) return handleAdmsIclock(req, res, url);
@@ -8449,10 +8546,8 @@ async function route(req, res) {
     return plantillaHandlers.create(req, res);
   if (req.method === "PATCH" && plantillaItemMatch)
     return plantillaHandlers.update(req, res, plantillaItemMatch[1]);
-  if (req.method === "POST" && plantillaAssignMatch)
-    return plantillaHandlers.assign(req, res, plantillaAssignMatch[1]);
-  if (req.method === "POST" && plantillaVacateMatch)
-    return plantillaHandlers.vacate(req, res, plantillaVacateMatch[1]);
+  if (req.method === "DELETE" && plantillaItemMatch)
+    return plantillaHandlers.remove(req, res, plantillaItemMatch[1]);
   if (req.method === "GET" && plantillaHistoryMatch)
     return plantillaHandlers.history(req, res, plantillaHistoryMatch[1]);
 
@@ -8500,7 +8595,7 @@ movementHandlers = createMovementHandlers({
   pool,
   requireEmployeeRead,
   requireEmployeeWrite,
-  requireAdmin,
+  requireApproval,
   readBody,
   json,
   logAudit,
