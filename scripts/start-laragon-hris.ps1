@@ -1,8 +1,14 @@
 param(
-    [string]$ProjectRoot = "C:\Users\boaci\Music\HRIS"
+    [string]$ProjectRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
+    $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+}
+
+$ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 
 function Test-PortListening {
     param([int]$Port)
