@@ -7,7 +7,7 @@
     "dev": "node server/dev.mjs",
     "dev:client": "vite dev --host --port 47100",
     "api": "node server/index.mjs",
-    "build": "vite build",
+    "build": "vite build && node scripts/prepare-preview.mjs",
     "build:dev": "vite build --mode development",
     "preview": "vite preview --host --port 47100",
     "lint": "eslint .",
