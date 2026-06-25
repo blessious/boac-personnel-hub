@@ -301,6 +301,21 @@ function EmployeesPage() {
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-2 md:hidden">
+          <Button variant="outline" asChild className="h-11 rounded-xl bg-white shadow-sm">
+            <Link to="/employees/references" search={{ department: undefined }}>
+              Employee References
+            </Link>
+          </Button>
+          <Button
+            disabled={!canEdit}
+            onClick={() => setShowAddDialog(true)}
+            className="h-11 rounded-xl bg-blue-600 text-white shadow-sm hover:bg-blue-700"
+          >
+            <Plus className="mr-1.5 h-4 w-4" /> Add Employee
+          </Button>
+        </div>
+
         {/* Top Stat Cards */}
         <div className="hidden grid-cols-1 gap-4 md:grid md:grid-cols-2 xl:grid-cols-4">
           <StatCard
@@ -732,14 +747,6 @@ function EmployeesPage() {
                             {employee.itemNo || employee.employeeId || "-"}
                           </div>
                         </div>
-                        <Link
-                          to="/employees/$id"
-                          params={{ id: employee.id }}
-                          className="inline-grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted/50"
-                          title="View"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Link>
                       </div>
                       <div className="mt-4 space-y-2 text-xs text-muted-foreground">
                         <div className="flex justify-between gap-3">
@@ -781,16 +788,26 @@ function EmployeesPage() {
                           </Badge>
                         </div>
                       </div>
-                      <div className="mobile-action-row mt-4 flex justify-end">
+                      <div className="mt-3 flex items-center justify-end gap-2">
+                        <Button variant="outline" size="icon" asChild title="View">
+                          <Link to="/employees/$id" params={{ id: employee.id }}>
+                            <Eye className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <Button variant="outline" size="icon" asChild title="Edit">
+                          <Link to="/employees/$id" params={{ id: employee.id }}>
+                            <Pencil className="h-4 w-4" />
+                          </Link>
+                        </Button>
                         <Button
                           variant="outline"
-                          size="sm"
+                          size="icon"
                           disabled={!canEdit}
                           onClick={() => remove(employee)}
                           className="text-rose-600 hover:text-rose-600 dark:text-rose-300"
+                          title="Delete"
                         >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>

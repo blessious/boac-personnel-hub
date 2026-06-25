@@ -1,6 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, Archive, BriefcaseBusiness, History, Plus, Search, Trash2, UserCheck, UserPlus } from "lucide-react";
+import {
+  Activity,
+  Archive,
+  BriefcaseBusiness,
+  ChevronRight,
+  History,
+  Plus,
+  Search,
+  Trash2,
+  UserCheck,
+  UserPlus,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -181,60 +192,70 @@ function PlantillaPage() {
       title="Plantilla & PSIPOP"
       subtitle="Authorized positions, occupancy, vacancies, and movement history"
     >
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard
-          title="Authorized"
-          value={summary.authorized || 0}
-          subtext="Total positions"
-          subtextColor="text-muted-foreground"
-          icon={<BriefcaseBusiness className="h-5 w-5 text-blue-600" />}
-          iconBg="bg-blue-50 dark:bg-blue-500/15"
-          chartColor="stroke-blue-500"
-          trend="up"
-        />
-        <StatCard
-          title="Active"
-          value={summary.active || 0}
-          subtext="Currently active"
-          subtextColor="text-muted-foreground"
-          icon={<Activity className="h-5 w-5 text-emerald-600" />}
-          iconBg="bg-emerald-50 dark:bg-emerald-500/15"
-          chartColor="stroke-emerald-500"
-          trend="up"
-        />
-        <StatCard
-          title="Inactive"
-          value={summary.inactive || 0}
-          subtext="Inactive positions"
-          subtextColor="text-muted-foreground"
-          icon={<Archive className="h-5 w-5 text-amber-600" />}
-          iconBg="bg-amber-50 dark:bg-amber-500/15"
-          chartColor="stroke-amber-500"
-          trend="down"
-        />
-        <StatCard
-          title="Occupied"
-          value={summary.occupied || 0}
-          subtext="Filled positions"
-          subtextColor="text-muted-foreground"
-          icon={<UserCheck className="h-5 w-5 text-purple-600" />}
-          iconBg="bg-purple-50 dark:bg-purple-500/15"
-          chartColor="stroke-purple-500"
-          trend="up"
-        />
-        <StatCard
-          title="Vacant"
-          value={summary.vacant || 0}
-          subtext="Available for hire"
-          subtextColor="text-muted-foreground"
-          icon={<UserPlus className="h-5 w-5 text-fuchsia-600" />}
-          iconBg="bg-fuchsia-50 dark:bg-fuchsia-500/15"
-          chartColor="stroke-fuchsia-500"
-          trend="down"
-        />
+      <div className="grid grid-cols-6 gap-2 md:gap-3 lg:grid-cols-5">
+        <div className="col-span-2 lg:col-span-1">
+          <StatCard
+            title="Authorized"
+            value={summary.authorized || 0}
+            subtext="Total positions"
+            subtextColor="text-muted-foreground"
+            icon={<BriefcaseBusiness className="h-5 w-5 text-blue-600" />}
+            iconBg="bg-blue-50 dark:bg-blue-500/15"
+            chartColor="stroke-blue-500"
+            trend="up"
+          />
+        </div>
+        <div className="col-span-2 lg:col-span-1">
+          <StatCard
+            title="Active"
+            value={summary.active || 0}
+            subtext="Currently active"
+            subtextColor="text-muted-foreground"
+            icon={<Activity className="h-5 w-5 text-emerald-600" />}
+            iconBg="bg-emerald-50 dark:bg-emerald-500/15"
+            chartColor="stroke-emerald-500"
+            trend="up"
+          />
+        </div>
+        <div className="col-span-2 lg:col-span-1">
+          <StatCard
+            title="Inactive"
+            value={summary.inactive || 0}
+            subtext="Inactive positions"
+            subtextColor="text-muted-foreground"
+            icon={<Archive className="h-5 w-5 text-amber-600" />}
+            iconBg="bg-amber-50 dark:bg-amber-500/15"
+            chartColor="stroke-amber-500"
+            trend="down"
+          />
+        </div>
+        <div className="col-span-3 lg:col-span-1">
+          <StatCard
+            title="Occupied"
+            value={summary.occupied || 0}
+            subtext="Filled positions"
+            subtextColor="text-muted-foreground"
+            icon={<UserCheck className="h-5 w-5 text-purple-600" />}
+            iconBg="bg-purple-50 dark:bg-purple-500/15"
+            chartColor="stroke-purple-500"
+            trend="up"
+          />
+        </div>
+        <div className="col-span-3 lg:col-span-1">
+          <StatCard
+            title="Vacant"
+            value={summary.vacant || 0}
+            subtext="Available for hire"
+            subtextColor="text-muted-foreground"
+            icon={<UserPlus className="h-5 w-5 text-fuchsia-600" />}
+            iconBg="bg-fuchsia-50 dark:bg-fuchsia-500/15"
+            chartColor="stroke-fuchsia-500"
+            trend="down"
+          />
+        </div>
       </div>
-      <div className="mt-5 flex flex-wrap gap-2">
-        <div className="relative min-w-64 flex-1">
+      <div className="mt-5 grid gap-2 md:flex md:flex-wrap">
+        <div className="relative min-w-0 flex-1 md:min-w-64">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             className="pl-9"
@@ -244,7 +265,7 @@ function PlantillaPage() {
           />
         </div>
         <select
-          className={fieldClass + " max-w-40"}
+          className={fieldClass + " md:max-w-40"}
           value={status}
           onChange={(e) => setStatus(e.target.value)}
         >
@@ -254,7 +275,7 @@ function PlantillaPage() {
           <option>Abolished</option>
         </select>
         <select
-          className={fieldClass + " max-w-40"}
+          className={fieldClass + " md:max-w-40"}
           value={occupancy}
           onChange={(e) => setOccupancy(e.target.value)}
         >
@@ -263,7 +284,7 @@ function PlantillaPage() {
           <option value="vacant">Vacant</option>
         </select>
         {canManage && (
-          <Button onClick={() => openEdit()}>
+          <Button onClick={() => openEdit()} className="bg-blue-600 text-white hover:bg-blue-700">
             <Plus className="mr-2 h-4 w-4" />
             New item
           </Button>
@@ -271,44 +292,59 @@ function PlantillaPage() {
       </div>
       <div className="mobile-record-list mt-4 md:hidden">
         {items.map((i) => (
-          <article className="mobile-record-card" key={i.id}>
-            <div className="mobile-record-card__header">
-              <div>
-                <div className="mobile-record-card__title">{i.itemNumber}</div>
-                <div className="mobile-record-card__meta">
-                  {i.positionTitle} -{" "}
+          <article className="rounded-xl border border-border bg-white p-3 shadow-sm" key={i.id}>
+            <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_4.75rem_1.25rem] items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                <BriefcaseBusiness className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-bold text-foreground">{i.itemNumber}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {i.positionTitle}
                   {i.salaryGrade
-                    ? `SG ${i.salaryGrade.grade}, Step ${i.salaryGrade.step}`
-                    : "No salary grade"}
+                    ? ` - SG ${i.salaryGrade.grade}, Step ${i.salaryGrade.step}`
+                    : " - No salary grade"}
                 </div>
-              </div>
-              <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs font-medium">
-                {i.itemStatus}
-              </span>
-            </div>
-            <div className="mobile-record-card__grid">
-              <div className="mobile-record-card__field">
-                <span className="mobile-record-card__label">Occupancy</span>
-                <span className="mobile-record-card__value">
-                  {i.occupant ? i.occupant.employeeName : "Vacant"}
-                </span>
-              </div>
-              <div className="mobile-record-card__field">
-                <span className="mobile-record-card__label">Employee no.</span>
-                <span className="mobile-record-card__value">{i.occupant?.employeeNo || "-"}</span>
-              </div>
-              <div className="mobile-record-card__field">
-                <span className="mobile-record-card__label">Organization</span>
-                <span className="mobile-record-card__value">
+                <div className="mt-1 line-clamp-2 text-xs leading-4 text-muted-foreground">
                   {[i.sectorName, i.officeName, i.divisionName, i.sectionName]
                     .filter(Boolean)
                     .join(" / ") || "-"}
+                </div>
+              </div>
+              <span
+                className={cn(
+                  "rounded-full border px-2 py-1 text-center text-xs font-semibold",
+                  i.itemStatus === "Active"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-700",
+                )}
+              >
+                {i.itemStatus}
+              </span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border/70 pt-3">
+              <div className="border-l border-border/70 pl-3">
+                <span className="text-xs text-muted-foreground">Classification / Fund</span>
+                <span className="block truncate text-sm font-semibold text-foreground">
+                  {i.plantillaTypeName || "-"}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {i.budgetCodeName || "No fund code"}
                 </span>
               </div>
-              <div className="mobile-record-card__field">
-                <span className="mobile-record-card__label">Class / fund</span>
-                <span className="mobile-record-card__value">
-                  {[i.plantillaTypeName, i.budgetCodeName].filter(Boolean).join(" / ") || "-"}
+              <div className="border-l border-border/70 pl-3">
+                <span className="text-xs text-muted-foreground">Occupancy</span>
+                <span
+                  className={cn(
+                    "block truncate text-sm font-semibold",
+                    i.occupant ? "text-foreground" : "text-amber-700",
+                  )}
+                >
+                  {i.occupant ? i.occupant.employeeName : "Vacant"}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {i.occupant?.employeeNo || "-"}
                 </span>
               </div>
             </div>
@@ -632,19 +668,19 @@ function StatCard({
   trend: "up" | "down";
 }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+    <div className="relative min-h-[7.25rem] overflow-hidden rounded-xl border border-border bg-card p-2.5 text-card-foreground shadow-sm md:min-h-0 md:p-4">
       <div className="mb-2 flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold text-foreground/80">{title}</p>
-          <h2 className="mt-1 text-2xl font-bold text-foreground">{value}</h2>
+          <h2 className="mt-1 text-xl font-bold text-foreground md:text-2xl">{value}</h2>
         </div>
-        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
+        <div className={cn("rounded-lg p-1.5 md:p-2", iconBg)}>{icon}</div>
       </div>
       <div className="relative z-10 mt-2 flex items-center text-[10px]">
         {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
         <span className={subtextColor}>{subtext}</span>
       </div>
-      <div className="absolute bottom-2 right-2 z-0 h-8 w-24 opacity-50">
+      <div className="absolute bottom-2 right-2 z-0 h-7 w-16 opacity-50 md:h-8 md:w-24">
         <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
           {trend === "up" ? (
             <path

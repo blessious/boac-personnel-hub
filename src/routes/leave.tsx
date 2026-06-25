@@ -255,7 +255,7 @@ function LeavePage() {
 
   return (
     <AppShell title="HR Approvals" subtitle="Review, approve, and track employee leave requests">
-      <div className="mb-4 grid gap-3 md:grid-cols-4">
+      <div className="mb-4 grid grid-cols-4 gap-2 md:gap-3">
         <StatCard
           title="Pending"
           value={summary.pending || 0}
@@ -298,7 +298,7 @@ function LeavePage() {
         />
       </div>
 
-      <div className="mb-4 inline-flex rounded-lg bg-muted/50 p-1">
+      <div className="mb-4 inline-flex w-full rounded-xl bg-muted/50 p-1 md:w-auto">
         {[
           { value: "applications", label: "Applications" },
           { value: "ledger", label: "Credit Ledger" },
@@ -307,7 +307,7 @@ function LeavePage() {
             key={item.value}
             onClick={() => setView(item.value as "applications" | "ledger")}
             className={cn(
-              "whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              "flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors md:flex-none md:py-1.5",
               view === item.value
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -327,48 +327,50 @@ function LeavePage() {
           loading={ledgerLoading}
         />
       ) : (
-        <div className="rounded-xl border border-border bg-card shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-border p-4 xl:flex-row xl:items-center">
-            <div className="relative max-w-sm flex-1">
+        <div className="border-0 bg-transparent shadow-none md:rounded-xl md:border md:border-border md:bg-card md:shadow-sm">
+          <div className="flex flex-col gap-3 border-border pb-3 md:border-b md:p-4 xl:flex-row xl:items-center">
+            <div className="relative flex-1 md:max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search employee, ID, or department"
-                className="pl-9"
+                className="pl-9 md:h-10"
                 value={q}
                 onChange={(event) => setQ(event.target.value)}
               />
             </div>
-            <div className="flex overflow-x-auto rounded-lg bg-muted/50 p-1">
+            <div className="flex gap-2 overflow-x-auto rounded-none bg-transparent p-0 md:rounded-lg md:bg-muted/50 md:p-1">
               {(["all", "Pending", "Approved", "Disapproved", "Cancelled"] as const).map((item) => (
                 <button
                   key={item}
                   onClick={() => setStatus(item)}
                   className={cn(
-                    "whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    "whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition-colors md:rounded-md md:px-3 md:py-1.5 md:font-medium",
                     status === item
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
+                      ? "bg-background text-blue-700 shadow-sm ring-1 ring-blue-100"
+                      : "bg-muted/50 text-muted-foreground hover:text-foreground md:bg-transparent",
                   )}
                 >
                   {item === "all" ? "All" : item}
                 </button>
               ))}
             </div>
-            <Button
-              variant="outline"
-              disabled={!canEdit}
-              onClick={() => setShowType(true)}
-              className="border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-border dark:text-slate-300 dark:hover:bg-muted/40"
-            >
-              <Plus className="mr-1.5 h-4 w-4" /> Leave Type
-            </Button>
-            <Button
-              disabled={!canEdit}
-              onClick={() => setShowApplication(true)}
-              className="bg-blue-600 text-white hover:bg-blue-700"
-            >
-              <FilePlus2 className="mr-1.5 h-4 w-4" /> File Leave
-            </Button>
+            <div className="grid grid-cols-2 gap-2 xl:flex">
+              <Button
+                variant="outline"
+                disabled={!canEdit}
+                onClick={() => setShowType(true)}
+                className="border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-border dark:text-slate-300 dark:hover:bg-muted/40"
+              >
+                <Plus className="mr-1.5 h-4 w-4" /> Leave Type
+              </Button>
+              <Button
+                disabled={!canEdit}
+                onClick={() => setShowApplication(true)}
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
+                <FilePlus2 className="mr-1.5 h-4 w-4" /> File Leave
+              </Button>
+            </div>
           </div>
 
           <div className="mobile-record-list">
@@ -382,12 +384,20 @@ function LeavePage() {
               </div>
             ) : (
               applications.map((application) => (
-                <article key={application.id} className="mobile-record-card">
-                  <div className="mobile-record-card__header">
+                <article
+                  key={application.id}
+                  className="rounded-xl border border-border bg-white p-3 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h3 className="mobile-record-card__title">{application.employeeName}</h3>
-                      <p className="mobile-record-card__meta">
-                        {application.employeeNo} - {application.department}
+                      <h3 className="truncate text-sm font-bold text-foreground">
+                        {application.employeeName}
+                      </h3>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {application.employeeNo}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {application.department}
                       </p>
                     </div>
                     <Badge variant="outline" className={STATUS_COLOR[application.status]}>
@@ -395,37 +405,39 @@ function LeavePage() {
                     </Badge>
                   </div>
 
-                  <div className="mobile-record-card__grid">
-                    <div className="mobile-record-card__field">
-                      <span className="mobile-record-card__label">Leave Type</span>
-                      <span className="mobile-record-card__value">{application.leaveName}</span>
-                      <span className="mobile-record-card__meta">{application.leaveCode}</span>
+                  <div className="mt-3 grid grid-cols-[2.5rem_1.15fr_1.15fr_0.55fr_1fr] items-center gap-2 border-t border-border/70 pt-3">
+                    <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                      <FilePlus2 className="h-4 w-4" />
                     </div>
-                    <div className="mobile-record-card__field">
-                      <span className="mobile-record-card__label">Days</span>
-                      <span className="mobile-record-card__value">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {application.leaveName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{application.leaveCode}</p>
+                    </div>
+                    <div className="border-l border-border/70 pl-3 text-sm text-muted-foreground">
+                      <p>{application.dateFrom} to</p>
+                      <p>{application.dateTo}</p>
+                    </div>
+                    <div className="border-l border-border/70 pl-3 text-center">
+                      <p className="text-sm font-bold text-foreground">
                         {formatNumber(application.daysRequested)}
-                      </span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">days</p>
                     </div>
-                    <div className="mobile-record-card__field">
-                      <span className="mobile-record-card__label">From</span>
-                      <span className="mobile-record-card__value">{application.dateFrom}</span>
-                    </div>
-                    <div className="mobile-record-card__field">
-                      <span className="mobile-record-card__label">To</span>
-                      <span className="mobile-record-card__value">{application.dateTo}</span>
+                    <div className="min-w-0 border-l border-border/70 pl-3">
+                      <p className="text-xs text-muted-foreground">Reason</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {application.reason || "-"}
+                      </p>
                     </div>
                   </div>
 
-                  <div>
-                    <span className="mobile-record-card__label">Reason</span>
-                    <p className="text-sm text-muted-foreground">{application.reason || "-"}</p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="mt-3 grid grid-cols-5 gap-2">
                     <Button
-                      size="sm"
+                      size="icon"
                       variant="outline"
+                      title="Approve"
                       disabled={!canApprove || application.status === "Approved"}
                       onClick={() =>
                         setDecision({
@@ -443,12 +455,12 @@ function LeavePage() {
                         })
                       }
                     >
-                      <Check className="mr-1.5 h-4 w-4" />
-                      Approve
+                      <Check className="h-4 w-4" />
                     </Button>
                     <Button
-                      size="sm"
+                      size="icon"
                       variant="outline"
+                      title="Disapprove"
                       disabled={!canApprove || application.status === "Disapproved"}
                       onClick={() =>
                         setDecision({
@@ -465,29 +477,33 @@ function LeavePage() {
                         })
                       }
                     >
-                      <X className="mr-1.5 h-4 w-4" />
-                      Disapprove
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => downloadForm6(application)}>
-                      <Download className="mr-1.5 h-4 w-4" />
-                      Excel
+                      <X className="h-4 w-4" />
                     </Button>
                     <Button
-                      size="sm"
+                      size="icon"
                       variant="outline"
+                      title="Download Excel"
+                      onClick={() => downloadForm6(application)}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      title="Preview PDF"
                       onClick={() => previewForm6Pdf(application)}
                     >
-                      <FileText className="mr-1.5 h-4 w-4" />
-                      PDF
+                      <FileText className="h-4 w-4" />
                     </Button>
                     <Button
-                      size="sm"
+                      size="icon"
                       variant="outline"
+                      title="Delete"
                       disabled={!canEdit}
                       onClick={() => remove(application)}
-                      className="col-span-2 text-destructive hover:text-destructive"
+                      className="text-destructive hover:text-destructive"
                     >
-                      Delete
+                      <XCircle className="h-4 w-4" />
                     </Button>
                   </div>
                 </article>
@@ -1058,19 +1074,19 @@ function StatCard({
   trend: "up" | "down";
 }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+    <div className="relative min-h-[7.25rem] overflow-hidden rounded-xl border border-border bg-card p-2.5 text-card-foreground shadow-sm md:min-h-0 md:p-4">
       <div className="mb-2 flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold text-foreground/80">{title}</p>
-          <h2 className="mt-1 text-2xl font-bold text-foreground">{value}</h2>
+          <h2 className="mt-1 text-xl font-bold text-foreground md:text-2xl">{value}</h2>
         </div>
-        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
+        <div className={cn("rounded-lg p-1.5 md:p-2", iconBg)}>{icon}</div>
       </div>
       <div className="relative z-10 mt-2 flex items-center text-[10px]">
         {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
         <span className={subtextColor}>{subtext}</span>
       </div>
-      <div className="absolute bottom-2 right-2 z-0 h-8 w-24 opacity-50">
+      <div className="absolute bottom-2 right-2 z-0 h-7 w-16 opacity-50 md:h-8 md:w-24">
         <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
           {trend === "up" ? (
             <path

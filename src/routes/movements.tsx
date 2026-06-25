@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRightLeft,
+  CalendarDays,
+  ChevronRight,
   CheckCircle2,
   Clock3,
   FileEdit,
@@ -220,7 +222,7 @@ function MovementsPage() {
       title="Employee Movements"
       subtitle="Prepare, review, approve, post, and reverse governed personnel actions"
     >
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-3 gap-2 md:gap-3 lg:grid-cols-6">
         <StatCard
           title="Draft"
           value={summary["Draft"] || 0}
@@ -282,8 +284,8 @@ function MovementsPage() {
           trend="down"
         />
       </div>
-      <div className="mt-5 flex flex-wrap gap-2">
-        <div className="relative min-w-64 flex-1">
+      <div className="mt-5 grid gap-2 md:flex md:flex-wrap">
+        <div className="relative min-w-0 flex-1 md:min-w-64">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             className="pl-9"
@@ -293,7 +295,7 @@ function MovementsPage() {
           />
         </div>
         <select
-          className={selectClass + " max-w-40"}
+          className={selectClass + " md:max-w-40"}
           value={status}
           onChange={(e) => setStatus(e.target.value)}
         >
@@ -304,7 +306,7 @@ function MovementsPage() {
           ))}
         </select>
         <select
-          className={selectClass + " max-w-52"}
+          className={selectClass + " md:max-w-52"}
           value={actionFilter}
           onChange={(e) => setActionFilter(e.target.value)}
         >
@@ -314,7 +316,7 @@ function MovementsPage() {
           ))}
         </select>
         {canPrepare && (
-          <Button onClick={() => openForm()}>
+          <Button onClick={() => openForm()} className="bg-blue-600 text-white hover:bg-blue-700">
             <Plus className="mr-2 h-4 w-4" />
             Prepare movement
           </Button>
@@ -322,62 +324,50 @@ function MovementsPage() {
       </div>
       <div className="mobile-record-list mt-4 md:hidden">
         {movements.map((m) => (
-          <article className="mobile-record-card" key={m.id}>
-            <div className="mobile-record-card__header">
-              <div>
-                <div className="mobile-record-card__title">{m.controlNumber}</div>
-                <div className="mobile-record-card__meta">
-                  {m.employeeName} - {m.employeeNo}
+          <article className="rounded-xl border border-border bg-white p-3 shadow-sm" key={m.id}>
+            <div className="grid grid-cols-[minmax(0,1fr)_5rem] items-start gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-bold text-foreground">{m.controlNumber}</div>
+                <div className="mt-1 truncate text-sm font-semibold text-foreground">
+                  {m.employeeName}
                 </div>
+                <div className="truncate text-xs text-muted-foreground">{m.employeeNo}</div>
               </div>
               <Status value={m.status} />
             </div>
-            <div className="mobile-record-card__grid">
-              <div className="mobile-record-card__field">
-                <span className="mobile-record-card__label">Action</span>
-                <span className="mobile-record-card__value">{m.actionType}</span>
+            <div className="mt-3 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-3">
+              <div className="space-y-5">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <CalendarDays className="h-4 w-4" />
+                  <span>
+                    {m.effectiveDate}
+                    {m.endDate ? ` to ${m.endDate}` : ""}
+                  </span>
+                </div>
               </div>
-              <div className="mobile-record-card__field">
-                <span className="mobile-record-card__label">Effectivity</span>
-                <span className="mobile-record-card__value">
-                  {m.effectiveDate}
-                  {m.endDate ? ` to ${m.endDate}` : ""}
-                </span>
-              </div>
-              <div className="mobile-record-card__field">
-                <span className="mobile-record-card__label">Authority</span>
-                <span className="mobile-record-card__value">{m.authorityNumber || "-"}</span>
-              </div>
-              <div className="mobile-record-card__field">
-                <span className="mobile-record-card__label">From</span>
-                <span className="mobile-record-card__value">
-                  {fromText(m)}
-                  <span className="block text-[11px] text-muted-foreground">{fromMeta(m)}</span>
-                </span>
-              </div>
-              <div className="mobile-record-card__field">
-                <span className="mobile-record-card__label">To</span>
-                <span className="mobile-record-card__value">
-                  {toText(m)}
-                  {toMeta(m) && (
-                    <span className="block text-[11px] text-muted-foreground">{toMeta(m)}</span>
-                  )}
-                </span>
+              <div className="min-w-0 border-l border-border/70 pl-3">
+                <div className="text-sm font-bold text-foreground">{m.actionType}</div>
+                <div className="mt-1 text-xs leading-4 text-muted-foreground">
+                  {fromText(m)} <span aria-hidden="true">-&gt;</span> {toText(m)}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {toMeta(m) || fromMeta(m) || m.authorityNumber || "-"}
+                </div>
               </div>
             </div>
-            <div className="flex flex-wrap justify-end gap-1">
-              <Button size="icon" variant="ghost" title="History" onClick={() => showEvents(m)}>
+            <div className="mt-3 flex justify-end gap-2">
+              <Button size="icon" variant="outline" title="History" onClick={() => showEvents(m)}>
                 <History className="h-4 w-4" />
               </Button>
               {canPrepare && ["Draft", "Rejected"].includes(m.status) && (
-                <Button size="icon" variant="ghost" title="Edit" onClick={() => openForm(m)}>
+                <Button size="icon" variant="outline" title="Edit" onClick={() => openForm(m)}>
                   <ArrowRightLeft className="h-4 w-4" />
                 </Button>
               )}
               {canPrepare && m.status === "Draft" && (
                 <Button
                   size="icon"
-                  variant="ghost"
+                  variant="outline"
                   title="Submit"
                   onClick={() => setDecision({ movement: m, action: "submit" })}
                 >
@@ -388,7 +378,7 @@ function MovementsPage() {
                 <>
                   <Button
                     size="icon"
-                    variant="ghost"
+                    variant="outline"
                     title="Review"
                     onClick={() => setDecision({ movement: m, action: "review" })}
                   >
@@ -396,7 +386,7 @@ function MovementsPage() {
                   </Button>
                   <Button
                     size="icon"
-                    variant="ghost"
+                    variant="outline"
                     title="Reject"
                     onClick={() => setDecision({ movement: m, action: "reject" })}
                   >
@@ -404,7 +394,7 @@ function MovementsPage() {
                   </Button>
                   <Button
                     size="icon"
-                    variant="ghost"
+                    variant="outline"
                     title="Return to Draft"
                     onClick={() => setDecision({ movement: m, action: "return" })}
                   >
@@ -416,7 +406,7 @@ function MovementsPage() {
                 <>
                   <Button
                     size="icon"
-                    variant="ghost"
+                    variant="outline"
                     title="Approve"
                     onClick={() => setDecision({ movement: m, action: "approve" })}
                   >
@@ -424,7 +414,7 @@ function MovementsPage() {
                   </Button>
                   <Button
                     size="icon"
-                    variant="ghost"
+                    variant="outline"
                     title="Reject"
                     onClick={() => setDecision({ movement: m, action: "reject" })}
                   >
@@ -432,7 +422,7 @@ function MovementsPage() {
                   </Button>
                   <Button
                     size="icon"
-                    variant="ghost"
+                    variant="outline"
                     title="Return to Draft"
                     onClick={() => setDecision({ movement: m, action: "return" })}
                   >
@@ -451,7 +441,7 @@ function MovementsPage() {
                   </Button>
                   <Button
                     size="icon"
-                    variant="ghost"
+                    variant="outline"
                     title="Reject"
                     onClick={() => setDecision({ movement: m, action: "reject" })}
                   >
@@ -459,7 +449,7 @@ function MovementsPage() {
                   </Button>
                   <Button
                     size="icon"
-                    variant="ghost"
+                    variant="outline"
                     title="Return to Draft"
                     onClick={() => setDecision({ movement: m, action: "return" })}
                   >
@@ -470,13 +460,21 @@ function MovementsPage() {
               {canPost && m.status === "Posted" && (
                 <Button
                   size="icon"
-                  variant="ghost"
+                  variant="outline"
                   title="Reverse"
                   onClick={() => setDecision({ movement: m, action: "reverse" })}
                 >
                   <Undo2 className="h-4 w-4" />
                 </Button>
               )}
+              <Button
+                size="icon"
+                variant="outline"
+                title="View movement history"
+                onClick={() => showEvents(m)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           </article>
         ))}
@@ -943,19 +941,19 @@ function StatCard({
   trend: "up" | "down";
 }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+    <div className="relative min-h-[6.25rem] overflow-hidden rounded-xl border border-border bg-card p-2.5 text-card-foreground shadow-sm md:min-h-0 md:p-4">
       <div className="mb-2 flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold text-foreground/80">{title}</p>
-          <h2 className="mt-1 text-2xl font-bold text-foreground">{value}</h2>
+          <h2 className="mt-1 text-xl font-bold text-foreground md:text-2xl">{value}</h2>
         </div>
-        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
+        <div className={cn("rounded-lg p-1.5 md:p-2", iconBg)}>{icon}</div>
       </div>
       <div className="relative z-10 mt-2 flex items-center text-[10px]">
         {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
         <span className={subtextColor}>{subtext}</span>
       </div>
-      <div className="absolute bottom-2 right-2 z-0 h-8 w-24 opacity-50">
+      <div className="absolute bottom-2 right-2 z-0 h-7 w-16 opacity-50 md:h-8 md:w-24">
         <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
           {trend === "up" ? (
             <path

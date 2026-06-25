@@ -1391,6 +1391,68 @@ function AttendancePage() {
           </Button>
         </div>
 
+        <div className="md:hidden">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full rounded-xl bg-white font-semibold shadow-sm"
+              >
+                Actions
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem disabled={loading} onClick={load}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Reload
+              </DropdownMenuItem>
+              {canManage && (
+                <>
+                  <DropdownMenuItem disabled={busy} onClick={() => setShowScheduleDialog(true)}>
+                    <Settings2 className="mr-2 h-4 w-4" />
+                    Schedule
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={busy} onClick={openImportAll}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Import DTR
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={openAdd}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add DTR
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={openImport}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Import Single DTR
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={openMassPrint}>
+                    <FileDown className="mr-2 h-4 w-4" />
+                    Mass Export
+                  </DropdownMenuItem>
+                </>
+              )}
+              {isEmployee ? (
+                <>
+                  <DropdownMenuItem disabled={busy} onClick={openExport}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    View DTR PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={openActivityLabelRequest}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Activity Label
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <DropdownMenuItem onClick={openExport}>
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
+                  View DTR
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
         <Tabs defaultValue="records" className="space-y-3 md:space-y-4">
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-border bg-muted/50 p-1">
             <TabsTrigger
@@ -1865,62 +1927,101 @@ function AttendancePage() {
                   return (
                     <article
                       key={entry.id}
-                      className="grid grid-cols-[2.75rem_minmax(0,1fr)_7.8rem_1.25rem] items-center gap-3 rounded-xl border border-border bg-white p-3 shadow-sm"
+                      className="rounded-xl border border-border bg-white p-3 shadow-sm"
                     >
-                      <div
-                        className={`grid h-10 w-10 place-items-center rounded-full text-xs font-extrabold ${avatarClass}`}
-                      >
-                        {initials}
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="truncate text-sm font-extrabold text-[#111827]">
-                          {entry.employeeName}
-                        </h3>
-                        <p className="truncate text-xs font-medium text-muted-foreground">
-                          {entry.department || "No office"}
-                        </p>
-                        <p className="mt-1 text-xs font-medium text-[#53637f]">{entry.workDate}</p>
+                      <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_7.8rem_1.25rem] items-center gap-3">
+                        <div
+                          className={`grid h-10 w-10 place-items-center rounded-full text-xs font-extrabold ${avatarClass}`}
+                        >
+                          {initials}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="truncate text-sm font-extrabold text-[#111827]">
+                            {entry.employeeName}
+                          </h3>
+                          <p className="truncate text-xs font-medium text-muted-foreground">
+                            {entry.department || "No office"}
+                          </p>
+                          <p className="mt-1 text-xs font-medium text-[#53637f]">
+                            {entry.workDate}
+                          </p>
+                        </div>
+
+                        {entry.displayLabel ? (
+                          <div className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-3 text-center text-xs font-semibold text-blue-800">
+                            {entry.displayLabel}
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-center">
+                            <DtrMobileTime label="AM In" value={formatDtrTime(entry.amIn)} />
+                            <DtrMobileTime label="AM Out" value={formatDtrTime(entry.amOut)} />
+                            <DtrMobileTime label="PM In" value={formatDtrTime(entry.pmIn)} />
+                            <DtrMobileTime
+                              label="Tardiness"
+                              value={entry.lateMinutes ? `${entry.lateMinutes}m` : "-"}
+                              danger={Boolean(entry.lateMinutes)}
+                            />
+                          </div>
+                        )}
+
+                        {isEmployee ? (
+                          <button
+                            type="button"
+                            onClick={() => openCorrection(entry, "Times")}
+                            title="Correct Time Entries"
+                            aria-label={`Correct time entries for ${entry.workDate}`}
+                            className="grid h-8 w-5 place-items-center text-[#64748b]"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        ) : canManage ? (
+                          <button
+                            type="button"
+                            onClick={() => openEdit(entry)}
+                            title="Edit DTR"
+                            aria-label={`Edit DTR for ${entry.workDate}`}
+                            className="grid h-8 w-5 place-items-center text-[#64748b]"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-[#64748b]" />
+                        )}
                       </div>
 
-                      {entry.displayLabel ? (
-                        <div className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-3 text-center text-xs font-semibold text-blue-800">
-                          {entry.displayLabel}
+                      {(canManage || isEmployee) && (
+                        <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border/70 pt-3">
+                          {isEmployee ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openCorrection(entry, "Times")}
+                            >
+                              Correct Times
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openEdit(entry)}
+                              >
+                                <Pencil className="mr-1.5 h-4 w-4" /> Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => remove(entry)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="mr-1.5 h-4 w-4" /> Delete
+                              </Button>
+                            </>
+                          )}
                         </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-center">
-                          <DtrMobileTime label="AM In" value={formatDtrTime(entry.amIn)} />
-                          <DtrMobileTime label="AM Out" value={formatDtrTime(entry.amOut)} />
-                          <DtrMobileTime label="PM In" value={formatDtrTime(entry.pmIn)} />
-                          <DtrMobileTime
-                            label="Tardiness"
-                            value={entry.lateMinutes ? `${entry.lateMinutes}m` : "-"}
-                            danger={Boolean(entry.lateMinutes)}
-                          />
-                        </div>
-                      )}
-
-                      {isEmployee ? (
-                        <button
-                          type="button"
-                          onClick={() => openCorrection(entry, "Times")}
-                          title="Correct Time Entries"
-                          aria-label={`Correct time entries for ${entry.workDate}`}
-                          className="grid h-8 w-5 place-items-center text-[#64748b]"
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </button>
-                      ) : canManage ? (
-                        <button
-                          type="button"
-                          onClick={() => openEdit(entry)}
-                          title="Edit DTR"
-                          aria-label={`Edit DTR for ${entry.workDate}`}
-                          className="grid h-8 w-5 place-items-center text-[#64748b]"
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </button>
-                      ) : (
-                        <ChevronRight className="h-4 w-4 text-[#64748b]" />
                       )}
                     </article>
                   );

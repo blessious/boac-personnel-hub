@@ -1,6 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Download, FileClock, Plus, Search, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  BriefcaseBusiness,
+  Building2,
+  Download,
+  FileClock,
+  Info,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -140,7 +150,7 @@ function ServiceRecordsPage() {
       subtitle="Movement-derived service history, controlled legacy encoding, and HRIS-generated exports"
     >
       <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
-        <aside className="rounded-lg border bg-card p-3">
+        <aside className="hidden rounded-lg border bg-card p-3 md:block">
           <div className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -166,13 +176,82 @@ function ServiceRecordsPage() {
           </div>
         </aside>
         <section>
+          <div className="mb-3 space-y-3 md:hidden">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Search employee"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            {query.trim() && (
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-border bg-white p-1 shadow-sm">
+                {filteredEmployees.slice(0, 8).map((e) => (
+                  <button
+                    key={e.id}
+                    onClick={() => {
+                      setEmployeeId(e.id);
+                      setQuery("");
+                    }}
+                    className={`w-full rounded-lg px-3 py-2 text-left text-sm ${employeeId === e.id ? "bg-blue-50 text-blue-700" : "hover:bg-muted"}`}
+                  >
+                    <span className="block font-semibold">
+                      {e.lastname}, {e.firstname}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">{e.employeeId}</span>
+                  </button>
+                ))}
+                {!filteredEmployees.length && (
+                  <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+                    No employees found.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           {!employeeId ? (
             <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
               Select an employee to generate a service record.
             </div>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
+              <div className="mb-3 grid grid-cols-[1fr_0.7fr_0.7fr] gap-2 md:hidden">
+                {canManage && (
+                  <Button variant="outline" onClick={() => openForm()}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add legacy period
+                  </Button>
+                )}
+                <Button variant="outline" disabled={busy} onClick={() => doExport("xlsx")}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Excel
+                </Button>
+                <Button
+                  disabled={busy}
+                  onClick={() => doExport("pdf")}
+                  className="bg-blue-600 text-white hover:bg-blue-700"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  PDF
+                </Button>
+              </div>
+              <div className="mb-3 grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/45 p-4 shadow-sm md:hidden">
+                <div className="grid h-14 w-14 place-items-center rounded-full bg-blue-100 text-lg font-bold text-blue-700">
+                  {selected ? `${selected.firstname[0] || ""}${selected.lastname[0] || ""}` : "--"}
+                </div>
+                <div className="min-w-0">
+                  <h2 className="truncate text-lg font-bold text-foreground">
+                    {selected?.lastname}, {selected?.firstname}
+                  </h2>
+                  <p className="truncate text-sm text-muted-foreground">{selected?.employeeId}</p>
+                  <p className="text-sm font-semibold text-blue-700">
+                    {records.length} service period(s)
+                  </p>
+                </div>
+              </div>
+              <div className="hidden flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4 md:flex">
                 <div>
                   <h2 className="font-semibold">
                     {selected?.lastname}, {selected?.firstname}
@@ -213,43 +292,63 @@ function ServiceRecordsPage() {
               )}
               <div className="mobile-record-list mt-3 md:hidden">
                 {records.map((r) => (
-                  <article className="mobile-record-card" key={r.id}>
-                    <div className="mobile-record-card__header">
-                      <div>
-                        <div className="mobile-record-card__title">{r.positionTitle}</div>
-                        <div className="mobile-record-card__meta">
-                          {r.serviceFrom} to {r.serviceTo || "Present"}
+                  <article
+                    className="rounded-xl border border-border bg-white p-3 shadow-sm"
+                    key={r.id}
+                  >
+                    <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3">
+                      <div className="relative flex justify-center">
+                        <span className="mt-1 h-4 w-4 rounded-full border-2 border-blue-600 bg-white" />
+                        <span className="absolute top-6 h-[calc(100%-1rem)] border-l border-dashed border-border" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3">
+                          <div className="text-sm">
+                            <p className="font-semibold text-foreground">{r.serviceFrom}</p>
+                            <p className="mt-1 text-muted-foreground">
+                              to {r.serviceTo || "Present"}
+                            </p>
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="truncate text-base font-bold text-foreground">
+                              {r.positionTitle}
+                            </h3>
+                            <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                              <Building2 className="h-4 w-4" />
+                              <span className="truncate">{r.department || "-"}</span>
+                            </p>
+                            <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                              <BriefcaseBusiness className="h-4 w-4" />
+                              <span>{r.appointmentStatus || "-"}</span>
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-1 text-xs ${r.source === "Automatic" ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"}`}
-                      >
-                        {r.source}
-                      </span>
-                    </div>
-                    <div className="mobile-record-card__grid">
-                      <div className="mobile-record-card__field">
-                        <span className="mobile-record-card__label">Department</span>
-                        <span className="mobile-record-card__value">{r.department || "-"}</span>
-                      </div>
-                      <div className="mobile-record-card__field">
-                        <span className="mobile-record-card__label">Status</span>
-                        <span className="mobile-record-card__value">
-                          {r.appointmentStatus || "-"}
-                        </span>
-                      </div>
-                      <div className="mobile-record-card__field">
-                        <span className="mobile-record-card__label">Salary / SG</span>
-                        <span className="mobile-record-card__value">
-                          {r.annualSalary != null ? `PHP ${r.annualSalary.toLocaleString()}` : "-"}
-                          {r.salaryGrade != null
-                            ? ` - SG ${r.salaryGrade}, Step ${r.salaryStep ?? "-"}`
-                            : ""}
-                        </span>
-                      </div>
-                      <div className="mobile-record-card__field">
-                        <span className="mobile-record-card__label">Item no.</span>
-                        <span className="mobile-record-card__value">{r.itemNumber || "-"}</span>
+                        <div className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem] items-center gap-3 border-t border-dashed border-border pt-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Salary / SG</p>
+                            <p className="text-sm font-semibold text-foreground">
+                              {r.annualSalary != null
+                                ? `PHP ${r.annualSalary.toLocaleString()}`
+                                : "-"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {r.salaryGrade != null
+                                ? `SG ${r.salaryGrade}, Step ${r.salaryStep ?? "-"}`
+                                : ""}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Item No.</p>
+                            <p className="truncate text-sm font-semibold text-foreground">
+                              {r.itemNumber || "-"}
+                            </p>
+                          </div>
+                          <span
+                            className={`rounded-full px-2 py-1 text-center text-xs ${r.source === "Automatic" ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"}`}
+                          >
+                            {r.source}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     {r.separationCause && (
@@ -371,9 +470,15 @@ function ServiceRecordsPage() {
                   </tbody>
                 </table>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Automatic rows come from posted personnel movements and cannot be edited here.
-                Generic exports are not the official STRH template.
+              <p className="mt-3 flex gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  Automatic rows come from posted personnel movements and cannot be edited here.
+                  <span className="hidden md:inline">
+                    {" "}
+                    Generic exports are not the official STRH template.
+                  </span>
+                </span>
               </p>
             </>
           )}
