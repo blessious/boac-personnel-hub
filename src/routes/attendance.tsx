@@ -133,6 +133,33 @@ function formatDtrTime(value?: string | null) {
   return `${hour12}:${minutes} ${period}`;
 }
 
+function formatDtrRangeLabel(from: string, to: string) {
+  const parse = (value: string) => {
+    const [year, month, day] = value.split("-").map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day);
+  };
+  const fromDate = parse(from);
+  const toDate = parse(to);
+  if (!fromDate || !toDate) return `${from} - ${to}`;
+  const month = new Intl.DateTimeFormat("en-US", { month: "short" }).format(fromDate);
+  const fromDay = fromDate.getDate();
+  const toMonth = new Intl.DateTimeFormat("en-US", { month: "short" }).format(toDate);
+  const toDay = toDate.getDate();
+  const year = toDate.getFullYear();
+  return month === toMonth
+    ? `${month} ${fromDay} - ${toDay}, ${year}`
+    : `${month} ${fromDay} - ${toMonth} ${toDay}, ${year}`;
+}
+
+function shiftDateString(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  return formatLocalDate(date);
+}
+
 function filterEmployeeOptions(options: Array<{ id: string; label: string }>, searchValue: string) {
   const search = searchValue.trim().toLowerCase();
   if (!search) return options;
@@ -1175,6 +1202,12 @@ function AttendancePage() {
   const dtrTotalPages = Math.max(1, dtrPagination.totalPages);
   const dtrStart = dtrTotal === 0 ? 0 : (dtrPagination.page - 1) * dtrPagination.pageSize + 1;
   const dtrEnd = Math.min(dtrTotal, dtrStart + entries.length - 1);
+  const dtrRangeLabel = formatDtrRangeLabel(from, to);
+  const shiftDateRange = (days: number) => {
+    setFrom((value) => shiftDateString(value, days));
+    setTo((value) => shiftDateString(value, days));
+    setDtrPage(1);
+  };
 
   return (
     <AppShell
@@ -1186,7 +1219,7 @@ function AttendancePage() {
       }
     >
       <div className="space-y-4">
-        <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <section className="hidden rounded-xl border border-border bg-card p-4 shadow-sm md:block">
           <div className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {!isEmployee && (
@@ -1331,22 +1364,58 @@ function AttendancePage() {
           </div>
         </section>
 
-        <Tabs defaultValue="records" className="space-y-4">
-          <TabsList className="bg-muted/50 border border-border w-full justify-start overflow-x-auto h-auto p-1">
-            <TabsTrigger value="records" className="flex items-center gap-2 py-2">
-              <CalendarClock className="h-4 w-4" />
+        <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-3 md:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => shiftDateRange(-1)}
+            className="h-11 w-11 rounded-xl bg-white shadow-sm"
+            aria-label="Previous date range"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-[#334155] shadow-sm">
+            <span className="truncate">{dtrRangeLabel}</span>
+            <CalendarClock className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => shiftDateRange(1)}
+            className="h-11 w-11 rounded-xl bg-white shadow-sm"
+            aria-label="Next date range"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <Tabs defaultValue="records" className="space-y-3 md:space-y-4">
+          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-border bg-muted/50 p-1">
+            <TabsTrigger
+              value="records"
+              className="flex flex-1 items-center gap-2 py-2 md:flex-none"
+            >
+              <CalendarClock className="hidden h-4 w-4 md:block" />
               Daily Time Records
             </TabsTrigger>
             {(canApprove || isEmployee) && (
-              <TabsTrigger value="corrections" className="flex items-center gap-2 py-2">
-                <FileText className="h-4 w-4" />
-                Correction Requests
+              <TabsTrigger
+                value="corrections"
+                className="flex flex-1 items-center gap-2 py-2 md:flex-none"
+              >
+                <FileText className="hidden h-4 w-4 md:block" />
+                Corrections
               </TabsTrigger>
             )}
             {canManage && (
-              <TabsTrigger value="biometrics" className="flex items-center gap-2 py-2">
-                <RadioTower className="h-4 w-4" />
-                Biometric Management
+              <TabsTrigger
+                value="biometrics"
+                className="flex flex-1 items-center gap-2 py-2 md:flex-none"
+              >
+                <RadioTower className="hidden h-4 w-4 md:block" />
+                Biometric
               </TabsTrigger>
             )}
           </TabsList>
@@ -1721,8 +1790,8 @@ function AttendancePage() {
             value="records"
             className="m-0 focus-visible:outline-none focus-visible:ring-0"
           >
-            <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-              <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <section className="overflow-hidden border-0 bg-transparent shadow-none md:rounded-xl md:border md:border-border md:bg-card md:shadow-sm">
+              <div className="hidden flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:flex">
                 <div className="flex items-center gap-2">
                   <CalendarClock className="h-4 w-4 text-blue-700" />
                   <h2 className="text-sm font-semibold text-foreground">Daily Time Records</h2>
@@ -1753,91 +1822,109 @@ function AttendancePage() {
                 </div>
               </div>
 
+              <div className="space-y-2 md:hidden">
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={recordSearch}
+                    onChange={(event) => setRecordSearch(event.target.value)}
+                    placeholder="Search DTR records..."
+                    className="h-11 rounded-xl bg-white pl-10 shadow-sm"
+                  />
+                </div>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {loading
+                    ? "Loading..."
+                    : dtrTotal
+                      ? `Showing ${dtrStart}-${dtrEnd} of ${dtrTotal}`
+                      : "0 record(s)"}
+                </p>
+              </div>
+
               <div className="mobile-record-list">
-                {entries.map((entry) => (
-                  <article key={entry.id} className="mobile-record-card">
-                    <div className="mobile-record-card__header">
+                {entries.map((entry, index) => {
+                  const nameParts = entry.employeeName
+                    .split(/[\s,]+/)
+                    .filter(Boolean)
+                    .slice(0, 2);
+                  const initials =
+                    nameParts
+                      .map((part) => part[0])
+                      .join("")
+                      .toUpperCase() ||
+                    entry.employeeName.slice(0, 2).toUpperCase() ||
+                    "DT";
+                  const avatarClasses = [
+                    "bg-blue-100 text-blue-700",
+                    "bg-indigo-100 text-indigo-700",
+                    "bg-violet-100 text-violet-700",
+                    "bg-emerald-100 text-emerald-700",
+                  ];
+                  const avatarClass = avatarClasses[index % avatarClasses.length];
+
+                  return (
+                    <article
+                      key={entry.id}
+                      className="grid grid-cols-[2.75rem_minmax(0,1fr)_7.8rem_1.25rem] items-center gap-3 rounded-xl border border-border bg-white p-3 shadow-sm"
+                    >
+                      <div
+                        className={`grid h-10 w-10 place-items-center rounded-full text-xs font-extrabold ${avatarClass}`}
+                      >
+                        {initials}
+                      </div>
                       <div className="min-w-0">
-                        <h3 className="mobile-record-card__title">{entry.employeeName}</h3>
-                        <p className="mobile-record-card__meta">
-                          {entry.workDate} - {entry.department || "No office"}
+                        <h3 className="truncate text-sm font-extrabold text-[#111827]">
+                          {entry.employeeName}
+                        </h3>
+                        <p className="truncate text-xs font-medium text-muted-foreground">
+                          {entry.department || "No office"}
                         </p>
+                        <p className="mt-1 text-xs font-medium text-[#53637f]">{entry.workDate}</p>
                       </div>
-                      <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-                        {entry.biometricId || "No ID"}
-                      </span>
-                    </div>
 
-                    {entry.displayLabel ? (
-                      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-center text-sm font-semibold text-blue-800">
-                        {entry.displayLabel}
-                      </div>
-                    ) : (
-                      <div className="mobile-record-card__grid">
-                        <div className="mobile-record-card__field">
-                          <span className="mobile-record-card__label">AM In</span>
-                          <span className="mobile-record-card__value text-emerald-700">
-                            {formatDtrTime(entry.amIn)}
-                          </span>
+                      {entry.displayLabel ? (
+                        <div className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-3 text-center text-xs font-semibold text-blue-800">
+                          {entry.displayLabel}
                         </div>
-                        <div className="mobile-record-card__field">
-                          <span className="mobile-record-card__label">AM Out</span>
-                          <span className="mobile-record-card__value text-emerald-700">
-                            {formatDtrTime(entry.amOut)}
-                          </span>
-                        </div>
-                        <div className="mobile-record-card__field">
-                          <span className="mobile-record-card__label">PM In</span>
-                          <span className="mobile-record-card__value text-emerald-700">
-                            {formatDtrTime(entry.pmIn)}
-                          </span>
-                        </div>
-                        <div className="mobile-record-card__field">
-                          <span className="mobile-record-card__label">PM Out</span>
-                          <span className="mobile-record-card__value text-emerald-700">
-                            {formatDtrTime(entry.pmOut)}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <span className="mobile-record-card__label">Tardiness</span>
-                        <span className="text-sm font-semibold text-destructive">
-                          {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
-                        </span>
-                      </div>
-                      {(canManage || isEmployee) && (
-                        <div className="flex flex-wrap justify-end gap-2">
-                          {isEmployee && (
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => openCorrection(entry, "Times")}
-                              title="Correct Time Entries"
-                              aria-label={`Correct time entries for ${entry.workDate}`}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {canManage && (
-                            <>
-                              <Button variant="outline" size="sm" onClick={() => openEdit(entry)}>
-                                <Pencil className="mr-1.5 h-4 w-4" />
-                                Edit
-                              </Button>
-                              <Button variant="outline" size="sm" onClick={() => remove(entry)}>
-                                <Trash2 className="mr-1.5 h-4 w-4 text-destructive" />
-                                Delete
-                              </Button>
-                            </>
-                          )}
+                      ) : (
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-center">
+                          <DtrMobileTime label="AM In" value={formatDtrTime(entry.amIn)} />
+                          <DtrMobileTime label="AM Out" value={formatDtrTime(entry.amOut)} />
+                          <DtrMobileTime label="PM In" value={formatDtrTime(entry.pmIn)} />
+                          <DtrMobileTime
+                            label="Tardiness"
+                            value={entry.lateMinutes ? `${entry.lateMinutes}m` : "-"}
+                            danger={Boolean(entry.lateMinutes)}
+                          />
                         </div>
                       )}
-                    </div>
-                  </article>
-                ))}
+
+                      {isEmployee ? (
+                        <button
+                          type="button"
+                          onClick={() => openCorrection(entry, "Times")}
+                          title="Correct Time Entries"
+                          aria-label={`Correct time entries for ${entry.workDate}`}
+                          className="grid h-8 w-5 place-items-center text-[#64748b]"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      ) : canManage ? (
+                        <button
+                          type="button"
+                          onClick={() => openEdit(entry)}
+                          title="Edit DTR"
+                          aria-label={`Edit DTR for ${entry.workDate}`}
+                          className="grid h-8 w-5 place-items-center text-[#64748b]"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-[#64748b]" />
+                      )}
+                    </article>
+                  );
+                })}
                 {!entries.length && !loading && (
                   <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
                     {debouncedRecordSearch
@@ -1845,6 +1932,18 @@ function AttendancePage() {
                       : "No DTR records found for this filter."}
                   </div>
                 )}
+              </div>
+
+              <div className="pb-1 md:hidden">
+                <Button
+                  type="button"
+                  onClick={canManage ? refresh : load}
+                  disabled={busy || loading}
+                  className="h-12 w-full rounded-xl bg-[#0b57d0] text-sm font-bold text-white shadow-[0_10px_18px_rgba(11,87,208,0.18)] hover:bg-[#0647ad]"
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Refresh DTR
+                </Button>
               </div>
 
               <div className="mobile-desktop-table overflow-x-auto">
@@ -1968,7 +2067,7 @@ function AttendancePage() {
                   </tbody>
                 </table>
               </div>
-              <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="hidden flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:flex">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span>
                     Page {dtrPagination.page} of {dtrTotalPages}
@@ -3229,6 +3328,31 @@ function RealtimeStat({ label, value }: { label: string; value: number }) {
     <div className="rounded-md border border-border bg-background px-3 py-2">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="mt-1 text-lg font-semibold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function DtrMobileTime({
+  label,
+  value,
+  danger = false,
+}: {
+  label: string;
+  value: string;
+  danger?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <div
+        className={`truncate text-[0.72rem] font-extrabold leading-4 ${
+          danger ? "text-red-600" : "text-emerald-600"
+        }`}
+      >
+        {value}
+      </div>
+      <div className="mt-0.5 text-[0.55rem] font-bold uppercase leading-3 text-[#64748b]">
+        {label}
+      </div>
     </div>
   );
 }

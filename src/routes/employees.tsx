@@ -264,7 +264,10 @@ function EmployeesPage() {
   };
 
   return (
-    <AppShell title="" subtitle="">
+    <AppShell
+      title="Employee Management"
+      subtitle="Manage employee records, employment status, and workforce information."
+    >
       {error && (
         <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
@@ -273,7 +276,7 @@ function EmployeesPage() {
 
       <div className="flex flex-col space-y-6 pb-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+        <div className="hidden flex-col sm:flex-row sm:items-center sm:justify-between md:flex">
           <div>
             <h1 className="text-3xl font-bold text-foreground tracking-tight">
               Employee Management
@@ -299,7 +302,7 @@ function EmployeesPage() {
         </div>
 
         {/* Top Stat Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="hidden grid-cols-1 gap-4 md:grid md:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title="Total Employees"
             value={dashboardData === null ? "..." : totalEmployees}
@@ -347,8 +350,8 @@ function EmployeesPage() {
 
         <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm flex flex-col">
           {/* Filters */}
-          <div className="flex flex-col lg:flex-row gap-3 p-4 border-b border-border/50 items-center">
-            <div className="relative w-full lg:max-w-md">
+          <div className="grid grid-cols-3 items-center gap-2 border-b border-border/50 p-4 lg:flex lg:flex-row lg:gap-3">
+            <div className="relative order-2 col-span-3 w-full lg:order-none lg:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
               <Input
                 placeholder="Search by name, ID, or email..."
@@ -372,7 +375,7 @@ function EmployeesPage() {
                 });
               }}
             >
-              <SelectTrigger className="w-full lg:w-[220px] bg-card text-card-foreground">
+              <SelectTrigger className="order-1 w-full bg-card text-card-foreground lg:w-[220px]">
                 <SelectValue placeholder="All Departments" />
               </SelectTrigger>
               <SelectContent>
@@ -409,7 +412,7 @@ function EmployeesPage() {
                 setPage(1);
               }}
             >
-              <SelectTrigger className="w-full lg:w-[200px] bg-card text-card-foreground">
+              <SelectTrigger className="order-1 w-full bg-card text-card-foreground lg:w-[200px]">
                 <SelectValue placeholder="All Employment Types" />
               </SelectTrigger>
               <SelectContent>
@@ -429,7 +432,7 @@ function EmployeesPage() {
                 setPage(1);
               }}
             >
-              <SelectTrigger className="w-full lg:w-[160px] bg-card text-card-foreground">
+              <SelectTrigger className="hidden w-full bg-card text-card-foreground lg:flex lg:w-[160px]">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
@@ -446,7 +449,7 @@ function EmployeesPage() {
                 setPage(1);
               }}
             >
-              <SelectTrigger className="w-full lg:w-[150px] bg-card text-card-foreground">
+              <SelectTrigger className="hidden w-full bg-card text-card-foreground lg:flex lg:w-[150px]">
                 <SelectValue placeholder="All Gender" />
               </SelectTrigger>
               <SelectContent>
@@ -459,7 +462,7 @@ function EmployeesPage() {
               </SelectContent>
             </Select>
 
-            <div className="flex items-center gap-2 ml-auto mt-3 lg:mt-0 w-full lg:w-auto">
+            <div className="order-1 col-span-1 flex w-full items-center gap-2 lg:order-none lg:ml-auto lg:mt-0 lg:w-auto">
               <Button
                 variant={showAdvancedFilters ? "default" : "outline"}
                 className="flex-1 lg:flex-none"

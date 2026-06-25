@@ -190,7 +190,7 @@ function Dashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-4">
           <StatCard
             title="Total Employees"
             value={loading ? "..." : totalEmployees}
@@ -236,8 +236,8 @@ function Dashboard() {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <section className="flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-5">
+        <div className="grid grid-cols-2 gap-3 md:gap-6 lg:grid-cols-12">
+          <section className="col-span-2 flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-5">
             <div className="mb-6">
               <h3 className="text-base font-semibold text-foreground">Workforce Age Profile</h3>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -263,13 +263,13 @@ function Dashboard() {
             </div>
           </section>
 
-          <section className="flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-3">
+          <section className="flex h-full flex-col rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-3">
             <div>
               <h3 className="text-base font-semibold text-foreground">Employment Type Mix</h3>
               <p className="mt-1 text-xs text-muted-foreground">Distribution by employment type.</p>
             </div>
             <div className="mt-6 flex flex-1 flex-col items-center justify-center">
-              <div className="relative h-40 w-40">
+              <div className="relative h-28 w-28 md:h-40 md:w-40">
                 <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
                   <circle
                     cx="50"
@@ -305,7 +305,7 @@ function Dashboard() {
                   <span className="text-xs text-muted-foreground">Total</span>
                 </div>
               </div>
-              <div className="mt-8 w-full space-y-3">
+              <div className="mt-5 w-full space-y-3 md:mt-8">
                 <LegendItem
                   color="bg-blue-600"
                   label="Permanent / Regular"
@@ -328,7 +328,7 @@ function Dashboard() {
             </div>
           </section>
 
-          <section className="flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-4">
+          <section className="flex h-full flex-col rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-4">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Employees by Division</h3>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -362,8 +362,8 @@ function Dashboard() {
           </section>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <section className="flex flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-4">
+        <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-12">
+          <section className="hidden flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm md:flex lg:col-span-4">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Gender Distribution</h3>
               <p className="mt-1 text-xs text-muted-foreground">Workforce by gender.</p>
@@ -414,11 +414,11 @@ function Dashboard() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-8">
+          <section className="rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-8">
             <div className="mb-5">
               <h3 className="text-base font-semibold text-foreground">Quick Links</h3>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-3 xl:grid-cols-5">
               {quickLinks.map((link) => (
                 <QuickLink key={`${link.to}-${link.label}`} {...link} />
               ))}
@@ -473,11 +473,13 @@ function StatCard({
   trend: "up" | "down";
 }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+    <div className="relative min-h-[6.35rem] overflow-hidden rounded-xl border border-border bg-card p-3 text-card-foreground shadow-sm md:p-4">
       <div className="mb-2 flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold text-foreground/80">{title}</p>
-          <h2 className="mt-1 text-2xl font-bold text-foreground">{value}</h2>
+        <div className="min-w-0">
+          <p className="line-clamp-2 text-[0.68rem] font-semibold leading-4 text-foreground/80 md:text-xs">
+            {title}
+          </p>
+          <h2 className="mt-1 text-xl font-bold text-foreground md:text-2xl">{value}</h2>
         </div>
         <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
       </div>
@@ -485,7 +487,7 @@ function StatCard({
         {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
         <span className={subtextColor}>{subtext}</span>
       </div>
-      <div className="absolute bottom-2 right-2 z-0 h-8 w-24 opacity-50">
+      <div className="absolute bottom-2 right-2 z-0 h-7 w-20 opacity-50 md:h-8 md:w-24">
         <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
           {trend === "up" ? (
             <path

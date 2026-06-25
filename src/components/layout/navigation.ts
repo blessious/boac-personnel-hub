@@ -42,10 +42,10 @@ export type AppNavSection = {
 };
 
 export const APP_NAV: AppNavItem[] = [
-  { to: "/", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard, exact: true },
+  { to: "/", label: "Dashboard", shortLabel: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/my-profile", label: "My Profile", shortLabel: "Profile", icon: UserCircle },
-  { to: "/employees", label: "Employee Management", shortLabel: "People", icon: Users },
-  { to: "/attendance", label: "Attendance", shortLabel: "DTR", icon: CalendarDays },
+  { to: "/employees", label: "Employee Management", shortLabel: "Employees", icon: Users },
+  { to: "/attendance", label: "Attendance", shortLabel: "Attendance", icon: CalendarDays },
   { to: "/plantilla", label: "Plantilla & PSIPOP", shortLabel: "Plantilla", icon: Landmark },
   { to: "/movements", label: "Employee Movements", shortLabel: "Movements", icon: ArrowRightLeft },
   { to: "/service-records", label: "Service Records", shortLabel: "Records", icon: FileClock },

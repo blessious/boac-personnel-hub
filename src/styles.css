@@ -458,13 +458,7 @@
   }
 
   body {
-    background:
-      linear-gradient(
-        180deg,
-        color-mix(in oklab, var(--color-primary) 7%, transparent),
-        transparent 14rem
-      ),
-      var(--color-background);
+    background: #f8fbff;
   }
 
   body[data-device="mobile"] {
@@ -492,8 +486,23 @@
     min-width: 0;
   }
 
+  .mobile-app-header {
+    height: calc(5.25rem + env(safe-area-inset-top));
+    border-bottom: 1px solid color-mix(in oklab, var(--color-border) 72%, transparent);
+    background: rgb(255 255 255 / 92%);
+    box-shadow: 0 10px 28px rgb(30 60 110 / 7%);
+  }
+
+  .mobile-app-header h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    color: #111827;
+  }
+
   .mobile-app-content {
-    padding-inline: 0.75rem;
+    padding-inline: 0.875rem;
+    padding-top: 1rem;
+    background: #f8fbff;
   }
 
   .mobile-app-content .space-y-6 {
@@ -505,21 +514,37 @@
     line-height: 2rem;
   }
 
+  .mobile-app-content input,
+  .mobile-app-content button,
+  .mobile-app-content [role="combobox"] {
+    border-radius: 0.875rem;
+  }
+
+  .mobile-app-content input,
+  .mobile-app-content [role="combobox"] {
+    min-height: 2.75rem;
+    background: #fff;
+    box-shadow: 0 8px 20px rgb(15 35 80 / 5%);
+  }
+
   .mobile-app-content .rounded-xl,
-  .mobile-app-content .rounded-lg {
-    border-radius: 1rem;
+  .mobile-app-content .rounded-lg,
+  .mobile-app-content section.rounded-xl,
+  .mobile-app-content .bg-card.text-card-foreground.rounded-xl {
+    border-radius: 1.125rem;
   }
 
   .mobile-app-content section,
   .mobile-app-content .bg-card {
-    box-shadow: none;
+    border-color: color-mix(in oklab, var(--color-border) 75%, transparent);
+    box-shadow: 0 10px 28px rgb(15 35 80 / 6%);
   }
 
   .mobile-app-content > div > .rounded-xl,
   .mobile-app-content section.rounded-xl,
   .mobile-app-content .bg-card.text-card-foreground.rounded-xl {
-    margin-inline: -0.25rem;
-    border-inline-width: 0;
+    margin-inline: 0;
+    border-inline-width: 1px;
     border-radius: 1.125rem;
   }
 
@@ -562,6 +587,19 @@
     white-space: nowrap;
   }
 
+  .mobile-app-content [role="tablist"] {
+    border-radius: 1rem;
+    background: #f1f5fb;
+    padding: 0.25rem;
+  }
+
+  .mobile-app-content [role="tab"] {
+    min-height: 2.25rem;
+    border-radius: 0.8rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
   .mobile-app-content .overflow-x-auto {
     margin-inline: -0.25rem;
     padding-inline: 0.25rem;
@@ -571,6 +609,59 @@
 
   .mobile-desktop-table {
     display: none;
+  }
+
+  .mobile-record-list {
+    gap: 0.8rem;
+    padding: 0.75rem 0;
+  }
+
+  .mobile-record-card {
+    border-radius: 1rem;
+    border-color: color-mix(in oklab, var(--color-border) 74%, transparent);
+    background: #fff;
+    box-shadow: 0 10px 28px rgb(15 35 80 / 6%);
+  }
+
+  .mobile-record-card__field {
+    border-radius: 0.875rem;
+    background: #f7faff;
+  }
+
+  .mobile-bottom-nav {
+    border-top: 1px solid color-mix(in oklab, var(--color-border) 72%, transparent);
+    background: rgb(255 255 255 / 94%);
+    box-shadow: 0 -12px 32px rgb(15 35 80 / 10%);
+    backdrop-filter: blur(14px);
+  }
+
+  .mobile-bottom-nav__rail {
+    min-height: 4.8rem;
+    padding: 0.45rem 0.6rem 0.35rem;
+  }
+
+  .mobile-bottom-nav__highlight {
+    top: 0.5rem;
+    bottom: 0.45rem;
+    left: 0.6rem;
+    width: calc((100% - 1.2rem) / var(--item-count));
+    border-radius: 1rem;
+    background: color-mix(in oklab, var(--color-primary) 9%, transparent);
+  }
+
+  .mobile-bottom-nav__item {
+    min-height: 3.75rem;
+    border-radius: 1rem;
+    color: #53637f;
+  }
+
+  .mobile-bottom-nav__item--active {
+    color: #0b57d0;
+  }
+
+  .mobile-bottom-nav__label {
+    font-size: 0.65rem;
+    font-weight: 700;
   }
 }
 
