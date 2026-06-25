@@ -16,6 +16,27 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+REM Prepare first-time local files that run.bat depends on indirectly
+if not exist "server\.env.local" (
+    echo [INFO] Local environment file is missing. Running setup.bat first...
+    call setup.bat
+    if %errorlevel% neq 0 (
+        echo [ERROR] setup.bat failed. Fix setup first, then run this again.
+        pause
+        exit /b 1
+    )
+)
+
+if not exist ".venv\Scripts\python.exe" (
+    echo [INFO] Python virtual environment is missing. Running setup.bat first...
+    call setup.bat
+    if %errorlevel% neq 0 (
+        echo [ERROR] setup.bat failed. Fix setup first, then run this again.
+        pause
+        exit /b 1
+    )
+)
+
 REM Install dependencies if node_modules doesn't exist
 if not exist "node_modules\" (
     echo [INFO] Installing dependencies...

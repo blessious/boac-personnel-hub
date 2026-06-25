@@ -6,17 +6,12 @@ REM Run this once before using run.bat.
 
 cd /d "%~dp0"
 
-set "SETUP_FAILED=0"
+set "SETUP_LOG=%CD%\setup.log"
 set "PYTHON_CMD="
 set "VENV_PYTHON=%CD%\.venv\Scripts\python.exe"
 
-call :ensure_node
-if errorlevel 1 set "SETUP_FAILED=1"
-
-call :ensure_python
-if errorlevel 1 set "SETUP_FAILED=1"
-
-if "%SETUP_FAILED%"=="1" goto :failed_prereq
+echo [INFO] Setup started at %DATE% %TIME% > "%SETUP_LOG%"
+echo [INFO] Working directory: %CD% >> "%SETUP_LOG%"
 
 echo.
 echo ========================================
@@ -24,27 +19,110 @@ echo   HRPMIS - First-time Setup
 echo ========================================
 echo.
 
+echo [INFO] Checking Node.js/npm...
+where npm >nul 2>nul
+if errorlevel 1 (
+    echo [WARN] npm was not found in PATH.
+    where winget >nul 2>nul
+    if errorlevel 1 (
+        echo [ERROR] Install Node.js LTS from https://nodejs.org, then run setup.bat again.
+        goto :failed
+    )
+
+    echo [INFO] Installing Node.js LTS with winget...
+    winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --accept-source-agreements >> "%SETUP_LOG%" 2>&1
+    if errorlevel 1 (
+        echo [ERROR] Node.js installation failed. Install Node.js LTS manually, then run setup.bat again.
+        goto :failed
+    )
+
+    for /f "tokens=2,*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "MACHINE_PATH=%%B"
+    for /f "tokens=2,*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USER_PATH=%%B"
+    set "PATH=%MACHINE_PATH%;%USER_PATH%"
+)
+
+where npm >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] npm is still not available. Close this window, open a new one, and run setup.bat again.
+    goto :failed
+)
+echo [INFO] npm found.
+node --version
+call npm --version
+>> "%SETUP_LOG%" node --version
+call npm --version >> "%SETUP_LOG%" 2>&1
+
+echo.
+echo [INFO] Checking Python...
+where py >nul 2>nul
+if not errorlevel 1 (
+    set "PYTHON_CMD=py -3"
+) else (
+    where python >nul 2>nul
+    if not errorlevel 1 set "PYTHON_CMD=python"
+)
+
+if "%PYTHON_CMD%"=="" (
+    echo [WARN] Python was not found in PATH.
+    where winget >nul 2>nul
+    if errorlevel 1 (
+        echo [ERROR] Install Python 3 from https://www.python.org/downloads/, then run setup.bat again.
+        goto :failed
+    )
+
+    echo [INFO] Installing Python 3.12 with winget...
+    winget install --id Python.Python.3.12 --exact --accept-package-agreements --accept-source-agreements >> "%SETUP_LOG%" 2>&1
+    if errorlevel 1 (
+        echo [ERROR] Python installation failed. Install Python 3 manually, then run setup.bat again.
+        goto :failed
+    )
+
+    for /f "tokens=2,*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "MACHINE_PATH=%%B"
+    for /f "tokens=2,*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USER_PATH=%%B"
+    set "PATH=%MACHINE_PATH%;%USER_PATH%"
+
+    where py >nul 2>nul
+    if not errorlevel 1 (
+        set "PYTHON_CMD=py -3"
+    ) else (
+        where python >nul 2>nul
+        if not errorlevel 1 set "PYTHON_CMD=python"
+    )
+)
+
+if "%PYTHON_CMD%"=="" (
+    echo [ERROR] Python is still not available. Close this window, open a new one, and run setup.bat again.
+    goto :failed
+)
+echo [INFO] Python found.
+call %PYTHON_CMD% --version
+call %PYTHON_CMD% --version >> "%SETUP_LOG%" 2>&1
+
+echo.
 echo [INFO] Installing Node.js dependencies...
+>> "%SETUP_LOG%" echo [INFO] Installing Node.js dependencies.
 if exist "package-lock.json" (
-    call npm ci
+    call npm ci >> "%SETUP_LOG%" 2>&1
     if errorlevel 1 (
         echo [WARN] npm ci failed. Trying npm install instead...
-        call npm install
+        >> "%SETUP_LOG%" echo [WARN] npm ci failed. Trying npm install instead.
+        call npm install >> "%SETUP_LOG%" 2>&1
     )
 ) else (
-    call npm install
+    call npm install >> "%SETUP_LOG%" 2>&1
 )
 if errorlevel 1 (
-    echo [ERROR] Failed to install Node.js dependencies.
+    echo [ERROR] Failed to install Node.js dependencies. See setup.log for details.
     goto :failed
 )
 
 echo.
 echo [INFO] Creating local Python virtual environment...
 if not exist ".venv\Scripts\python.exe" (
-    call %PYTHON_CMD% -m venv .venv
+    >> "%SETUP_LOG%" echo [INFO] Creating local Python virtual environment with %PYTHON_CMD%.
+    call %PYTHON_CMD% -m venv .venv >> "%SETUP_LOG%" 2>&1
     if errorlevel 1 (
-        echo [ERROR] Failed to create Python virtual environment.
+        echo [ERROR] Failed to create Python virtual environment. See setup.log for details.
         goto :failed
     )
 ) else (
@@ -53,16 +131,27 @@ if not exist ".venv\Scripts\python.exe" (
 
 echo.
 echo [INFO] Installing Python dependencies...
-call "%VENV_PYTHON%" -m pip install --upgrade pip
+>> "%SETUP_LOG%" echo [INFO] Installing Python dependencies.
+call "%VENV_PYTHON%" -m pip install --upgrade pip >> "%SETUP_LOG%" 2>&1
 if errorlevel 1 (
-    echo [ERROR] Failed to update pip.
-    goto :failed
+    echo [WARN] pip update failed with the default SSL settings. Retrying with trusted PyPI hosts...
+    >> "%SETUP_LOG%" echo [WARN] pip update failed with default SSL settings. Retrying with trusted PyPI hosts.
+    call "%VENV_PYTHON%" -m pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org >> "%SETUP_LOG%" 2>&1
+    if errorlevel 1 (
+        echo [ERROR] Failed to update pip. See setup.log for details.
+        goto :failed
+    )
 )
 
-call "%VENV_PYTHON%" -m pip install openpyxl reportlab pypdf pyzk
+call "%VENV_PYTHON%" -m pip install openpyxl reportlab pypdf pyzk >> "%SETUP_LOG%" 2>&1
 if errorlevel 1 (
-    echo [ERROR] Failed to install Python dependencies.
-    goto :failed
+    echo [WARN] Python dependency install failed with the default SSL settings. Retrying with trusted PyPI hosts...
+    >> "%SETUP_LOG%" echo [WARN] Python dependency install failed with default SSL settings. Retrying with trusted PyPI hosts.
+    call "%VENV_PYTHON%" -m pip install openpyxl reportlab pypdf pyzk --trusted-host pypi.org --trusted-host files.pythonhosted.org >> "%SETUP_LOG%" 2>&1
+    if errorlevel 1 (
+        echo [ERROR] Failed to install Python dependencies. See setup.log for details.
+        goto :failed
+    )
 )
 
 echo.
@@ -96,7 +185,34 @@ if errorlevel 1 (
     echo [WARN] If your database password is not blank, update server\.env.local.
 ) else (
     echo [INFO] MySQL client found.
-    call :offer_database_import
+    echo.
+    set /p IMPORT_DB="Import latest database\hris_db.sql into local MySQL now? (Y/N): "
+    if /i "!IMPORT_DB!"=="Y" (
+        set "DB_USER=root"
+        set "DB_NAME=hris_db"
+        set /p DB_USER="MySQL user [root]: "
+        if "!DB_USER!"=="" set "DB_USER=root"
+        set /p DB_NAME="Database name [hris_db]: "
+        if "!DB_NAME!"=="" set "DB_NAME=hris_db"
+
+        echo.
+        echo [INFO] Enter your MySQL password when prompted. Press Enter if it is blank.
+        mysql -u "!DB_USER!" -p -e "CREATE DATABASE IF NOT EXISTS `!DB_NAME!` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+        if errorlevel 1 (
+            echo [WARN] Could not create database. Check MySQL credentials and server status.
+        ) else (
+            if exist "latest database\hris_db.sql" (
+                mysql -u "!DB_USER!" -p "!DB_NAME!" < "latest database\hris_db.sql"
+                if errorlevel 1 (
+                    echo [WARN] Database import failed.
+                ) else (
+                    echo [INFO] Database import completed.
+                )
+            ) else (
+                echo [WARN] latest database\hris_db.sql was not found.
+            )
+        )
+    )
 )
 
 echo.
@@ -113,134 +229,15 @@ echo.
 echo ========================================
 echo   Setup complete
 echo ========================================
+echo [INFO] Setup completed successfully. Details saved to setup.log.
 echo You can now run run.bat.
 echo.
 pause
 exit /b 0
 
-:ensure_node
-where npm >nul 2>nul
-if not errorlevel 1 (
-    echo [INFO] npm found.
-    node --version
-    npm --version
-    exit /b 0
-)
-
-echo [WARN] npm was not found in PATH.
-where winget >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] Install Node.js LTS from https://nodejs.org, then run setup.bat again.
-    exit /b 1
-)
-
-echo [INFO] Installing Node.js LTS with winget...
-winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --accept-source-agreements
-if errorlevel 1 (
-    echo [ERROR] Node.js installation failed. Install Node.js LTS manually, then run setup.bat again.
-    exit /b 1
-)
-
-call :refresh_path
-where npm >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] npm is still not available. Close this window, open a new one, and run setup.bat again.
-    exit /b 1
-)
-exit /b 0
-
-:ensure_python
-where py >nul 2>nul
-if not errorlevel 1 (
-    set "PYTHON_CMD=py -3"
-    echo [INFO] Python found.
-    call %PYTHON_CMD% --version
-    exit /b 0
-)
-
-where python >nul 2>nul
-if not errorlevel 1 (
-    set "PYTHON_CMD=python"
-    echo [INFO] Python found.
-    call %PYTHON_CMD% --version
-    exit /b 0
-)
-
-echo [WARN] Python was not found in PATH.
-where winget >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] Install Python 3 from https://www.python.org/downloads/, then run setup.bat again.
-    exit /b 1
-)
-
-echo [INFO] Installing Python 3.12 with winget...
-winget install --id Python.Python.3.12 --exact --accept-package-agreements --accept-source-agreements
-if errorlevel 1 (
-    echo [ERROR] Python installation failed. Install Python 3 manually, then run setup.bat again.
-    exit /b 1
-)
-
-call :refresh_path
-where py >nul 2>nul
-if not errorlevel 1 (
-    set "PYTHON_CMD=py -3"
-    exit /b 0
-)
-where python >nul 2>nul
-if not errorlevel 1 (
-    set "PYTHON_CMD=python"
-    exit /b 0
-)
-
-echo [ERROR] Python is still not available. Close this window, open a new one, and run setup.bat again.
-exit /b 1
-
-:offer_database_import
-echo.
-set /p IMPORT_DB="Import latest database\hris_db.sql into local MySQL now? (Y/N): "
-if /i not "%IMPORT_DB%"=="Y" exit /b 0
-
-set "DB_USER=root"
-set "DB_NAME=hris_db"
-set /p DB_USER="MySQL user [root]: "
-if "%DB_USER%"=="" set "DB_USER=root"
-set /p DB_NAME="Database name [hris_db]: "
-if "%DB_NAME%"=="" set "DB_NAME=hris_db"
-
-echo.
-echo [INFO] Enter your MySQL password when prompted. Press Enter if it is blank.
-mysql -u "%DB_USER%" -p -e "CREATE DATABASE IF NOT EXISTS `%DB_NAME%` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-if errorlevel 1 (
-    echo [WARN] Could not create database. Check MySQL credentials and server status.
-    exit /b 0
-)
-
-if exist "latest database\hris_db.sql" (
-    mysql -u "%DB_USER%" -p "%DB_NAME%" < "latest database\hris_db.sql"
-    if errorlevel 1 (
-        echo [WARN] Database import failed.
-    ) else (
-        echo [INFO] Database import completed.
-    )
-) else (
-    echo [WARN] latest database\hris_db.sql was not found.
-)
-exit /b 0
-
-:refresh_path
-for /f "tokens=2,*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "MACHINE_PATH=%%B"
-for /f "tokens=2,*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USER_PATH=%%B"
-set "PATH=%MACHINE_PATH%;%USER_PATH%"
-exit /b 0
-
-:failed_prereq
-echo.
-echo [ERROR] Setup cannot continue until the missing prerequisites are installed.
-pause
-exit /b 1
-
 :failed
 echo.
 echo [ERROR] Setup failed. Review the message above, then run setup.bat again.
+echo [ERROR] Details saved to setup.log.
 pause
 exit /b 1
