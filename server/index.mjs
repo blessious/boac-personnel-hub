@@ -2827,11 +2827,21 @@ async function bootstrapAdministrator() {
   const [[{ count }]] = await pool.query(`SELECT COUNT(*) AS count FROM users`);
   if (Number(count) > 0) return;
 
-  const username = String(process.env.HRIS_BOOTSTRAP_ADMIN_USERNAME || "")
+  let username = String(process.env.HRIS_BOOTSTRAP_ADMIN_USERNAME || "")
     .trim()
     .toLowerCase();
-  const password = String(process.env.HRIS_BOOTSTRAP_ADMIN_PASSWORD || "");
+  let password = String(process.env.HRIS_BOOTSTRAP_ADMIN_PASSWORD || "");
   const name = String(process.env.HRIS_BOOTSTRAP_ADMIN_NAME || "System Administrator").trim();
+  const generatedDevPassword =
+    !username &&
+    !password &&
+    process.env.NODE_ENV !== "production" &&
+    process.env.HRIS_DEV_AUTO_BOOTSTRAP !== "0";
+
+  if (generatedDevPassword) {
+    username = "admin";
+    password = crypto.randomBytes(12).toString("base64url");
+  }
 
   if (!username || !password) {
     throw new Error(
@@ -2853,6 +2863,17 @@ async function bootstrapAdministrator() {
     { username, passwordHash, name },
   );
   await recordPasswordHistory(result.insertId, passwordHash);
+
+  if (generatedDevPassword) {
+    console.log("");
+    console.log("============================================================");
+    console.log("  HRIS first-run development admin created");
+    console.log(`  Username: ${username}`);
+    console.log(`  Temporary password: ${password}`);
+    console.log("  Change this password after signing in.");
+    console.log("============================================================");
+    console.log("");
+  }
 }
 
 async function recordPasswordHistory(userId, passwordHash) {
