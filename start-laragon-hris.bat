@@ -5,7 +5,7 @@ cd /d "%~dp0"
 
 if not exist "server\exports" mkdir "server\exports"
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-laragon-hris.ps1" -ProjectRoot "%~dp0" 1>> "%~dp0server\exports\start-laragon-hris.log" 2>> "%~dp0server\exports\start-laragon-hris.err.log"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-laragon-hris.ps1" -ProjectRoot "%CD%" 1>> "%~dp0server\exports\start-laragon-hris.log" 2>> "%~dp0server\exports\start-laragon-hris.err.log"
 
 if errorlevel 1 (
     echo.
