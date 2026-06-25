@@ -12,7 +12,7 @@ import { initializeMovementSchema, createMovementHandlers } from "./movements.mj
 import { initializeServiceRecordSchema, createServiceRecordHandlers } from "./service-records.mjs";
 
 function loadServerEnv() {
-  const candidates = [".env.local", ".env"];
+  const candidates = [".env.local", ".env", ".env.defaults"];
   for (const fileName of candidates) {
     try {
       const envPath = path.join(process.cwd(), "server", fileName);
