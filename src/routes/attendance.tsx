@@ -2225,96 +2225,101 @@ function AttendancePage() {
       </div>
 
       <Dialog open={showDtrDialog} onOpenChange={setShowDtrDialog}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="grid max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-h-[90vh] sm:max-w-2xl">
+          <DialogHeader className="border-b border-border px-4 py-4 pr-12 text-left">
             <DialogTitle>{editing ? "Edit DTR" : "Add DTR"}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1.5 md:col-span-2">
-              <Label>Employee</Label>
-              <Select
-                value={form.employeeDbId || ""}
-                onValueChange={(value) =>
-                  setForm((current) => ({ ...current, employeeDbId: value }))
-                }
-                disabled={!!editing}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select employee" />
-                </SelectTrigger>
-                <SelectContent>
-                  <div className="sticky top-0 z-10 bg-popover p-2">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                      <Input
-                        value={formEmployeeSearch}
-                        onChange={(event) => setFormEmployeeSearch(event.target.value)}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        placeholder="Search employees..."
-                        className="h-8 pl-9"
-                      />
+          <div className="min-h-0 overflow-y-auto px-4 py-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1.5">
+                <Label>Employee</Label>
+                <Select
+                  value={form.employeeDbId || ""}
+                  onValueChange={(value) =>
+                    setForm((current) => ({ ...current, employeeDbId: value }))
+                  }
+                  disabled={!!editing}
+                >
+                  <SelectTrigger className="min-h-11">
+                    <SelectValue placeholder="Select employee" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <div className="sticky top-0 z-10 bg-popover p-2">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                        <Input
+                          value={formEmployeeSearch}
+                          onChange={(event) => setFormEmployeeSearch(event.target.value)}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          placeholder="Search employees..."
+                          className="h-8 pl-9"
+                        />
+                      </div>
                     </div>
-                  </div>
-                  {filteredFormEmployeeOptions.map((employee) => (
-                    <SelectItem key={employee.id} value={employee.id}>
-                      {employee.label}
-                    </SelectItem>
-                  ))}
-                  {filteredFormEmployeeOptions.length === 0 && (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">
-                      No employees found.
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <Field
-              label="Date"
-              type="date"
-              value={form.workDate}
-              onChange={(workDate) => setForm({ ...form, workDate })}
-            />
-            <Field
-              label="AM In"
-              type="time"
-              value={form.amIn || ""}
-              onChange={(amIn) => setForm({ ...form, amIn })}
-            />
-            <Field
-              label="AM Out"
-              type="time"
-              value={form.amOut || ""}
-              onChange={(amOut) => setForm({ ...form, amOut })}
-            />
-            <Field
-              label="PM In"
-              type="time"
-              value={form.pmIn || ""}
-              onChange={(pmIn) => setForm({ ...form, pmIn })}
-            />
-            <Field
-              label="PM Out"
-              type="time"
-              value={form.pmOut || ""}
-              onChange={(pmOut) => setForm({ ...form, pmOut })}
-            />
-            <div className="space-y-1.5 md:col-span-2">
-              <Label>Remarks</Label>
-              <Input
-                value={form.remarks || ""}
-                onChange={(event) => setForm({ ...form, remarks: event.target.value })}
-                placeholder="Optional note"
+                    {filteredFormEmployeeOptions.map((employee) => (
+                      <SelectItem key={employee.id} value={employee.id}>
+                        {employee.label}
+                      </SelectItem>
+                    ))}
+                    {filteredFormEmployeeOptions.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No employees found.
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-2">
+                <Field
+                  label="Date"
+                  type="date"
+                  value={form.workDate}
+                  onChange={(workDate) => setForm({ ...form, workDate })}
+                />
+              </div>
+              <Field
+                label="AM In"
+                type="time"
+                value={form.amIn || ""}
+                onChange={(amIn) => setForm({ ...form, amIn })}
               />
+              <Field
+                label="AM Out"
+                type="time"
+                value={form.amOut || ""}
+                onChange={(amOut) => setForm({ ...form, amOut })}
+              />
+              <Field
+                label="PM In"
+                type="time"
+                value={form.pmIn || ""}
+                onChange={(pmIn) => setForm({ ...form, pmIn })}
+              />
+              <Field
+                label="PM Out"
+                type="time"
+                value={form.pmOut || ""}
+                onChange={(pmOut) => setForm({ ...form, pmOut })}
+              />
+              <div className="col-span-2 space-y-1.5">
+                <Label>Remarks</Label>
+                <Input
+                  value={form.remarks || ""}
+                  onChange={(event) => setForm({ ...form, remarks: event.target.value })}
+                  placeholder="Optional note"
+                  className="min-h-11"
+                />
+              </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDtrDialog(false)}>
+          <DialogFooter className="grid grid-cols-2 gap-2 border-t border-border bg-background px-4 py-3 sm:flex sm:justify-end sm:space-x-2">
+            <Button variant="outline" onClick={() => setShowDtrDialog(false)} className="w-full">
               Cancel
             </Button>
             <Button
               onClick={saveDtr}
               disabled={busy}
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="w-full bg-blue-600 text-white hover:bg-blue-700"
             >
               Save DTR
             </Button>
