@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BriefcaseBusiness, History, Plus, Search, Trash2 } from "lucide-react";
+import { Activity, Archive, BriefcaseBusiness, History, Plus, Search, Trash2, UserCheck, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -181,14 +182,56 @@ function PlantillaPage() {
       subtitle="Authorized positions, occupancy, vacancies, and movement history"
     >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {Object.entries(summary).map(([k, v]) => (
-          <Card key={k}>
-            <CardHeader className="pb-1">
-              <CardTitle className="text-xs uppercase text-muted-foreground">{k}</CardTitle>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">{v}</CardContent>
-          </Card>
-        ))}
+        <StatCard
+          title="Authorized"
+          value={summary.authorized || 0}
+          subtext="Total positions"
+          subtextColor="text-muted-foreground"
+          icon={<BriefcaseBusiness className="h-5 w-5 text-blue-600" />}
+          iconBg="bg-blue-50 dark:bg-blue-500/15"
+          chartColor="stroke-blue-500"
+          trend="up"
+        />
+        <StatCard
+          title="Active"
+          value={summary.active || 0}
+          subtext="Currently active"
+          subtextColor="text-muted-foreground"
+          icon={<Activity className="h-5 w-5 text-emerald-600" />}
+          iconBg="bg-emerald-50 dark:bg-emerald-500/15"
+          chartColor="stroke-emerald-500"
+          trend="up"
+        />
+        <StatCard
+          title="Inactive"
+          value={summary.inactive || 0}
+          subtext="Inactive positions"
+          subtextColor="text-muted-foreground"
+          icon={<Archive className="h-5 w-5 text-amber-600" />}
+          iconBg="bg-amber-50 dark:bg-amber-500/15"
+          chartColor="stroke-amber-500"
+          trend="down"
+        />
+        <StatCard
+          title="Occupied"
+          value={summary.occupied || 0}
+          subtext="Filled positions"
+          subtextColor="text-muted-foreground"
+          icon={<UserCheck className="h-5 w-5 text-purple-600" />}
+          iconBg="bg-purple-50 dark:bg-purple-500/15"
+          chartColor="stroke-purple-500"
+          trend="up"
+        />
+        <StatCard
+          title="Vacant"
+          value={summary.vacant || 0}
+          subtext="Available for hire"
+          subtextColor="text-muted-foreground"
+          icon={<UserPlus className="h-5 w-5 text-fuchsia-600" />}
+          iconBg="bg-fuchsia-50 dark:bg-fuchsia-500/15"
+          chartColor="stroke-fuchsia-500"
+          trend="down"
+        />
       </div>
       <div className="mt-5 flex flex-wrap gap-2">
         <div className="relative min-w-64 flex-1">
@@ -564,5 +607,64 @@ function Sel({
         ))}
       </select>
     </F>
+  );
+}
+
+function StatCard({
+  title,
+  value,
+  subtext,
+  subtextColor,
+  subtextDot,
+  icon,
+  iconBg,
+  chartColor,
+  trend,
+}: {
+  title: string;
+  value: string | number;
+  subtext: string;
+  subtextColor?: string;
+  subtextDot?: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  chartColor: string;
+  trend: "up" | "down";
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+      <div className="mb-2 flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold text-foreground/80">{title}</p>
+          <h2 className="mt-1 text-2xl font-bold text-foreground">{value}</h2>
+        </div>
+        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
+      </div>
+      <div className="relative z-10 mt-2 flex items-center text-[10px]">
+        {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
+        <span className={subtextColor}>{subtext}</span>
+      </div>
+      <div className="absolute bottom-2 right-2 z-0 h-8 w-24 opacity-50">
+        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
+          {trend === "up" ? (
+            <path
+              d="M0,25 C20,20 40,30 60,10 C80,-5 100,5 100,5"
+              fill="none"
+              className={chartColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          ) : (
+            <path
+              d="M0,5 C20,5 40,-5 60,15 C80,30 100,20 100,20"
+              fill="none"
+              className={chartColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
+      </div>
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   ArrowRightLeft,
   CheckCircle2,
   Clock3,
+  FileEdit,
   History,
   Plus,
   Search,
@@ -12,9 +13,9 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -181,10 +182,6 @@ function MovementsPage() {
       toast.error((e as Error).message);
     }
   };
-  const cards = ["Draft", "Submitted", "Reviewed", "Approved", "Posted", "Rejected"].map((k) => [
-    k,
-    summary[k] || 0,
-  ]);
   const fromText = (m: Movement) => {
     const source = m.beforeSnapshot?.employee || m.sourceSnapshot?.employee;
     return source?.position || "-";
@@ -224,14 +221,66 @@ function MovementsPage() {
       subtitle="Prepare, review, approve, post, and reverse governed personnel actions"
     >
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {cards.map(([k, v]) => (
-          <Card key={k}>
-            <CardHeader className="pb-1">
-              <CardTitle className="text-xs uppercase text-muted-foreground">{k}</CardTitle>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">{v}</CardContent>
-          </Card>
-        ))}
+        <StatCard
+          title="Draft"
+          value={summary["Draft"] || 0}
+          subtext="Saved drafts"
+          subtextColor="text-muted-foreground"
+          icon={<FileEdit className="h-5 w-5 text-slate-600" />}
+          iconBg="bg-slate-50 dark:bg-slate-500/15"
+          chartColor="stroke-slate-500"
+          trend="up"
+        />
+        <StatCard
+          title="Submitted"
+          value={summary["Submitted"] || 0}
+          subtext="Pending review"
+          subtextColor="text-muted-foreground"
+          icon={<Send className="h-5 w-5 text-blue-600" />}
+          iconBg="bg-blue-50 dark:bg-blue-500/15"
+          chartColor="stroke-blue-500"
+          trend="up"
+        />
+        <StatCard
+          title="Reviewed"
+          value={summary["Reviewed"] || 0}
+          subtext="Pending approval"
+          subtextColor="text-muted-foreground"
+          icon={<Clock3 className="h-5 w-5 text-purple-600" />}
+          iconBg="bg-purple-50 dark:bg-purple-500/15"
+          chartColor="stroke-purple-500"
+          trend="up"
+        />
+        <StatCard
+          title="Approved"
+          value={summary["Approved"] || 0}
+          subtext="Ready to post"
+          subtextColor="text-muted-foreground"
+          icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+          iconBg="bg-emerald-50 dark:bg-emerald-500/15"
+          chartColor="stroke-emerald-500"
+          trend="up"
+        />
+        <StatCard
+          title="Posted"
+          value={summary["Posted"] || 0}
+          subtext="Implemented"
+          subtextColor="text-muted-foreground"
+          icon={<ArrowRightLeft className="h-5 w-5 text-teal-600" />}
+          iconBg="bg-teal-50 dark:bg-teal-500/15"
+          chartColor="stroke-teal-500"
+          trend="up"
+        />
+        <StatCard
+          title="Rejected"
+          value={summary["Rejected"] || 0}
+          subtext="Denied/Returned"
+          subtextColor="text-muted-foreground"
+          icon={<XCircle className="h-5 w-5 text-rose-600" />}
+          iconBg="bg-rose-50 dark:bg-rose-500/15"
+          chartColor="stroke-rose-500"
+          trend="down"
+        />
       </div>
       <div className="mt-5 flex flex-wrap gap-2">
         <div className="relative min-w-64 flex-1">
@@ -868,6 +917,65 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-1">
       <Label>{label}</Label>
       {children}
+    </div>
+  );
+}
+
+function StatCard({
+  title,
+  value,
+  subtext,
+  subtextColor,
+  subtextDot,
+  icon,
+  iconBg,
+  chartColor,
+  trend,
+}: {
+  title: string;
+  value: string | number;
+  subtext: string;
+  subtextColor?: string;
+  subtextDot?: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  chartColor: string;
+  trend: "up" | "down";
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+      <div className="mb-2 flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold text-foreground/80">{title}</p>
+          <h2 className="mt-1 text-2xl font-bold text-foreground">{value}</h2>
+        </div>
+        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
+      </div>
+      <div className="relative z-10 mt-2 flex items-center text-[10px]">
+        {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
+        <span className={subtextColor}>{subtext}</span>
+      </div>
+      <div className="absolute bottom-2 right-2 z-0 h-8 w-24 opacity-50">
+        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
+          {trend === "up" ? (
+            <path
+              d="M0,25 C20,20 40,30 60,10 C80,-5 100,5 100,5"
+              fill="none"
+              className={chartColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          ) : (
+            <path
+              d="M0,5 C20,5 40,-5 60,15 C80,30 100,20 100,20"
+              fill="none"
+              className={chartColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
+      </div>
     </div>
   );
 }

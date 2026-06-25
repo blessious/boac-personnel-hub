@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ClipboardCheck, FilePlus2, Search } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, Clock, FilePlus2, Search, XCircle } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,10 +78,46 @@ function RequestsPage() {
     <AppShell title="My Requests" subtitle="Track leave, attendance, and HR request status">
       <div className="space-y-5">
         <div className="grid gap-3 md:grid-cols-4">
-          <SummaryCard label="Pending" value={summary.Pending} />
-          <SummaryCard label="Approved" value={summary.Approved} />
-          <SummaryCard label="Disapproved" value={summary.Disapproved} />
-          <SummaryCard label="Total" value={summary.total} />
+          <StatCard
+            title="Pending"
+            value={summary.Pending || 0}
+            subtext="Awaiting review"
+            subtextColor="text-muted-foreground"
+            icon={<Clock className="h-5 w-5 text-amber-600" />}
+            iconBg="bg-amber-50 dark:bg-amber-500/15"
+            chartColor="stroke-amber-500"
+            trend="up"
+          />
+          <StatCard
+            title="Approved"
+            value={summary.Approved || 0}
+            subtext="Processed"
+            subtextColor="text-muted-foreground"
+            icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+            iconBg="bg-emerald-50 dark:bg-emerald-500/15"
+            chartColor="stroke-emerald-500"
+            trend="up"
+          />
+          <StatCard
+            title="Disapproved"
+            value={summary.Disapproved || 0}
+            subtext="Denied requests"
+            subtextColor="text-muted-foreground"
+            icon={<XCircle className="h-5 w-5 text-rose-600" />}
+            iconBg="bg-rose-50 dark:bg-rose-500/15"
+            chartColor="stroke-rose-500"
+            trend="down"
+          />
+          <StatCard
+            title="Total"
+            value={summary.total || 0}
+            subtext="All applications"
+            subtextColor="text-muted-foreground"
+            icon={<ClipboardCheck className="h-5 w-5 text-blue-600" />}
+            iconBg="bg-blue-50 dark:bg-blue-500/15"
+            chartColor="stroke-blue-500"
+            trend="up"
+          />
         </div>
 
         <section className="rounded-xl border border-border bg-card shadow-sm">
@@ -235,15 +271,60 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: number }) {
+function StatCard({
+  title,
+  value,
+  subtext,
+  subtextColor,
+  subtextDot,
+  icon,
+  iconBg,
+  chartColor,
+  trend,
+}: {
+  title: string;
+  value: string | number;
+  subtext: string;
+  subtextColor?: string;
+  subtextDot?: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  chartColor: string;
+  trend: "up" | "down";
+}) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700">
-        <ClipboardCheck className="h-4 w-4" />
+    <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+      <div className="mb-2 flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold text-foreground/80">{title}</p>
+          <h2 className="mt-1 text-2xl font-bold text-foreground">{value}</h2>
+        </div>
+        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
       </div>
-      <div>
-        <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        <p className="mt-1 text-lg font-semibold text-foreground">{value}</p>
+      <div className="relative z-10 mt-2 flex items-center text-[10px]">
+        {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
+        <span className={subtextColor}>{subtext}</span>
+      </div>
+      <div className="absolute bottom-2 right-2 z-0 h-8 w-24 opacity-50">
+        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
+          {trend === "up" ? (
+            <path
+              d="M0,25 C20,20 40,30 60,10 C80,-5 100,5 100,5"
+              fill="none"
+              className={chartColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          ) : (
+            <path
+              d="M0,5 C20,5 40,-5 60,15 C80,30 100,20 100,20"
+              fill="none"
+              className={chartColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
       </div>
     </div>
   );
