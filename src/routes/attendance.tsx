@@ -1929,19 +1929,16 @@ function AttendancePage() {
                       key={entry.id}
                       className="rounded-xl border border-border bg-white p-3 shadow-sm"
                     >
-                      <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_7.8rem_1.25rem] items-center gap-3">
+                      <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_7.1rem_1.25rem] items-center gap-2.5">
                         <div
                           className={`grid h-10 w-10 place-items-center rounded-full text-xs font-extrabold ${avatarClass}`}
                         >
                           {initials}
                         </div>
                         <div className="min-w-0">
-                          <h3 className="truncate text-sm font-extrabold text-[#111827]">
+                          <h3 className="break-words text-sm font-extrabold leading-4 text-[#111827]">
                             {entry.employeeName}
                           </h3>
-                          <p className="truncate text-xs font-medium text-muted-foreground">
-                            {entry.department || "No office"}
-                          </p>
                           <p className="mt-1 text-xs font-medium text-[#53637f]">
                             {entry.workDate}
                           </p>
@@ -1952,15 +1949,18 @@ function AttendancePage() {
                             {entry.displayLabel}
                           </div>
                         ) : (
-                          <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-center">
-                            <DtrMobileTime label="AM In" value={formatDtrTime(entry.amIn)} />
-                            <DtrMobileTime label="AM Out" value={formatDtrTime(entry.amOut)} />
-                            <DtrMobileTime label="PM In" value={formatDtrTime(entry.pmIn)} />
-                            <DtrMobileTime
-                              label="Tardiness"
-                              value={entry.lateMinutes ? `${entry.lateMinutes}m` : "-"}
-                              danger={Boolean(entry.lateMinutes)}
-                            />
+                          <div className="space-y-1">
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-center">
+                              <DtrMobileTime label="AM In" value={formatDtrTime(entry.amIn)} />
+                              <DtrMobileTime label="AM Out" value={formatDtrTime(entry.amOut)} />
+                              <DtrMobileTime label="PM In" value={formatDtrTime(entry.pmIn)} />
+                              <DtrMobileTime label="PM Out" value={formatDtrTime(entry.pmOut)} />
+                            </div>
+                            {entry.lateMinutes ? (
+                              <div className="text-center text-[0.65rem] font-bold text-destructive">
+                                {entry.lateMinutes}m tardiness
+                              </div>
+                            ) : null}
                           </div>
                         )}
 
