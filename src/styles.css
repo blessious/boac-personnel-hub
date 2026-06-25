@@ -663,6 +663,90 @@
     font-size: 0.65rem;
     font-weight: 700;
   }
+
+  .dark body {
+    background: var(--color-background);
+  }
+
+  .dark .mobile-app-header {
+    border-bottom-color: color-mix(in oklab, var(--color-border) 82%, transparent);
+    background: color-mix(in oklab, var(--color-background) 90%, transparent);
+    box-shadow: 0 10px 28px rgb(0 0 0 / 28%);
+    backdrop-filter: blur(14px);
+  }
+
+  .dark .mobile-app-header h1 {
+    color: var(--color-foreground);
+  }
+
+  .dark .mobile-app-content {
+    background: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  .dark .mobile-app-content input,
+  .dark .mobile-app-content select,
+  .dark .mobile-app-content textarea,
+  .dark .mobile-app-content [role="combobox"],
+  .dark .mobile-app-content .bg-white,
+  .dark .mobile-app-content .bg-card {
+    border-color: color-mix(in oklab, var(--color-border) 82%, transparent);
+    background-color: var(--color-card);
+    color: var(--color-card-foreground);
+    box-shadow: 0 10px 28px rgb(0 0 0 / 20%);
+  }
+
+  .dark .mobile-app-content input::placeholder,
+  .dark .mobile-app-content textarea::placeholder {
+    color: var(--color-muted-foreground);
+  }
+
+  .dark .mobile-app-content .mobile-record-card {
+    border-color: color-mix(in oklab, var(--color-border) 82%, transparent);
+    background: var(--color-card);
+    color: var(--color-card-foreground);
+    box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
+  }
+
+  .dark .mobile-app-content .mobile-record-card__field {
+    background: color-mix(in oklab, var(--color-muted) 72%, transparent);
+  }
+
+  .dark .mobile-app-content [role="tablist"] {
+    border-color: color-mix(in oklab, var(--color-border) 82%, transparent);
+    background: color-mix(in oklab, var(--color-muted) 78%, transparent);
+  }
+
+  .dark .mobile-app-content [role="tab"][data-state="active"] {
+    background: var(--color-card);
+    color: var(--color-foreground);
+  }
+
+  .dark .mobile-app-content .text-\[\#111827\],
+  .dark .mobile-app-content .text-\[\#0b2454\],
+  .dark .mobile-app-content .text-\[\#08275b\] {
+    color: var(--color-foreground);
+  }
+
+  .dark .mobile-app-content .text-\[\#334155\],
+  .dark .mobile-app-content .text-\[\#53637f\],
+  .dark .mobile-app-content .text-\[\#64748b\] {
+    color: var(--color-muted-foreground);
+  }
+
+  .dark .mobile-bottom-nav {
+    border-top-color: color-mix(in oklab, var(--color-border) 82%, transparent);
+    background: color-mix(in oklab, var(--color-card) 92%, transparent);
+    box-shadow: 0 -12px 32px rgb(0 0 0 / 30%);
+  }
+
+  .dark .mobile-bottom-nav__item {
+    color: var(--color-muted-foreground);
+  }
+
+  .dark .mobile-bottom-nav__item--active {
+    color: color-mix(in oklab, var(--color-primary) 45%, var(--color-foreground) 55%);
+  }
 }
 
 @media (min-width: 768px) {
