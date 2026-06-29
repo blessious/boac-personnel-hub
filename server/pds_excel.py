@@ -107,6 +107,15 @@ def clear_cells(sheet, refs):
         sheet[ref].value = None
 
 
+def initialize_na(sheet, refs):
+    for ref in refs:
+        set_cell(sheet, ref, "N/A")
+
+
+def row_refs(columns, start_row, max_rows):
+    return [f"{col}{row}" for row in range(start_row, start_row + max_rows) for col in columns]
+
+
 def mark_cell(sheet, ref):
     cell = sheet[ref]
     cell.value = "X"
@@ -136,6 +145,7 @@ def sort_current_first(rows):
 
 
 def fill_education(sheet, rows):
+    initialize_na(sheet, row_refs(["D", "G", "J", "K", "L", "M", "N"], 54, 5))
     row_by_level = {
         "elementary": 54,
         "secondary": 55,
@@ -158,10 +168,7 @@ def fill_education(sheet, rows):
 
 
 def fill_rows(sheet, rows, start_row, max_rows, mapping):
-    if not rows:
-        for col, _key in mapping:
-            set_cell(sheet, f"{col}{start_row}", "N/A")
-        return
+    initialize_na(sheet, row_refs([col for col, _key in mapping], start_row, max_rows))
     for index, item in enumerate(rows[:max_rows]):
         row = start_row + index
         for col, key in mapping:
@@ -239,6 +246,48 @@ def fill_sheet(payload, output_path, template_path):
     )
     for row in range(37, 49):
         clear_cells(c1, [f"I{row}", f"M{row}"])
+    initialize_na(
+        c1,
+        [
+            "D10",
+            "D11",
+            "O11",
+            "D12",
+            "D13",
+            "D15",
+            "D16",
+            "D17",
+            "D22",
+            "D24",
+            "D25",
+            "D27",
+            "D29",
+            "D31",
+            "D32",
+            "D33",
+            "D34",
+            "I19",
+            "I24",
+            "I27",
+            "I31",
+            "I32",
+            "I33",
+            "I34",
+            "D36",
+            "D37",
+            "D38",
+            "D39",
+            "D40",
+            "D41",
+            "D42",
+            "D43",
+            "D44",
+            "D45",
+            "D47",
+            "D48",
+            "D49",
+        ],
+    )
     c1["J13"] = "FILIPINO"
     c1["I36"] = "23. NAME of CHILDREN  (Write full name and list all)"
     c1["B13"] = "DATE OF BIRTH \n(mm/dd/yyyy)  "
