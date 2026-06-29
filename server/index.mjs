@@ -66,6 +66,8 @@ const PDS_TEMPLATE_XLSX = path.join(
   "Personal Data Sheet.xlsx",
 );
 const PDS_EXCEL_SCRIPT = path.join(process.cwd(), "server", "pds_excel.py");
+const WES_TEMPLATE_DOCX = path.join(process.cwd(), "WES", "Work Experience Sheet.docx");
+const WES_DOCX_SCRIPT = path.join(process.cwd(), "server", "wes_docx.py");
 const SERVICE_RECORD_EXPORT_SCRIPT = path.join(process.cwd(), "server", "service_record_export.py");
 const BIOMETRIC_FETCH_SCRIPT = path.join(process.cwd(), "server", "fetch_biometric.py");
 const ADMS_PORT = Number(process.env.HRIS_ADMS_PORT || 6000);
@@ -1621,6 +1623,40 @@ function sectionRow(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+const AUDIT_REDACTED_FIELDS = new Set([
+  "photoUrl",
+  "fileData",
+  "photoData",
+  "attachmentData",
+  "certificateData",
+  "ipcrData",
+]);
+
+function sanitizeAuditValue(key, value) {
+  if (value === undefined) return "";
+  if (AUDIT_REDACTED_FIELDS.has(key) || key.endsWith("Data")) return "[redacted]";
+  if (typeof value === "string" && value.startsWith("data:")) return "[redacted]";
+  if (typeof value === "string" && value.length > 500) return `${value.slice(0, 500)}...`;
+  return value ?? "";
+}
+
+function auditDiff(before = {}, after = {}) {
+  const keys = Array.from(new Set([...Object.keys(before || {}), ...Object.keys(after || {})]));
+  const changes = {};
+  for (const key of keys) {
+    const previous = sanitizeAuditValue(key, before?.[key]);
+    const next = sanitizeAuditValue(key, after?.[key]);
+    if (JSON.stringify(previous) !== JSON.stringify(next)) {
+      changes[key] = { before: previous, after: next };
+    }
+  }
+  return changes;
+}
+
+function auditChangedFields(changes) {
+  return Object.keys(changes || {});
 }
 
 function leaveTypeRow(row) {
@@ -6789,16 +6825,25 @@ async function buildEmployeePdsPayload(id, user) {
   };
 }
 
+function pdsFileName(employee) {
+  const cleanPart = (value, fallback = "") =>
+    String(value || fallback)
+      .replace(/[<>:"/\\|?*\u0000-\u001F]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  const lastName = cleanPart(employee.lastname, "Employee");
+  const firstName = cleanPart(employee.firstname);
+  const middleName = cleanPart(employee.middlename);
+  const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
+  const givenNames = [firstName, middleInitial].filter(Boolean).join(" ") || "Employee";
+
+  return `${lastName}, ${givenNames} - PDS.xlsx`;
+}
+
 async function generateEmployeePdsExcelFile(id, user, req) {
   const payload = await buildEmployeePdsPayload(id, user);
   await fs.mkdir(PREVIEW_DIR, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const safeName =
-    `${payload.employee.lastname || "employee"}-${payload.employee.firstname || ""}`.replace(
-      /[^A-Za-z0-9_-]+/g,
-      "-",
-    ) || "employee";
-  const fileName = `pds-${safeName}-${stamp}.xlsx`;
+  const fileName = pdsFileName(payload.employee);
   const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
   const outputPath = path.join(PREVIEW_DIR, fileName);
 
@@ -6832,7 +6877,7 @@ async function handleDownloadEmployeePdsExcel(req, res, fileName) {
   const user = await requireUser(req, res);
   if (!user) return;
   const decoded = decodeURIComponent(fileName);
-  if (!/^pds-[A-Za-z0-9_.-]+\.xlsx$/.test(decoded)) {
+  if (!/^[^<>:"/\\|?*\u0000-\u001F]+ - PDS\.xlsx$/i.test(decoded)) {
     return json(res, 400, { error: "Invalid Personal Data Sheet file name" });
   }
   const resolved = path.resolve(PREVIEW_DIR, decoded);
@@ -6845,6 +6890,89 @@ async function handleDownloadEmployeePdsExcel(req, res, fileName) {
     return json(res, 404, { error: "Personal Data Sheet file not found" });
   }
   await logAudit(user.id, "employees.pds_excel_download", { fileName: decoded }, req);
+  return sendFile(res, resolved, decoded);
+}
+
+function wesFileName(employee) {
+  const cleanPart = (value, fallback = "") =>
+    String(value || fallback)
+      .replace(/[<>:"/\\|?*\u0000-\u001F]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  const lastName = cleanPart(employee.lastname, "Employee");
+  const firstName = cleanPart(employee.firstname);
+  const middleName = cleanPart(employee.middlename);
+  const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
+  const givenNames = [firstName, middleInitial].filter(Boolean).join(" ") || "Employee";
+
+  return `${lastName}, ${givenNames} - Work Experience Sheet.docx`;
+}
+
+async function generateEmployeeWesDocxFile(id, user, req) {
+  try {
+    await fs.access(WES_TEMPLATE_DOCX);
+  } catch {
+    throw httpError(500, "Work Experience Sheet template was not found");
+  }
+
+  const payload = await buildEmployeePdsPayload(id, user);
+  await fs.mkdir(PREVIEW_DIR, { recursive: true });
+  const fileName = wesFileName(payload.employee);
+  const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
+  const outputPath = path.join(PREVIEW_DIR, fileName);
+
+  await fs.writeFile(inputPath, JSON.stringify(payload), "utf8");
+  let scriptOutput = "";
+  try {
+    scriptOutput = await runPython([WES_DOCX_SCRIPT, inputPath, outputPath, WES_TEMPLATE_DOCX]);
+  } finally {
+    await fs.rm(inputPath, { force: true }).catch(() => {});
+  }
+
+  const result = parseJson(scriptOutput, {});
+  const rowCount = Number(result.rowCount || 0);
+  await logAudit(
+    user.id,
+    "employees.wes_docx_generate",
+    { employeeId: id, fileName, rowCount },
+    req,
+  );
+  return { fileName, outputPath, rowCount };
+}
+
+async function handleGenerateEmployeeWesDocx(req, res, id) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  try {
+    const { fileName, rowCount } = await generateEmployeeWesDocxFile(id, user, req);
+    return json(res, 200, {
+      fileName,
+      rowCount,
+      downloadUrl: `/api/employees/wes/docx/${encodeURIComponent(fileName)}`,
+    });
+  } catch (error) {
+    const status = error.statusCode || 500;
+    return json(res, status, { error: error.message });
+  }
+}
+
+async function handleDownloadEmployeeWesDocx(req, res, fileName) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const decoded = decodeURIComponent(fileName);
+  if (!/^[^<>:"/\\|?*\u0000-\u001F]+ - Work Experience Sheet\.docx$/i.test(decoded)) {
+    return json(res, 400, { error: "Invalid Work Experience Sheet file name" });
+  }
+  const resolved = path.resolve(PREVIEW_DIR, decoded);
+  if (!resolved.startsWith(path.resolve(PREVIEW_DIR))) {
+    return json(res, 400, { error: "Invalid Work Experience Sheet path" });
+  }
+  try {
+    await fs.access(resolved);
+  } catch {
+    return json(res, 404, { error: "Work Experience Sheet file not found" });
+  }
+  await logAudit(user.id, "employees.wes_docx_download", { fileName: decoded }, req);
   return sendFile(res, resolved, decoded);
 }
 
@@ -6927,8 +7055,20 @@ async function handleUpdateEmployee(req, res, id) {
        WHERE id = :id`,
       { id, ...data, employeeNo },
     );
-    await logAudit(user.id, "employees.update", { employeeId: id }, req);
-    return json(res, 200, { employee: await readEmployeeById(id) });
+    const updated = await readEmployeeById(id);
+    const changes = auditDiff(existing, updated);
+    await logAudit(
+      user.id,
+      "employees.update",
+      {
+        actorRole: user.role,
+        employeeId: id,
+        changedFields: auditChangedFields(changes),
+        changes,
+      },
+      req,
+    );
+    return json(res, 200, { employee: updated });
   } catch (error) {
     if (error?.code === "ER_DUP_ENTRY")
       return json(res, 409, { error: "Employee ID already exists" });
@@ -6978,7 +7118,22 @@ async function handleCreateSectionRow(req, res, employeeId, section) {
     `INSERT INTO \`${config.table}\` (id, employee_id, payload) VALUES (:id, :employeeId, :payload)`,
     { id, employeeId, payload: JSON.stringify(payload) },
   );
-  await logAudit(user.id, "employees.section_create", { employeeId, section, rowId: id }, req);
+  const sanitizedPayload = Object.fromEntries(
+    Object.entries(payload).map(([key, value]) => [key, sanitizeAuditValue(key, value)]),
+  );
+  await logAudit(
+    user.id,
+    "employees.section_create",
+    {
+      actorRole: user.role,
+      employeeId,
+      section,
+      rowId: id,
+      changedFields: Object.keys(sanitizedPayload),
+      after: sanitizedPayload,
+    },
+    req,
+  );
   const [[row]] = await pool.execute(
     `SELECT id, payload, created_at, updated_at FROM \`${config.table}\` WHERE id = :id`,
     { id },
@@ -6996,13 +7151,32 @@ async function handleUpdateSectionRow(req, res, employeeId, section, rowId, supp
   if (!config) return json(res, 404, { error: "Section not found" });
   const body = suppliedPayload ? { payload: suppliedPayload } : await readBody(req);
   const payload = body.payload && typeof body.payload === "object" ? body.payload : {};
+  const [[existing]] = await pool.execute(
+    `SELECT id, payload FROM \`${config.table}\` WHERE id = :rowId AND employee_id = :employeeId LIMIT 1`,
+    { rowId, employeeId },
+  );
+  if (!existing) return json(res, 404, { error: "Record not found" });
+  const beforePayload = parseJson(existing.payload, {});
+  const changes = auditDiff(beforePayload, payload);
 
   const [result] = await pool.execute(
     `UPDATE \`${config.table}\` SET payload = :payload WHERE id = :rowId AND employee_id = :employeeId`,
     { rowId, employeeId, payload: JSON.stringify(payload) },
   );
   if (result.affectedRows === 0) return json(res, 404, { error: "Record not found" });
-  await logAudit(user.id, "employees.section_update", { employeeId, section, rowId }, req);
+  await logAudit(
+    user.id,
+    "employees.section_update",
+    {
+      actorRole: user.role,
+      employeeId,
+      section,
+      rowId,
+      changedFields: auditChangedFields(changes),
+      changes,
+    },
+    req,
+  );
   const [[row]] = await pool.execute(
     `SELECT id, payload, created_at, updated_at FROM \`${config.table}\` WHERE id = :rowId`,
     { rowId },
@@ -7018,13 +7192,34 @@ async function handleDeleteSectionRow(req, res, employeeId, section, rowId) {
   }
   const config = validateSection(section);
   if (!config) return json(res, 404, { error: "Section not found" });
+  const [[existing]] = await pool.execute(
+    `SELECT id, payload FROM \`${config.table}\` WHERE id = :rowId AND employee_id = :employeeId LIMIT 1`,
+    { rowId, employeeId },
+  );
+  if (!existing) return json(res, 404, { error: "Record not found" });
+  const beforePayload = parseJson(existing.payload, {});
+  const sanitizedPayload = Object.fromEntries(
+    Object.entries(beforePayload).map(([key, value]) => [key, sanitizeAuditValue(key, value)]),
+  );
 
   const [result] = await pool.execute(
     `DELETE FROM \`${config.table}\` WHERE id = :rowId AND employee_id = :employeeId`,
     { rowId, employeeId },
   );
   if (result.affectedRows === 0) return json(res, 404, { error: "Record not found" });
-  await logAudit(user.id, "employees.section_delete", { employeeId, section, rowId }, req);
+  await logAudit(
+    user.id,
+    "employees.section_delete",
+    {
+      actorRole: user.role,
+      employeeId,
+      section,
+      rowId,
+      changedFields: Object.keys(sanitizedPayload),
+      before: sanitizedPayload,
+    },
+    req,
+  );
   return json(res, 200, { ok: true });
 }
 
@@ -8378,6 +8573,10 @@ async function route(req, res) {
   const employeePdsExcelDownloadMatch = url.pathname.match(
     /^\/api\/employees\/pds\/excel\/([^/]+)$/,
   );
+  const employeeWesDocxGenerateMatch = url.pathname.match(
+    /^\/api\/employees\/([A-Za-z0-9-]+)\/wes\/docx$/,
+  );
+  const employeeWesDocxDownloadMatch = url.pathname.match(/^\/api\/employees\/wes\/docx\/([^/]+)$/);
   const employeeSectionMatch = url.pathname.match(
     /^\/api\/employees\/([A-Za-z0-9-]+)\/sections\/([A-Za-z0-9-]+)$/,
   );
@@ -8510,6 +8709,10 @@ async function route(req, res) {
     return handleGenerateEmployeePdsExcel(req, res, employeePdsExcelGenerateMatch[1]);
   if (req.method === "GET" && employeePdsExcelDownloadMatch)
     return handleDownloadEmployeePdsExcel(req, res, employeePdsExcelDownloadMatch[1]);
+  if (req.method === "POST" && employeeWesDocxGenerateMatch)
+    return handleGenerateEmployeeWesDocx(req, res, employeeWesDocxGenerateMatch[1]);
+  if (req.method === "GET" && employeeWesDocxDownloadMatch)
+    return handleDownloadEmployeeWesDocx(req, res, employeeWesDocxDownloadMatch[1]);
   if (req.method === "GET" && employeeMatch) return handleGetEmployee(req, res, employeeMatch[1]);
   if (req.method === "PATCH" && employeeMatch)
     return handleUpdateEmployee(req, res, employeeMatch[1]);

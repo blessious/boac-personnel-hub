@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Bell,
   CalendarCheck,
@@ -7,16 +7,21 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock,
+  Download,
   FileText,
   IdCard,
   Mail,
   Newspaper,
   Phone,
+  Pencil,
+  Plus,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { GenerationLoader } from "@/components/GenerationLoader";
 import { AppShell } from "@/components/layout/AppShell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -43,8 +48,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
 import {
+  createSectionRow,
+  deleteSectionRow,
   generateEmployeePdsExcel,
+  generateEmployeeWesDocx,
   getEmployee,
+  updateSectionRow,
   type EmployeeDetailResponse,
   type EmployeeRecord,
   type SectionRow,
@@ -331,7 +340,7 @@ export function EmployeeProfileHome() {
   const [loading, setLoading] = useState(Boolean(user?.employeeId));
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const loadProfile = useCallback(() => {
     if (!user?.employeeId) {
       setLoading(false);
       return;
@@ -360,6 +369,8 @@ export function EmployeeProfileHome() {
       .catch((err) => setError(err.message || "Unable to load your profile"))
       .finally(() => setLoading(false));
   }, [user?.employeeId]);
+
+  useEffect(loadProfile, [loadProfile]);
 
   const employee = profile?.employee || leave?.employee || null;
   const sections = profile?.sections || {};
@@ -402,6 +413,7 @@ export function EmployeeProfileHome() {
             sections={sections}
             balances={leave?.balances || []}
             applications={leave?.applications || []}
+            onChange={loadProfile}
           />
         </div>
       )}
@@ -421,6 +433,8 @@ function EmployeeServicesHome() {
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [submittingLeave, setSubmittingLeave] = useState(false);
   const [generatingPds, setGeneratingPds] = useState(false);
+  const [generatingWes, setGeneratingWes] = useState(false);
+  const [hidePdsLoader, setHidePdsLoader] = useState(false);
   const [leaveForm, setLeaveForm] = useState({
     leaveTypeId: "",
     dateFrom: "",
@@ -521,6 +535,7 @@ function EmployeeServicesHome() {
       return;
     }
     try {
+      setHidePdsLoader(false);
       setGeneratingPds(true);
       const result = await generateEmployeePdsExcel(user.employeeId);
       toast.success("Personal Data Sheet generated");
@@ -531,9 +546,31 @@ function EmployeeServicesHome() {
       setGeneratingPds(false);
     }
   };
+  const downloadWes = async () => {
+    if (!user?.employeeId) {
+      toast.info("No employee record is linked to this account yet");
+      return;
+    }
+    try {
+      setGeneratingWes(true);
+      const result = await generateEmployeeWesDocx(user.employeeId);
+      toast.success("Work Experience Sheet generated");
+      window.location.href = result.downloadUrl;
+    } catch (error) {
+      toast.error((error as Error).message || "Unable to generate Work Experience Sheet");
+    } finally {
+      setGeneratingWes(false);
+    }
+  };
 
   return (
     <AppShell title="Self-Service Portal" subtitle="Employee requests, records, and HR services">
+      <GenerationLoader
+        open={generatingPds && !hidePdsLoader}
+        title="Generating PDS"
+        description="Preparing your Personal Data Sheet for download."
+        onDismiss={() => setHidePdsLoader(true)}
+      />
       <div className="space-y-5">
         <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -632,6 +669,14 @@ function EmployeeServicesHome() {
                 title={generatingPds ? "Generating PDS" : "Generate PDS"}
                 description="Download your filled Personal Data Sheet."
                 onClick={downloadPds}
+                disabled={generatingPds}
+              />
+              <ActionButton
+                icon={Newspaper}
+                title={generatingWes ? "Generating WES" : "Generate WES"}
+                description="Download your Work Experience Sheet."
+                onClick={downloadWes}
+                disabled={generatingWes}
               />
               <ActionButton
                 icon={Bell}
@@ -1034,11 +1079,13 @@ function ProfileTabs({
   sections,
   balances,
   applications,
+  onChange,
 }: {
   employee: EmployeeRecord;
   sections: Record<string, SectionRow[]>;
   balances: LeaveBalance[];
   applications: LeaveApplication[];
+  onChange: () => void;
 }) {
   return (
     <Tabs defaultValue="personal" className="space-y-4">
@@ -1047,6 +1094,7 @@ function ProfileTabs({
           <TabsTrigger value="personal">Personal</TabsTrigger>
           <TabsTrigger value="contact">Contact</TabsTrigger>
           <TabsTrigger value="work">Work</TabsTrigger>
+          <TabsTrigger value="wes">WES</TabsTrigger>
           <TabsTrigger value="ids">IDs</TabsTrigger>
           <TabsTrigger value="records">Records</TabsTrigger>
         </TabsList>
@@ -1092,6 +1140,14 @@ function ProfileTabs({
         </CleanPanel>
       </TabsContent>
 
+      <TabsContent value="wes" className="mt-0">
+        <WorkExperienceSheetPanel
+          employeeId={employee.id}
+          rows={sections.work || []}
+          onChange={onChange}
+        />
+      </TabsContent>
+
       <TabsContent value="ids" className="mt-0">
         <CleanPanel title="Government IDs" icon={ShieldCheck}>
           <DetailGrid>
@@ -1133,6 +1189,239 @@ function ProfileTabs({
         </div>
       </TabsContent>
     </Tabs>
+  );
+}
+
+const WES_FIELDS = [
+  { key: "dateFrom", label: "Duration From", type: "date" },
+  { key: "dateTo", label: "Duration To", type: "date" },
+  { key: "position", label: "Position" },
+  { key: "officeUnit", label: "Name of Office / Unit" },
+  { key: "immediateSupervisor", label: "Immediate Supervisor" },
+  { key: "agencyOrganizationLocation", label: "Agency / Organization and Location" },
+  { key: "accomplishments", label: "List of Accomplishments and Contributions", type: "textarea" },
+  { key: "actualDuties", label: "Summary of Actual Duties", type: "textarea" },
+  { key: "company", label: "Company / Office" },
+  { key: "status", label: "Status" },
+  { key: "salary", label: "Salary" },
+  { key: "govEmp", label: "Government Service" },
+] as const;
+
+function workDateTime(row: SectionRow) {
+  const raw = String(row.payload.dateFrom || "");
+  const time = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function WorkExperienceSheetPanel({
+  employeeId,
+  rows,
+  onChange,
+}: {
+  employeeId: string;
+  rows: SectionRow[];
+  onChange: () => void;
+}) {
+  const blank = Object.fromEntries(WES_FIELDS.map((field) => [field.key, ""])) as Record<
+    string,
+    string
+  >;
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<Record<string, string>>(blank);
+  const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const sortedRows = [...rows].sort((a, b) => workDateTime(b) - workDateTime(a));
+
+  const set = (key: string, value: string) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+  const clear = () => {
+    setForm(blank);
+    setEditingId(null);
+    setShowForm(false);
+  };
+  const add = () => {
+    setForm(blank);
+    setEditingId(null);
+    setShowForm(true);
+  };
+  const edit = (row: SectionRow) => {
+    setForm({
+      ...blank,
+      ...Object.fromEntries(Object.entries(row.payload).map(([k, v]) => [k, String(v ?? "")])),
+    });
+    setEditingId(row.id);
+    setShowForm(true);
+  };
+  const save = async () => {
+    try {
+      setSaving(true);
+      if (editingId) {
+        await updateSectionRow(employeeId, "work", editingId, form);
+        toast.success("Work experience updated");
+      } else {
+        await createSectionRow(employeeId, "work", form);
+        toast.success("Work experience added");
+      }
+      clear();
+      onChange();
+    } catch (error) {
+      toast.error((error as Error).message || "Unable to save Work Experience Sheet details");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const remove = async (row: SectionRow) => {
+    if (!window.confirm("Delete this work experience record?")) return;
+    try {
+      await deleteSectionRow(employeeId, "work", row.id);
+      toast.success("Work experience deleted");
+      onChange();
+    } catch (error) {
+      toast.error((error as Error).message || "Unable to delete work experience");
+    }
+  };
+  const download = async () => {
+    try {
+      setGenerating(true);
+      const result = await generateEmployeeWesDocx(employeeId);
+      toast.success("Work Experience Sheet generated");
+      window.location.href = result.downloadUrl;
+    } catch (error) {
+      toast.error((error as Error).message || "Unable to generate Work Experience Sheet");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <CleanPanel title="Work Experience Sheet" icon={Newspaper}>
+      <div className="mb-4 flex flex-wrap justify-end gap-2">
+        <Button variant="outline" onClick={download} disabled={generating}>
+          <Download className="mr-1.5 h-4 w-4" />
+          {generating ? "Generating WES" : "Generate WES"}
+        </Button>
+        <Button onClick={add} className="bg-blue-600 text-white hover:bg-blue-700">
+          <Plus className="mr-1.5 h-4 w-4" />
+          Add Experience
+        </Button>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          No work experience records yet.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {sortedRows.map((row) => (
+            <article key={row.id} className="rounded-lg border border-border bg-muted/10 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <h4 className="font-semibold text-foreground">
+                    {formatDate(String(row.payload.dateFrom || ""))} to{" "}
+                    {String(row.payload.dateTo || "").trim()
+                      ? formatDate(String(row.payload.dateTo || ""))
+                      : "Present"}
+                  </h4>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {valueOrDash(String(row.payload.position || ""))}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => edit(row)}>
+                    <Pencil className="mr-1.5 h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => remove(row)}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="mr-1.5 h-4 w-4" />
+                    Delete
+                  </Button>
+                </div>
+              </div>
+              <DetailGrid>
+                <DetailItem label="Position" value={String(row.payload.position || "")} />
+                <DetailItem
+                  label="Name of Office / Unit"
+                  value={String(row.payload.officeUnit || "")}
+                />
+                <DetailItem
+                  label="Immediate Supervisor"
+                  value={String(row.payload.immediateSupervisor || "")}
+                />
+                <DetailItem
+                  label="Name of Agency / Organization and Location"
+                  value={String(row.payload.agencyOrganizationLocation || "")}
+                  wide
+                />
+                <DetailItem
+                  label="List of Accomplishments and Contributions (if any)"
+                  value={String(row.payload.accomplishments || "")}
+                  wide
+                />
+                <DetailItem
+                  label="Summary of Actual Duties"
+                  value={String(row.payload.actualDuties || "")}
+                  wide
+                />
+              </DetailGrid>
+            </article>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={showForm} onOpenChange={(open) => (open ? setShowForm(true) : clear())}>
+        <DialogContent className="grid max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="border-b border-border px-5 py-4 pr-12">
+            <DialogTitle>
+              {editingId ? "Edit Work Experience Sheet Entry" : "Add Work Experience Sheet Entry"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto px-5 py-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              {WES_FIELDS.map((field) => (
+                <FormField
+                  key={field.key}
+                  label={field.label}
+                  className={field.type === "textarea" ? "md:col-span-2" : undefined}
+                >
+                  {field.type === "textarea" ? (
+                    <Textarea
+                      value={form[field.key] || ""}
+                      onChange={(event) => set(field.key, event.target.value)}
+                      rows={4}
+                    />
+                  ) : (
+                    <Input
+                      type={field.type || "text"}
+                      value={form[field.key] || ""}
+                      onChange={(event) => set(field.key, event.target.value)}
+                    />
+                  )}
+                </FormField>
+              ))}
+            </div>
+          </div>
+          <DialogFooter className="flex-row flex-wrap justify-end gap-2 border-t border-border px-5 py-4 sm:space-x-0">
+            <Button variant="outline" onClick={clear}>
+              Cancel
+            </Button>
+            <Button
+              onClick={save}
+              disabled={saving}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {saving ? "Saving" : editingId ? "Update" : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </CleanPanel>
   );
 }
 
@@ -1395,16 +1684,19 @@ function ActionButton({
   title,
   description,
   onClick,
+  disabled = false,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className="group relative flex min-h-24 items-start gap-3 rounded-lg border border-border bg-card p-4 pr-10 text-left transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted/30 hover:shadow-md"
+      disabled={disabled}
+      className="group relative flex min-h-24 items-start gap-3 rounded-lg border border-border bg-card p-4 pr-10 text-left transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted/30 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:bg-card disabled:hover:shadow-none"
     >
       <Icon className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
       <span>

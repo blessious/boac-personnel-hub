@@ -164,6 +164,15 @@ export function generateEmployeePdsExcel(id: string) {
   });
 }
 
+export function generateEmployeeWesDocx(id: string) {
+  return api<{ fileName: string; downloadUrl: string; rowCount: number }>(
+    `/api/employees/${id}/wes/docx`,
+    {
+      method: "POST",
+    },
+  );
+}
+
 export function createEmployee(employee: Partial<EmployeeRecord>) {
   return api<{ employee: EmployeeRecord }>("/api/employees", {
     method: "POST",
