@@ -240,7 +240,6 @@ def fill_sheet(payload, output_path, template_path):
     for row in range(37, 49):
         clear_cells(c1, [f"I{row}", f"M{row}"])
     c1["J13"] = "FILIPINO"
-    c1["J15"] = "BY BIRTH"
     c1["I36"] = "23. NAME of CHILDREN  (Write full name and list all)"
     c1["B13"] = "DATE OF BIRTH \n(mm/dd/yyyy)  "
     c1["M36"] = "DATE OF BIRTH (mm/dd/yyyy)"
@@ -261,10 +260,8 @@ def fill_sheet(payload, output_path, template_path):
     set_cell(c1, "D31", employee.get("philhealth"))
     set_cell(c1, "D33", employee.get("tin"))
     set_cell(c1, "D34", employee.get("employeeId"))
-    citizenship = text(employee.get("citizenship")).lower()
-    if not citizenship or "filipino" in citizenship:
-        mark_cell(c1, "I13")
-    else:
+    citizenship = text(employee.get("citizenship"))
+    if citizenship and "filipino" not in citizenship.lower():
         mark_cell(c1, "K13")
         set_cell(c1, "M15", employee.get("citizenship"))
     set_cell(c1, "I19", employee.get("residentialAddress"))
