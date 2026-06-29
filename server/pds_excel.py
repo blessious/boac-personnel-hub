@@ -14,6 +14,11 @@ def text(value):
     return str(value).strip()
 
 
+def pds_text(value):
+    value = text(value)
+    return value if value else "N/A"
+
+
 def first(*values):
     for value in values:
         value = text(value)
@@ -25,15 +30,17 @@ def first(*values):
 def date_text(value):
     value = text(value)
     if not value:
-        return ""
+        return "N/A"
+    if value.lower() in {"n/a", "na", "present", "current"}:
+        return "N/A" if value.lower() in {"n/a", "na"} else "Present"
     normalized = value.replace("Z", "+00:00")
     try:
-        return datetime.fromisoformat(normalized).strftime("%d/%m/%Y")
+        return datetime.fromisoformat(normalized).strftime("%m/%d/%Y")
     except ValueError:
         pass
     for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y"):
         try:
-            return datetime.strptime(value, fmt).strftime("%d/%m/%Y")
+            return datetime.strptime(value, fmt).strftime("%m/%d/%Y")
         except ValueError:
             pass
     return value
@@ -42,7 +49,7 @@ def date_text(value):
 def number_text(value):
     value = text(value)
     if not value:
-        return ""
+        return "N/A"
     try:
         number = float(value)
     except ValueError:
@@ -52,8 +59,11 @@ def number_text(value):
     return f"{number:.3f}".rstrip("0").rstrip(".")
 
 
-def full_name(payload):
-    parts = [payload.get("firstname"), payload.get("middlename"), payload.get("lastname")]
+def full_name(payload, order="first_middle_last"):
+    if order == "first_last":
+        parts = [payload.get("firstname"), payload.get("lastname")]
+    else:
+        parts = [payload.get("firstname"), payload.get("middlename"), payload.get("lastname")]
     name = " ".join(text(part) for part in parts if text(part))
     ext = text(payload.get("nameExt"))
     return f"{name} {ext}".strip() if ext else name
@@ -69,17 +79,19 @@ def single_payload(sections, key):
 
 
 def split_name(payload):
-    return " ".join(
-        part
-        for part in [text(payload.get("firstname")), text(payload.get("middlename")), text(payload.get("lastname"))]
-        if part
-    )
+    return full_name(payload, "first_last")
+
+
+def get_any(payload, *keys):
+    for key in keys:
+        value = payload.get(key)
+        if text(value):
+            return value
+    return ""
 
 
 def set_cell(sheet, ref, value):
-    value = text(value)
-    if not value:
-        return
+    value = pds_text(value)
     cell = sheet[ref]
     cell.value = value
     alignment = copy(cell.alignment)
@@ -104,6 +116,25 @@ def mark_cell(sheet, ref):
     cell.alignment = alignment
 
 
+def normalize_gov_service(value):
+    value = text(value).lower()
+    if value in {"yes", "y", "true", "1", "government", "gov", "public"}:
+        return "YES"
+    if value in {"no", "n", "false", "0", "private"}:
+        return "NO"
+    return "N/A"
+
+
+def sort_current_first(rows):
+    def key(item):
+        date_to = text(item.get("dateTo") or item.get("yearTo") or item.get("to")).lower()
+        if date_to in {"present", "current"}:
+            return "9999-99-99"
+        return text(item.get("dateTo") or item.get("yearTo") or item.get("to") or "")
+
+    return sorted(rows, key=key, reverse=True)
+
+
 def fill_education(sheet, rows):
     row_by_level = {
         "elementary": 54,
@@ -121,12 +152,16 @@ def fill_education(sheet, rows):
         set_cell(sheet, f"G{target}", item.get("degree"))
         set_cell(sheet, f"J{target}", item.get("yearFrom"))
         set_cell(sheet, f"K{target}", item.get("yearTo"))
-        set_cell(sheet, f"L{target}", item.get("highest") or item.get("units"))
+        set_cell(sheet, f"L{target}", first(item.get("highest"), item.get("units")))
         set_cell(sheet, f"M{target}", item.get("yearGraduated"))
         set_cell(sheet, f"N{target}", item.get("scholarship"))
 
 
 def fill_rows(sheet, rows, start_row, max_rows, mapping):
+    if not rows:
+        for col, _key in mapping:
+            set_cell(sheet, f"{col}{start_row}", "N/A")
+        return
     for index, item in enumerate(rows[:max_rows]):
         row = start_row + index
         for col, key in mapping:
@@ -207,7 +242,8 @@ def fill_sheet(payload, output_path, template_path):
     c1["J13"] = "FILIPINO"
     c1["J15"] = "BY BIRTH"
     c1["I36"] = "23. NAME of CHILDREN  (Write full name and list all)"
-    c1["M36"] = "DATE OF BIRTH (dd/mm/yyyy)"
+    c1["B13"] = "DATE OF BIRTH \n(mm/dd/yyyy)  "
+    c1["M36"] = "DATE OF BIRTH (mm/dd/yyyy)"
 
     set_cell(c1, "D10", employee.get("lastname"))
     set_cell(c1, "D11", employee.get("firstname"))
@@ -263,23 +299,25 @@ def fill_sheet(payload, output_path, template_path):
     clear_cells(c1, ["D60", "J60", "L60"])
 
     c2 = wb["C2"]
+    c2["G3"] = "DATE OF EXAMINATION / CONFERMENT (mm/dd/yyyy)"
+    c2["B15"] = "INCLUSIVE DATES (mm/dd/yyyy)"
     fill_rows(
         c2,
         section_payloads(sections, "civilService"),
         5,
         7,
         [
-            ("A", "type"),
+            ("A", lambda item: get_any(item, "type", "eligibility")),
             ("F", "rating"),
             ("G", lambda item: date_text(item.get("date"))),
             ("I", "place"),
-            ("J", "license"),
-            ("K", lambda item: date_text(first(item.get("licenseValidity"), item.get("dateRelease")))),
+            ("J", lambda item: get_any(item, "license", "license_no")),
+            ("K", lambda item: date_text(first(item.get("licenseValidity"), item.get("validity"), item.get("dateRelease")))),
         ],
     )
     fill_rows(
         c2,
-        section_payloads(sections, "work"),
+        sort_current_first(section_payloads(sections, "work")),
         18,
         28,
         [
@@ -288,7 +326,7 @@ def fill_sheet(payload, output_path, template_path):
             ("D", "position"),
             ("G", "company"),
             ("J", "status"),
-            ("K", "govEmp"),
+            ("K", lambda item: normalize_gov_service(item.get("govEmp"))),
         ],
     )
     clear_cells(c2, ["D47", "I47"])
@@ -301,22 +339,23 @@ def fill_sheet(payload, output_path, template_path):
         7,
         [
             ("A", lambda item: " - ".join(part for part in [text(item.get("name")), text(item.get("address"))] if part)),
-            ("E", "yearFrom"),
-            ("F", "yearTo"),
+            ("E", lambda item: date_text(item.get("yearFrom"))),
+            ("F", lambda item: date_text(item.get("yearTo"))),
             ("G", "hours"),
             ("H", "position"),
         ],
     )
     fill_rows(
         c3,
-        section_payloads(sections, "training"),
+        sort_current_first(section_payloads(sections, "training")),
         18,
         21,
         [
             ("A", "name"),
-            ("E", "yearFrom"),
-            ("F", "yearTo"),
+            ("E", lambda item: date_text(item.get("yearFrom"))),
+            ("F", lambda item: date_text(item.get("yearTo"))),
             ("G", "hours"),
+            ("H", lambda item: get_any(item, "type", "category")),
             ("I", "conductedBy"),
         ],
     )
