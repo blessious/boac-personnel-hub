@@ -23,6 +23,7 @@ import {
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { GenerationLoader } from "@/components/GenerationLoader";
 import { AppShell } from "@/components/layout/AppShell";
 import { MassDtrPrintModal } from "@/components/MassDtrPrintModal";
 import { Badge } from "@/components/ui/badge";
@@ -225,6 +226,11 @@ function AttendancePage() {
   const [entries, setEntries] = useState<DtrEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [generationLoader, setGenerationLoader] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
+  const [hideGenerationLoader, setHideGenerationLoader] = useState(false);
   const [showDtrDialog, setShowDtrDialog] = useState(false);
   const [showCorrectionDialog, setShowCorrectionDialog] = useState(false);
   const [correctionForm, setCorrectionForm] = useState<DtrCorrectionPayload>(EMPTY_CORRECTION_FORM);
@@ -1098,6 +1104,11 @@ function AttendancePage() {
   const exportExcel = async () => {
     const payload = buildDtrExportPayload();
     if (!payload) return;
+    setHideGenerationLoader(false);
+    setGenerationLoader({
+      title: "Generating DTR Excel",
+      description: "Preparing the Daily Time Record workbook for download.",
+    });
     setBusy(true);
     try {
       const result = await generateDtrExcel(payload);
@@ -1107,6 +1118,7 @@ function AttendancePage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to generate DTR Excel");
     } finally {
+      setGenerationLoader(null);
       setBusy(false);
     }
   };
@@ -1115,6 +1127,11 @@ function AttendancePage() {
     const payload = buildDtrExportPayload();
     if (!payload) return;
     const previewWindow = openGeneratedFileTab("Preparing DTR PDF preview...");
+    setHideGenerationLoader(false);
+    setGenerationLoader({
+      title: "Generating DTR PDF",
+      description: "Preparing the Daily Time Record preview.",
+    });
     setBusy(true);
     try {
       const result = await generateDtrPdf(payload);
@@ -1125,6 +1142,7 @@ function AttendancePage() {
       closeGeneratedFileTab(previewWindow);
       toast.error(err instanceof Error ? err.message : "Unable to generate DTR PDF");
     } finally {
+      setGenerationLoader(null);
       setBusy(false);
     }
   };
@@ -1174,6 +1192,11 @@ function AttendancePage() {
     const payload = buildDtrExportPayload();
     if (!payload) return;
     const previewWindow = openGeneratedFileTab("Preparing DTR PDF preview...");
+    setHideGenerationLoader(false);
+    setGenerationLoader({
+      title: "Generating DTR PDF",
+      description: "Preparing the Daily Time Record PDF.",
+    });
     setBusy(true);
     try {
       const result = await generateDtrPdf(payload);
@@ -1184,6 +1207,7 @@ function AttendancePage() {
       closeGeneratedFileTab(previewWindow);
       toast.error(err instanceof Error ? err.message : "Unable to generate DTR PDF");
     } finally {
+      setGenerationLoader(null);
       setBusy(false);
     }
   };
@@ -1218,6 +1242,12 @@ function AttendancePage() {
           : "Import, refresh, view, edit, delete, and export daily time records"
       }
     >
+      <GenerationLoader
+        open={Boolean(generationLoader) && !hideGenerationLoader}
+        title={generationLoader?.title}
+        description={generationLoader?.description}
+        onDismiss={() => setHideGenerationLoader(true)}
+      />
       <div className="space-y-4">
         <section className="hidden rounded-xl border border-border bg-card p-4 shadow-sm md:block">
           <div className="flex flex-col gap-4">

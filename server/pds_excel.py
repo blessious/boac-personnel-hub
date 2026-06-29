@@ -192,7 +192,7 @@ def fill_sheet(payload, output_path, template_path):
         [
             "D10",
             "D11",
-            "O11",
+            "N11",
             "D12",
             "D13",
             "D15",
@@ -255,7 +255,7 @@ def fill_sheet(payload, output_path, template_path):
         [
             "D10",
             "D11",
-            "O11",
+            "N11",
             "D12",
             "D13",
             "D15",
@@ -299,7 +299,7 @@ def fill_sheet(payload, output_path, template_path):
 
     set_cell(c1, "D10", employee.get("lastname"))
     set_cell(c1, "D11", employee.get("firstname"))
-    set_cell(c1, "O11", employee.get("nameExt"))
+    set_cell(c1, "N11", employee.get("nameExt"))
     set_cell(c1, "D12", employee.get("middlename"))
     set_cell(c1, "D13", date_text(employee.get("birthday")))
     set_cell(c1, "D15", employee.get("placeOfBirth"))

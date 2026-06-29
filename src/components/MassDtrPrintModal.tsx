@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Building2, FileText, Filter, Users, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { GenerationLoader } from "@/components/GenerationLoader";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -74,6 +75,7 @@ export function MassDtrPrintModal({
   const [secondYear, setSecondYear] = useState(currentDate.getFullYear());
   const [secondCut, setSecondCut] = useState<Cut>("full");
   const [busy, setBusy] = useState(false);
+  const [hideGenerationLoader, setHideGenerationLoader] = useState(false);
 
   useEffect(() => {
     setModalEmployees(employees);
@@ -136,6 +138,7 @@ export function MassDtrPrintModal({
       return toast.error("Select a noter signatory and position");
 
     const previewWindow = openGeneratedFileTab("Preparing mass DTR PDF preview...");
+    setHideGenerationLoader(false);
     setBusy(true);
     try {
       const result = await generateMassDtrPdf({
@@ -203,7 +206,14 @@ export function MassDtrPrintModal({
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <GenerationLoader
+        open={busy && !hideGenerationLoader}
+        title="Generating Mass DTR PDF"
+        description={`Preparing DTR PDF for ${selectedEmployees.length} employee(s).`}
+        onDismiss={() => setHideGenerationLoader(true)}
+      />
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-5xl">
         <DialogHeader className="border-b pb-3">
           <DialogTitle className="flex items-center gap-2">
@@ -379,6 +389,7 @@ export function MassDtrPrintModal({
           </div>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
   );
 }

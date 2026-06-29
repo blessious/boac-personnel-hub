@@ -240,13 +240,13 @@ function LoginPage() {
             </div>
 
             <div className="mt-9 text-center text-[0.72rem] font-semibold text-[#6c7890] md:hidden">
-              41 Information Technology Services (c) {new Date().getFullYear()}
+              41 Information Technology Services © {new Date().getFullYear()}
             </div>
           </div>
         </div>
 
         <div className="absolute bottom-11 left-1/2 hidden -translate-x-1/2 text-[0.68rem] font-semibold text-[#526b91] lg:block">
-          41 Information Technology Services (c) {new Date().getFullYear()}
+          41 Information Technology Services © {new Date().getFullYear()}
         </div>
       </section>
     </main>

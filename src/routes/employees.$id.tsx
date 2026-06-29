@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Pencil, Plus, Save, Search, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Download, Pencil, Plus, Save, Search, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -36,6 +36,7 @@ import {
   GENDERS,
   getEmployee,
   getSettingsOptions,
+  generateEmployeeWesDocx,
   updateEmployee,
   updateSectionRow,
   type EmployeeRecord,
@@ -160,11 +161,24 @@ const SECTION_FIELDS: Record<string, FieldConfig[]> = {
     { key: "licenseValidity", label: "License Validity", type: "date" },
   ],
   work: [
+    { key: "dateFrom", label: "Duration From", type: "date" },
+    { key: "dateTo", label: "Duration To", type: "date" },
     { key: "position", label: "Position" },
+    { key: "officeUnit", label: "Name of Office / Unit" },
+    { key: "immediateSupervisor", label: "Immediate Supervisor" },
+    {
+      key: "agencyOrganizationLocation",
+      label: "Agency / Organization and Location",
+      type: "textarea",
+    },
+    {
+      key: "accomplishments",
+      label: "List of Accomplishments and Contributions",
+      type: "textarea",
+    },
+    { key: "actualDuties", label: "Summary of Actual Duties", type: "textarea" },
     { key: "company", label: "Company / Office" },
     { key: "status", label: "Status" },
-    { key: "dateFrom", label: "Date From", type: "date" },
-    { key: "dateTo", label: "Date To", type: "date" },
     { key: "salary", label: "Salary" },
     { key: "govEmp", label: "Government Service", type: "select", options: ["YES", "NO"] },
   ],
@@ -779,6 +793,7 @@ function SectionTab({
   const [form, setForm] = useState<Record<string, string | number | boolean | null>>(blank);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [generatingWes, setGeneratingWes] = useState(false);
 
   useEffect(() => {
     setForm(blank);
@@ -854,10 +869,28 @@ function SectionTab({
       toast.error(err instanceof Error ? err.message : "Unable to delete record");
     }
   };
+  const downloadWes = async () => {
+    try {
+      setGeneratingWes(true);
+      const result = await generateEmployeeWesDocx(employeeId);
+      toast.success("Work Experience Sheet generated");
+      window.location.href = result.downloadUrl;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to generate Work Experience Sheet");
+    } finally {
+      setGeneratingWes(false);
+    }
+  };
 
   return (
     <div>
-      <div className="mb-4 flex justify-end gap-2">
+      <div className="mb-4 flex flex-wrap justify-end gap-2">
+        {section === "work" ? (
+          <Button variant="outline" onClick={downloadWes} disabled={generatingWes}>
+            <Download className="mr-1.5 h-4 w-4" />
+            {generatingWes ? "Generating WES" : "Generate WES"}
+          </Button>
+        ) : null}
         <Button
           disabled={!canEdit}
           onClick={add}
@@ -867,7 +900,17 @@ function SectionTab({
           Add
         </Button>
       </div>
-      <RecordTable fields={fields} rows={rows} canEdit={canEdit} onEdit={edit} onDelete={remove} />
+      {section === "work" ? (
+        <WorkExperienceRecords rows={rows} canEdit={canEdit} onEdit={edit} onDelete={remove} />
+      ) : (
+        <RecordTable
+          fields={fields}
+          rows={rows}
+          canEdit={canEdit}
+          onEdit={edit}
+          onDelete={remove}
+        />
+      )}
       <Dialog open={showForm} onOpenChange={(open) => (open ? setShowForm(true) : clear())}>
         <DialogContent className="grid max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl">
           <DialogHeader className="border-b border-border px-5 py-4 pr-12">
@@ -968,6 +1011,134 @@ function SectionInput({
       value={value}
       onChange={(event) => onChange(event.target.value)}
     />
+  );
+}
+
+function workDateTime(row: SectionRow) {
+  const dateTo = String(row.payload.dateTo || "")
+    .trim()
+    .toLowerCase();
+  if (!dateTo || dateTo === "present" || dateTo === "current") return Number.MAX_SAFE_INTEGER;
+
+  const endTime = new Date(dateTo).getTime();
+  if (Number.isFinite(endTime)) return endTime;
+
+  const dateFrom = String(row.payload.dateFrom || "");
+  const startTime = dateFrom ? new Date(dateFrom).getTime() : 0;
+  return Number.isFinite(startTime) ? startTime : 0;
+}
+
+function formatRecordDate(value: unknown, present = false) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return present ? "Present" : "";
+  if (["present", "current"].includes(raw.toLowerCase())) return "Present";
+
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) return raw;
+
+  return date.toLocaleDateString("en-PH", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatDuration(payload: SectionRow["payload"]) {
+  const from = formatRecordDate(payload.dateFrom);
+  const to = formatRecordDate(payload.dateTo, true);
+  if (from && to) return `${from} - ${to}`;
+  return from || to || "";
+}
+
+function plainValue(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  return normalized || "-";
+}
+
+function WesDetail({ label, value, wide }: { label: string; value: unknown; wide?: boolean }) {
+  return (
+    <div className={cn("min-w-0 border-b border-border/60 pb-3", wide && "lg:col-span-2")}>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 whitespace-pre-line break-words text-sm leading-6 text-foreground">
+        {plainValue(value)}
+      </p>
+    </div>
+  );
+}
+
+function WorkExperienceRecords({
+  rows,
+  canEdit,
+  onEdit,
+  onDelete,
+}: {
+  rows: SectionRow[];
+  canEdit: boolean;
+  onEdit: (row: SectionRow) => void;
+  onDelete: (row: SectionRow) => void;
+}) {
+  const sortedRows = [...rows].sort((a, b) => workDateTime(b) - workDateTime(a));
+
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+        No work experience records found.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {sortedRows.map((row) => (
+        <article key={row.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">
+                {plainValue(formatDuration(row.payload))}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {plainValue(row.payload.position)}
+              </p>
+            </div>
+            {canEdit && (
+              <div className="flex shrink-0 gap-2">
+                <Button variant="outline" size="sm" onClick={() => onEdit(row)}>
+                  <Pencil className="mr-1.5 h-4 w-4" />
+                  Edit
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onDelete(row)}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="mr-1.5 h-4 w-4" />
+                  Delete
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <WesDetail label="Duration" value={formatDuration(row.payload)} />
+            <WesDetail label="Position" value={row.payload.position} />
+            <WesDetail label="Name of Office / Unit" value={row.payload.officeUnit} />
+            <WesDetail label="Immediate Supervisor" value={row.payload.immediateSupervisor} />
+            <WesDetail
+              label="Name of Agency / Organization and Location"
+              value={row.payload.agencyOrganizationLocation || row.payload.company}
+              wide
+            />
+            <WesDetail
+              label="List of Accomplishments and Contributions (if any)"
+              value={row.payload.accomplishments}
+              wide
+            />
+            <WesDetail label="Summary of Actual Duties" value={row.payload.actualDuties} wide />
+          </div>
+        </article>
+      ))}
+    </div>
   );
 }
 

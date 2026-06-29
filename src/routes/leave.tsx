@@ -15,6 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { GenerationLoader } from "@/components/GenerationLoader";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,11 @@ function LeavePage() {
   const [ledgerEmployeeId, setLedgerEmployeeId] = useState("");
   const [ledgerData, setLedgerData] = useState<EmployeeLeaveResponse | null>(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [generationLoader, setGenerationLoader] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
+  const [hideGenerationLoader, setHideGenerationLoader] = useState(false);
   const [summary, setSummary] = useState({
     total: 0,
     pending: 0,
@@ -234,27 +240,47 @@ function LeavePage() {
   };
 
   const downloadForm6 = async (application: LeaveApplication) => {
+    setHideGenerationLoader(false);
+    setGenerationLoader({
+      title: "Generating CS Form No. 6",
+      description: "Preparing the leave application workbook for download.",
+    });
     try {
       const result = await generateLeaveForm6Excel(application.id);
       downloadGeneratedFile(result.downloadUrl, result.fileName);
       toast.success("CS Form No. 6 generated");
     } catch (error) {
       toast.error((error as Error).message);
+    } finally {
+      setGenerationLoader(null);
     }
   };
 
   const previewForm6Pdf = async (application: LeaveApplication) => {
+    setHideGenerationLoader(false);
+    setGenerationLoader({
+      title: "Generating CS Form No. 6 PDF",
+      description: "Preparing the leave application PDF preview.",
+    });
     try {
       const result = await generateLeaveForm6Pdf(application.id);
       window.open(result.previewUrl, "_blank", "noopener,noreferrer");
       toast.success("CS Form No. 6 PDF generated");
     } catch (error) {
       toast.error((error as Error).message);
+    } finally {
+      setGenerationLoader(null);
     }
   };
 
   return (
     <AppShell title="HR Approvals" subtitle="Review, approve, and track employee leave requests">
+      <GenerationLoader
+        open={Boolean(generationLoader) && !hideGenerationLoader}
+        title={generationLoader?.title}
+        description={generationLoader?.description}
+        onDismiss={() => setHideGenerationLoader(true)}
+      />
       <div className="mb-4 grid grid-cols-4 gap-2 md:gap-3">
         <StatCard
           title="Pending"

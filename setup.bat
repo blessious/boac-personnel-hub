@@ -143,11 +143,11 @@ if errorlevel 1 (
     )
 )
 
-call "%VENV_PYTHON%" -m pip install openpyxl reportlab pypdf pyzk >> "%SETUP_LOG%" 2>&1
+call "%VENV_PYTHON%" -m pip install openpyxl reportlab pypdf pyzk python-docx >> "%SETUP_LOG%" 2>&1
 if errorlevel 1 (
     echo [WARN] Python dependency install failed with the default SSL settings. Retrying with trusted PyPI hosts...
     >> "%SETUP_LOG%" echo [WARN] Python dependency install failed with default SSL settings. Retrying with trusted PyPI hosts.
-    call "%VENV_PYTHON%" -m pip install openpyxl reportlab pypdf pyzk --trusted-host pypi.org --trusted-host files.pythonhosted.org >> "%SETUP_LOG%" 2>&1
+    call "%VENV_PYTHON%" -m pip install openpyxl reportlab pypdf pyzk python-docx --trusted-host pypi.org --trusted-host files.pythonhosted.org >> "%SETUP_LOG%" 2>&1
     if errorlevel 1 (
         echo [ERROR] Failed to install Python dependencies. See setup.log for details.
         goto :failed
