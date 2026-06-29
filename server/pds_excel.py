@@ -1,6 +1,10 @@
 import json
 import os
+import re
+import shutil
 import sys
+import tempfile
+import zipfile
 from copy import copy
 from datetime import datetime
 
@@ -415,6 +419,116 @@ def fill_sheet(payload, output_path, template_path):
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     wb.save(output_path)
+    restore_c4_checkboxes(template_path, output_path)
+
+
+def restore_c4_checkboxes(template_path, output_path):
+    with zipfile.ZipFile(template_path, "r") as template:
+        template_names = set(template.namelist())
+        required = {
+            "xl/worksheets/sheet4.xml",
+            "xl/worksheets/_rels/sheet4.xml.rels",
+            "xl/drawings/vmlDrawing2.vml",
+            "xl/drawings/drawing2.xml",
+            "[Content_Types].xml",
+        }
+        if not required.issubset(template_names):
+            return
+        control_parts = [name for name in template_names if name.startswith("xl/ctrlProps/")]
+        copied_parts = {
+            "xl/worksheets/_rels/sheet4.xml.rels",
+            "xl/drawings/vmlDrawing2.vml",
+            "xl/drawings/drawing2.xml",
+            *control_parts,
+        }
+        sheet4_additions = extract_c4_control_xml(template.read("xl/worksheets/sheet4.xml").decode("utf-8", errors="ignore"))
+        content_type_xml = patch_content_types(
+            read_zip_text(output_path, "[Content_Types].xml"),
+            template.read("[Content_Types].xml").decode("utf-8", errors="ignore"),
+            copied_parts,
+        )
+
+        fd, temp_output = tempfile.mkstemp(suffix=".xlsx")
+        os.close(fd)
+        try:
+            with zipfile.ZipFile(output_path, "r") as source:
+                with zipfile.ZipFile(temp_output, "w", zipfile.ZIP_DEFLATED) as target:
+                    for item in source.infolist():
+                        if item.filename in copied_parts:
+                            continue
+                        data = source.read(item.filename)
+                        if item.filename == "xl/worksheets/sheet4.xml":
+                            data = patch_sheet4_controls(data.decode("utf-8", errors="ignore"), sheet4_additions).encode("utf-8")
+                        elif item.filename == "[Content_Types].xml":
+                            data = content_type_xml.encode("utf-8")
+                        target.writestr(item, data)
+                    for part in sorted(copied_parts):
+                        if part in template_names:
+                            target.writestr(part, template.read(part))
+            shutil.move(temp_output, output_path)
+        finally:
+            if os.path.exists(temp_output):
+                os.remove(temp_output)
+
+
+def read_zip_text(path, name):
+    with zipfile.ZipFile(path, "r") as workbook:
+        return workbook.read(name).decode("utf-8", errors="ignore")
+
+
+def extract_c4_control_xml(sheet_xml):
+    fragments = []
+    for tag in ("drawing", "legacyDrawing", "controls"):
+        match = re.search(rf"<{tag}\b[\s\S]*?(?:/>|</{tag}>)", sheet_xml)
+        if match:
+            fragments.append(match.group(0))
+    return "".join(fragments)
+
+
+def patch_sheet4_controls(sheet_xml, additions):
+    if not additions:
+        return sheet_xml
+    sheet_xml = re.sub(r"<drawing\b[\s\S]*?(?:/>|</drawing>)", "", sheet_xml)
+    sheet_xml = re.sub(r"<legacyDrawing\b[\s\S]*?(?:/>|</legacyDrawing>)", "", sheet_xml)
+    sheet_xml = re.sub(r"<controls\b[\s\S]*?</controls>", "", sheet_xml)
+    sheet_xml = ensure_sheet4_namespaces(sheet_xml)
+    return sheet_xml.replace("</worksheet>", f"{additions}</worksheet>")
+
+
+def ensure_sheet4_namespaces(sheet_xml):
+    match = re.search(r"<worksheet\b[^>]*>", sheet_xml)
+    if not match:
+        return sheet_xml
+    tag = match.group(0)
+    additions = {
+        "xmlns:r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        "xmlns:xdr": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
+        "xmlns:x14": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main",
+        "xmlns:mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
+    }
+    patched = tag
+    for name, uri in additions.items():
+        if f"{name}=" not in patched:
+            patched = patched[:-1] + f' {name}="{uri}">'
+    if "mc:Ignorable=" not in patched:
+        patched = patched[:-1] + ' mc:Ignorable="x14">'
+    return sheet_xml[: match.start()] + patched + sheet_xml[match.end() :]
+
+
+def patch_content_types(content_xml, template_content_xml, copied_parts):
+    for match in re.finditer(r'<Default\b[^>]+Extension="vml"[^>]*/>', template_content_xml):
+        fragment = match.group(0)
+        if 'Extension="vml"' not in content_xml:
+            content_xml = content_xml.replace("</Types>", f"{fragment}</Types>")
+    for part in copied_parts:
+        part_name = f"/{part}"
+        if part_name in content_xml:
+            continue
+        pattern = rf'<Override\b[^>]+PartName="{re.escape(part_name)}"[^>]*/>'
+        match = re.search(pattern, template_content_xml)
+        if match:
+            content_xml = content_xml.replace("</Types>", f"{match.group(0)}</Types>")
+    return content_xml
 
 
 def main():
