@@ -34,6 +34,7 @@ SHEET_NS = {
     "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
     "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
+    "x14": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main",
     "x14ac": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac",
     "xr": "http://schemas.microsoft.com/office/spreadsheetml/2014/revision",
     "xr6": "http://schemas.microsoft.com/office/spreadsheetml/2016/revision6",
@@ -390,6 +391,7 @@ def write_xlsx(template_path, output_path, sheet_cells, selected_ids):
 def patch_sheet(sheet_xml, cells):
     register_sheet_namespaces(sheet_xml)
     root = ET.fromstring(sheet_xml)
+    root.set("xmlns:x14", SHEET_NS["x14"])
     sheet_data = root.find("main:sheetData", SHEET_NS)
     if sheet_data is None:
         return sheet_xml
