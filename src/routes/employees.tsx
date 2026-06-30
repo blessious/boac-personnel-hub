@@ -11,10 +11,12 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Eye,
   MoreVertical,
   Pencil,
   Plus,
+  Printer,
   Search,
   Trash2,
   Users,
@@ -59,6 +61,7 @@ import {
   GENDERS,
   getSettingsOptions,
   listEmployees,
+  type EmployeeAccountCredentials,
   type EmployeeRecord,
   type SettingsOptions,
   type DashboardResponse,
@@ -141,6 +144,11 @@ function EmployeesPage() {
   const [form, setForm] = useState<Partial<EmployeeRecord>>(EMPTY_FORM);
   const [departmentQuery, setDepartmentQuery] = useState("");
   const [positionQuery, setPositionQuery] = useState("");
+  const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
+  const [createdAccount, setCreatedAccount] = useState<{
+    employeeName: string;
+    credentials: EmployeeAccountCredentials;
+  } | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const selectedDepartment = search.department?.trim() || "all";
@@ -208,9 +216,17 @@ function EmployeesPage() {
   if (location.pathname !== "/employees") return <Outlet />;
 
   const submit = async () => {
+    if (isCreatingEmployee) return;
+    setIsCreatingEmployee(true);
     try {
       const result = await createEmployee(form);
-      toast.success("Employee added");
+      toast.success(result.account ? "Employee and account created" : "Employee added");
+      if (result.account) {
+        setCreatedAccount({
+          employeeName: `${result.employee.firstname} ${result.employee.lastname}`.trim(),
+          credentials: result.account,
+        });
+      }
       setShowAddDialog(false);
       setForm(EMPTY_FORM);
       setDepartmentQuery("");
@@ -220,6 +236,8 @@ function EmployeesPage() {
       return result.employee;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to add employee");
+    } finally {
+      setIsCreatingEmployee(false);
     }
   };
 
@@ -237,6 +255,60 @@ function EmployeesPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to delete employee");
     }
+  };
+
+  const accountText = createdAccount
+    ? [
+        `Employee: ${createdAccount.employeeName}`,
+        `Username: ${createdAccount.credentials.username}`,
+        `Temporary password: ${createdAccount.credentials.temporaryPassword}`,
+        "The employee must change this password on first login.",
+      ].join("\n")
+    : "";
+
+  const copyCreatedAccount = async () => {
+    if (!accountText) return;
+    try {
+      await navigator.clipboard.writeText(accountText);
+      toast.success("Temporary credentials copied");
+    } catch {
+      toast.error("Unable to copy credentials");
+    }
+  };
+
+  const printCreatedAccount = () => {
+    if (!createdAccount) return;
+    const printWindow = window.open("", "_blank", "width=520,height=640");
+    if (!printWindow) {
+      toast.error("Allow pop-ups to print temporary credentials");
+      return;
+    }
+    const { document } = printWindow;
+    document.title = "Temporary Employee Account";
+    const style = document.createElement("style");
+    style.textContent =
+      "body{font-family:Arial,sans-serif;padding:32px;color:#111827}h1{font-size:20px;margin:0 0 18px}dl{display:grid;grid-template-columns:150px 1fr;gap:10px 14px}dt{font-weight:700}dd{margin:0;font-family:Consolas,monospace}.note{margin-top:22px;font-size:13px;color:#374151}";
+    document.head.appendChild(style);
+    const title = document.createElement("h1");
+    title.textContent = "Temporary Employee Account";
+    const details = document.createElement("dl");
+    for (const [label, value] of [
+      ["Employee", createdAccount.employeeName],
+      ["Username", createdAccount.credentials.username],
+      ["Temporary password", createdAccount.credentials.temporaryPassword],
+    ]) {
+      const term = document.createElement("dt");
+      term.textContent = label;
+      const description = document.createElement("dd");
+      description.textContent = value;
+      details.append(term, description);
+    }
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent = "The employee must change this password on first login.";
+    document.body.append(title, details, note);
+    printWindow.focus();
+    printWindow.print();
   };
 
   // Dashboard calculations
@@ -1081,12 +1153,56 @@ function EmployeesPage() {
               Cancel
             </Button>
             <Button
-              disabled={!canEdit}
+              disabled={!canEdit || isCreatingEmployee}
               onClick={submit}
               className="bg-blue-600 text-white hover:bg-blue-700"
             >
-              Add Employee
+              {isCreatingEmployee ? "Adding..." : "Add Employee"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(createdAccount)}
+        onOpenChange={(open) => !open && setCreatedAccount(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Temporary Employee Account</DialogTitle>
+          </DialogHeader>
+          {createdAccount && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                  Give these credentials to the employee
+                </div>
+                <div className="mt-3 grid grid-cols-[120px_1fr] gap-2 text-sm">
+                  <div className="font-medium">Employee</div>
+                  <div>{createdAccount.employeeName}</div>
+                  <div className="font-medium">Username</div>
+                  <div className="font-mono">{createdAccount.credentials.username}</div>
+                  <div className="font-medium">Temp password</div>
+                  <div className="font-mono">{createdAccount.credentials.temporaryPassword}</div>
+                </div>
+                <p className="mt-3 text-xs leading-relaxed text-amber-800">
+                  The password is shown only now. The employee must change it after first login.
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:justify-between">
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={copyCreatedAccount}>
+                <Copy className="mr-2 h-4 w-4" />
+                Copy
+              </Button>
+              <Button variant="outline" onClick={printCreatedAccount}>
+                <Printer className="mr-2 h-4 w-4" />
+                Print
+              </Button>
+            </div>
+            <Button onClick={() => setCreatedAccount(null)}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

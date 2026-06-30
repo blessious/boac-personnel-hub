@@ -204,8 +204,9 @@ const SECTION_FIELDS: Record<string, FieldConfig[]> = {
     { key: "ordinance", label: "Ordinance" },
     { key: "grade", label: "Salary Grade", type: "number" },
     { key: "step", label: "Step", type: "number" },
-    { key: "tax", label: "Tax Exemption" },
     { key: "amount", label: "Salary Amount", type: "number" },
+    { key: "previousAmount", label: "Previous Amount", type: "number" },
+    { key: "tax", label: "Tax Exemption" },
     { key: "gross", label: "Gross Amount", type: "number" },
     {
       key: "type",

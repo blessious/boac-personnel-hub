@@ -2165,6 +2165,36 @@ function generateTemporaryPassword() {
   return Array.from({ length: 8 }, () => alphabet[crypto.randomInt(alphabet.length)]).join("");
 }
 
+function usernamePart(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "");
+}
+
+async function generateEmployeeUsername(db, employee) {
+  const first = usernamePart(employee.firstname);
+  const last = usernamePart(employee.lastname);
+  const base = [first, last].filter(Boolean).join(".").slice(0, 46);
+
+  if (!/^[a-z0-9][a-z0-9._-]{1,48}[a-z0-9]$/.test(base)) {
+    throw httpError(400, "Employee name cannot generate a valid username");
+  }
+
+  for (let index = 0; index < 100; index += 1) {
+    const suffix = index === 0 ? "" : `.${index + 1}`;
+    const username = `${base.slice(0, 50 - suffix.length)}${suffix}`;
+    const [rows] = await db.execute(`SELECT id FROM users WHERE username = :username LIMIT 1`, {
+      username,
+    });
+    if (!rows.length) return username;
+  }
+
+  throw httpError(409, "Unable to generate a unique username for this employee");
+}
+
 async function initializeDatabase() {
   const connection = await mysql.createConnection({
     host: DB_HOST,
@@ -2324,9 +2354,11 @@ async function initializeDatabase() {
       grade INT UNSIGNED NOT NULL,
       step INT UNSIGNED NOT NULL,
       amount DECIMAL(12,2) NOT NULL,
+      is_active TINYINT(1) NOT NULL DEFAULT 0,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_salary_grade_step (ordinance, grade, step)
+      UNIQUE KEY uniq_salary_grade_step (ordinance, grade, step),
+      INDEX idx_salary_grades_active (is_active, ordinance)
     ) ENGINE=InnoDB;
   `);
 
@@ -2397,6 +2429,12 @@ async function initializeDatabase() {
   await ensureColumn("employees", "is_dtr_noter", "TINYINT(1) NOT NULL DEFAULT 0");
   await ensureColumn("employees", "regular", "TINYINT(1) NOT NULL DEFAULT 1");
   await ensureColumn("employees", "is_hidden", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureColumn("salary_grades", "is_active", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureIndex(
+    "salary_grades",
+    "idx_salary_grades_active",
+    "INDEX idx_salary_grades_active (is_active, ordinance)",
+  );
   await ensureIndex(
     "employees",
     "idx_employees_biometric_id",
@@ -2912,12 +2950,12 @@ async function bootstrapAdministrator() {
   }
 }
 
-async function recordPasswordHistory(userId, passwordHash) {
-  await pool.execute(
+async function recordPasswordHistory(userId, passwordHash, db = pool) {
+  await db.execute(
     `INSERT INTO password_history (user_id, password_hash) VALUES (:userId, :passwordHash)`,
     { userId, passwordHash },
   );
-  await pool.execute(
+  await db.execute(
     `DELETE FROM password_history
      WHERE user_id = :userId AND id NOT IN (
        SELECT id FROM (
@@ -6723,12 +6761,165 @@ async function handleListEmployeeAccountCandidates(req, res) {
     `SELECT e.*
      FROM employees e
      LEFT JOIN users u ON u.employee_id = e.id
-     WHERE u.id IS NULL
+     WHERE u.id IS NULL AND e.is_hidden = 0
      ORDER BY e.lastname ASC, e.firstname ASC, e.employee_no ASC
      LIMIT 500`,
   );
 
   return json(res, 200, { employees: rows.map(employeeRow) });
+}
+
+async function handleBulkCreateEmployeeAccounts(req, res) {
+  const user = await requireAdmin(req, res);
+  if (!user) return;
+
+  const accounts = [];
+  const skipped = [];
+  const connection = await pool.getConnection();
+  let committed = false;
+
+  try {
+    await connection.beginTransaction();
+    const [employees] = await connection.query(
+      `SELECT e.*
+       FROM employees e
+       WHERE e.is_hidden = 0
+         AND NOT EXISTS (
+           SELECT 1 FROM users u WHERE u.employee_id = e.id
+         )
+       ORDER BY e.lastname ASC, e.firstname ASC, e.employee_no ASC
+       LIMIT 500
+       FOR UPDATE`,
+    );
+
+    for (const employee of employees) {
+      try {
+        const username = await generateEmployeeUsername(connection, employee);
+        const temporaryPassword = generateTemporaryPassword();
+        const passwordHash = hashPassword(temporaryPassword);
+        const accountName = [employee.firstname, employee.lastname].filter(Boolean).join(" ");
+        const [accountResult] = await connection.execute(
+          `INSERT INTO users (username, password_hash, name, role, employee_id, must_change_password)
+           VALUES (:username, :passwordHash, :name, 'Employee', :employeeId, 1)`,
+          { username, passwordHash, name: accountName, employeeId: employee.id },
+        );
+        await recordPasswordHistory(accountResult.insertId, passwordHash, connection);
+        accounts.push({
+          userId: accountResult.insertId,
+          employeeId: employee.id,
+          employeeNo: employee.employee_no,
+          employeeName: [employee.lastname, employee.firstname].filter(Boolean).join(", "),
+          username,
+          temporaryPassword,
+        });
+      } catch (error) {
+        if (error?.statusCode || error?.code === "ER_DUP_ENTRY") {
+          skipped.push({
+            employeeId: employee.id,
+            employeeNo: employee.employee_no,
+            employeeName: [employee.lastname, employee.firstname].filter(Boolean).join(", "),
+            reason:
+              error?.code === "ER_DUP_ENTRY"
+                ? "Account already exists"
+                : error.message || "Unable to create account",
+          });
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    await connection.commit();
+    committed = true;
+    await logAudit(
+      user.id,
+      "users.bulk_create_employee_accounts",
+      { created: accounts.length, skipped: skipped.length },
+      req,
+    );
+    return json(res, 201, { accounts, skipped });
+  } catch (error) {
+    if (!committed) await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function handleBulkResetEmployeePasswords(req, res) {
+  const user = await requireAdmin(req, res);
+  if (!user) return;
+
+  const accounts = [];
+  const connection = await pool.getConnection();
+  let committed = false;
+
+  try {
+    await connection.beginTransaction();
+    const [users] = await connection.query(
+      `SELECT u.id user_id,
+              u.username,
+              u.password_hash,
+              u.role,
+              u.employee_id,
+              e.employee_no,
+              e.lastname,
+              e.firstname
+         FROM users u
+         INNER JOIN employees e ON e.id = u.employee_id
+        WHERE u.role = 'Employee'
+          AND u.is_active = 1
+          AND e.is_hidden = 0
+        ORDER BY e.lastname ASC, e.firstname ASC, e.employee_no ASC
+        FOR UPDATE`,
+    );
+
+    for (const account of users) {
+      const temporaryPassword = generateTemporaryPassword();
+      const passwordHash = hashPassword(temporaryPassword);
+      await recordPasswordHistory(account.user_id, account.password_hash, connection);
+      await connection.execute(
+        `UPDATE users
+            SET password_hash = :passwordHash,
+                must_change_password = 1,
+                failed_login_attempts = 0,
+                locked_at = NULL
+          WHERE id = :id`,
+        { id: account.user_id, passwordHash },
+      );
+      await recordPasswordHistory(account.user_id, passwordHash, connection);
+      accounts.push({
+        userId: account.user_id,
+        employeeId: account.employee_id,
+        employeeNo: account.employee_no,
+        employeeName: [account.lastname, account.firstname].filter(Boolean).join(", "),
+        username: account.username,
+        temporaryPassword,
+      });
+    }
+
+    if (users.length) {
+      await connection.query(
+        `DELETE s
+           FROM sessions s
+           INNER JOIN users u ON u.id = s.user_id
+           INNER JOIN employees e ON e.id = u.employee_id
+          WHERE u.role = 'Employee'
+            AND u.is_active = 1
+            AND e.is_hidden = 0`,
+      );
+    }
+
+    await connection.commit();
+    committed = true;
+    await logAudit(user.id, "users.bulk_reset_employee_passwords", { reset: accounts.length }, req);
+    return json(res, 200, { accounts });
+  } catch (error) {
+    if (!committed) await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 async function handleCreateEmployee(req, res) {
@@ -6745,8 +6936,13 @@ async function handleCreateEmployee(req, res) {
   const id = crypto.randomUUID();
   const employeeNo = data.employeeNo || `EMP-${Date.now()}`;
 
+  let connection;
+  let committed = false;
   try {
-    await pool.execute(
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    await connection.execute(
       `INSERT INTO employees (
         id, employee_no, biometric_id, firstname, middlename, lastname, name_ext, department, position, status, level,
         status_class, date_hired, date_employed, item_no, emp_status, birthday, gender, civil_status,
@@ -6760,12 +6956,43 @@ async function handleCreateEmployee(req, res) {
       )`,
       { id, ...data, employeeNo },
     );
+
+    const username = await generateEmployeeUsername(connection, data);
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = hashPassword(temporaryPassword);
+    const accountName = [data.firstname, data.lastname].filter(Boolean).join(" ");
+    const [accountResult] = await connection.execute(
+      `INSERT INTO users (username, password_hash, name, role, employee_id, must_change_password)
+       VALUES (:username, :passwordHash, :name, 'Employee', :employeeId, 1)`,
+      { username, passwordHash, name: accountName, employeeId: id },
+    );
+    await recordPasswordHistory(accountResult.insertId, passwordHash, connection);
+
+    await connection.commit();
+    committed = true;
     await logAudit(user.id, "employees.create", { employeeId: id, employeeNo }, req);
-    return json(res, 201, { employee: await readEmployeeById(id) });
+    await logAudit(
+      user.id,
+      "users.create_employee_account",
+      { userId: accountResult.insertId, username, employeeId: id },
+      req,
+    );
+    return json(res, 201, {
+      employee: await readEmployeeById(id),
+      account: { username, temporaryPassword },
+    });
   } catch (error) {
-    if (error?.code === "ER_DUP_ENTRY")
+    if (connection && !committed) await connection.rollback();
+    if (error?.statusCode) return json(res, error.statusCode, { error: error.message });
+    if (error?.code === "ER_DUP_ENTRY") {
+      if (String(error.message || "").includes("users")) {
+        return json(res, 409, { error: "Generated employee account already exists" });
+      }
       return json(res, 409, { error: "Employee ID already exists" });
+    }
     throw error;
+  } finally {
+    if (connection) connection.release();
   }
 }
 
@@ -7972,7 +8199,19 @@ async function handleGetConfig(req, res) {
     `SELECT id, title FROM positions ORDER BY sort_order ASC, title ASC`,
   );
   const [salaryGrades] = await pool.query(
-    `SELECT id, ordinance, grade, step, amount FROM salary_grades ORDER BY grade ASC, step ASC, ordinance ASC`,
+    `SELECT id, ordinance, grade, step, amount, is_active
+     FROM salary_grades
+     ORDER BY ordinance ASC, grade ASC, step ASC`,
+  );
+  const [salaryGradeTables] = await pool.query(
+    `SELECT ordinance,
+            COUNT(*) row_count,
+            MIN(grade) min_grade,
+            MAX(grade) max_grade,
+            MAX(is_active) is_active
+       FROM salary_grades
+      GROUP BY ordinance
+      ORDER BY is_active DESC, ordinance ASC`,
   );
 
   return json(res, 200, {
@@ -7985,7 +8224,21 @@ async function handleGetConfig(req, res) {
     },
     departments,
     positions,
-    salaryGrades: salaryGrades.map((row) => ({ ...row, amount: Number(row.amount) })),
+    salaryGrades: salaryGrades.map((row) => ({
+      id: row.id,
+      ordinance: row.ordinance,
+      grade: Number(row.grade),
+      step: Number(row.step),
+      amount: Number(row.amount),
+      isActive: Boolean(row.is_active),
+    })),
+    salaryGradeTables: salaryGradeTables.map((row) => ({
+      ordinance: row.ordinance,
+      rowCount: Number(row.row_count || 0),
+      minGrade: row.min_grade == null ? null : Number(row.min_grade),
+      maxGrade: row.max_grade == null ? null : Number(row.max_grade),
+      isActive: Boolean(row.is_active),
+    })),
   });
 }
 
@@ -8107,9 +8360,422 @@ async function handleCreateSalaryGrade(req, res) {
   }
 }
 
+function readSalaryGradePayload(body) {
+  const ordinance = String(body.ordinance || "").trim();
+  const grade = Number(body.grade);
+  const step = Number(body.step);
+  const amount = Number(body.amount);
+  if (
+    !ordinance ||
+    !Number.isInteger(grade) ||
+    grade < 1 ||
+    !Number.isInteger(step) ||
+    step < 1 ||
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    throw new Error("Ordinance, grade, step, and amount are required");
+  }
+  return { ordinance, grade, step, amount };
+}
+
+async function salaryGradeUsage(id) {
+  const [[usage]] = await pool.execute(
+    `SELECT
+       (SELECT COUNT(*) FROM plantilla_items WHERE salary_grade_id = :id) plantilla_count,
+       (SELECT COUNT(*) FROM personnel_movements WHERE target_salary_grade_id = :id) movement_count`,
+    { id },
+  );
+  return {
+    plantillaCount: Number(usage.plantilla_count || 0),
+    movementCount: Number(usage.movement_count || 0),
+  };
+}
+
+async function handleUpdateSalaryGrade(req, res, id) {
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
+
+  const [[salaryGrade]] = await pool.execute(
+    `SELECT id, ordinance, grade, step, amount, is_active FROM salary_grades WHERE id = :id LIMIT 1`,
+    { id },
+  );
+  if (!salaryGrade) return json(res, 404, { error: "Salary grade not found" });
+
+  let payload;
+  try {
+    payload = readSalaryGradePayload(await readBody(req));
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+
+  const usage = await salaryGradeUsage(id);
+  const isUsed = usage.plantillaCount > 0 || usage.movementCount > 0;
+  if (Number(salaryGrade.is_active) === 1 || isUsed) {
+    return json(res, 409, {
+      error:
+        "This salary grade row is active or already used. Create a corrected salary table and activate it instead.",
+    });
+  }
+
+  try {
+    await pool.execute(
+      `UPDATE salary_grades
+          SET ordinance = :ordinance,
+              grade = :grade,
+              step = :step,
+              amount = :amount
+        WHERE id = :id`,
+      { id, ...payload },
+    );
+    await logAudit(
+      user.id,
+      "config.salary_grade_update",
+      {
+        id,
+        before: {
+          ordinance: salaryGrade.ordinance,
+          grade: Number(salaryGrade.grade),
+          step: Number(salaryGrade.step),
+          amount: Number(salaryGrade.amount),
+        },
+        after: payload,
+      },
+      req,
+    );
+    return json(res, 200, { salaryGrade: { id: Number(id), ...payload, isActive: false } });
+  } catch (error) {
+    if (error?.code === "ER_DUP_ENTRY")
+      return json(res, 409, { error: "Salary grade already exists in this table" });
+    throw error;
+  }
+}
+
+async function handleRenameSalaryGradeTable(req, res) {
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
+
+  const body = await readBody(req);
+  const oldOrdinance = String(body.oldOrdinance || "").trim();
+  const newOrdinance = String(body.newOrdinance || "").trim();
+  if (!oldOrdinance || !newOrdinance) {
+    return json(res, 400, { error: "Current and new ordinance names are required" });
+  }
+  if (oldOrdinance === newOrdinance) {
+    return json(res, 400, { error: "New ordinance name must be different" });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[source]] = await connection.execute(
+      `SELECT COUNT(*) count, MAX(is_active) is_active
+         FROM salary_grades
+        WHERE ordinance = :oldOrdinance`,
+      { oldOrdinance },
+    );
+    if (Number(source.count || 0) === 0) {
+      await connection.rollback();
+      return json(res, 404, { error: "Salary grade table not found" });
+    }
+
+    const [[target]] = await connection.execute(
+      `SELECT COUNT(*) count FROM salary_grades WHERE ordinance = :newOrdinance`,
+      { newOrdinance },
+    );
+    if (Number(target.count || 0) > 0) {
+      await connection.rollback();
+      return json(res, 409, { error: "A salary grade table with that ordinance already exists" });
+    }
+
+    await connection.execute(
+      `UPDATE salary_grades SET ordinance = :newOrdinance WHERE ordinance = :oldOrdinance`,
+      { oldOrdinance, newOrdinance },
+    );
+    await connection.execute(
+      `UPDATE employee_salary_records
+          SET payload = JSON_SET(payload, '$.ordinance', :newOrdinance)
+        WHERE JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) = 'Salary Grade Table Activation'
+          AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.ordinance')) = :oldOrdinance`,
+      { oldOrdinance, newOrdinance },
+    );
+    await connection.execute(
+      `UPDATE employee_salary_records
+          SET payload = JSON_SET(payload, '$.previousOrdinance', :newOrdinance)
+        WHERE JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) = 'Salary Grade Table Activation'
+          AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.previousOrdinance')) = :oldOrdinance`,
+      { oldOrdinance, newOrdinance },
+    );
+
+    await connection.commit();
+    await logAudit(
+      user.id,
+      "config.salary_grade_table_rename",
+      { oldOrdinance, newOrdinance, rowCount: Number(source.count || 0) },
+      req,
+    );
+    return json(res, 200, {
+      table: {
+        ordinance: newOrdinance,
+        rowCount: Number(source.count || 0),
+        isActive: Boolean(source.is_active),
+      },
+    });
+  } catch (error) {
+    await connection.rollback();
+    if (error?.code === "ER_DUP_ENTRY")
+      return json(res, 409, { error: "A salary grade table with that ordinance already exists" });
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+function readSalaryEffectivityDate(value) {
+  const date = value ? String(value).trim() : formatLocalDate(new Date());
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== date
+  ) {
+    throw new Error("Effectivity date must be a valid YYYY-MM-DD date");
+  }
+  return date;
+}
+
+async function handleActivateSalaryGradeTable(req, res) {
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
+
+  const body = await readBody(req);
+  const ordinance = String(body.ordinance || "").trim();
+  const remarks = String(body.remarks || "").trim();
+  let effectivityDate = "";
+  try {
+    effectivityDate = readSalaryEffectivityDate(body.effectivityDate);
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+  if (!ordinance) return json(res, 400, { error: "Select a salary grade table to activate" });
+
+  const connection = await pool.getConnection();
+  const results = [];
+  let updated = 0;
+  try {
+    await connection.beginTransaction();
+
+    const [tableRows] = await connection.execute(
+      `SELECT COUNT(*) AS count FROM salary_grades WHERE ordinance = :ordinance`,
+      { ordinance },
+    );
+    if (Number(tableRows[0]?.count || 0) === 0) {
+      await connection.rollback();
+      return json(res, 404, { error: "Salary grade table not found" });
+    }
+
+    await connection.execute(`UPDATE salary_grades SET is_active = 0`);
+    await connection.execute(
+      `UPDATE salary_grades SET is_active = 1 WHERE ordinance = :ordinance`,
+      {
+        ordinance,
+      },
+    );
+
+    const [employees] = await connection.execute(
+      `SELECT e.id employee_id,
+              e.employee_no,
+              e.firstname,
+              e.lastname,
+              pi.id plantilla_item_id,
+              pi.item_number,
+              pi.salary_grade_id old_salary_grade_id,
+              pi.authorized_salary old_authorized_salary,
+              old_sg.ordinance old_ordinance,
+              old_sg.grade old_grade,
+              old_sg.step old_step,
+              old_sg.amount old_salary_grade_amount,
+              new_sg.id new_salary_grade_id,
+              new_sg.amount new_amount
+         FROM plantilla_occupancies po
+         JOIN employees e ON e.id = po.employee_id
+         JOIN plantilla_items pi ON pi.id = po.plantilla_item_id
+    LEFT JOIN salary_grades old_sg ON old_sg.id = pi.salary_grade_id
+    LEFT JOIN salary_grades new_sg
+           ON new_sg.ordinance = :ordinance
+          AND new_sg.grade = old_sg.grade
+          AND new_sg.step = old_sg.step
+        WHERE po.status = 'Active'
+          AND pi.item_status = 'Active'
+          AND e.is_hidden = 0
+          AND e.emp_status = 'Active'
+        ORDER BY e.lastname ASC, e.firstname ASC
+        FOR UPDATE`,
+      { ordinance },
+    );
+
+    for (const employee of employees) {
+      const employeeName = [employee.lastname, employee.firstname].filter(Boolean).join(", ");
+      const baseResult = {
+        employeeId: employee.employee_id,
+        employeeNo: employee.employee_no,
+        employeeName,
+        itemNumber: employee.item_number,
+        grade: employee.old_grade == null ? null : Number(employee.old_grade),
+        step: employee.old_step == null ? null : Number(employee.old_step),
+      };
+
+      if (!employee.old_salary_grade_id || !employee.old_grade || !employee.old_step) {
+        results.push({
+          ...baseResult,
+          status: "skipped",
+          reason: "Plantilla item has no salary grade",
+        });
+        continue;
+      }
+      if (!employee.new_salary_grade_id) {
+        results.push({
+          ...baseResult,
+          status: "skipped",
+          reason: `No SG-${employee.old_grade} Step ${employee.old_step} row in ${ordinance}`,
+        });
+        continue;
+      }
+
+      const oldAmount =
+        employee.old_authorized_salary == null
+          ? Number(employee.old_salary_grade_amount || 0)
+          : Number(employee.old_authorized_salary);
+      const newAmount = Number(employee.new_amount);
+
+      const [duplicates] = await connection.execute(
+        `SELECT id
+           FROM employee_salary_records
+          WHERE employee_id = :employeeId
+            AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) = 'Salary Grade Table Activation'
+            AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.ordinance')) = :ordinance
+            AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.date')) = :effectivityDate
+          LIMIT 1`,
+        { employeeId: employee.employee_id, ordinance, effectivityDate },
+      );
+      if (duplicates.length) {
+        results.push({
+          ...baseResult,
+          oldAmount,
+          newAmount,
+          status: "skipped",
+          reason: "Already applied to this employee for the same ordinance and effectivity date",
+        });
+        continue;
+      }
+
+      await connection.execute(
+        `UPDATE plantilla_items
+            SET salary_grade_id = :salaryGradeId,
+                authorized_salary = :amount,
+                updated_by = :userId
+          WHERE id = :plantillaItemId`,
+        {
+          salaryGradeId: employee.new_salary_grade_id,
+          amount: newAmount,
+          userId: user.id,
+          plantillaItemId: employee.plantilla_item_id,
+        },
+      );
+
+      await connection.execute(
+        `INSERT INTO employee_salary_records (id, employee_id, payload)
+         VALUES (:id, :employeeId, :payload)`,
+        {
+          id: crypto.randomUUID(),
+          employeeId: employee.employee_id,
+          payload: JSON.stringify({
+            date: effectivityDate,
+            description: "Salary grade table activation",
+            ordinance,
+            previousOrdinance: employee.old_ordinance || "",
+            grade: Number(employee.old_grade),
+            step: Number(employee.old_step),
+            previousAmount: oldAmount,
+            amount: newAmount,
+            gross: newAmount,
+            type: "Salary Grade Table Activation",
+            remarks,
+          }),
+        },
+      );
+
+      await connection.execute(
+        `INSERT INTO plantilla_item_history (plantilla_item_id, action, snapshot_json, changed_by)
+         VALUES (:plantillaItemId, 'Salary Grade Table Activation', :snapshot, :userId)`,
+        {
+          plantillaItemId: employee.plantilla_item_id,
+          userId: user.id,
+          snapshot: JSON.stringify({
+            ordinance,
+            effectivityDate,
+            oldSalaryGradeId: employee.old_salary_grade_id,
+            newSalaryGradeId: employee.new_salary_grade_id,
+            oldAmount,
+            newAmount,
+            employeeId: employee.employee_id,
+            remarks,
+          }),
+        },
+      );
+
+      updated += 1;
+      results.push({
+        ...baseResult,
+        oldAmount,
+        newAmount,
+        status: "updated",
+        reason: "",
+      });
+    }
+
+    await connection.commit();
+    await logAudit(
+      user.id,
+      "config.salary_grade_table_activate",
+      { ordinance, effectivityDate, updated, skipped: results.length - updated },
+      req,
+    );
+    return json(res, 200, {
+      activeOrdinance: ordinance,
+      effectivityDate,
+      summary: {
+        checked: results.length,
+        updated,
+        skipped: results.length - updated,
+      },
+      results,
+    });
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function handleDeleteSalaryGrade(req, res, id) {
   const user = await requireEmployeeWrite(req, res);
   if (!user) return;
+  const [[salaryGrade]] = await pool.execute(
+    `SELECT id, is_active FROM salary_grades WHERE id = :id LIMIT 1`,
+    { id },
+  );
+  if (!salaryGrade) return json(res, 404, { error: "Salary grade not found" });
+  if (Number(salaryGrade.is_active) === 1) {
+    return json(res, 409, { error: "Cannot delete a row from the active salary grade table" });
+  }
+  const usage = await salaryGradeUsage(id);
+  if (usage.plantillaCount > 0 || usage.movementCount > 0) {
+    return json(res, 409, {
+      error: "Cannot delete a salary grade row already used by plantilla or movements",
+    });
+  }
   await pool.execute(`DELETE FROM salary_grades WHERE id = :id`, { id });
   await logAudit(user.id, "config.salary_grade_delete", { id }, req);
   return json(res, 200, { ok: true });
@@ -8701,6 +9367,10 @@ async function route(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/admin/employee-account-candidates")
     return handleListEmployeeAccountCandidates(req, res);
+  if (req.method === "POST" && url.pathname === "/api/admin/employee-accounts/bulk")
+    return handleBulkCreateEmployeeAccounts(req, res);
+  if (req.method === "POST" && url.pathname === "/api/admin/employee-accounts/reset-passwords")
+    return handleBulkResetEmployeePasswords(req, res);
   if (req.method === "GET" && url.pathname === "/api/employees")
     return handleListEmployees(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/employees")
@@ -8903,6 +9573,12 @@ async function route(req, res) {
     return handleDeletePosition(req, res, positionMatch[1]);
   if (req.method === "POST" && url.pathname === "/api/settings/salary-grades")
     return handleCreateSalaryGrade(req, res);
+  if (req.method === "POST" && url.pathname === "/api/settings/salary-grades/rename-table")
+    return handleRenameSalaryGradeTable(req, res);
+  if (req.method === "POST" && url.pathname === "/api/settings/salary-grades/activate")
+    return handleActivateSalaryGradeTable(req, res);
+  if ((req.method === "PUT" || req.method === "PATCH") && salaryGradeMatch)
+    return handleUpdateSalaryGrade(req, res, salaryGradeMatch[1]);
   if (req.method === "DELETE" && salaryGradeMatch)
     return handleDeleteSalaryGrade(req, res, salaryGradeMatch[1]);
 

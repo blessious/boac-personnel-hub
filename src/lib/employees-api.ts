@@ -81,6 +81,11 @@ export type EmployeeDetailResponse = {
   sections: Record<string, SectionRow[]>;
 };
 
+export type EmployeeAccountCredentials = {
+  username: string;
+  temporaryPassword: string;
+};
+
 export type SectionRow = {
   id: string;
   payload: Record<string, string | number | boolean | null>;
@@ -174,7 +179,7 @@ export function generateEmployeeWesDocx(id: string) {
 }
 
 export function createEmployee(employee: Partial<EmployeeRecord>) {
-  return api<{ employee: EmployeeRecord }>("/api/employees", {
+  return api<{ employee: EmployeeRecord; account?: EmployeeAccountCredentials }>("/api/employees", {
     method: "POST",
     body: JSON.stringify(employee),
   });

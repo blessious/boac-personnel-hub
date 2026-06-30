@@ -1,15 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
   Bug,
+  Copy,
   Database,
   Download,
   Edit,
   Lock,
   Plus,
+  Printer,
   RefreshCw,
+  Search,
   ShieldCheck,
   Trash2,
   Unlock,
@@ -89,6 +92,15 @@ interface BackupFile {
   modifiedAt: string;
 }
 
+interface BulkEmployeeAccount {
+  userId: number;
+  employeeId: string;
+  employeeNo: string;
+  employeeName: string;
+  username: string;
+  temporaryPassword: string;
+}
+
 const ADMIN_TABS: { key: AdminTab; label: string; icon: typeof Users }[] = [
   { key: "users", label: "User Management", icon: Users },
   { key: "audit", label: "Audit Log", icon: Activity },
@@ -123,6 +135,10 @@ function AdminPage() {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [tempPasswordMap, setTempPasswordMap] = useState<Record<number, string>>({});
+  const [bulkGeneratingAccounts, setBulkGeneratingAccounts] = useState(false);
+  const [bulkResettingPasswords, setBulkResettingPasswords] = useState(false);
+  const [bulkEmployeeAccounts, setBulkEmployeeAccounts] = useState<BulkEmployeeAccount[]>([]);
+  const [userSearch, setUserSearch] = useState("");
   const [form, setForm] = useState<{
     name: string;
     username: string;
@@ -358,10 +374,160 @@ function AdminPage() {
       setTemporaryPassword(result.temporaryPassword);
       // Persist in map so it shows when edit dialog is opened
       setTempPasswordMap((prev) => ({ ...prev, [item.id]: result.temporaryPassword }));
-      toast.success(`Temporary password: ${result.temporaryPassword}`);
+      setBulkEmployeeAccounts([
+        {
+          userId: item.id,
+          employeeId: item.employeeId || "",
+          employeeNo: item.employeeNo || "",
+          employeeName: item.employeeName || item.name,
+          username: item.username,
+          temporaryPassword: result.temporaryPassword,
+        },
+      ]);
+      toast.success("Temporary password reset");
     } catch (error) {
       toast.error((error as Error).message);
     }
+  };
+
+  const bulkAccountText = bulkEmployeeAccounts
+    .map((account) =>
+      [
+        `Employee: ${account.employeeName}`,
+        `Employee ID: ${account.employeeNo}`,
+        `Username: ${account.username}`,
+        `Temporary password: ${account.temporaryPassword}`,
+      ].join("\n"),
+    )
+    .join("\n\n");
+
+  const generateBulkEmployeeAccounts = async () => {
+    if (
+      !window.confirm(
+        "Generate accounts for all employees without linked user accounts? Temporary passwords will only be shown after this action.",
+      )
+    ) {
+      return;
+    }
+
+    setBulkGeneratingAccounts(true);
+    try {
+      const result = await api<{
+        accounts: BulkEmployeeAccount[];
+        skipped: Array<{ employeeNo: string; employeeName: string; reason: string }>;
+      }>("/api/admin/employee-accounts/bulk", { method: "POST" });
+      await loadUsers();
+      await loadEmployeeCandidates();
+      setBulkEmployeeAccounts(result.accounts);
+      if (result.accounts.length === 0) {
+        toast.info("No employees need new accounts");
+      } else {
+        toast.success(`Created ${result.accounts.length} employee account(s)`);
+      }
+      if (result.skipped.length) {
+        toast.warning(`${result.skipped.length} employee account(s) were skipped`);
+      }
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setBulkGeneratingAccounts(false);
+    }
+  };
+
+  const resetBulkEmployeePasswords = async () => {
+    if (
+      !window.confirm(
+        "Reset temporary passwords for all active linked employee accounts? This will sign those employees out and force password change on next login.",
+      )
+    ) {
+      return;
+    }
+
+    setBulkResettingPasswords(true);
+    try {
+      const result = await api<{ accounts: BulkEmployeeAccount[] }>(
+        "/api/admin/employee-accounts/reset-passwords",
+        { method: "POST" },
+      );
+      await loadUsers();
+      setBulkEmployeeAccounts(result.accounts);
+      if (result.accounts.length === 0) {
+        toast.info("No active linked employee accounts to reset");
+      } else {
+        toast.success(`Reset ${result.accounts.length} employee password(s)`);
+      }
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setBulkResettingPasswords(false);
+    }
+  };
+
+  const copyBulkEmployeeAccounts = async () => {
+    if (!bulkAccountText) return;
+    try {
+      await navigator.clipboard.writeText(
+        `${bulkAccountText}\n\nEmployees must change these passwords on first login.`,
+      );
+      toast.success("Bulk credentials copied");
+    } catch {
+      toast.error("Unable to copy credentials");
+    }
+  };
+
+  const printBulkEmployeeAccounts = () => {
+    if (!bulkEmployeeAccounts.length) return;
+    const printWindow = window.open("", "_blank", "width=900,height=720");
+    if (!printWindow) {
+      toast.error("Allow pop-ups to print bulk credentials");
+      return;
+    }
+
+    const { document } = printWindow;
+    document.title = "Employee Account Credentials";
+    const style = document.createElement("style");
+    style.textContent =
+      "body{font-family:Arial,sans-serif;padding:28px;color:#111827}h1{font-size:20px;margin:0 0 6px}.note{font-size:12px;color:#4b5563;margin:0 0 18px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;vertical-align:top}th{background:#f3f4f6;font-weight:700}.mono{font-family:Consolas,monospace}";
+    document.head.appendChild(style);
+
+    const title = document.createElement("h1");
+    title.textContent = "Employee Account Credentials";
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent =
+      "Temporary passwords are shown only after account creation. Employees must change them on first login.";
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    for (const label of ["Employee", "Employee ID", "Username", "Temporary Password"]) {
+      const cell = document.createElement("th");
+      cell.textContent = label;
+      headerRow.appendChild(cell);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    for (const account of bulkEmployeeAccounts) {
+      const row = document.createElement("tr");
+      for (const value of [
+        account.employeeName,
+        account.employeeNo,
+        account.username,
+        account.temporaryPassword,
+      ]) {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        if (value === account.username || value === account.temporaryPassword) {
+          cell.className = "mono";
+        }
+        row.appendChild(cell);
+      }
+      tbody.appendChild(row);
+    }
+    table.appendChild(tbody);
+    document.body.append(title, note, table);
+    printWindow.focus();
+    printWindow.print();
   };
 
   const unlockUser = async (item: AdminUser) => {
@@ -402,6 +568,25 @@ function AdminPage() {
   const activeUsers = users.filter((item) => item.isActive).length;
   const approverUsers = users.filter((item) => item.role === "Approver").length;
   const hasSuperAdmin = users.some((item) => item.role === "Super Admin" && item.isActive);
+  const filteredUsers = useMemo(() => {
+    const query = userSearch.trim().toLowerCase();
+    if (!query) return users;
+    return users.filter((item) =>
+      [
+        item.name,
+        item.username,
+        item.role,
+        item.employeeName,
+        item.employeeNo,
+        item.isActive ? "active" : "inactive",
+        item.mustChangePassword ? "temp password" : "",
+        item.lockedAt ? "locked" : "",
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [userSearch, users]);
   const roleOptions =
     user?.role === "Super Admin" || !hasSuperAdmin
       ? ROLE_OPTIONS
@@ -452,14 +637,49 @@ function AdminPage() {
           <div className="p-4 flex items-center justify-between border-b border-border">
             <div>
               <h4 className="font-semibold text-foreground">System Users</h4>
-              <p className="text-xs text-muted-foreground">{users.length} registered accounts</p>
+              <p className="text-xs text-muted-foreground">
+                {filteredUsers.length === users.length
+                  ? `${users.length} registered accounts`
+                  : `${filteredUsers.length} of ${users.length} accounts shown`}
+              </p>
             </div>
-            <Button
-              onClick={openAddUser}
-              className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
-            >
-              <Plus className="h-4 w-4" /> Add User
-            </Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={generateBulkEmployeeAccounts}
+                disabled={bulkGeneratingAccounts || bulkResettingPasswords}
+                className="gap-1.5"
+              >
+                <Users className="h-4 w-4" />
+                {bulkGeneratingAccounts ? "Generating..." : "Generate Employee Accounts"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={resetBulkEmployeePasswords}
+                disabled={bulkGeneratingAccounts || bulkResettingPasswords}
+                className="gap-1.5"
+              >
+                <Lock className="h-4 w-4" />
+                {bulkResettingPasswords ? "Preparing..." : "Print Employee Password"}
+              </Button>
+              <Button
+                onClick={openAddUser}
+                className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+              >
+                <Plus className="h-4 w-4" /> Add User
+              </Button>
+            </div>
+          </div>
+          <div className="border-b border-border p-4">
+            <div className="relative max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+              <Input
+                value={userSearch}
+                onChange={(event) => setUserSearch(event.target.value)}
+                placeholder="Search users, usernames, roles, or employees..."
+                className="pl-9"
+              />
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -474,7 +694,7 @@ function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((item, index) => (
+                {filteredUsers.map((item, index) => (
                   <tr
                     key={item.id}
                     className={cn(
@@ -572,10 +792,10 @@ function AdminPage() {
                     </td>
                   </tr>
                 ))}
-                {users.length === 0 && (
+                {filteredUsers.length === 0 && (
                   <tr>
                     <td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>
-                      No users found.
+                      {users.length === 0 ? "No users found." : "No users match your search."}
                     </td>
                   </tr>
                 )}
@@ -830,6 +1050,61 @@ function AdminPage() {
         onChange={setForm}
         onSubmit={updateUser}
       />
+      <Dialog
+        open={bulkEmployeeAccounts.length > 0}
+        onOpenChange={(open) => !open && setBulkEmployeeAccounts([])}
+      >
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>
+              {bulkEmployeeAccounts.length === 1
+                ? "Employee Account Credentials"
+                : "Bulk Employee Account Credentials"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+              Temporary passwords are shown only now. Print or copy before closing, then give each
+              employee only their own credentials.
+            </div>
+            <div className="max-h-[55vh] overflow-auto rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-muted">
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <th className="px-3 py-2 font-semibold">Employee</th>
+                    <th className="px-3 py-2 font-semibold">Employee ID</th>
+                    <th className="px-3 py-2 font-semibold">Username</th>
+                    <th className="px-3 py-2 font-semibold">Temp Password</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bulkEmployeeAccounts.map((account) => (
+                    <tr key={account.userId} className="border-t border-border">
+                      <td className="px-3 py-2 font-medium">{account.employeeName}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{account.employeeNo}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{account.username}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{account.temporaryPassword}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={copyBulkEmployeeAccounts}>
+                <Copy className="mr-2 h-4 w-4" />
+                Copy
+              </Button>
+              <Button variant="outline" onClick={printBulkEmployeeAccounts}>
+                <Printer className="mr-2 h-4 w-4" />
+                Print
+              </Button>
+            </div>
+            <Button onClick={() => setBulkEmployeeAccounts([])}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
@@ -976,11 +1251,10 @@ function UserDialog({
 }
 
 function suggestUsername(employee: EmployeeRecord) {
-  const base = employee.employeeId || `${employee.firstname}.${employee.lastname}`;
-  return base
+  return `${employee.firstname}.${employee.lastname}`
     .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
     .slice(0, 50);
 }
 
