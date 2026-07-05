@@ -1,6 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Loader2, Pencil, Plus, Power, Save, Trash2, X } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  Building2,
+  CheckCircle2,
+  Loader2,
+  Pencil,
+  Plus,
+  Power,
+  Save,
+  Search,
+  Table2,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { ReferenceLibraryPanel } from "@/components/reference/ReferenceLibraryPanel";
@@ -9,6 +22,17 @@ import {
   type ReferenceCategory,
   type ReferenceRow,
 } from "@/lib/reference-libraries";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,6 +47,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { canWriteHrRecords, useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { useRealtimeRefresh } from "@/lib/realtime";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/employees/references")({
   component: EmployeeReferencesPage,
@@ -59,6 +84,14 @@ interface ParsedSalaryRow {
   grade: number;
   step: number;
   amount: number;
+}
+
+interface ConfirmAction {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  destructive?: boolean;
+  onConfirm: () => Promise<void> | void;
 }
 
 function EmployeeReferencesPage() {
@@ -105,12 +138,22 @@ function EmployeeReferencesPage() {
   const [savingSalaryGradeId, setSavingSalaryGradeId] = useState(0);
   const [activeReferenceTab, setActiveReferenceTab] = useState("departments");
   const [loading, setLoading] = useState(true);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [confirmingAction, setConfirmingAction] = useState(false);
 
   const filteredDepts = depts.filter((d) => d.name.toLowerCase().includes(deptQuery.toLowerCase()));
   const filteredPos = pos.filter((p) => p.title.toLowerCase().includes(posQuery.toLowerCase()));
   const activeSalaryTable = useMemo(
     () => salaryGradeTables.find((table) => table.isActive)?.ordinance || "",
     [salaryGradeTables],
+  );
+  const activeLibraryCount = useMemo(
+    () =>
+      Object.values(referenceLibraries).reduce(
+        (total, rows) => total + rows.filter((row) => row.isActive).length,
+        0,
+      ),
+    [referenceLibraries],
   );
   const selectedSalaryRows = useMemo(
     () =>
@@ -119,18 +162,26 @@ function EmployeeReferencesPage() {
         .sort((a, b) => a.grade - b.grade || a.step - b.step),
     [salaryGrades, selectedOrdinance],
   );
+  const selectedSalaryTable = useMemo(
+    () => salaryGradeTables.find((table) => table.ordinance === selectedOrdinance),
+    [salaryGradeTables, selectedOrdinance],
+  );
   const referenceTabOptions = useMemo(
     () => [
-      { value: "departments", label: "Departments" },
-      { value: "positions", label: "Positions" },
-      { value: "salary", label: "Salary Grades" },
+      { value: "departments", label: "Departments", count: depts.length },
+      { value: "positions", label: "Positions", count: pos.length },
+      { value: "salary", label: "Salary Grades", count: salaryGradeTables.length },
       ...REFERENCE_LIBRARY_CONFIG.map((config) => ({
         value: config.category,
         label: config.plural,
+        count: referenceLibraries[config.category]?.length || 0,
       })),
     ],
-    [],
+    [depts.length, pos.length, referenceLibraries, salaryGradeTables.length],
   );
+  const activeReferenceLabel =
+    referenceTabOptions.find((tab) => tab.value === activeReferenceTab)?.label ||
+    "Employee References";
 
   const loadReferences = async () => {
     setLoading(true);
@@ -223,6 +274,16 @@ function EmployeeReferencesPage() {
     }
   };
 
+  const requestDeleteDepartment = (department: DepartmentRow) => {
+    setConfirmAction({
+      title: "Delete department?",
+      description: `This will remove "${department.name}" from the department reference list. If it has already been used in records, keep it and update the official reference instead.`,
+      confirmLabel: "Delete Department",
+      destructive: true,
+      onConfirm: () => deleteDepartment(department.id),
+    });
+  };
+
   const addPosition = async () => {
     try {
       const result = await api<{ position: PositionRow }>("/api/settings/positions", {
@@ -245,6 +306,16 @@ function EmployeeReferencesPage() {
     } catch (error) {
       toast.error((error as Error).message);
     }
+  };
+
+  const requestDeletePosition = (position: PositionRow) => {
+    setConfirmAction({
+      title: "Delete position?",
+      description: `This will remove "${position.title}" from the position reference list. If it has already been used in records, keep it and update the official reference instead.`,
+      confirmLabel: "Delete Position",
+      destructive: true,
+      onConfirm: () => deletePosition(position.id),
+    });
   };
 
   const addSalaryGrade = async () => {
@@ -373,6 +444,16 @@ function EmployeeReferencesPage() {
     }
   };
 
+  const requestDeleteSalaryGrade = (row: SalaryGradeRow) => {
+    setConfirmAction({
+      title: "Delete salary grade row?",
+      description: `This will delete SG-${row.grade} Step ${row.step} from ${row.ordinance}. Active salary-table rows remain protected by the backend.`,
+      confirmLabel: "Delete Row",
+      destructive: true,
+      onConfirm: () => deleteSalaryGrade(row.id),
+    });
+  };
+
   const startSalaryGradeEdit = (row: SalaryGradeRow) => {
     setEditingSalaryGrade({
       id: row.id,
@@ -430,10 +511,15 @@ function EmployeeReferencesPage() {
       toast.error("The ordinance name is unchanged");
       return;
     }
-    const confirmed = window.confirm(
-      `Rename salary table ${oldOrdinance} to ${newOrdinance}? This only corrects the ordinance label, not the salary amounts.`,
-    );
-    if (!confirmed) return;
+    setConfirmAction({
+      title: "Correct salary table name?",
+      description: `Rename ${oldOrdinance} to ${newOrdinance}. This only corrects the ordinance label and does not change salary amounts.`,
+      confirmLabel: "Correct Name",
+      onConfirm: () => renameSalaryTableConfirmed(oldOrdinance, newOrdinance),
+    });
+  };
+
+  const renameSalaryTableConfirmed = async (oldOrdinance: string, newOrdinance: string) => {
     setRenamingTable(true);
     try {
       await api<{ table: SalaryGradeTableRow }>("/api/settings/salary-grades/rename-table", {
@@ -456,10 +542,15 @@ function EmployeeReferencesPage() {
       toast.error("Effectivity date is required");
       return;
     }
-    const confirmed = window.confirm(
-      `Activate ${ordinance}? This will update active plantilla salaries and add 201 Salary records for affected active employees.`,
-    );
-    if (!confirmed) return;
+    setConfirmAction({
+      title: "Activate salary table?",
+      description: `Activate ${ordinance} effective ${activationDate}. This will update active plantilla salaries and add 201 Salary records for affected active employees.`,
+      confirmLabel: "Activate Table",
+      onConfirm: () => activateSalaryTableConfirmed(ordinance),
+    });
+  };
+
+  const activateSalaryTableConfirmed = async (ordinance: string) => {
     setActivatingOrdinance(ordinance);
     try {
       const result = await api<{
@@ -483,13 +574,53 @@ function EmployeeReferencesPage() {
     }
   };
 
+  const runConfirmAction = async () => {
+    if (!confirmAction) return;
+    setConfirmingAction(true);
+    try {
+      await confirmAction.onConfirm();
+      setConfirmAction(null);
+    } finally {
+      setConfirmingAction(false);
+    }
+  };
+
   return (
     <AppShell
       title="Employee References"
       subtitle="Manage the table-driven organization, employment, position, and compensation libraries"
     >
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <ReferenceMetric
+          icon={Building2}
+          label="Departments"
+          value={depts.length}
+          detail={`${filteredDepts.length} visible`}
+        />
+        <ReferenceMetric
+          icon={BriefcaseBusiness}
+          label="Positions"
+          value={pos.length}
+          detail={`${filteredPos.length} visible`}
+        />
+        <ReferenceMetric
+          icon={Table2}
+          label="Salary Tables"
+          value={salaryGradeTables.length}
+          detail={activeSalaryTable ? `Active: ${activeSalaryTable}` : "No active table"}
+        />
+        <ReferenceMetric
+          icon={CheckCircle2}
+          label="Active Library Values"
+          value={activeLibraryCount}
+          detail={canManage ? "Editing enabled" : "View only"}
+        />
+      </div>
       {loading && (
-        <div className="mb-3 text-sm text-muted-foreground">Loading employee references...</div>
+        <div className="mb-3 flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Refreshing {activeReferenceLabel.toLowerCase()}...
+        </div>
       )}
       <Tabs value={activeReferenceTab} onValueChange={setActiveReferenceTab}>
         <div className="mb-4 md:hidden">
@@ -500,7 +631,7 @@ function EmployeeReferencesPage() {
             <SelectContent>
               {referenceTabOptions.map((tab) => (
                 <SelectItem key={tab.value} value={tab.value}>
-                  {tab.label}
+                  {tab.label} ({tab.count})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -512,114 +643,59 @@ function EmployeeReferencesPage() {
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="min-h-8 flex-none px-3 text-sm"
+                className="min-h-8 flex-none gap-2 px-3 text-sm"
               >
-                {tab.label}
+                <span>{tab.label}</span>
+                <span className="rounded bg-background/80 px-1.5 py-0.5 text-[11px] text-muted-foreground group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white">
+                  {tab.count}
+                </span>
               </TabsTrigger>
             ))}
           </TabsList>
         </div>
 
         <TabsContent value="departments" className="mt-4">
-          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <div className="flex flex-col gap-3 mb-6 sm:flex-row">
-              <div className="flex flex-1 gap-2">
-                <Input
-                  placeholder="New department name"
-                  value={newDept}
-                  onChange={(e) => setNewDept(e.target.value)}
-                />
-                <Button
-                  disabled={!canManage || !newDept.trim()}
-                  onClick={addDepartment}
-                  className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Add
-                </Button>
-              </div>
-              <div className="w-full sm:w-64">
-                <Input
-                  placeholder="Search departments..."
-                  value={deptQuery}
-                  onChange={(e) => setDeptQuery(e.target.value)}
-                  className="bg-muted/50"
-                />
-              </div>
-            </div>
-            <ul className="divide-y divide-border border-t border-border">
-              {filteredDepts.map((d) => (
-                <li
-                  key={d.id}
-                  className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors"
-                >
-                  <span>{d.name}</span>
-                  <button
-                    disabled={!canManage}
-                    onClick={() => deleteDepartment(d.id)}
-                    className="text-muted-foreground hover:text-destructive disabled:opacity-30"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </li>
-              ))}
-              {filteredDepts.length === 0 && (
-                <li className="py-8 text-center text-muted-foreground text-sm">
-                  No departments found.
-                </li>
-              )}
-            </ul>
-          </div>
+          <SimpleReferenceSection
+            title="Departments"
+            description="Official department names used across employee records and reports."
+            itemLabel="department"
+            addPlaceholder="New department name"
+            searchPlaceholder="Search departments..."
+            value={newDept}
+            query={deptQuery}
+            items={filteredDepts.map((department) => ({
+              id: department.id,
+              label: department.name,
+              onDelete: () => requestDeleteDepartment(department),
+            }))}
+            totalCount={depts.length}
+            canManage={canManage}
+            onValueChange={setNewDept}
+            onQueryChange={setDeptQuery}
+            onAdd={addDepartment}
+          />
         </TabsContent>
 
         <TabsContent value="positions" className="mt-4">
-          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <div className="flex flex-col gap-3 mb-6 sm:flex-row">
-              <div className="flex flex-1 gap-2">
-                <Input
-                  placeholder="New position title"
-                  value={newPos}
-                  onChange={(e) => setNewPos(e.target.value)}
-                />
-                <Button
-                  disabled={!canManage || !newPos.trim()}
-                  onClick={addPosition}
-                  className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Add
-                </Button>
-              </div>
-              <div className="w-full sm:w-64">
-                <Input
-                  placeholder="Search positions..."
-                  value={posQuery}
-                  onChange={(e) => setPosQuery(e.target.value)}
-                  className="bg-muted/50"
-                />
-              </div>
-            </div>
-            <ul className="divide-y divide-border border-t border-border">
-              {filteredPos.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-center justify-between py-2.5 text-sm hover:bg-muted/30 px-2 transition-colors"
-                >
-                  <span>{p.title}</span>
-                  <button
-                    disabled={!canManage}
-                    onClick={() => deletePosition(p.id)}
-                    className="text-muted-foreground hover:text-destructive disabled:opacity-30"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </li>
-              ))}
-              {filteredPos.length === 0 && (
-                <li className="py-8 text-center text-muted-foreground text-sm">
-                  No positions found.
-                </li>
-              )}
-            </ul>
-          </div>
+          <SimpleReferenceSection
+            title="Positions"
+            description="Official position titles used in plantilla, employee profiles, and movements."
+            itemLabel="position"
+            addPlaceholder="New position title"
+            searchPlaceholder="Search positions..."
+            value={newPos}
+            query={posQuery}
+            items={filteredPos.map((position) => ({
+              id: position.id,
+              label: position.title,
+              onDelete: () => requestDeletePosition(position),
+            }))}
+            totalCount={pos.length}
+            canManage={canManage}
+            onValueChange={setNewPos}
+            onQueryChange={setPosQuery}
+            onAdd={addPosition}
+          />
         </TabsContent>
 
         <TabsContent value="salary" className="mt-4">
@@ -633,25 +709,31 @@ function EmployeeReferencesPage() {
                     activate it when HR is ready to update plantilla and 201 Salary records.
                   </p>
                   {activeSalaryTable && (
-                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                    <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       Active: {activeSalaryTable}
                     </div>
                   )}
                 </div>
-                <div className="grid gap-2 sm:grid-cols-[160px_minmax(260px,1fr)]">
-                  <Input
-                    type="date"
-                    value={activationDate}
-                    onChange={(event) => setActivationDate(event.target.value)}
-                    disabled={!canManage}
-                  />
-                  <Input
-                    placeholder="Activation remarks"
-                    value={activationRemarks}
-                    onChange={(event) => setActivationRemarks(event.target.value)}
-                    disabled={!canManage}
-                  />
+                <div className="grid gap-2 sm:grid-cols-[170px_minmax(260px,1fr)]">
+                  <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                    Effectivity date
+                    <Input
+                      type="date"
+                      value={activationDate}
+                      onChange={(event) => setActivationDate(event.target.value)}
+                      disabled={!canManage}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                    Activation remarks
+                    <Input
+                      placeholder="Optional audit note"
+                      value={activationRemarks}
+                      onChange={(event) => setActivationRemarks(event.target.value)}
+                      disabled={!canManage}
+                    />
+                  </label>
                 </div>
               </div>
 
@@ -670,11 +752,12 @@ function EmployeeReferencesPage() {
                           selectSalaryTable(table.ordinance);
                         }
                       }}
-                      className={`rounded-lg border p-4 text-left transition-colors ${
+                      className={cn(
+                        "rounded-lg border bg-background p-4 text-left transition-colors",
                         selected
-                          ? "border-[#2563eb] bg-blue-50/70"
-                          : "border-border hover:bg-muted/40"
-                      }`}
+                          ? "border-[#2563eb] shadow-sm ring-1 ring-[#2563eb]/30"
+                          : "border-border hover:bg-muted/40",
+                      )}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -687,14 +770,14 @@ function EmployeeReferencesPage() {
                           </div>
                         </div>
                         {table.isActive ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                          <Badge className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
                             <CheckCircle2 className="h-3.5 w-3.5" />
                             Active
-                          </span>
+                          </Badge>
                         ) : (
-                          <span className="rounded-full border border-border bg-card px-2 py-0.5 text-xs text-muted-foreground">
+                          <Badge variant="outline" className="text-muted-foreground">
                             Inactive
-                          </span>
+                          </Badge>
                         )}
                       </div>
                       <div className="mt-3 flex justify-end">
@@ -811,12 +894,24 @@ function EmployeeReferencesPage() {
               <div className="p-5">
                 <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
-                    <h3 className="text-sm font-semibold">
-                      {selectedOrdinance ? selectedOrdinance : "Selected Salary Table"}
-                    </h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold">
+                        {selectedOrdinance ? selectedOrdinance : "Selected Salary Table"}
+                      </h3>
+                      {selectedSalaryTable?.isActive && (
+                        <Badge className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Active
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       {selectedOrdinance
-                        ? `${selectedSalaryRows.length} salary grade rows`
+                        ? `${selectedSalaryRows.length} salary grade rows${
+                            selectedSalaryTable?.minGrade && selectedSalaryTable?.maxGrade
+                              ? `, SG-${selectedSalaryTable.minGrade} to SG-${selectedSalaryTable.maxGrade}`
+                              : ""
+                          }`
                         : "Select a table above, or create a new one from the form."}
                     </p>
                   </div>
@@ -872,7 +967,7 @@ function EmployeeReferencesPage() {
                 </div>
 
                 <div className="max-h-[520px] overflow-auto rounded-lg border border-border">
-                  <table className="w-full text-sm">
+                  <table className="w-full min-w-[620px] text-sm">
                     <thead className="sticky top-0 bg-card">
                       <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                         <th className="px-4 py-3 font-medium">Salary Grade</th>
@@ -883,7 +978,13 @@ function EmployeeReferencesPage() {
                     </thead>
                     <tbody>
                       {selectedSalaryRows.map((s, i) => (
-                        <tr key={s.id} className={i % 2 ? "bg-muted/40" : ""}>
+                        <tr
+                          key={s.id}
+                          className={cn(
+                            "border-b border-border/70",
+                            i % 2 ? "bg-muted/30" : "bg-background",
+                          )}
+                        >
                           <td className="px-4 py-2.5">
                             {editingSalaryGrade.id === s.id ? (
                               <Input
@@ -981,7 +1082,7 @@ function EmployeeReferencesPage() {
                                 </button>
                                 <button
                                   disabled={!canManage || s.isActive}
-                                  onClick={() => deleteSalaryGrade(s.id)}
+                                  onClick={() => requestDeleteSalaryGrade(s)}
                                   className="text-muted-foreground hover:text-destructive disabled:opacity-30"
                                   title={
                                     s.isActive
@@ -1025,6 +1126,167 @@ function EmployeeReferencesPage() {
           </TabsContent>
         ))}
       </Tabs>
+      <AlertDialog
+        open={Boolean(confirmAction)}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmAction?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmAction?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={confirmingAction}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={confirmingAction}
+              onClick={(event) => {
+                event.preventDefault();
+                runConfirmAction();
+              }}
+              className={
+                confirmAction?.destructive
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : undefined
+              }
+            >
+              {confirmingAction && <Loader2 className="h-4 w-4 animate-spin" />}
+              {confirmAction?.confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
+  );
+}
+
+interface ReferenceMetricProps {
+  icon: typeof Building2;
+  label: string;
+  value: number;
+  detail: string;
+}
+
+function ReferenceMetric({ icon: Icon, label, value, detail }: ReferenceMetricProps) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+        </div>
+        <div className="rounded-md border border-border bg-background p-2 text-muted-foreground">
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-2 truncate text-xs text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+interface SimpleReferenceItem {
+  id: number;
+  label: string;
+  onDelete: () => void;
+}
+
+interface SimpleReferenceSectionProps {
+  title: string;
+  description: string;
+  itemLabel: string;
+  addPlaceholder: string;
+  searchPlaceholder: string;
+  value: string;
+  query: string;
+  items: SimpleReferenceItem[];
+  totalCount: number;
+  canManage: boolean;
+  onValueChange: (value: string) => void;
+  onQueryChange: (value: string) => void;
+  onAdd: () => void;
+}
+
+function SimpleReferenceSection({
+  title,
+  description,
+  itemLabel,
+  addPlaceholder,
+  searchPlaceholder,
+  value,
+  query,
+  items,
+  totalCount,
+  canManage,
+  onValueChange,
+  onQueryChange,
+  onAdd,
+}: SimpleReferenceSectionProps) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+      <div className="border-b border-border p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="font-semibold text-foreground">{title}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          </div>
+          <Badge variant="outline">
+            {items.length} of {totalCount}
+          </Badge>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(280px,1fr)_minmax(220px,320px)]">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              placeholder={addPlaceholder}
+              value={value}
+              onChange={(event) => onValueChange(event.target.value)}
+            />
+            <Button
+              disabled={!canManage || !value.trim()}
+              onClick={onAdd}
+              className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+            >
+              <Plus className="h-4 w-4" /> Add
+            </Button>
+          </div>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder={searchPlaceholder}
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              className="bg-muted/30 pl-9"
+            />
+          </div>
+        </div>
+      </div>
+      <ul className="max-h-[560px] divide-y divide-border overflow-auto">
+        {items.map((item) => (
+          <li
+            key={item.id}
+            className="flex items-center justify-between gap-3 px-5 py-3 text-sm transition-colors hover:bg-muted/30"
+          >
+            <span className="min-w-0 truncate font-medium text-foreground">{item.label}</span>
+            <Button
+              size="icon"
+              variant="ghost"
+              disabled={!canManage}
+              onClick={item.onDelete}
+              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              title={`Delete ${itemLabel}`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </li>
+        ))}
+        {items.length === 0 && (
+          <li className="px-5 py-12 text-center text-sm text-muted-foreground">
+            {query.trim()
+              ? `No ${itemLabel}s match your search.`
+              : `No ${itemLabel}s have been added yet.`}
+          </li>
+        )}
+      </ul>
+    </div>
   );
 }

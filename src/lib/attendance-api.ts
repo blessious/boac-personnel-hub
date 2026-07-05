@@ -20,6 +20,11 @@ export type DtrEntry = {
   remarks: string;
   displayLabel: string;
   displayLabelRequestId: string;
+  shiftTemplateId: string;
+  shiftCode: string;
+  shiftName: string;
+  shiftType: string;
+  reviewFlags: string[];
   locked: boolean;
   importId: string;
   editedByName: string;
@@ -441,6 +446,7 @@ export function checkUnimportedDtrs(employeeId: string) {
 
 export function bulkUpdateSchedule(payload: {
   employeeIds: string[];
+  shiftTemplateCode?: string;
   schedule: { amIn: string; amOut: string; pmIn: string; pmOut: string };
 }) {
   return api<{ ok: boolean; updated: number }>("/api/attendance/schedule/bulk", {
@@ -454,6 +460,7 @@ export function bulkUpdateScheduleOverrides(payload: {
   startDate: string;
   endDate: string;
   skipWeekends: boolean;
+  shiftTemplateCode?: string;
   schedule: { amIn: string; amOut: string; pmIn: string; pmOut: string };
 }) {
   return api<{ ok: boolean; updated: number }>("/api/attendance/schedule/overrides", {

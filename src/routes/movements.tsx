@@ -1,13 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRightLeft,
   CalendarDays,
   ChevronRight,
   CheckCircle2,
   Clock3,
+  Eye,
   FileEdit,
-  History,
   Plus,
   Search,
   Send,
@@ -42,7 +42,33 @@ import {
 } from "@/lib/movements-api";
 import { listPlantilla, type PlantillaItem } from "@/lib/plantilla-api";
 
-export const Route = createFileRoute("/movements")({ component: MovementsPage });
+type MovementEvent = {
+  id: string;
+  eventType: string;
+  fromStatus: string;
+  toStatus: string;
+  actor: string;
+  remarks: string;
+  createdAt: string;
+};
+
+export const Route = createFileRoute("/movements")({
+  validateSearch: (search: Record<string, unknown>) => {
+    const actionType =
+      typeof search.actionType === "string" &&
+      MOVEMENT_TYPES.includes(search.actionType as (typeof MOVEMENT_TYPES)[number])
+        ? search.actionType
+        : undefined;
+    return {
+      prepare: search.prepare === "1" ? "1" : undefined,
+      employeeId: typeof search.employeeId === "string" ? search.employeeId : undefined,
+      targetPlantillaItemId:
+        typeof search.targetPlantillaItemId === "string" ? search.targetPlantillaItemId : undefined,
+      actionType,
+    };
+  },
+  component: MovementsPage,
+});
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 const ITEM_ACTIONS = new Set([
   "Original Appointment",
@@ -54,7 +80,7 @@ const ITEM_ACTIONS = new Set([
 ]);
 const PROFILE_ACTIONS = new Set(["Detail", "Designation"]);
 const SEPARATIONS = new Set(["Resignation", "Retirement", "Termination", "Death"]);
-const statuses = [
+const BASE_QUEUE_STATUSES = [
   "all",
   "Draft",
   "Submitted",
@@ -62,9 +88,12 @@ const statuses = [
   "Approved",
   "Posted",
   "Rejected",
-  "Reversed",
 ];
+const DERIVED_QUEUE_STATUSES = new Set(["needs-action", "preparation", "ready-post"]);
+const today = () => new Date().toISOString().slice(0, 10);
 function MovementsPage() {
+  const navigate = useNavigate({ from: "/movements" });
+  const prepareSearch = useSearch({ from: "/movements" });
   const { user, can } = useAuth(),
     canPrepare = canWriteHrRecords(user?.role),
     canApprove = can("approve"),
@@ -73,7 +102,15 @@ function MovementsPage() {
     [summary, setSummary] = useState<Record<string, number>>({}),
     [q, setQ] = useState(""),
     [status, setStatus] = useState("all"),
-    [actionFilter, setActionFilter] = useState("all");
+    [actionFilter, setActionFilter] = useState("all"),
+    [didSetApproverQueue, setDidSetApproverQueue] = useState(false),
+    [didSetHrQueue, setDidSetHrQueue] = useState(false);
+  const apiStatus = DERIVED_QUEUE_STATUSES.has(status) ? "all" : status;
+  const queueStatuses = useMemo(() => {
+    if (canPrepare) return ["preparation", "ready-post", ...BASE_QUEUE_STATUSES];
+    if (canApprove) return ["needs-action", ...BASE_QUEUE_STATUSES];
+    return BASE_QUEUE_STATUSES;
+  }, [canApprove, canPrepare]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]),
     [items, setItems] = useState<PlantillaItem[]>([]),
     [settings, setSettings] = useState<SettingsOptions>({
@@ -86,31 +123,31 @@ function MovementsPage() {
     [busy, setBusy] = useState(false);
   const [decision, setDecision] = useState<{ movement: Movement; action: string } | null>(null),
     [decisionRemarks, setDecisionRemarks] = useState(""),
-    [events, setEvents] = useState<
-      Array<{
-        id: string;
-        eventType: string;
-        fromStatus: string;
-        toStatus: string;
-        actor: string;
-        remarks: string;
-        createdAt: string;
-      }>
-    >([]),
-    [eventMovement, setEventMovement] = useState<Movement | null>(null);
+    [events, setEvents] = useState<MovementEvent[]>([]),
+    [detailMovement, setDetailMovement] = useState<Movement | null>(null);
   const load = useCallback(async () => {
     try {
-      const x = await listMovements(q, status, actionFilter);
+      const x = await listMovements(q, apiStatus, actionFilter);
       setMovements(x.movements);
       setSummary(x.summary);
     } catch (e) {
       toast.error((e as Error).message);
     }
-  }, [q, status, actionFilter]);
+  }, [q, apiStatus, actionFilter]);
   useEffect(() => {
     const timer = setTimeout(load, 200);
     return () => clearTimeout(timer);
   }, [load]);
+  useEffect(() => {
+    if (didSetApproverQueue || !canApprove || canPrepare) return;
+    setStatus("needs-action");
+    setDidSetApproverQueue(true);
+  }, [canApprove, canPrepare, didSetApproverQueue]);
+  useEffect(() => {
+    if (didSetHrQueue || !canPrepare) return;
+    setStatus("preparation");
+    setDidSetHrQueue(true);
+  }, [canPrepare, didSetHrQueue]);
   useEffect(() => {
     Promise.all([
       api<SettingsOptions>("/api/settings"),
@@ -124,7 +161,7 @@ function MovementsPage() {
       })
       .catch((e) => toast.error(e.message));
   }, []);
-  const openForm = (m?: Movement) => {
+  const openForm = useCallback((m?: Movement, prefill: Partial<MovementForm> = {}) => {
     setEdit(m || null);
     setForm(
       m
@@ -145,9 +182,33 @@ function MovementsPage() {
               .map((x) => `${x.name}${x.reference ? ` | ${x.reference}` : ""}`)
               .join("\n"),
           }
-        : emptyMovement,
+        : { ...emptyMovement, effectiveDate: today(), ...prefill },
     );
-  };
+  }, []);
+  useEffect(() => {
+    if (prepareSearch.prepare !== "1") return;
+    if (!canPrepare) {
+      toast.error("Only HR users can prepare personnel movements");
+      navigate({ search: {}, replace: true });
+      return;
+    }
+    openForm(undefined, {
+      employeeId: prepareSearch.employeeId || "",
+      actionType:
+        prepareSearch.actionType ||
+        (prepareSearch.targetPlantillaItemId ? "Original Appointment" : "Transfer"),
+      targetPlantillaItemId: prepareSearch.targetPlantillaItemId || "",
+    });
+    navigate({ search: {}, replace: true });
+  }, [
+    canPrepare,
+    navigate,
+    openForm,
+    prepareSearch.actionType,
+    prepareSearch.employeeId,
+    prepareSearch.prepare,
+    prepareSearch.targetPlantillaItemId,
+  ]);
   const save = async () => {
     setBusy(true);
     try {
@@ -164,10 +225,17 @@ function MovementsPage() {
   const runAction = async (m: Movement, action: string, remarks = "") => {
     setBusy(true);
     try {
-      await transitionMovement(m.id, action, remarks);
-      toast.success(`Movement ${action} completed`);
+      if (action === "reviewApprove") {
+        await transitionMovement(m.id, "review", remarks);
+        await transitionMovement(m.id, "approve", remarks);
+        toast.success("Movement reviewed and approved");
+      } else {
+        await transitionMovement(m.id, action, remarks);
+        toast.success(`Movement ${action} completed`);
+      }
       setDecision(null);
       setDecisionRemarks("");
+      setDetailMovement(null);
       await load();
     } catch (e) {
       toast.error((e as Error).message);
@@ -175,14 +243,20 @@ function MovementsPage() {
       setBusy(false);
     }
   };
-  const showEvents = async (m: Movement) => {
+  const openDetails = async (m: Movement) => {
+    setDetailMovement(m);
+    setEvents([]);
     try {
-      const x = await api<{ events: typeof events }>(`/api/movements/${m.id}/events`);
+      const x = await api<{ events: MovementEvent[] }>(`/api/movements/${m.id}/events`);
       setEvents(x.events);
-      setEventMovement(m);
     } catch (e) {
       toast.error((e as Error).message);
     }
+  };
+  const openDecision = (m: Movement, action: string) => {
+    setDetailMovement(null);
+    setDecisionRemarks("");
+    setDecision({ movement: m, action });
   };
   const fromText = (m: Movement) => {
     const source = m.beforeSnapshot?.employee || m.sourceSnapshot?.employee;
@@ -217,6 +291,66 @@ function MovementsPage() {
     }
     return m.targetDepartment || "";
   };
+  const displayedMovements = useMemo(() => {
+    if (status === "needs-action") {
+      return movements.filter((m) => m.status === "Submitted" || m.status === "Reviewed");
+    }
+    if (status === "preparation") {
+      return movements.filter((m) => m.status === "Draft" || m.status === "Rejected");
+    }
+    if (status === "ready-post") {
+      return movements.filter((m) => m.status === "Approved");
+    }
+    return movements;
+  }, [movements, status]);
+  const queueLabel = (queueStatus: string) =>
+    queueStatus === "needs-action"
+      ? "Needs action"
+      : queueStatus === "preparation"
+        ? "Preparation"
+        : queueStatus === "ready-post"
+          ? "Ready to post"
+          : queueStatus === "all"
+            ? "All"
+            : queueStatus;
+  const actionButtons = (m: Movement, variant: "ghost" | "outline") => (
+    <>
+      <Button size="sm" variant="outline" onClick={() => openDetails(m)}>
+        <Eye className="mr-1.5 h-4 w-4" />
+        {canApprove && ["Submitted", "Reviewed"].includes(m.status) ? "Review" : "Details"}
+      </Button>
+      {canPrepare && ["Draft", "Rejected"].includes(m.status) && (
+        <Button size="sm" variant={variant} onClick={() => openForm(m)}>
+          <ArrowRightLeft className="mr-1.5 h-4 w-4" />
+          Edit draft
+        </Button>
+      )}
+      {canPrepare && m.status === "Draft" && (
+        <Button size="sm" variant={variant} onClick={() => openDecision(m, "submit")}>
+          <Send className="mr-1.5 h-4 w-4" />
+          Submit
+        </Button>
+      )}
+      {canPost && m.status === "Approved" && (
+        <>
+          <Button size="sm" variant="outline" onClick={() => openDecision(m, "post")}>
+            <CheckCircle2 className="mr-1.5 h-4 w-4" />
+            Post
+          </Button>
+          <Button size="sm" variant={variant} onClick={() => openDecision(m, "return")}>
+            <Undo2 className="mr-1.5 h-4 w-4" />
+            Return
+          </Button>
+        </>
+      )}
+      {canPost && m.status === "Posted" && (
+        <Button size="sm" variant={variant} onClick={() => openDecision(m, "reverse")}>
+          <Undo2 className="mr-1.5 h-4 w-4" />
+          Reverse
+        </Button>
+      )}
+    </>
+  );
   return (
     <AppShell
       title="Employee Movements"
@@ -284,6 +418,20 @@ function MovementsPage() {
           trend="down"
         />
       </div>
+      <WorkflowStrip />
+      <div className="mt-4 flex flex-wrap gap-2">
+        {queueStatuses.map((queueStatus) => (
+          <Button
+            key={queueStatus}
+            type="button"
+            size="sm"
+            variant={status === queueStatus ? "default" : "outline"}
+            onClick={() => setStatus(queueStatus)}
+          >
+            {queueLabel(queueStatus)}
+          </Button>
+        ))}
+      </div>
       <div className="mt-5 grid gap-2 md:flex md:flex-wrap">
         <div className="relative min-w-0 flex-1 md:min-w-64">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -294,17 +442,6 @@ function MovementsPage() {
             placeholder="Search control number or employee"
           />
         </div>
-        <select
-          className={selectClass + " md:max-w-40"}
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          {statuses.map((x) => (
-            <option key={x} value={x}>
-              {x === "all" ? "All statuses" : x}
-            </option>
-          ))}
-        </select>
         <select
           className={selectClass + " md:max-w-52"}
           value={actionFilter}
@@ -323,7 +460,7 @@ function MovementsPage() {
         )}
       </div>
       <div className="mobile-record-list mt-4 md:hidden">
-        {movements.map((m) => (
+        {displayedMovements.map((m) => (
           <article className="rounded-xl border border-border bg-white p-3 shadow-sm" key={m.id}>
             <div className="grid grid-cols-[minmax(0,1fr)_5rem] items-start gap-3">
               <div className="min-w-0">
@@ -355,130 +492,10 @@ function MovementsPage() {
                 </div>
               </div>
             </div>
-            <div className="mt-3 flex justify-end gap-2">
-              <Button size="icon" variant="outline" title="History" onClick={() => showEvents(m)}>
-                <History className="h-4 w-4" />
-              </Button>
-              {canPrepare && ["Draft", "Rejected"].includes(m.status) && (
-                <Button size="icon" variant="outline" title="Edit" onClick={() => openForm(m)}>
-                  <ArrowRightLeft className="h-4 w-4" />
-                </Button>
-              )}
-              {canPrepare && m.status === "Draft" && (
-                <Button
-                  size="icon"
-                  variant="outline"
-                  title="Submit"
-                  onClick={() => setDecision({ movement: m, action: "submit" })}
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              )}
-              {canApprove && m.status === "Submitted" && (
-                <>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    title="Review"
-                    onClick={() => setDecision({ movement: m, action: "review" })}
-                  >
-                    <Clock3 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    title="Reject"
-                    onClick={() => setDecision({ movement: m, action: "reject" })}
-                  >
-                    <XCircle className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    title="Return to Draft"
-                    onClick={() => setDecision({ movement: m, action: "return" })}
-                  >
-                    <Undo2 className="h-4 w-4" />
-                  </Button>
-                </>
-              )}
-              {canApprove && m.status === "Reviewed" && (
-                <>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    title="Approve"
-                    onClick={() => setDecision({ movement: m, action: "approve" })}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    title="Reject"
-                    onClick={() => setDecision({ movement: m, action: "reject" })}
-                  >
-                    <XCircle className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    title="Return to Draft"
-                    onClick={() => setDecision({ movement: m, action: "return" })}
-                  >
-                    <Undo2 className="h-4 w-4" />
-                  </Button>
-                </>
-              )}
-              {canPost && m.status === "Approved" && (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDecision({ movement: m, action: "post" })}
-                  >
-                    Post
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    title="Reject"
-                    onClick={() => setDecision({ movement: m, action: "reject" })}
-                  >
-                    <XCircle className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    title="Return to Draft"
-                    onClick={() => setDecision({ movement: m, action: "return" })}
-                  >
-                    <Undo2 className="h-4 w-4" />
-                  </Button>
-                </>
-              )}
-              {canPost && m.status === "Posted" && (
-                <Button
-                  size="icon"
-                  variant="outline"
-                  title="Reverse"
-                  onClick={() => setDecision({ movement: m, action: "reverse" })}
-                >
-                  <Undo2 className="h-4 w-4" />
-                </Button>
-              )}
-              <Button
-                size="icon"
-                variant="outline"
-                title="View movement history"
-                onClick={() => showEvents(m)}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+            <div className="mt-3 flex justify-end gap-2">{actionButtons(m, "outline")}</div>
           </article>
         ))}
-        {!movements.length && (
+        {!displayedMovements.length && (
           <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
             No personnel movements found.
           </div>
@@ -505,7 +522,7 @@ function MovementsPage() {
             </tr>
           </thead>
           <tbody>
-            {movements.map((m) => (
+            {displayedMovements.map((m) => (
               <tr className="border-t" key={m.id}>
                 <td className="whitespace-nowrap p-3 font-medium">{m.controlNumber}</td>
                 <td className="p-3">
@@ -534,128 +551,11 @@ function MovementsPage() {
                   <Status value={m.status} />
                 </td>
                 <td className="p-3">
-                  <div className="flex flex-wrap gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      title="History"
-                      onClick={() => showEvents(m)}
-                    >
-                      <History className="h-4 w-4" />
-                    </Button>
-                    {canPrepare && ["Draft", "Rejected"].includes(m.status) && (
-                      <Button size="icon" variant="ghost" title="Edit" onClick={() => openForm(m)}>
-                        <ArrowRightLeft className="h-4 w-4" />
-                      </Button>
-                    )}
-                    {canPrepare && m.status === "Draft" && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        title="Submit"
-                        onClick={() => setDecision({ movement: m, action: "submit" })}
-                      >
-                        <Send className="h-4 w-4" />
-                      </Button>
-                    )}
-                    {canApprove && m.status === "Submitted" && (
-                      <>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title="Review"
-                          onClick={() => setDecision({ movement: m, action: "review" })}
-                        >
-                          <Clock3 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title="Reject"
-                          onClick={() => setDecision({ movement: m, action: "reject" })}
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title="Return to Draft"
-                          onClick={() => setDecision({ movement: m, action: "return" })}
-                        >
-                          <Undo2 className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
-                    {canApprove && m.status === "Reviewed" && (
-                      <>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title="Approve"
-                          onClick={() => setDecision({ movement: m, action: "approve" })}
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title="Reject"
-                          onClick={() => setDecision({ movement: m, action: "reject" })}
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title="Return to Draft"
-                          onClick={() => setDecision({ movement: m, action: "return" })}
-                        >
-                          <Undo2 className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
-                    {canPost && m.status === "Approved" && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setDecision({ movement: m, action: "post" })}
-                        >
-                          Post
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title="Reject"
-                          onClick={() => setDecision({ movement: m, action: "reject" })}
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          title="Return to Draft"
-                          onClick={() => setDecision({ movement: m, action: "return" })}
-                        >
-                          <Undo2 className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
-                    {canPost && m.status === "Posted" && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        title="Reverse"
-                        onClick={() => setDecision({ movement: m, action: "reverse" })}
-                      >
-                        <Undo2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
+                  <div className="flex flex-wrap gap-1">{actionButtons(m, "ghost")}</div>
                 </td>
               </tr>
             ))}
-            {!movements.length && (
+            {!displayedMovements.length && (
               <tr>
                 <td colSpan={8} className="p-8 text-center text-muted-foreground">
                   No personnel movements found.
@@ -677,11 +577,19 @@ function MovementsPage() {
         close={() => setEdit(undefined)}
         save={save}
       />
+      <MovementDetailDialog
+        movement={detailMovement}
+        events={events}
+        canApprove={canApprove}
+        canPost={canPost}
+        onClose={() => setDetailMovement(null)}
+        onDecision={openDecision}
+      />
       <Dialog open={!!decision} onOpenChange={(o) => !o && setDecision(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {titleCase(decision?.action || "")} movement - {decision?.movement.controlNumber}
+              {actionLabel(decision?.action || "")} movement - {decision?.movement.controlNumber}
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
@@ -689,11 +597,13 @@ function MovementsPage() {
               ? "Posting atomically updates the employee and Plantilla occupancy. Confirm that the approved action is ready for effectivity."
               : decision?.action === "reverse"
                 ? "Reversal restores the recorded before-state and is blocked if a later movement exists."
-                : decision?.action === "return"
-                  ? "Returning to Draft refreshes the source employee/occupancy snapshot and clears prior approvals."
-                  : decision?.action === "reject"
-                    ? "Record the reason for this decision."
-                    : "Confirm this workflow step before the movement continues."}
+                : decision?.action === "reviewApprove"
+                  ? "This records review and approval in sequence. HR can post the movement after approval."
+                  : decision?.action === "return"
+                    ? "Returning to Draft refreshes the source employee/occupancy snapshot and clears prior approvals."
+                    : decision?.action === "reject"
+                      ? "Record the reason for this decision."
+                      : "Confirm this workflow step before the movement continues."}
           </p>
           <div className="space-y-1">
             <Label>
@@ -724,34 +634,254 @@ function MovementsPage() {
                 decision && runAction(decision.movement, decision.action, decisionRemarks)
               }
             >
-              Confirm {decision?.action}
+              Confirm {actionLabel(decision?.action || "")}
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={!!eventMovement} onOpenChange={(o) => !o && setEventMovement(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Action history - {eventMovement?.controlNumber}</DialogTitle>
-          </DialogHeader>
-          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-            {events.map((e) => (
-              <div className="rounded border p-3" key={e.id}>
-                <div className="font-medium">
-                  {e.eventType}: {e.fromStatus || "New"} to {e.toStatus}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {new Date(e.createdAt).toLocaleString()} - {e.actor}
-                </div>
-                {e.remarks && <p className="mt-1 text-sm">{e.remarks}</p>}
-              </div>
-            ))}
-          </div>
         </DialogContent>
       </Dialog>
     </AppShell>
   );
 }
+
+function WorkflowStrip() {
+  const steps = ["Plantilla", "Movement Draft", "Review", "Approve", "Post"];
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground">
+      {steps.map((step, index) => (
+        <div className="flex items-center gap-2" key={step}>
+          <span className={index === 1 ? "text-foreground" : ""}>{step}</span>
+          {index < steps.length - 1 && <ChevronRight className="h-3.5 w-3.5" />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MovementDetailDialog({
+  movement,
+  events,
+  canApprove,
+  canPost,
+  onClose,
+  onDecision,
+}: {
+  movement: Movement | null;
+  events: MovementEvent[];
+  canApprove: boolean;
+  canPost: boolean;
+  onClose: () => void;
+  onDecision: (movement: Movement, action: string) => void;
+}) {
+  const source = movement?.beforeSnapshot || movement?.sourceSnapshot || null;
+  const after = movement?.afterSnapshot || null;
+  return (
+    <Dialog open={!!movement} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
+        {movement && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Review movement - {movement.controlNumber}</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
+              <div className="space-y-4">
+                <section className="rounded-lg border p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-base font-semibold">{movement.employeeName}</h3>
+                      <p className="text-sm text-muted-foreground">{movement.employeeNo}</p>
+                    </div>
+                    <Status value={movement.status} />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <DetailValue label="Personnel action" value={movement.actionType} />
+                    <DetailValue label="Effectivity" value={dateRange(movement)} />
+                    <DetailValue label="Authority" value={movement.authorityNumber || "-"} />
+                    <DetailValue label="Authority date" value={movement.authorityDate || "-"} />
+                  </div>
+                </section>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <SnapshotCard title="Current record" snapshot={source} />
+                  <SnapshotCard
+                    title={movement.status === "Posted" ? "Posted result" : "Proposed change"}
+                    snapshot={after}
+                    fallback={[
+                      ["Target item", movement.targetItemNumber || "-"],
+                      ["Target position", movement.targetPositionTitle || "-"],
+                      ["Target department", movement.targetDepartment || "-"],
+                      [
+                        "Target salary",
+                        movement.targetSalaryGrade
+                          ? `SG ${movement.targetSalaryGrade.grade}, Step ${
+                              movement.targetSalaryGrade.step
+                            } - PHP ${movement.targetSalaryGrade.amount.toLocaleString()}`
+                          : "-",
+                      ],
+                    ]}
+                  />
+                </div>
+
+                <section className="rounded-lg border p-4">
+                  <h3 className="mb-3 text-sm font-semibold">Remarks and supporting documents</h3>
+                  <div className="space-y-3 text-sm">
+                    <DetailValue label="Remarks" value={movement.remarks || "-"} />
+                    <DetailValue label="Decision remarks" value={movement.decisionRemarks || "-"} />
+                    <div>
+                      <div className="text-xs font-medium uppercase text-muted-foreground">
+                        Supporting documents
+                      </div>
+                      {movement.supportingDocuments.length ? (
+                        <div className="mt-1 space-y-1">
+                          {movement.supportingDocuments.map((doc, index) => (
+                            <div className="rounded border bg-muted/30 px-3 py-2" key={index}>
+                              <span className="font-medium">{doc.name || "Document"}</span>
+                              {doc.reference && (
+                                <span className="text-muted-foreground"> - {doc.reference}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-1 text-muted-foreground">No documents listed.</div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <aside className="space-y-4">
+                <section className="rounded-lg border p-4">
+                  <h3 className="mb-3 text-sm font-semibold">Workflow</h3>
+                  <div className="space-y-2 text-sm">
+                    <DetailValue label="Prepared by" value={movement.preparedBy || "-"} />
+                    <DetailValue label="Reviewed by" value={movement.reviewedBy || "-"} />
+                    <DetailValue label="Approved by" value={movement.approvedBy || "-"} />
+                    <DetailValue label="Posted by" value={movement.postedBy || "-"} />
+                  </div>
+                </section>
+
+                <section className="rounded-lg border p-4">
+                  <h3 className="mb-3 text-sm font-semibold">Action history</h3>
+                  <div className="max-h-64 space-y-2 overflow-y-auto">
+                    {events.map((event) => (
+                      <div className="rounded border bg-muted/20 p-2 text-sm" key={event.id}>
+                        <div className="font-medium">
+                          {event.eventType}: {event.fromStatus || "New"} to {event.toStatus}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(event.createdAt).toLocaleString()} - {event.actor}
+                        </div>
+                        {event.remarks && <p className="mt-1">{event.remarks}</p>}
+                      </div>
+                    ))}
+                    {!events.length && (
+                      <div className="text-sm text-muted-foreground">No action history yet.</div>
+                    )}
+                  </div>
+                </section>
+              </aside>
+            </div>
+
+            <DialogFooter className="gap-2 sm:justify-between">
+              <Button variant="outline" onClick={onClose}>
+                Close
+              </Button>
+              <div className="flex flex-wrap justify-end gap-2">
+                {canApprove && movement.status === "Submitted" && (
+                  <>
+                    <Button variant="outline" onClick={() => onDecision(movement, "return")}>
+                      Return to Draft
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => onDecision(movement, "reject")}
+                    >
+                      Reject
+                    </Button>
+                    <Button onClick={() => onDecision(movement, "reviewApprove")}>
+                      Review and approve
+                    </Button>
+                  </>
+                )}
+                {canApprove && movement.status === "Reviewed" && (
+                  <>
+                    <Button variant="outline" onClick={() => onDecision(movement, "return")}>
+                      Return to Draft
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => onDecision(movement, "reject")}
+                    >
+                      Reject
+                    </Button>
+                    <Button onClick={() => onDecision(movement, "approve")}>Approve</Button>
+                  </>
+                )}
+                {canPost && movement.status === "Approved" && (
+                  <Button onClick={() => onDecision(movement, "post")}>Post</Button>
+                )}
+                {canPost && movement.status === "Posted" && (
+                  <Button variant="outline" onClick={() => onDecision(movement, "reverse")}>
+                    Reverse
+                  </Button>
+                )}
+              </div>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DetailValue({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs font-medium uppercase text-muted-foreground">{label}</div>
+      <div className="mt-1 break-words text-sm text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function SnapshotCard({
+  title,
+  snapshot,
+  fallback = [],
+}: {
+  title: string;
+  snapshot: Movement["sourceSnapshot"];
+  fallback?: Array<[string, React.ReactNode]>;
+}) {
+  const employee = snapshot?.employee;
+  const occupancy = snapshot?.occupancy;
+  return (
+    <section className="rounded-lg border p-4">
+      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
+      <div className="grid gap-3 text-sm">
+        {employee || occupancy ? (
+          <>
+            <DetailValue label="Position" value={employee?.position || "-"} />
+            <DetailValue label="Department" value={employee?.department || "-"} />
+            <DetailValue
+              label="Item number"
+              value={employee?.itemNo || occupancy?.itemNumber || "-"}
+            />
+            <DetailValue label="Employee status" value={employee?.empStatus || "-"} />
+            <DetailValue
+              label="Salary grade"
+              value={occupancy?.salaryGradeId ? `Salary grade ID ${occupancy.salaryGradeId}` : "-"}
+            />
+          </>
+        ) : (
+          fallback.map(([label, value]) => <DetailValue key={label} label={label} value={value} />)
+        )}
+      </div>
+    </section>
+  );
+}
+
 function MovementDialog({
   open,
   movement,
@@ -779,12 +909,47 @@ function MovementDialog({
     needsPosition = PROFILE_ACTIONS.has(form.actionType),
     needsGrade = form.actionType === "Step Increment",
     separation = SEPARATIONS.has(form.actionType);
+  const selectedEmployee = employees.find((employee) => employee.id === form.employeeId);
+  const selectedItem = items.find((item) => item.id === form.targetPlantillaItemId);
+  const contextTitle =
+    form.actionType === "Original Appointment" && selectedItem
+      ? "Filling vacancy"
+      : selectedEmployee
+        ? "Preparing employee movement"
+        : "";
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{movement ? "Edit" : "Prepare"} personnel movement</DialogTitle>
         </DialogHeader>
+        {contextTitle && (
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-950">
+            <div className="font-semibold">{contextTitle}</div>
+            <div className="mt-1 grid gap-1 text-blue-900 sm:grid-cols-2">
+              {selectedEmployee && (
+                <div className="min-w-0">
+                  <span className="font-medium">Employee: </span>
+                  <span className="break-words">
+                    {selectedEmployee.lastname}, {selectedEmployee.firstname} (
+                    {selectedEmployee.employeeId})
+                  </span>
+                </div>
+              )}
+              {selectedItem && (
+                <div className="min-w-0">
+                  <span className="font-medium">Target item: </span>
+                  <span className="break-words">
+                    {selectedItem.itemNumber} - {selectedItem.positionTitle}
+                    {selectedItem.salaryGrade
+                      ? ` / SG ${selectedItem.salaryGrade.grade}, Step ${selectedItem.salaryGrade.step}`
+                      : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Control number">
             <Input
@@ -1012,8 +1177,17 @@ function Status({ value }: { value: string }) {
           : "bg-amber-100 text-amber-800";
   return <span className={`rounded-full px-2 py-1 text-xs font-medium ${tone}`}>{value}</span>;
 }
+function actionLabel(x: string) {
+  if (x === "reviewApprove") return "Review and approve";
+  return titleCase(x);
+}
 function titleCase(x: string) {
   return x ? x[0].toUpperCase() + x.slice(1) : "";
+}
+function dateRange(movement: Movement) {
+  return movement.endDate
+    ? `${movement.effectiveDate} to ${movement.endDate}`
+    : movement.effectiveDate;
 }
 async function loadAllEmployees() {
   const first = await listEmployees({ pageSize: 100 });

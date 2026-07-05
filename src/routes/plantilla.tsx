@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  ArrowRightLeft,
   Archive,
   BriefcaseBusiness,
   ChevronRight,
@@ -50,6 +51,7 @@ const categories: ReferenceCategory[] = [
   "budget-codes",
 ];
 function PlantillaPage() {
+  const navigate = useNavigate({ from: "/plantilla" });
   const { user } = useAuth(),
     canManage = canWriteHrRecords(user?.role);
   const [items, setItems] = useState<PlantillaItem[]>([]),
@@ -187,11 +189,29 @@ function PlantillaPage() {
       toast.error((e as Error).message);
     }
   };
+  const prepareMovement = (item: PlantillaItem) => {
+    if (item.occupant) {
+      navigate({
+        to: "/movements",
+        search: {
+          prepare: "1",
+          actionType: "Transfer",
+          employeeId: item.occupant.employeeId,
+        },
+      });
+      return;
+    }
+    navigate({
+      to: "/movements",
+      search: {
+        prepare: "1",
+        actionType: "Original Appointment",
+        targetPlantillaItemId: item.id,
+      },
+    });
+  };
   return (
-    <AppShell
-      title="Plantilla & PSIPOP"
-      subtitle="Authorized positions, occupancy, vacancies, and movement history"
-    >
+    <AppShell title="Plantilla & PSIPOP" subtitle="Authorized positions, occupancy, and vacancies">
       <div className="grid grid-cols-6 gap-2 md:gap-3 lg:grid-cols-5">
         <div className="col-span-2 lg:col-span-1">
           <StatCard
@@ -254,6 +274,7 @@ function PlantillaPage() {
           />
         </div>
       </div>
+      <WorkflowStrip />
       <div className="mt-5 grid gap-2 md:flex md:flex-wrap">
         <div className="relative min-w-0 flex-1 md:min-w-64">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -349,6 +370,16 @@ function PlantillaPage() {
               </div>
             </div>
             <div className="flex flex-wrap justify-end gap-1">
+              {canManage && i.itemStatus === "Active" && (
+                <Button size="sm" variant="outline" onClick={() => prepareMovement(i)}>
+                  {i.occupant ? (
+                    <ArrowRightLeft className="mr-1.5 h-4 w-4" />
+                  ) : (
+                    <UserPlus className="mr-1.5 h-4 w-4" />
+                  )}
+                  {i.occupant ? "Move employee" : "Fill vacancy"}
+                </Button>
+              )}
               <Button size="icon" variant="ghost" title="History" onClick={() => showHistory(i)}>
                 <History className="h-4 w-4" />
               </Button>
@@ -432,7 +463,17 @@ function PlantillaPage() {
                 </td>
                 <td className="p-3">{i.itemStatus}</td>
                 <td className="p-3">
-                  <div className="flex gap-1">
+                  <div className="flex flex-wrap gap-1">
+                    {canManage && i.itemStatus === "Active" && (
+                      <Button size="sm" variant="outline" onClick={() => prepareMovement(i)}>
+                        {i.occupant ? (
+                          <ArrowRightLeft className="mr-1.5 h-4 w-4" />
+                        ) : (
+                          <UserPlus className="mr-1.5 h-4 w-4" />
+                        )}
+                        {i.occupant ? "Move employee" : "Fill vacancy"}
+                      </Button>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -595,7 +636,7 @@ function PlantillaPage() {
       <Dialog open={!!historyItem} onOpenChange={(o) => !o && setHistoryItem(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Movement history - {historyItem?.itemNumber}</DialogTitle>
+            <DialogTitle>Item audit history - {historyItem?.itemNumber}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
             {history.map((h) => (
@@ -613,6 +654,21 @@ function PlantillaPage() {
     </AppShell>
   );
 }
+
+function WorkflowStrip() {
+  const steps = ["Plantilla", "Movement Draft", "Review", "Approve", "Post"];
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground">
+      {steps.map((step, index) => (
+        <div className="flex items-center gap-2" key={step}>
+          <span className={index === 0 ? "text-foreground" : ""}>{step}</span>
+          {index < steps.length - 1 && <ChevronRight className="h-3.5 w-3.5" />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function F({ l, children }: { l: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">

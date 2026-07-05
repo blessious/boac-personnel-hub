@@ -122,6 +122,74 @@ const DEFAULT_FROM = formatLocalDate(today);
 const DEFAULT_TO = formatLocalDate(today);
 const DTR_PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 
+type HospitalShiftPreset = {
+  value: string;
+  label: string;
+  amIn: string;
+  amOut: string;
+  pmIn: string;
+  pmOut: string;
+};
+
+const HOSPITAL_SHIFT_PRESETS: HospitalShiftPreset[] = [
+  {
+    value: "regular_8_5",
+    label: "Regular 8-5",
+    amIn: "08:00",
+    amOut: "12:00",
+    pmIn: "13:00",
+    pmOut: "17:00",
+  },
+  {
+    value: "am_duty",
+    label: "AM Duty 6-2",
+    amIn: "06:00",
+    amOut: "10:00",
+    pmIn: "10:00",
+    pmOut: "14:00",
+  },
+  {
+    value: "pm_duty",
+    label: "PM Duty 2-10",
+    amIn: "14:00",
+    amOut: "18:00",
+    pmIn: "18:00",
+    pmOut: "22:00",
+  },
+  {
+    value: "night_duty",
+    label: "Night Duty 10-6",
+    amIn: "22:00",
+    amOut: "23:59",
+    pmIn: "00:00",
+    pmOut: "06:00",
+  },
+  {
+    value: "twelve_hour_day",
+    label: "12-Hour Day 6-6",
+    amIn: "06:00",
+    amOut: "12:00",
+    pmIn: "12:00",
+    pmOut: "18:00",
+  },
+  {
+    value: "twelve_hour_night",
+    label: "12-Hour Night 6-6",
+    amIn: "18:00",
+    amOut: "23:59",
+    pmIn: "00:00",
+    pmOut: "06:00",
+  },
+  {
+    value: "twenty_four_hour_duty",
+    label: "24-Hour Duty",
+    amIn: "08:00",
+    amOut: "12:00",
+    pmIn: "13:00",
+    pmOut: "08:00",
+  },
+];
+
 function formatDtrTime(value?: string | null) {
   if (!value) return "-";
   const match = value.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
@@ -132,6 +200,31 @@ function formatDtrTime(value?: string | null) {
   const period = hours >= 12 ? "PM" : "AM";
   const hour12 = hours % 12 || 12;
   return `${hour12}:${minutes} ${period}`;
+}
+
+function dtrTimeLabels(entry: DtrEntry) {
+  if (entry.shiftType === "night") {
+    return {
+      amIn: "Night AM",
+      amOut: "Morning Out",
+      pmIn: "Night In",
+      pmOut: "Night PM",
+    };
+  }
+  if (entry.shiftType === "straight") {
+    return {
+      amIn: "Duty In",
+      amOut: "Break Out",
+      pmIn: "Break In",
+      pmOut: "Duty Out",
+    };
+  }
+  return {
+    amIn: "AM In",
+    amOut: "AM Out",
+    pmIn: "PM In",
+    pmOut: "PM Out",
+  };
 }
 
 function formatDtrRangeLabel(from: string, to: string) {
@@ -305,6 +398,7 @@ function AttendancePage() {
   const [scheduleForm, setScheduleForm] = useState({
     target: "override" as "default" | "override",
     employeeIds: [] as string[],
+    shiftPreset: "regular_8_5",
     startDate: DEFAULT_FROM,
     endDate: DEFAULT_TO,
     skipWeekends: true,
@@ -313,6 +407,10 @@ function AttendancePage() {
     pmIn: "13:00",
     pmOut: "17:00",
   });
+
+  const selectedHospitalShift = HOSPITAL_SHIFT_PRESETS.find(
+    (preset) => preset.value === scheduleForm.shiftPreset,
+  );
 
   const selectedEmployeeId = isEmployee
     ? user?.employeeId || ""
@@ -1147,16 +1245,36 @@ function AttendancePage() {
     }
   };
 
+  const applyHospitalShiftPreset = (value: string) => {
+    if (value === "manual") {
+      setScheduleForm({ ...scheduleForm, shiftPreset: value });
+      return;
+    }
+    const preset = HOSPITAL_SHIFT_PRESETS.find((item) => item.value === value);
+    if (!preset) return;
+    setScheduleForm({
+      ...scheduleForm,
+      shiftPreset: preset.value,
+      amIn: preset.amIn,
+      amOut: preset.amOut,
+      pmIn: preset.pmIn,
+      pmOut: preset.pmOut,
+    });
+  };
+
   const saveSchedule = async () => {
     if (!scheduleForm.employeeIds.length) {
       toast.error("Select at least one employee");
       return;
     }
+    const shiftTemplateCode =
+      scheduleForm.shiftPreset === "manual" ? undefined : scheduleForm.shiftPreset;
     setBusy(true);
     try {
       if (scheduleForm.target === "default") {
         await bulkUpdateSchedule({
           employeeIds: scheduleForm.employeeIds,
+          shiftTemplateCode,
           schedule: {
             amIn: scheduleForm.amIn,
             amOut: scheduleForm.amOut,
@@ -1170,6 +1288,7 @@ function AttendancePage() {
           startDate: scheduleForm.startDate,
           endDate: scheduleForm.endDate,
           skipWeekends: scheduleForm.skipWeekends,
+          shiftTemplateCode,
           schedule: {
             amIn: scheduleForm.amIn,
             amOut: scheduleForm.amOut,
@@ -2078,12 +2197,13 @@ function AttendancePage() {
               </div>
 
               <div className="mobile-desktop-table overflow-x-auto">
-                <table className="w-full min-w-[1180px] table-fixed text-left text-sm">
+                <table className="w-full min-w-[1360px] table-fixed text-left text-sm">
                   <colgroup>
                     <col className="w-[120px]" />
                     <col className="w-[240px]" />
                     <col className="w-[280px]" />
                     <col className="w-[120px]" />
+                    <col className="w-[180px]" />
                     <col className="w-[95px]" />
                     <col className="w-[95px]" />
                     <col className="w-[95px]" />
@@ -2097,6 +2217,7 @@ function AttendancePage() {
                       <th className="px-4 py-3 font-semibold">Name</th>
                       <th className="px-4 py-3 font-semibold">Office</th>
                       <th className="px-4 py-3 text-center font-semibold">Date</th>
+                      <th className="px-3 py-3 font-semibold">Shift / Review</th>
                       <th className="px-3 py-3 text-center font-semibold">AM In</th>
                       <th className="px-3 py-3 text-center font-semibold">AM Out</th>
                       <th className="px-3 py-3 text-center font-semibold">PM In</th>
@@ -2108,85 +2229,118 @@ function AttendancePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {entries.map((entry) => (
-                      <tr key={entry.id} className="border-t border-border">
-                        <td className="px-4 py-3 font-medium text-muted-foreground">
-                          {entry.biometricId || "-"}
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="truncate font-medium text-foreground">
-                            {entry.employeeName}
-                          </p>
-                        </td>
-                        <td className="truncate px-4 py-3 text-muted-foreground">
-                          {entry.department || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-center font-medium text-foreground">
-                          {entry.workDate}
-                        </td>
-                        {entry.displayLabel ? (
-                          <td
-                            colSpan={4}
-                            className="bg-blue-50 px-4 py-3 text-center font-semibold text-blue-800"
-                          >
-                            {entry.displayLabel}
+                    {entries.map((entry) => {
+                      const labels = dtrTimeLabels(entry);
+                      return (
+                        <tr key={entry.id} className="border-t border-border">
+                          <td className="px-4 py-3 font-medium text-muted-foreground">
+                            {entry.biometricId || "-"}
                           </td>
-                        ) : (
-                          <>
-                            <td className="px-3 py-3 text-center font-medium text-emerald-600">
-                              {formatDtrTime(entry.amIn)}
-                            </td>
-                            <td className="px-3 py-3 text-center font-medium text-emerald-600">
-                              {formatDtrTime(entry.amOut)}
-                            </td>
-                            <td className="px-3 py-3 text-center font-medium text-emerald-600">
-                              {formatDtrTime(entry.pmIn)}
-                            </td>
-                            <td className="px-3 py-3 text-center font-medium text-emerald-600">
-                              {formatDtrTime(entry.pmOut)}
-                            </td>
-                          </>
-                        )}
-                        <td className="px-3 py-3 text-center font-medium text-destructive">
-                          {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
-                        </td>
-                        {(canManage || isEmployee) && (
+                          <td className="px-4 py-3">
+                            <p className="truncate font-medium text-foreground">
+                              {entry.employeeName}
+                            </p>
+                          </td>
+                          <td className="truncate px-4 py-3 text-muted-foreground">
+                            {entry.department || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-center font-medium text-foreground">
+                            {entry.workDate}
+                          </td>
                           <td className="px-3 py-3">
-                            <div className="flex flex-nowrap items-center justify-end gap-2">
-                              {isEmployee && (
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={() => openCorrection(entry, "Times")}
-                                  title="Correct Time Entries"
-                                  aria-label={`Correct time entries for ${entry.workDate}`}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                              )}
-                              {canManage && (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => openEdit(entry)}
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" onClick={() => remove(entry)}>
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                                </>
+                            <div className="space-y-1">
+                              <p className="truncate text-xs font-semibold text-foreground">
+                                {entry.shiftName || "Default Schedule"}
+                              </p>
+                              {entry.reviewFlags.length ? (
+                                <p className="line-clamp-2 text-[0.68rem] font-medium text-amber-700">
+                                  {entry.reviewFlags.join(", ")}
+                                </p>
+                              ) : (
+                                <p className="text-[0.68rem] text-muted-foreground">No flags</p>
                               )}
                             </div>
                           </td>
-                        )}
-                      </tr>
-                    ))}
+                          {entry.displayLabel ? (
+                            <td
+                              colSpan={4}
+                              className="bg-blue-50 px-4 py-3 text-center font-semibold text-blue-800"
+                            >
+                              {entry.displayLabel}
+                            </td>
+                          ) : (
+                            <>
+                              <td
+                                className="px-3 py-3 text-center font-medium text-emerald-600"
+                                title={labels.amIn}
+                              >
+                                {formatDtrTime(entry.amIn)}
+                              </td>
+                              <td
+                                className="px-3 py-3 text-center font-medium text-emerald-600"
+                                title={labels.amOut}
+                              >
+                                {formatDtrTime(entry.amOut)}
+                              </td>
+                              <td
+                                className="px-3 py-3 text-center font-medium text-emerald-600"
+                                title={labels.pmIn}
+                              >
+                                {formatDtrTime(entry.pmIn)}
+                              </td>
+                              <td
+                                className="px-3 py-3 text-center font-medium text-emerald-600"
+                                title={labels.pmOut}
+                              >
+                                {formatDtrTime(entry.pmOut)}
+                              </td>
+                            </>
+                          )}
+                          <td className="px-3 py-3 text-center font-medium text-destructive">
+                            {entry.lateMinutes ? `${entry.lateMinutes} min` : "-"}
+                          </td>
+                          {(canManage || isEmployee) && (
+                            <td className="px-3 py-3">
+                              <div className="flex flex-nowrap items-center justify-end gap-2">
+                                {isEmployee && (
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => openCorrection(entry, "Times")}
+                                    title="Correct Time Entries"
+                                    aria-label={`Correct time entries for ${entry.workDate}`}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {canManage && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => openEdit(entry)}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => remove(entry)}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                     {!entries.length && !loading && (
                       <tr>
                         <td
-                          colSpan={canManage || isEmployee ? 10 : 9}
+                          colSpan={canManage || isEmployee ? 11 : 10}
                           className="px-4 py-10 text-center text-muted-foreground"
                         >
                           {debouncedRecordSearch
@@ -3126,30 +3280,59 @@ function AttendancePage() {
                   </label>
                 </div>
               )}
+              <div className="space-y-2">
+                <Label>Named Hospital Shift</Label>
+                <Select value={scheduleForm.shiftPreset} onValueChange={applyHospitalShiftPreset}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select hospital shift" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {HOSPITAL_SHIFT_PRESETS.map((preset) => (
+                      <SelectItem key={preset.value} value={preset.value}>
+                        {preset.label}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="manual">Manual schedule</SelectItem>
+                  </SelectContent>
+                </Select>
+                {selectedHospitalShift && (
+                  <p className="text-xs text-muted-foreground">
+                    {selectedHospitalShift.amIn} - {selectedHospitalShift.pmOut}
+                  </p>
+                )}
+              </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <Field
                   label="AM In"
                   type="time"
                   value={scheduleForm.amIn}
-                  onChange={(amIn) => setScheduleForm({ ...scheduleForm, amIn })}
+                  onChange={(amIn) =>
+                    setScheduleForm({ ...scheduleForm, shiftPreset: "manual", amIn })
+                  }
                 />
                 <Field
                   label="AM Out"
                   type="time"
                   value={scheduleForm.amOut}
-                  onChange={(amOut) => setScheduleForm({ ...scheduleForm, amOut })}
+                  onChange={(amOut) =>
+                    setScheduleForm({ ...scheduleForm, shiftPreset: "manual", amOut })
+                  }
                 />
                 <Field
                   label="PM In"
                   type="time"
                   value={scheduleForm.pmIn}
-                  onChange={(pmIn) => setScheduleForm({ ...scheduleForm, pmIn })}
+                  onChange={(pmIn) =>
+                    setScheduleForm({ ...scheduleForm, shiftPreset: "manual", pmIn })
+                  }
                 />
                 <Field
                   label="PM Out"
                   type="time"
                   value={scheduleForm.pmOut}
-                  onChange={(pmOut) => setScheduleForm({ ...scheduleForm, pmOut })}
+                  onChange={(pmOut) =>
+                    setScheduleForm({ ...scheduleForm, shiftPreset: "manual", pmOut })
+                  }
                 />
               </div>
             </div>

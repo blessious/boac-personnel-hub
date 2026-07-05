@@ -589,24 +589,9 @@ function EmployeeServicesHome() {
         <Tabs defaultValue="requests" className="space-y-4">
           <div className="overflow-x-auto">
             <TabsList className="h-auto justify-start gap-1 bg-muted/50 p-1">
-              <TabsTrigger
-                value="requests"
-                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-              >
-                Requests
-              </TabsTrigger>
-              <TabsTrigger
-                value="attendance"
-                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-              >
-                Attendance
-              </TabsTrigger>
-              <TabsTrigger
-                value="records"
-                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-              >
-                Records
-              </TabsTrigger>
+              <TabsTrigger value="requests">Requests</TabsTrigger>
+              <TabsTrigger value="attendance">Attendance</TabsTrigger>
+              <TabsTrigger value="records">Records</TabsTrigger>
             </TabsList>
           </div>
 

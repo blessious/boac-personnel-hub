@@ -10,6 +10,7 @@ import mysql from "mysql2/promise";
 import { initializePlantillaSchema, createPlantillaHandlers } from "./plantilla.mjs";
 import { initializeMovementSchema, createMovementHandlers } from "./movements.mjs";
 import { initializeServiceRecordSchema, createServiceRecordHandlers } from "./service-records.mjs";
+import { createReportHandlers } from "./reports.mjs";
 
 function loadServerEnv() {
   const candidates = [".env.local", ".env", ".env.defaults"];
@@ -69,6 +70,11 @@ const PDS_EXCEL_SCRIPT = path.join(process.cwd(), "server", "pds_excel.py");
 const WES_TEMPLATE_DOCX = path.join(process.cwd(), "WES", "Work Experience Sheet.docx");
 const WES_DOCX_SCRIPT = path.join(process.cwd(), "server", "wes_docx.py");
 const SERVICE_RECORD_EXPORT_SCRIPT = path.join(process.cwd(), "server", "service_record_export.py");
+const PERSONNEL_PLANTILLA_REPORT_SCRIPT = path.join(
+  process.cwd(),
+  "server",
+  "personnel_plantilla_report.py",
+);
 const BIOMETRIC_FETCH_SCRIPT = path.join(process.cwd(), "server", "fetch_biometric.py");
 const ADMS_PORT = Number(process.env.HRIS_ADMS_PORT || 6000);
 const LIBREOFFICE_EXE =
@@ -95,6 +101,73 @@ const PYTHON_EXE = PYTHON_CANDIDATES[0];
 const BIOMETRIC_PYTHON_EXE =
   process.env.HRIS_BIOMETRIC_PYTHON_EXE || process.env.PYTHON_EXE || "python";
 const BIOMETRIC_SYNC_LOG_LIMIT = 200;
+const DTR_DUPLICATE_GAP_MINUTES = 1;
+const DEFAULT_SHIFT_BUFFER_MINUTES = 240;
+const HOSPITAL_SHIFT_TEMPLATES = [
+  {
+    code: "regular_8_5",
+    name: "Regular 8-5",
+    shiftType: "split",
+    startTime: "08:00:00",
+    endTime: "17:00:00",
+    breakStart: "12:00:00",
+    breakEnd: "13:00:00",
+  },
+  {
+    code: "am_duty",
+    name: "AM Duty 6-2",
+    shiftType: "straight",
+    startTime: "06:00:00",
+    endTime: "14:00:00",
+    breakStart: null,
+    breakEnd: null,
+  },
+  {
+    code: "pm_duty",
+    name: "PM Duty 2-10",
+    shiftType: "straight",
+    startTime: "14:00:00",
+    endTime: "22:00:00",
+    breakStart: null,
+    breakEnd: null,
+  },
+  {
+    code: "night_duty",
+    name: "Night Duty 10-6",
+    shiftType: "night",
+    startTime: "22:00:00",
+    endTime: "06:00:00",
+    breakStart: null,
+    breakEnd: null,
+  },
+  {
+    code: "twelve_hour_day",
+    name: "12-Hour Day 6-6",
+    shiftType: "straight",
+    startTime: "06:00:00",
+    endTime: "18:00:00",
+    breakStart: null,
+    breakEnd: null,
+  },
+  {
+    code: "twelve_hour_night",
+    name: "12-Hour Night 6-6",
+    shiftType: "night",
+    startTime: "18:00:00",
+    endTime: "06:00:00",
+    breakStart: null,
+    breakEnd: null,
+  },
+  {
+    code: "twenty_four_hour_duty",
+    name: "24-Hour Duty",
+    shiftType: "night",
+    startTime: "08:00:00",
+    endTime: "08:00:00",
+    breakStart: null,
+    breakEnd: null,
+  },
+];
 
 const ROLES = ["Super Admin", "Admin", "HR", "Approver", "Employee", "Viewer"];
 const HR_READ_ROLES = ["Super Admin", "HR", "Approver", "Viewer"];
@@ -1800,7 +1873,228 @@ function minutesFromTime(value) {
   return hours * 60 + minutes;
 }
 
+function dateParts(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+  };
+}
+
+function parseLocalDateTime(value) {
+  if (value instanceof Date) return value;
+  const match = String(value || "").match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/,
+  );
+  if (!match) return null;
+  return new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4] || 0),
+    Number(match[5] || 0),
+    Number(match[6] || 0),
+  );
+}
+
+function formatLocalDateTime(value) {
+  return `${formatLocalDate(value)} ${String(value.getHours()).padStart(2, "0")}:${String(
+    value.getMinutes(),
+  ).padStart(2, "0")}:${String(value.getSeconds()).padStart(2, "0")}`;
+}
+
+function addDaysToDateString(value, days) {
+  const parts = dateParts(value);
+  if (!parts) return value;
+  const date = new Date(parts.year, parts.month - 1, parts.day);
+  date.setDate(date.getDate() + days);
+  return formatLocalDate(date);
+}
+
+function eachDateString(from, to) {
+  const start = dateParts(from);
+  const end = dateParts(to);
+  if (!start || !end) return [];
+  const cursor = new Date(start.year, start.month - 1, start.day);
+  const endDate = new Date(end.year, end.month - 1, end.day);
+  const dates = [];
+  while (cursor <= endDate) {
+    dates.push(formatLocalDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+function combineDateAndTime(dateValue, timeValue) {
+  const parts = dateParts(dateValue);
+  const minutes = minutesFromTime(timeValue);
+  if (!parts || minutes === null) return null;
+  return new Date(parts.year, parts.month - 1, parts.day, Math.floor(minutes / 60), minutes % 60);
+}
+
+function addMinutes(value, minutes) {
+  return new Date(value.getTime() + minutes * 60 * 1000);
+}
+
+function minutesBetweenPositive(later, earlier) {
+  if (!later || !earlier) return 0;
+  return Math.max(0, Math.round((later.getTime() - earlier.getTime()) / 60000));
+}
+
+function punchKey(value) {
+  return formatLocalDateTime(value).slice(0, 16);
+}
+
+function timeFromDate(value) {
+  if (!value) return null;
+  return `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(
+    2,
+    "0",
+  )}:00`;
+}
+
+function compactFlags(flags) {
+  return [...new Set(flags.filter(Boolean))].sort();
+}
+
+function dedupePunches(punches) {
+  const sorted = punches
+    .map((punch) => (punch instanceof Date ? punch : punch.date))
+    .filter(Boolean)
+    .sort((a, b) => a.getTime() - b.getTime());
+  const kept = [];
+  let duplicateCount = 0;
+  for (const punch of sorted) {
+    const previous = kept[kept.length - 1];
+    if (
+      previous &&
+      Math.abs(punch.getTime() - previous.getTime()) < DTR_DUPLICATE_GAP_MINUTES * 60 * 1000
+    ) {
+      duplicateCount += 1;
+      continue;
+    }
+    kept.push(punch);
+  }
+  return {
+    punches: kept,
+    flags: duplicateCount ? ["duplicate_punches"] : [],
+  };
+}
+
+function detectLegacyShiftType(schedule) {
+  const start = minutesFromTime(schedule.startTime);
+  const end = minutesFromTime(schedule.endTime);
+  if (start !== null && end !== null && (end <= start || start >= 18 * 60 || end <= 8 * 60)) {
+    return "night";
+  }
+  if (!schedule.breakStart && !schedule.breakEnd) return "straight";
+  return "split";
+}
+
+function normalizeShift(row, source) {
+  if (!row) return null;
+  const shift = {
+    id: row.shift_template_id || row.id || null,
+    code: row.shift_code || row.code || "",
+    name: row.shift_name || row.name || "Schedule",
+    type: row.shift_type || "",
+    startTime: formatTime(row.start_time || row.startTime || row.am_in || row.schedule_am_in),
+    endTime: formatTime(
+      row.end_time || row.endTime || row.pm_out || row.schedule_pm_out || row.am_out,
+    ),
+    breakStart: formatTime(row.break_start || row.breakStart || row.am_out || row.schedule_am_out),
+    breakEnd: formatTime(row.break_end || row.breakEnd || row.pm_in || row.schedule_pm_in),
+    earlyBuffer: Number(
+      row.early_buffer_minutes || row.earlyBuffer || DEFAULT_SHIFT_BUFFER_MINUTES,
+    ),
+    lateBuffer: Number(row.late_buffer_minutes || row.lateBuffer || DEFAULT_SHIFT_BUFFER_MINUTES),
+    source,
+  };
+  shift.type = shift.type || detectLegacyShiftType(shift);
+  if (shift.type !== "split") {
+    shift.breakStart = null;
+    shift.breakEnd = null;
+  }
+  return shift.startTime && shift.endTime ? shift : null;
+}
+
+function buildDutyWindow(dutyDate, shift) {
+  const start = combineDateAndTime(dutyDate, shift.startTime);
+  const end = combineDateAndTime(dutyDate, shift.endTime);
+  if (!start || !end) return null;
+  if (end <= start) end.setDate(end.getDate() + 1);
+  return {
+    start,
+    end,
+    windowStart: addMinutes(start, -shift.earlyBuffer),
+    windowEnd: addMinutes(end, shift.lateBuffer),
+    crossMidnight: formatLocalDate(start) !== formatLocalDate(end),
+  };
+}
+
+function closestEventMatch(candidates, target, used, toleranceMinutes) {
+  let best = null;
+  let bestDistance = null;
+  for (const punch of candidates) {
+    const key = punchKey(punch);
+    if (used.has(key)) continue;
+    const distance = Math.abs(punch.getTime() - target.getTime()) / 60000;
+    if (distance <= toleranceMinutes && (bestDistance === null || distance < bestDistance)) {
+      best = punch;
+      bestDistance = distance;
+    }
+  }
+  if (best) used.add(punchKey(best));
+  return best;
+}
+
+function earliestEventMatch(candidates, start, end, used) {
+  const match = candidates.find((punch) => {
+    const key = punchKey(punch);
+    return !used.has(key) && punch >= start && punch <= end;
+  });
+  if (match) used.add(punchKey(match));
+  return match || null;
+}
+
+function latestEventMatch(candidates, start, end, used) {
+  const match = [...candidates].reverse().find((punch) => {
+    const key = punchKey(punch);
+    return !used.has(key) && punch >= start && punch <= end;
+  });
+  if (match) used.add(punchKey(match));
+  return match || null;
+}
+
+function midpointDate(start, end) {
+  return new Date(start.getTime() + (end.getTime() - start.getTime()) / 2);
+}
+
+function boundaryEventMatch(candidates, target, used, start, end, preferBefore) {
+  const available = candidates.filter((punch) => {
+    const key = punchKey(punch);
+    return !used.has(key) && punch >= start && punch <= end;
+  });
+  const match = preferBefore
+    ? [...available].reverse().find((punch) => punch <= target) ||
+      available.find((punch) => punch > target)
+    : available.find((punch) => punch >= target) ||
+      [...available].reverse().find((punch) => punch < target);
+
+  if (match) used.add(punchKey(match));
+  return match || null;
+}
+
 function calculateAttendanceStats(entry) {
+  if (entry.status || entry.lateMinutes !== undefined || entry.undertimeMinutes !== undefined) {
+    return {
+      status: entry.status || "Incomplete",
+      lateMinutes: Math.max(0, Number(entry.lateMinutes || 0)),
+      undertimeMinutes: Math.max(0, Number(entry.undertimeMinutes || 0)),
+    };
+  }
   const amIn = minutesFromTime(entry.amIn);
   const amOut = minutesFromTime(entry.amOut);
   const pmIn = minutesFromTime(entry.pmIn);
@@ -1842,6 +2136,11 @@ function attendanceDtrRow(row) {
     remarks: row.remarks || "",
     displayLabel: row.display_label || "",
     displayLabelRequestId: row.display_label_request_id || "",
+    shiftTemplateId: row.shift_template_id ? String(row.shift_template_id) : "",
+    shiftCode: row.shift_code || "",
+    shiftName: row.shift_name || "",
+    shiftType: row.shift_type || "",
+    reviewFlags: parseJson(row.review_flags, []),
     locked: Boolean(row.locked),
     importId: row.import_id || "",
     editedByName: row.edited_by_name || "",
@@ -2711,6 +3010,69 @@ async function initializeDatabase() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS shift_templates (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(80) NOT NULL UNIQUE,
+      name VARCHAR(120) NOT NULL,
+      shift_type ENUM('split', 'straight', 'night') NOT NULL DEFAULT 'split',
+      start_time TIME NOT NULL,
+      end_time TIME NOT NULL,
+      break_start TIME NULL,
+      break_end TIME NULL,
+      early_buffer_minutes INT UNSIGNED NOT NULL DEFAULT 240,
+      late_buffer_minutes INT UNSIGNED NOT NULL DEFAULT 240,
+      active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_shift_templates_active (active)
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS employee_shift_assignments (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      employee_id ${employeeIdDefinition},
+      duty_date DATE NOT NULL,
+      shift_template_id BIGINT UNSIGNED NOT NULL,
+      created_by INT UNSIGNED NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_employee_shift_assignment (employee_id, duty_date),
+      INDEX idx_employee_shift_assignments_date (duty_date),
+      INDEX idx_employee_shift_assignments_template (shift_template_id),
+      CONSTRAINT fk_employee_shift_assignment_employee FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      CONSTRAINT fk_employee_shift_assignment_template FOREIGN KEY (shift_template_id) REFERENCES shift_templates(id) ON DELETE RESTRICT,
+      CONSTRAINT fk_employee_shift_assignment_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  for (const template of HOSPITAL_SHIFT_TEMPLATES) {
+    await pool.execute(
+      `INSERT INTO shift_templates
+         (code, name, shift_type, start_time, end_time, break_start, break_end,
+          early_buffer_minutes, late_buffer_minutes, active)
+       VALUES
+         (:code, :name, :shiftType, :startTime, :endTime, :breakStart, :breakEnd,
+          :earlyBuffer, :lateBuffer, 1)
+       ON DUPLICATE KEY UPDATE
+         name = VALUES(name),
+         shift_type = VALUES(shift_type),
+         start_time = VALUES(start_time),
+         end_time = VALUES(end_time),
+         break_start = VALUES(break_start),
+         break_end = VALUES(break_end),
+         early_buffer_minutes = VALUES(early_buffer_minutes),
+         late_buffer_minutes = VALUES(late_buffer_minutes),
+         active = 1`,
+      {
+        ...template,
+        earlyBuffer: DEFAULT_SHIFT_BUFFER_MINUTES,
+        lateBuffer: DEFAULT_SHIFT_BUFFER_MINUTES,
+      },
+    );
+  }
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS attendance_logs (
       id CHAR(36) NOT NULL PRIMARY KEY,
       employee_id ${employeeIdDefinition},
@@ -2747,6 +3109,8 @@ async function initializeDatabase() {
       remarks TEXT NULL,
       display_label VARCHAR(180) NULL,
       display_label_request_id CHAR(36) NULL,
+      shift_template_id BIGINT UNSIGNED NULL,
+      review_flags JSON NULL,
       locked TINYINT(1) NOT NULL DEFAULT 0,
       import_id CHAR(36) NULL,
       edited_by INT UNSIGNED NULL,
@@ -2756,13 +3120,27 @@ async function initializeDatabase() {
       UNIQUE KEY uniq_dtr_entries_employee_date (employee_id, work_date),
       INDEX idx_dtr_entries_date (work_date),
       INDEX idx_dtr_entries_status (status),
+      INDEX idx_dtr_entries_shift_template (shift_template_id),
       CONSTRAINT fk_dtr_entries_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      CONSTRAINT fk_dtr_entries_shift_template FOREIGN KEY (shift_template_id) REFERENCES shift_templates(id) ON DELETE SET NULL,
       CONSTRAINT fk_dtr_entries_import_id FOREIGN KEY (import_id) REFERENCES attendance_imports(id) ON DELETE SET NULL,
       CONSTRAINT fk_dtr_entries_edited_by FOREIGN KEY (edited_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
   await ensureColumn("dtr_entries", "display_label", "VARCHAR(180) NULL");
   await ensureColumn("dtr_entries", "display_label_request_id", "CHAR(36) NULL");
+  await ensureColumn("dtr_entries", "shift_template_id", "BIGINT UNSIGNED NULL");
+  await ensureColumn("dtr_entries", "review_flags", "JSON NULL");
+  await ensureIndex(
+    "dtr_entries",
+    "idx_dtr_entries_shift_template",
+    "INDEX idx_dtr_entries_shift_template (shift_template_id)",
+  );
+  await ensureForeignKey(
+    "dtr_entries",
+    "fk_dtr_entries_shift_template",
+    "FOREIGN KEY (shift_template_id) REFERENCES shift_templates(id) ON DELETE SET NULL",
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS dtr_correction_requests (
@@ -3770,7 +4148,7 @@ function attendanceWhereClause({ employeeId, from, to, q = "", recordSearch = ""
   }
   if (recordSearch) {
     where.push(
-      `(e.employee_no LIKE :recordSearch OR e.biometric_id LIKE :recordSearch OR e.firstname LIKE :recordSearch OR e.lastname LIKE :recordSearch OR e.department LIKE :recordSearch OR d.work_date LIKE :recordSearch OR d.am_in LIKE :recordSearch OR d.am_out LIKE :recordSearch OR d.pm_in LIKE :recordSearch OR d.pm_out LIKE :recordSearch OR d.status LIKE :recordSearch OR d.remarks LIKE :recordSearch OR d.display_label LIKE :recordSearch OR d.late_minutes LIKE :recordSearch)`,
+      `(e.employee_no LIKE :recordSearch OR e.biometric_id LIKE :recordSearch OR e.firstname LIKE :recordSearch OR e.lastname LIKE :recordSearch OR e.department LIKE :recordSearch OR d.work_date LIKE :recordSearch OR d.am_in LIKE :recordSearch OR d.am_out LIKE :recordSearch OR d.pm_in LIKE :recordSearch OR d.pm_out LIKE :recordSearch OR d.status LIKE :recordSearch OR d.remarks LIKE :recordSearch OR d.display_label LIKE :recordSearch OR st.name LIKE :recordSearch OR st.code LIKE :recordSearch OR d.review_flags LIKE :recordSearch OR d.late_minutes LIKE :recordSearch)`,
     );
     params.recordSearch = `%${recordSearch}%`;
   }
@@ -3793,9 +4171,11 @@ async function readAttendanceRows({
   const [rows] = await pool.execute(
     `SELECT d.*, e.employee_no, e.biometric_id, e.department, e.position,
             CONCAT(e.lastname, ', ', e.firstname) AS employee_name,
+            st.code AS shift_code, st.name AS shift_name, st.shift_type,
             u.name AS edited_by_name
      FROM dtr_entries d
      INNER JOIN employees e ON e.id = d.employee_id
+     LEFT JOIN shift_templates st ON st.id = d.shift_template_id
      LEFT JOIN users u ON u.id = d.edited_by
      ${whereSql}
      ORDER BY d.work_date DESC, e.lastname ASC, e.firstname ASC
@@ -3822,6 +4202,7 @@ async function readAttendancePage({
     `SELECT COUNT(*) AS total
      FROM dtr_entries d
      INNER JOIN employees e ON e.id = d.employee_id
+     LEFT JOIN shift_templates st ON st.id = d.shift_template_id
      ${whereSql}`,
     params,
   );
@@ -3832,6 +4213,7 @@ async function readAttendancePage({
        COALESCE(SUM(d.late_minutes), 0) AS late_minutes
      FROM dtr_entries d
      INNER JOIN employees e ON e.id = d.employee_id
+     LEFT JOIN shift_templates st ON st.id = d.shift_template_id
      ${whereSql}`,
     params,
   );
@@ -4002,17 +4384,21 @@ async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true
     source,
     remarks: entry.remarks || null,
     importId: entry.importId || null,
+    shiftTemplateId: entry.shiftTemplateId || null,
+    reviewFlags: JSON.stringify(entry.reviewFlags || []),
     editedBy: source === "Imported" ? null : userId,
   };
   const protectedUpdate = preserveAdjusted
-    ? `am_in = IF(source = 'Imported' AND locked = 0, VALUES(am_in), am_in),
-       am_out = IF(source = 'Imported' AND locked = 0, VALUES(am_out), am_out),
-       pm_in = IF(source = 'Imported' AND locked = 0, VALUES(pm_in), pm_in),
-       pm_out = IF(source = 'Imported' AND locked = 0, VALUES(pm_out), pm_out),
-       status = IF(source = 'Imported' AND locked = 0, VALUES(status), status),
-       late_minutes = IF(source = 'Imported' AND locked = 0, VALUES(late_minutes), late_minutes),
-       undertime_minutes = IF(source = 'Imported' AND locked = 0, VALUES(undertime_minutes), undertime_minutes),
-       import_id = IF(source = 'Imported' AND locked = 0, VALUES(import_id), import_id)`
+    ? `am_in = IF(locked = 0 AND source = 'Imported', VALUES(am_in), am_in),
+       am_out = IF(locked = 0 AND source = 'Imported', VALUES(am_out), am_out),
+       pm_in = IF(locked = 0 AND source = 'Imported', VALUES(pm_in), pm_in),
+       pm_out = IF(locked = 0 AND source = 'Imported', VALUES(pm_out), pm_out),
+       status = IF(locked = 0 AND source = 'Imported', VALUES(status), status),
+       late_minutes = IF(locked = 0 AND source = 'Imported', VALUES(late_minutes), late_minutes),
+       undertime_minutes = IF(locked = 0 AND source = 'Imported', VALUES(undertime_minutes), undertime_minutes),
+       import_id = IF(locked = 0 AND source = 'Imported', VALUES(import_id), import_id),
+       shift_template_id = IF(locked = 0 AND source = 'Imported', VALUES(shift_template_id), shift_template_id),
+       review_flags = IF(locked = 0 AND source = 'Imported', VALUES(review_flags), review_flags)`
     : `am_in = VALUES(am_in),
        am_out = VALUES(am_out),
        pm_in = VALUES(pm_in),
@@ -4020,6 +4406,8 @@ async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true
        status = VALUES(status),
        late_minutes = VALUES(late_minutes),
        undertime_minutes = VALUES(undertime_minutes),
+       shift_template_id = VALUES(shift_template_id),
+       review_flags = VALUES(review_flags),
        source = VALUES(source),
        remarks = VALUES(remarks),
        import_id = VALUES(import_id),
@@ -4029,10 +4417,12 @@ async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true
   await connection.execute(
     `INSERT INTO dtr_entries (
        id, employee_id, work_date, am_in, am_out, pm_in, pm_out, status,
-       late_minutes, undertime_minutes, source, remarks, import_id, edited_by, edited_at
+       late_minutes, undertime_minutes, source, remarks, import_id, shift_template_id,
+       review_flags, edited_by, edited_at
      ) VALUES (
        :id, :employeeId, :workDate, :amIn, :amOut, :pmIn, :pmOut, :status,
-       :lateMinutes, :undertimeMinutes, :source, :remarks, :importId, :editedBy,
+       :lateMinutes, :undertimeMinutes, :source, :remarks, :importId, :shiftTemplateId,
+       :reviewFlags, :editedBy,
        IF(:editedBy IS NULL, NULL, NOW())
      )
      ON DUPLICATE KEY UPDATE ${protectedUpdate}`,
@@ -4040,146 +4430,320 @@ async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true
   );
 }
 
-function deriveDtrFromPunchTimes(times, schedule = {}) {
-  const sorted = [...new Set(times)].sort();
-  const toMinutes = (value) => minutesFromTime(value);
-  const scheduleAmOut = toMinutes(schedule.scheduleAmOut || "12:00") ?? 12 * 60;
-  const schedulePmIn = toMinutes(schedule.schedulePmIn || "13:00") ?? 13 * 60;
-  const schedulePmOut = toMinutes(schedule.schedulePmOut || "17:00") ?? 17 * 60;
-  const morning = [];
-  const lunch = [];
-  const afternoon = [];
+function buildMatchedEntry(dutyDate, shift, allPunches, consumedPunches) {
+  const duty = buildDutyWindow(dutyDate, shift);
+  if (!duty) return null;
+  const flags = [];
+  if (duty.crossMidnight) flags.push("cross_midnight");
 
-  for (const time of sorted) {
-    const minutes = toMinutes(time);
-    if (minutes === null) continue;
-    if (minutes < scheduleAmOut) morning.push(time);
-    else if (minutes < schedulePmIn) lunch.push(time);
-    else afternoon.push(time);
-  }
+  const windowPunches = allPunches.filter(
+    (punch) =>
+      punch >= duty.windowStart && punch <= duty.windowEnd && !consumedPunches.has(punchKey(punch)),
+  );
+  const deduped = dedupePunches(windowPunches);
+  flags.push(...deduped.flags);
+  const candidates = deduped.punches;
+  if (!candidates.length) return null;
 
-  let amIn = "";
-  let amOut = "";
-  let pmIn = "";
-  let pmOut = "";
+  const matchedKeys = new Set();
+  let amIn = null;
+  let amOut = null;
+  let pmIn = null;
+  let pmOut = null;
+  let lateMinutes = 0;
+  let undertimeMinutes = 0;
+  let status = "Incomplete";
 
-  if (morning.length) {
-    amIn = morning[0];
-    if (lunch.length) {
-      amOut = lunch[0];
-    } else if (morning.length > 1) {
-      for (const scan of [...morning].reverse()) {
-        if (toMinutes(scan) - toMinutes(amIn) > 1) {
-          amOut = scan;
-          break;
-        }
+  if (shift.type === "split" && shift.breakStart && shift.breakEnd) {
+    const breakStart = combineDateAndTime(dutyDate, shift.breakStart);
+    const breakEnd = combineDateAndTime(dutyDate, shift.breakEnd);
+    if (!breakStart || !breakEnd) return null;
+    if (breakEnd < breakStart) breakEnd.setDate(breakEnd.getDate() + 1);
+
+    const amInCutoff = midpointDate(duty.start, breakStart);
+    const lunchMidpoint = midpointDate(breakStart, breakEnd);
+    const pmInCutoff = midpointDate(breakEnd, duty.end);
+
+    amIn = earliestEventMatch(candidates, duty.windowStart, amInCutoff, matchedKeys);
+    amOut = boundaryEventMatch(
+      candidates,
+      breakStart,
+      matchedKeys,
+      amIn || amInCutoff,
+      lunchMidpoint,
+      true,
+    );
+    pmIn = boundaryEventMatch(
+      candidates,
+      breakEnd,
+      matchedKeys,
+      amOut || breakStart,
+      pmInCutoff,
+      false,
+    );
+    pmOut = latestEventMatch(
+      candidates,
+      pmIn || breakEnd,
+      addMinutes(duty.end, shift.lateBuffer),
+      matchedKeys,
+    );
+
+    if (!amIn && !pmIn) {
+      amOut = null;
+      pmOut = null;
+      matchedKeys.clear();
+    }
+
+    lateMinutes += minutesBetweenPositive(amIn, duty.start);
+    lateMinutes += minutesBetweenPositive(pmIn, breakEnd);
+    undertimeMinutes = minutesBetweenPositive(duty.end, pmOut);
+    if (!amIn) flags.push("missing_am_in");
+    if (!amOut) flags.push("missing_am_out");
+    if (!pmIn) flags.push("missing_pm_in");
+    if (!pmOut) flags.push("missing_pm_out");
+    if (pmOut && undertimeMinutes > 0) flags.push("early_out");
+    if (amIn && amOut && pmIn && pmOut) status = lateMinutes > 0 ? "Late" : "Present";
+  } else {
+    const usable = [...candidates].sort((a, b) => a.getTime() - b.getTime());
+    if (usable.length === 1) {
+      const only = usable[0];
+      const dutyMidpoint = midpointDate(duty.start, duty.end);
+      if (only <= dutyMidpoint) {
+        amIn = shift.type === "night" ? null : only;
+        pmIn = shift.type === "night" ? only : null;
+        matchedKeys.add(punchKey(only));
+      } else {
+        amOut = shift.type === "night" ? only : null;
+        pmOut = shift.type === "night" ? null : only;
+        matchedKeys.add(punchKey(only));
       }
+    } else {
+      const first = usable[0];
+      const last = usable[usable.length - 1];
+      if (shift.type === "night") {
+        pmIn = first;
+        amOut = last;
+      } else {
+        amIn = first;
+        pmOut = last;
+      }
+      matchedKeys.add(punchKey(first));
+      matchedKeys.add(punchKey(last));
     }
+
+    const actualIn = shift.type === "night" ? pmIn : amIn;
+    const actualOut = shift.type === "night" ? amOut : pmOut;
+    lateMinutes = minutesBetweenPositive(actualIn, duty.start);
+    undertimeMinutes = minutesBetweenPositive(duty.end, actualOut);
+    if (actualOut && undertimeMinutes > 0) flags.push("early_out");
+    if (actualIn && actualOut) status = lateMinutes > 0 ? "Late" : "Present";
   }
 
-  if (morning.length) {
-    if (lunch.length > 1) pmIn = lunch[lunch.length - 1];
-    else if (afternoon.length > 1) pmIn = afternoon[0];
-    else if (afternoon.length === 1) {
-      const value = toMinutes(afternoon[0]);
-      pmIn = Math.abs(value - schedulePmIn) < Math.abs(value - schedulePmOut) ? afternoon[0] : "";
-      pmOut = pmIn ? "" : afternoon[0];
-    }
-  } else if (lunch.length > 1) {
-    amOut = lunch[0];
-    pmIn = lunch[lunch.length - 1];
-  } else if (lunch.length === 1) {
-    pmIn = lunch[0];
-  } else if (afternoon.length > 1) {
-    pmIn = afternoon[0];
-  } else if (afternoon.length === 1) {
-    const value = toMinutes(afternoon[0]);
-    const distanceToIn = Math.abs(value - schedulePmIn);
-    const distanceToOut = Math.abs(value - schedulePmOut);
-    pmIn = distanceToIn <= 4 * 60 && distanceToIn < distanceToOut ? afternoon[0] : "";
-    pmOut = pmIn ? "" : afternoon[0];
+  if (!(amIn || pmIn)) flags.push("missing_in");
+  if (!(amOut || pmOut)) flags.push("missing_out");
+  if (candidates.length >= 5 || candidates.length - matchedKeys.size > 0) {
+    flags.push("extra_punches", "ambiguous_punches");
   }
 
-  if (!pmOut && afternoon.length) {
-    const candidate = afternoon[afternoon.length - 1];
-    if (!pmIn || candidate > pmIn) pmOut = candidate;
-  }
-  if (pmIn && pmOut && pmIn === pmOut && sorted.length > 1) pmOut = "";
+  const scopeStart = combineDateAndTime(dutyDate, "00:00:00");
+  const scopeEnd = combineDateAndTime(formatLocalDate(duty.end), "23:59:00");
+  const outsideWindow = allPunches.some(
+    (punch) =>
+      scopeStart &&
+      scopeEnd &&
+      punch >= scopeStart &&
+      punch <= scopeEnd &&
+      !(punch >= duty.windowStart && punch <= duty.windowEnd),
+  );
+  if (outsideWindow) flags.push("outside_window");
+
+  for (const key of matchedKeys) consumedPunches.add(key);
 
   return {
-    amIn: amIn ? normalizeTimeInput(amIn) : null,
-    amOut: amOut ? normalizeTimeInput(amOut) : null,
-    pmIn: pmIn ? normalizeTimeInput(pmIn) : null,
-    pmOut: pmOut ? normalizeTimeInput(pmOut) : null,
+    employeeId: null,
+    workDate: dutyDate,
+    amIn: timeFromDate(amIn),
+    amOut: timeFromDate(amOut),
+    pmIn: timeFromDate(pmIn),
+    pmOut: timeFromDate(pmOut),
+    status,
+    lateMinutes,
+    undertimeMinutes,
+    shiftTemplateId: shift.id || null,
+    reviewFlags: compactFlags(flags),
+    source: "Imported",
   };
 }
 
-async function refreshDtrEntries({ employeeId, from, to, userId }) {
-  const where = [];
-  const params = {};
-  if (employeeId) {
-    where.push("employee_id = :employeeId");
-    params.employeeId = employeeId;
-  }
-  if (from) {
-    where.push("punch_date >= :from");
-    params.from = from;
-  }
-  if (to) {
-    where.push("punch_date <= :to");
-    params.to = to;
-  }
-  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const [logs] = await pool.execute(
-    `SELECT al.employee_id, DATE_FORMAT(al.punch_date, '%Y-%m-%d') AS work_date,
-            TIME_FORMAT(al.punch_at, '%H:%i:%s') AS punch_time,
-            TIME_FORMAT(COALESCE(eso.am_in, e.schedule_am_in), '%H:%i:%s') AS schedule_am_in,
-            TIME_FORMAT(COALESCE(eso.am_out, e.schedule_am_out), '%H:%i:%s') AS schedule_am_out,
-            TIME_FORMAT(COALESCE(eso.pm_in, e.schedule_pm_in), '%H:%i:%s') AS schedule_pm_in,
-            TIME_FORMAT(COALESCE(eso.pm_out, e.schedule_pm_out), '%H:%i:%s') AS schedule_pm_out
-     FROM attendance_logs al
-     INNER JOIN employees e ON e.id = al.employee_id
-     LEFT JOIN employee_schedule_overrides eso
-       ON eso.employee_id = al.employee_id AND eso.work_date = al.punch_date
-     ${whereSql.replaceAll("employee_id", "al.employee_id").replaceAll("punch_date", "al.punch_date")}
-     ORDER BY al.employee_id, al.punch_at`,
-    params,
+function resolveShiftForDate(dutyDate, employee, assignments, overrides) {
+  const employeeAssignments = assignments.get(String(employee.id)) || new Map();
+  const assignedShift = employeeAssignments.get(dutyDate);
+  if (assignedShift) return assignedShift;
+
+  const employeeOverrides = overrides.get(String(employee.id)) || new Map();
+  const override = employeeOverrides.get(dutyDate);
+  if (override) return override;
+
+  return normalizeShift(
+    {
+      name: "Employee Default Schedule",
+      shift_type: "",
+      schedule_am_in: employee.schedule_am_in,
+      schedule_am_out: employee.schedule_am_out,
+      schedule_pm_in: employee.schedule_pm_in,
+      schedule_pm_out: employee.schedule_pm_out,
+    },
+    "default",
   );
+}
 
-  const grouped = new Map();
-  for (const log of logs) {
-    const key = `${log.employee_id}:${log.work_date}`;
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        employeeId: log.employee_id,
-        workDate: log.work_date,
-        scheduleAmIn: log.schedule_am_in,
-        scheduleAmOut: log.schedule_am_out,
-        schedulePmIn: log.schedule_pm_in,
-        schedulePmOut: log.schedule_pm_out,
-        times: [],
-      });
-    }
-    grouped.get(key).times.push(log.punch_time);
+async function loadScheduleContext(employeeIds, dutyDates) {
+  const assignmentMap = new Map();
+  const overrideMap = new Map();
+  if (!employeeIds.length || !dutyDates.length) return { assignmentMap, overrideMap };
+
+  const [assignments] = await pool.execute(
+    `SELECT esa.employee_id, DATE_FORMAT(esa.duty_date, '%Y-%m-%d') AS duty_date,
+            st.id, st.code, st.name, st.shift_type, st.start_time, st.end_time,
+            st.break_start, st.break_end, st.early_buffer_minutes, st.late_buffer_minutes
+     FROM employee_shift_assignments esa
+     INNER JOIN shift_templates st ON st.id = esa.shift_template_id
+     WHERE esa.employee_id IN (${employeeIds.map(() => "?").join(",")})
+       AND esa.duty_date IN (${dutyDates.map(() => "?").join(",")})`,
+    [...employeeIds, ...dutyDates],
+  );
+  for (const row of assignments) {
+    const key = String(row.employee_id);
+    if (!assignmentMap.has(key)) assignmentMap.set(key, new Map());
+    assignmentMap.get(key).set(
+      normalizeDate(row.duty_date),
+      normalizeShift(
+        {
+          shift_template_id: row.id,
+          shift_code: row.code,
+          shift_name: row.name,
+          shift_type: row.shift_type,
+          start_time: row.start_time,
+          end_time: row.end_time,
+          break_start: row.break_start,
+          break_end: row.break_end,
+          early_buffer_minutes: row.early_buffer_minutes,
+          late_buffer_minutes: row.late_buffer_minutes,
+        },
+        "assignment",
+      ),
+    );
   }
 
+  const [overrides] = await pool.execute(
+    `SELECT employee_id, DATE_FORMAT(work_date, '%Y-%m-%d') AS work_date,
+            am_in, am_out, pm_in, pm_out
+     FROM employee_schedule_overrides
+     WHERE employee_id IN (${employeeIds.map(() => "?").join(",")})
+       AND work_date IN (${dutyDates.map(() => "?").join(",")})`,
+    [...employeeIds, ...dutyDates],
+  );
+  for (const row of overrides) {
+    const key = String(row.employee_id);
+    if (!overrideMap.has(key)) overrideMap.set(key, new Map());
+    overrideMap.get(key).set(
+      normalizeDate(row.work_date),
+      normalizeShift(
+        {
+          name: "Schedule Override",
+          am_in: row.am_in,
+          am_out: row.am_out,
+          pm_in: row.pm_in,
+          pm_out: row.pm_out,
+        },
+        "override",
+      ),
+    );
+  }
+
+  return { assignmentMap, overrideMap };
+}
+
+async function refreshDtrEntries({ employeeId, from, to, userId }) {
+  const employeeWhere = employeeId ? "WHERE id = :employeeId" : "";
+  const [employees] = await pool.execute(
+    `SELECT id, schedule_am_in, schedule_am_out, schedule_pm_in, schedule_pm_out
+     FROM employees ${employeeWhere}`,
+    employeeId ? { employeeId } : {},
+  );
+  if (!employees.length) return { recordsProcessed: 0, punchesProcessed: 0 };
+
+  const employeeIds = employees.map((employee) => String(employee.id));
+  const logWhere = [`al.employee_id IN (${employeeIds.map(() => "?").join(",")})`];
+  const logParams = [...employeeIds];
+  const normalizedFrom = normalizeDate(from);
+  const normalizedTo = normalizeDate(to);
+  if (normalizedFrom) {
+    logWhere.push("al.punch_at >= ?");
+    logParams.push(`${addDaysToDateString(normalizedFrom, -1)} 00:00:00`);
+  }
+  if (normalizedTo) {
+    logWhere.push("al.punch_at <= ?");
+    logParams.push(`${addDaysToDateString(normalizedTo, 2)} 23:59:59`);
+  }
+
+  const [logs] = await pool.execute(
+    `SELECT al.employee_id, al.punch_at
+     FROM attendance_logs al
+     WHERE ${logWhere.join(" AND ")}
+     ORDER BY al.employee_id, al.punch_at`,
+    logParams,
+  );
+  const punchesByEmployee = new Map();
+  for (const log of logs) {
+    const punchAt = parseLocalDateTime(log.punch_at);
+    if (!punchAt) continue;
+    const key = String(log.employee_id);
+    if (!punchesByEmployee.has(key)) punchesByEmployee.set(key, []);
+    punchesByEmployee.get(key).push(punchAt);
+  }
+
+  let dutyDates = [];
+  if (normalizedFrom || normalizedTo) {
+    const first = normalizedFrom || normalizedTo;
+    const last = normalizedTo || normalizedFrom;
+    dutyDates = eachDateString(first, last);
+  } else if (logs.length) {
+    const allPunchDates = logs
+      .map((log) => parseLocalDateTime(log.punch_at))
+      .filter(Boolean)
+      .sort((a, b) => a.getTime() - b.getTime());
+    dutyDates = eachDateString(
+      addDaysToDateString(formatLocalDate(allPunchDates[0]), -1),
+      formatLocalDate(allPunchDates[allPunchDates.length - 1]),
+    );
+  }
+  if (!dutyDates.length) return { recordsProcessed: 0, punchesProcessed: logs.length };
+
+  const { assignmentMap, overrideMap } = await loadScheduleContext(employeeIds, dutyDates);
   const connection = await pool.getConnection();
+  let recordsProcessed = 0;
   try {
     await connection.beginTransaction();
-    for (const group of grouped.values()) {
-      const entry = deriveDtrFromPunchTimes(group.times, group);
-      await upsertDtrEntry(
-        connection,
-        {
-          employeeId: group.employeeId,
-          workDate: group.workDate,
-          ...entry,
-          ...group,
-          source: "Imported",
-        },
-        userId,
-        true,
-      );
+    for (const employee of employees) {
+      const employeePunches = punchesByEmployee.get(String(employee.id)) || [];
+      const consumedPunches = new Set();
+      for (const dutyDate of dutyDates) {
+        const shift = resolveShiftForDate(dutyDate, employee, assignmentMap, overrideMap);
+        if (!shift) continue;
+        const entry = buildMatchedEntry(dutyDate, shift, employeePunches, consumedPunches);
+        if (!entry) continue;
+        await upsertDtrEntry(
+          connection,
+          {
+            ...entry,
+            employeeId: employee.id,
+          },
+          userId,
+          true,
+        );
+        recordsProcessed += 1;
+      }
     }
     await connection.commit();
   } catch (error) {
@@ -4189,7 +4753,7 @@ async function refreshDtrEntries({ employeeId, from, to, userId }) {
     connection.release();
   }
 
-  return { recordsProcessed: grouped.size, punchesProcessed: logs.length };
+  return { recordsProcessed, punchesProcessed: logs.length };
 }
 
 async function handleListDtrEntries(req, res, url) {
@@ -5064,6 +5628,16 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
     pmIn: normalizeTimeInput(schedule.pmIn || schedule.pm_in || "13:00"),
     pmOut: normalizeTimeInput(schedule.pmOut || schedule.pm_out || "17:00"),
   };
+  const shiftTemplateCode = String(body.shiftTemplateCode || body.shift_template_code || "").trim();
+  let shiftTemplateId = null;
+  if (shiftTemplateCode) {
+    const [templateRows] = await pool.execute(
+      `SELECT id FROM shift_templates WHERE code = :shiftTemplateCode AND active = 1 LIMIT 1`,
+      { shiftTemplateCode },
+    );
+    if (!templateRows[0]) return json(res, 400, { error: "Selected shift template is invalid" });
+    shiftTemplateId = templateRows[0].id;
+  }
 
   const connection = await pool.getConnection();
   try {
@@ -5098,6 +5672,23 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
                created_by = VALUES(created_by)`,
             { employeeId, workDate, ...values, createdBy: user.id },
           );
+          if (shiftTemplateId) {
+            await connection.execute(
+              `INSERT INTO employee_shift_assignments
+                 (employee_id, duty_date, shift_template_id, created_by)
+               VALUES (:employeeId, :workDate, :shiftTemplateId, :createdBy)
+               ON DUPLICATE KEY UPDATE
+                 shift_template_id = VALUES(shift_template_id),
+                 created_by = VALUES(created_by)`,
+              { employeeId, workDate, shiftTemplateId, createdBy: user.id },
+            );
+          } else {
+            await connection.execute(
+              `DELETE FROM employee_shift_assignments
+               WHERE employee_id = :employeeId AND duty_date = :workDate`,
+              { employeeId, workDate },
+            );
+          }
         }
       }
     }
@@ -5111,7 +5702,7 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
   await logAudit(
     user.id,
     overrides ? "attendance.schedule_override_bulk" : "attendance.schedule_bulk",
-    { employeeIds: employeeIds.length },
+    { employeeIds: employeeIds.length, shiftTemplateCode: shiftTemplateCode || null },
     req,
   );
   return json(res, 200, { ok: true, updated: employeeIds.length });
@@ -9223,6 +9814,7 @@ async function logServerError(req, error) {
 let movementHandlers;
 let plantillaHandlers;
 let serviceRecordHandlers;
+let reportHandlers;
 
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -9305,6 +9897,10 @@ async function route(req, res) {
     /^\/api\/service-records\/([A-Za-z0-9-]+)\/export\/(xlsx|pdf)$/,
   );
   const serviceRecordFileMatch = url.pathname.match(/^\/api\/service-records\/files\/([^/]+)$/);
+  const reportExportMatch = url.pathname.match(
+    /^\/api\/reports\/personnel-plantilla\/export\/(xlsx|pdf)$/,
+  );
+  const reportFileMatch = url.pathname.match(/^\/api\/reports\/files\/([^/]+)$/);
   const movementMatch = url.pathname.match(/^\/api\/movements\/([A-Za-z0-9-]+)$/);
   const movementEventsMatch = url.pathname.match(/^\/api\/movements\/([A-Za-z0-9-]+)\/events$/);
   const movementActionMatch = url.pathname.match(
@@ -9323,6 +9919,12 @@ async function route(req, res) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/dashboard") return handleDashboard(req, res);
+  if (req.method === "GET" && url.pathname === "/api/reports/personnel-plantilla")
+    return reportHandlers.personnelPlantilla(req, res);
+  if (req.method === "POST" && reportExportMatch)
+    return reportHandlers.exportPersonnelPlantilla(req, res, reportExportMatch[1]);
+  if (req.method === "GET" && reportFileMatch)
+    return reportHandlers.file(req, res, reportFileMatch[1]);
 
   if (req.method === "POST" && url.pathname === "/api/auth/login") return handleLogin(req, res);
   if (req.method === "GET" && url.pathname === "/api/public/agency")
@@ -9596,6 +10198,16 @@ serviceRecordHandlers = createServiceRecordHandlers({
   runPython,
   previewDir: PREVIEW_DIR,
   exportScript: SERVICE_RECORD_EXPORT_SCRIPT,
+  sendFile,
+});
+reportHandlers = createReportHandlers({
+  pool,
+  requireEmployeeRead,
+  json,
+  logAudit,
+  runPython,
+  previewDir: PREVIEW_DIR,
+  exportScript: PERSONNEL_PLANTILLA_REPORT_SCRIPT,
   sendFile,
 });
 movementHandlers = createMovementHandlers({
