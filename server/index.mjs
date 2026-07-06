@@ -8923,33 +8923,34 @@ async function handleDeletePosition(req, res, id) {
 async function handleCreateSalaryGrade(req, res) {
   const user = await requireEmployeeWrite(req, res);
   if (!user) return;
-  const body = await readBody(req);
-  const ordinance = String(body.ordinance || "").trim();
-  const grade = Number(body.grade);
-  const step = Number(body.step);
-  const amount = Number(body.amount);
-  if (
-    !ordinance ||
-    !Number.isInteger(grade) ||
-    !Number.isInteger(step) ||
-    !Number.isFinite(amount)
-  ) {
-    return json(res, 400, { error: "Ordinance, grade, step, and amount are required" });
+  let payload;
+  try {
+    payload = readSalaryGradePayload(await readBody(req));
+  } catch (error) {
+    return json(res, 400, { error: error.message });
   }
   try {
     const [result] = await pool.execute(
       `INSERT INTO salary_grades (ordinance, grade, step, amount)
        VALUES (:ordinance, :grade, :step, :amount)`,
-      { ordinance, grade, step, amount },
+      payload,
     );
-    await logAudit(user.id, "config.salary_grade_create", { ordinance, grade, step }, req);
-    return json(res, 201, { salaryGrade: { id: result.insertId, ordinance, grade, step, amount } });
+    await logAudit(
+      user.id,
+      "config.salary_grade_create",
+      { ordinance: payload.ordinance, grade: payload.grade, step: payload.step },
+      req,
+    );
+    return json(res, 201, { salaryGrade: { id: result.insertId, ...payload } });
   } catch (error) {
     if (error?.code === "ER_DUP_ENTRY")
       return json(res, 409, { error: "Salary grade already exists" });
     throw error;
   }
 }
+
+const STANDARD_SALARY_GRADE_MAX = 33;
+const STANDARD_SALARY_STEP_MAX = 8;
 
 function readSalaryGradePayload(body) {
   const ordinance = String(body.ordinance || "").trim();
@@ -8960,12 +8961,14 @@ function readSalaryGradePayload(body) {
     !ordinance ||
     !Number.isInteger(grade) ||
     grade < 1 ||
+    grade > STANDARD_SALARY_GRADE_MAX ||
     !Number.isInteger(step) ||
     step < 1 ||
+    step > STANDARD_SALARY_STEP_MAX ||
     !Number.isFinite(amount) ||
     amount <= 0
   ) {
-    throw new Error("Ordinance, grade, step, and amount are required");
+    throw new Error("Enter an ordinance, SG 1-33, Step 1-8, and an amount greater than zero");
   }
   return { ordinance, grade, step, amount };
 }
@@ -9122,6 +9125,76 @@ async function handleRenameSalaryGradeTable(req, res) {
   }
 }
 
+async function handleDeleteSalaryGradeTable(req, res, url) {
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
+
+  const body = await readBody(req);
+  const ordinance = String(body.ordinance || url.searchParams.get("ordinance") || "").trim();
+  if (!ordinance) return json(res, 400, { error: "Select a salary grade table to delete" });
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [tableRows] = await connection.execute(
+      `SELECT id, is_active
+         FROM salary_grades
+        WHERE ordinance = :ordinance
+        FOR UPDATE`,
+      { ordinance },
+    );
+    const rowCount = tableRows.length;
+    if (rowCount === 0) {
+      await connection.rollback();
+      return json(res, 404, { error: "Salary grade table not found" });
+    }
+    if (tableRows.some((row) => Number(row.is_active) === 1)) {
+      await connection.rollback();
+      return json(res, 409, { error: "Cannot delete the active salary grade table" });
+    }
+
+    const [[usage]] = await connection.execute(
+      `SELECT
+         (SELECT COUNT(*)
+            FROM plantilla_items pi
+            JOIN salary_grades sg ON sg.id = pi.salary_grade_id
+           WHERE sg.ordinance = :ordinance) plantilla_count,
+         (SELECT COUNT(*)
+            FROM personnel_movements pm
+            JOIN salary_grades sg ON sg.id = pm.target_salary_grade_id
+           WHERE sg.ordinance = :ordinance) movement_count,
+         (SELECT COUNT(*)
+            FROM employee_salary_records
+           WHERE JSON_UNQUOTE(JSON_EXTRACT(payload, '$.ordinance')) = :ordinance
+              OR JSON_UNQUOTE(JSON_EXTRACT(payload, '$.previousOrdinance')) = :ordinance) salary_record_count`,
+      { ordinance },
+    );
+    const plantillaCount = Number(usage.plantilla_count || 0);
+    const movementCount = Number(usage.movement_count || 0);
+    const salaryRecordCount = Number(usage.salary_record_count || 0);
+    if (plantillaCount || movementCount || salaryRecordCount) {
+      await connection.rollback();
+      return json(res, 409, {
+        error:
+          "Cannot delete this salary table because it is already referenced by plantilla, movements, or 201 salary records.",
+        usage: { plantillaCount, movementCount, salaryRecordCount },
+      });
+    }
+
+    await connection.execute(`DELETE FROM salary_grades WHERE ordinance = :ordinance`, {
+      ordinance,
+    });
+    await connection.commit();
+    await logAudit(user.id, "config.salary_grade_table_delete", { ordinance, rowCount }, req);
+    return json(res, 200, { ok: true, ordinance, rowCount });
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 function readSalaryEffectivityDate(value) {
   const date = value ? String(value).trim() : formatLocalDate(new Date());
   const parsed = new Date(`${date}T00:00:00Z`);
@@ -9165,14 +9238,6 @@ async function handleActivateSalaryGradeTable(req, res) {
       return json(res, 404, { error: "Salary grade table not found" });
     }
 
-    await connection.execute(`UPDATE salary_grades SET is_active = 0`);
-    await connection.execute(
-      `UPDATE salary_grades SET is_active = 1 WHERE ordinance = :ordinance`,
-      {
-        ordinance,
-      },
-    );
-
     const [employees] = await connection.execute(
       `SELECT e.id employee_id,
               e.employee_no,
@@ -9203,6 +9268,40 @@ async function handleActivateSalaryGradeTable(req, res) {
         ORDER BY e.lastname ASC, e.firstname ASC
         FOR UPDATE`,
       { ordinance },
+    );
+
+    const missingRequiredRows = employees
+      .filter(
+        (employee) =>
+          employee.old_salary_grade_id &&
+          employee.old_grade &&
+          employee.old_step &&
+          !employee.new_salary_grade_id,
+      )
+      .map((employee) => ({
+        employeeId: employee.employee_id,
+        employeeNo: employee.employee_no,
+        employeeName: [employee.lastname, employee.firstname].filter(Boolean).join(", "),
+        itemNumber: employee.item_number,
+        grade: Number(employee.old_grade),
+        step: Number(employee.old_step),
+        status: "blocked",
+        reason: `No SG-${employee.old_grade} Step ${employee.old_step} row in ${ordinance}`,
+      }));
+    if (missingRequiredRows.length) {
+      await connection.rollback();
+      return json(res, 409, {
+        error: `Activation blocked: ${missingRequiredRows.length} active plantilla item(s) have no matching salary grade/step in ${ordinance}. Add the missing rows before activating this table.`,
+        results: missingRequiredRows,
+      });
+    }
+
+    await connection.execute(`UPDATE salary_grades SET is_active = 0`);
+    await connection.execute(
+      `UPDATE salary_grades SET is_active = 1 WHERE ordinance = :ordinance`,
+      {
+        ordinance,
+      },
     );
 
     for (const employee of employees) {
@@ -10177,6 +10276,8 @@ async function route(req, res) {
     return handleCreateSalaryGrade(req, res);
   if (req.method === "POST" && url.pathname === "/api/settings/salary-grades/rename-table")
     return handleRenameSalaryGradeTable(req, res);
+  if (req.method === "DELETE" && url.pathname === "/api/settings/salary-grades/table")
+    return handleDeleteSalaryGradeTable(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/settings/salary-grades/activate")
     return handleActivateSalaryGradeTable(req, res);
   if ((req.method === "PUT" || req.method === "PATCH") && salaryGradeMatch)

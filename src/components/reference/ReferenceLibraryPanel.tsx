@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState } from "react";
-import { Loader2, Pencil, Plus, Power, Save, Search, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Power, Save, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -13,6 +13,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -61,6 +68,7 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
   const [editingId, setEditingId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ReferenceRow | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -82,6 +90,11 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
     setEditingId(null);
   };
 
+  const openAdd = () => {
+    resetForm();
+    setFormOpen(true);
+  };
+
   const editRow = (row: ReferenceRow) => {
     setEditingId(row.id);
     setForm({
@@ -94,7 +107,13 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
       sortOrder: String(row.sortOrder),
       isActive: row.isActive,
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setFormOpen(true);
+  };
+
+  const closeForm = () => {
+    if (saving) return;
+    setFormOpen(false);
+    resetForm();
   };
 
   const save = async () => {
@@ -114,6 +133,7 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
       });
       toast.success(`${config.label} ${editingId ? "updated" : "added"}`);
       resetForm();
+      setFormOpen(false);
       await onChanged();
     } catch (error) {
       toast.error((error as Error).message);
@@ -178,128 +198,19 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
                 {activeCount} active
               </Badge>
               {inactiveCount > 0 && <Badge variant="secondary">{inactiveCount} inactive</Badge>}
+              <Button
+                size="sm"
+                disabled={!canManage}
+                onClick={openAdd}
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Add
+              </Button>
             </div>
           </div>
 
-          {canManage ? (
-            <div className="mt-4 space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                  Code
-                  <Input
-                    value={form.code}
-                    maxLength={80}
-                    onChange={(e) => setForm({ ...form, code: e.target.value })}
-                    placeholder={`${config.label} code`}
-                  />
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                  Name
-                  <Input
-                    value={form.name}
-                    maxLength={200}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder={`${config.label} name`}
-                  />
-                </label>
-                {config.parentCategory ? (
-                  <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                    {config.parentLabel}
-                    <Select
-                      value={form.parentId}
-                      onValueChange={(value) => setForm({ ...form, parentId: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={`Select ${config.parentLabel}`} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {parentRows
-                          .filter((row) => row.isActive || String(row.id) === form.parentId)
-                          .map((row) => (
-                            <SelectItem key={row.id} value={String(row.id)}>
-                              {row.code} - {row.name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </label>
-                ) : (
-                  <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                    Description
-                    <Input
-                      value={form.description}
-                      onChange={(e) => setForm({ ...form, description: e.target.value })}
-                      placeholder="Description (optional)"
-                    />
-                  </label>
-                )}
-                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                  Sort order
-                  <Input
-                    type="number"
-                    min="0"
-                    value={form.sortOrder}
-                    onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
-                    placeholder="Sort order"
-                  />
-                </label>
-              </div>
-              {config.parentCategory && (
-                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                  Description
-                  <Input
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    placeholder="Description (optional)"
-                  />
-                </label>
-              )}
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_auto]">
-                <label className="grid gap-1 text-xs text-muted-foreground">
-                  Effective from
-                  <Input
-                    type="date"
-                    value={form.effectiveFrom}
-                    onChange={(e) => setForm({ ...form, effectiveFrom: e.target.value })}
-                  />
-                </label>
-                <label className="grid gap-1 text-xs text-muted-foreground">
-                  Effective to
-                  <Input
-                    type="date"
-                    value={form.effectiveTo}
-                    onChange={(e) => setForm({ ...form, effectiveTo: e.target.value })}
-                  />
-                </label>
-                <div className="flex items-end gap-2">
-                  <Button
-                    onClick={save}
-                    disabled={
-                      saving ||
-                      !form.code.trim() ||
-                      !form.name.trim() ||
-                      Boolean(config.parentCategory && !form.parentId)
-                    }
-                    className="bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    {saving ? (
-                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    ) : editingId ? (
-                      <Save className="mr-1 h-4 w-4" />
-                    ) : (
-                      <Plus className="mr-1 h-4 w-4" />
-                    )}
-                    {editingId ? "Save" : "Add"}
-                  </Button>
-                  {editingId && (
-                    <Button variant="outline" onClick={resetForm} disabled={saving}>
-                      <X className="mr-1 h-4 w-4" /> Cancel
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
+          {!canManage && (
             <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
               View only. An administrator manages reference-library values.
             </div>
@@ -407,6 +318,146 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
           </table>
         </div>
       </div>
+      <Dialog
+        open={formOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setFormOpen(true);
+          } else {
+            closeForm();
+          }
+        }}
+      >
+        <DialogContent className="grid max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-h-[90vh] sm:max-w-3xl">
+          <DialogHeader className="border-b border-border px-5 py-4 pr-12">
+            <DialogTitle>{editingId ? `Edit ${config.label}` : `Add ${config.label}`}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 overflow-y-auto px-5 py-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                Code
+                <Input
+                  value={form.code}
+                  maxLength={80}
+                  onChange={(e) => setForm({ ...form, code: e.target.value })}
+                  placeholder={`${config.label} code`}
+                  disabled={!canManage || saving}
+                />
+              </label>
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                Name
+                <Input
+                  value={form.name}
+                  maxLength={200}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder={`${config.label} name`}
+                  disabled={!canManage || saving}
+                />
+              </label>
+              {config.parentCategory ? (
+                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                  {config.parentLabel}
+                  <Select
+                    value={form.parentId}
+                    onValueChange={(value) => setForm({ ...form, parentId: value })}
+                    disabled={!canManage || saving}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={`Select ${config.parentLabel}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {parentRows
+                        .filter((row) => row.isActive || String(row.id) === form.parentId)
+                        .map((row) => (
+                          <SelectItem key={row.id} value={String(row.id)}>
+                            {row.code} - {row.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+              ) : (
+                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                  Description
+                  <Input
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    placeholder="Description (optional)"
+                    disabled={!canManage || saving}
+                  />
+                </label>
+              )}
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                Sort order
+                <Input
+                  type="number"
+                  min="0"
+                  value={form.sortOrder}
+                  onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
+                  placeholder="Sort order"
+                  disabled={!canManage || saving}
+                />
+              </label>
+            </div>
+            {config.parentCategory && (
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                Description
+                <Input
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="Description (optional)"
+                  disabled={!canManage || saving}
+                />
+              </label>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-xs text-muted-foreground">
+                Effective from
+                <Input
+                  type="date"
+                  value={form.effectiveFrom}
+                  onChange={(e) => setForm({ ...form, effectiveFrom: e.target.value })}
+                  disabled={!canManage || saving}
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-muted-foreground">
+                Effective to
+                <Input
+                  type="date"
+                  value={form.effectiveTo}
+                  onChange={(e) => setForm({ ...form, effectiveTo: e.target.value })}
+                  disabled={!canManage || saving}
+                />
+              </label>
+            </div>
+          </div>
+          <DialogFooter className="flex-row flex-wrap justify-end gap-2 border-t border-border px-5 py-4 sm:space-x-0">
+            <Button variant="outline" onClick={closeForm} disabled={saving}>
+              Cancel
+            </Button>
+            <Button
+              onClick={save}
+              disabled={
+                !canManage ||
+                saving ||
+                !form.code.trim() ||
+                !form.name.trim() ||
+                Boolean(config.parentCategory && !form.parentId)
+              }
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {saving ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : editingId ? (
+                <Save className="mr-1 h-4 w-4" />
+              ) : (
+                <Plus className="mr-1 h-4 w-4" />
+              )}
+              {editingId ? "Save" : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AlertDialog
         open={Boolean(pendingDelete)}
         onOpenChange={(open) => !open && setPendingDelete(null)}
