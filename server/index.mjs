@@ -4877,7 +4877,7 @@ async function handleListDtrEntries(req, res, url) {
                 SUM(level = 'Warning') AS warning_count
          FROM attendance_import_logs
          GROUP BY import_id
-       ) logs ON logs.import_id = ai.id
+       ) logs ON BINARY logs.import_id = BINARY ai.id
        ORDER BY ai.imported_at DESC
        LIMIT 12`,
     );
@@ -4919,8 +4919,8 @@ async function handleListAttendanceImportLogs(req, res, importId) {
               SUM(level = 'Warning') AS warning_count
        FROM attendance_import_logs
        GROUP BY import_id
-     ) logs ON logs.import_id = ai.id
-     WHERE ai.id = :importId
+     ) logs ON BINARY logs.import_id = BINARY ai.id
+     WHERE BINARY ai.id = BINARY :importId
      LIMIT 1`,
     { importId },
   );
@@ -4929,7 +4929,7 @@ async function handleListAttendanceImportLogs(req, res, importId) {
   const [logs] = await pool.execute(
     `SELECT id, level, source_row_number, employee_no, message, details, created_at
      FROM attendance_import_logs
-     WHERE import_id = :importId
+     WHERE BINARY import_id = BINARY :importId
      ORDER BY id ASC`,
     { importId },
   );
