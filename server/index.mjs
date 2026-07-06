@@ -2283,7 +2283,9 @@ function attendanceImportLogRow(row) {
     id: String(row.id),
     level: row.level || "Info",
     rowNumber:
-      row.row_number === null || row.row_number === undefined ? null : Number(row.row_number),
+      row.source_row_number === null || row.source_row_number === undefined
+        ? null
+        : Number(row.source_row_number),
     employeeNo: row.employee_no || "",
     message: row.message || "",
     details: typeof row.details === "string" ? JSON.parse(row.details || "null") : row.details,
@@ -2303,7 +2305,7 @@ async function insertAttendanceImportLogs(db, importId, logs) {
   for (const log of entries) {
     await db.execute(
       `INSERT INTO attendance_import_logs
-         (import_id, level, row_number, employee_no, message, details)
+         (import_id, level, source_row_number, employee_no, message, details)
        VALUES
          (:importId, :level, :rowNumber, :employeeNo, :message, :details)`,
       {
@@ -3028,7 +3030,7 @@ async function initializeDatabase() {
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       import_id CHAR(36) NOT NULL,
       level ENUM('Info', 'Success', 'Warning', 'Error') NOT NULL DEFAULT 'Info',
-      row_number INT UNSIGNED NULL,
+      source_row_number INT UNSIGNED NULL,
       employee_no VARCHAR(80) NULL,
       message VARCHAR(500) NOT NULL,
       details JSON NULL,
@@ -4926,7 +4928,7 @@ async function handleListAttendanceImportLogs(req, res, importId) {
   if (!imports[0]) return json(res, 404, { error: "Import log not found" });
 
   const [logs] = await pool.execute(
-    `SELECT id, level, row_number, employee_no, message, details, created_at
+    `SELECT id, level, source_row_number, employee_no, message, details, created_at
      FROM attendance_import_logs
      WHERE import_id = :importId
      ORDER BY id ASC`,
