@@ -1936,32 +1936,23 @@ function timeFromDate(value) {
   )}:00`;
 }
 
-function compactFlags(flags) {
-  return [...new Set(flags.filter(Boolean))].sort();
-}
-
 function dedupePunches(punches) {
   const sorted = punches
     .map((punch) => (punch instanceof Date ? punch : punch.date))
     .filter(Boolean)
     .sort((a, b) => a.getTime() - b.getTime());
   const kept = [];
-  let duplicateCount = 0;
   for (const punch of sorted) {
     const previous = kept[kept.length - 1];
     if (
       previous &&
       Math.abs(punch.getTime() - previous.getTime()) < DTR_DUPLICATE_GAP_MINUTES * 60 * 1000
     ) {
-      duplicateCount += 1;
       continue;
     }
     kept.push(punch);
   }
-  return {
-    punches: kept,
-    flags: duplicateCount ? ["duplicate_punches"] : [],
-  };
+  return { punches: kept };
 }
 
 function detectLegacyShiftType(schedule) {
@@ -2121,7 +2112,7 @@ function attendanceDtrRow(row) {
     shiftCode: row.shift_code || "",
     shiftName: row.shift_name || "",
     shiftType: row.shift_type || "",
-    reviewFlags: parseJson(row.review_flags, []),
+    reviewFlags: [],
     locked: Boolean(row.locked),
     importId: row.import_id || "",
     editedByName: row.edited_by_name || "",
@@ -4225,7 +4216,7 @@ function attendanceWhereClause({ employeeId, from, to, q = "", recordSearch = ""
   }
   if (recordSearch) {
     where.push(
-      `(e.employee_no LIKE :recordSearch OR e.biometric_id LIKE :recordSearch OR e.firstname LIKE :recordSearch OR e.lastname LIKE :recordSearch OR e.department LIKE :recordSearch OR d.work_date LIKE :recordSearch OR d.am_in LIKE :recordSearch OR d.am_out LIKE :recordSearch OR d.pm_in LIKE :recordSearch OR d.pm_out LIKE :recordSearch OR d.status LIKE :recordSearch OR d.remarks LIKE :recordSearch OR d.display_label LIKE :recordSearch OR st.name LIKE :recordSearch OR st.code LIKE :recordSearch OR d.review_flags LIKE :recordSearch OR d.late_minutes LIKE :recordSearch)`,
+      `(e.employee_no LIKE :recordSearch OR e.biometric_id LIKE :recordSearch OR e.firstname LIKE :recordSearch OR e.lastname LIKE :recordSearch OR e.department LIKE :recordSearch OR d.work_date LIKE :recordSearch OR d.am_in LIKE :recordSearch OR d.am_out LIKE :recordSearch OR d.pm_in LIKE :recordSearch OR d.pm_out LIKE :recordSearch OR d.status LIKE :recordSearch OR d.remarks LIKE :recordSearch OR d.display_label LIKE :recordSearch OR st.name LIKE :recordSearch OR st.code LIKE :recordSearch OR d.late_minutes LIKE :recordSearch)`,
     );
     params.recordSearch = `%${recordSearch}%`;
   }
@@ -4507,18 +4498,30 @@ async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true
   );
 }
 
+async function resolveShiftTemplateIdByCode(code) {
+  const shiftTemplateCode = String(code || "").trim();
+  if (!shiftTemplateCode || shiftTemplateCode === "manual") return null;
+  const [templateRows] = await pool.execute(
+    `SELECT id FROM shift_templates WHERE code = :shiftTemplateCode AND active = 1 LIMIT 1`,
+    { shiftTemplateCode },
+  );
+  if (!templateRows[0]) {
+    const error = new Error("Selected shift template is invalid");
+    error.statusCode = 400;
+    throw error;
+  }
+  return templateRows[0].id;
+}
+
 function buildMatchedEntry(dutyDate, shift, allPunches, consumedPunches) {
   const duty = buildDutyWindow(dutyDate, shift);
   if (!duty) return null;
-  const flags = [];
-  if (duty.crossMidnight) flags.push("cross_midnight");
 
   const windowPunches = allPunches.filter(
     (punch) =>
       punch >= duty.windowStart && punch <= duty.windowEnd && !consumedPunches.has(punchKey(punch)),
   );
   const deduped = dedupePunches(windowPunches);
-  flags.push(...deduped.flags);
   const candidates = deduped.punches;
   if (!candidates.length) return null;
 
@@ -4574,11 +4577,6 @@ function buildMatchedEntry(dutyDate, shift, allPunches, consumedPunches) {
     lateMinutes += minutesBetweenPositive(amIn, duty.start);
     lateMinutes += minutesBetweenPositive(pmIn, breakEnd);
     undertimeMinutes = minutesBetweenPositive(duty.end, pmOut);
-    if (!amIn) flags.push("missing_am_in");
-    if (!amOut) flags.push("missing_am_out");
-    if (!pmIn) flags.push("missing_pm_in");
-    if (!pmOut) flags.push("missing_pm_out");
-    if (pmOut && undertimeMinutes > 0) flags.push("early_out");
     if (amIn && amOut && pmIn && pmOut) status = lateMinutes > 0 ? "Late" : "Present";
   } else {
     const usable = [...candidates].sort((a, b) => a.getTime() - b.getTime());
@@ -4612,27 +4610,8 @@ function buildMatchedEntry(dutyDate, shift, allPunches, consumedPunches) {
     const actualOut = shift.type === "night" ? amOut : pmOut;
     lateMinutes = minutesBetweenPositive(actualIn, duty.start);
     undertimeMinutes = minutesBetweenPositive(duty.end, actualOut);
-    if (actualOut && undertimeMinutes > 0) flags.push("early_out");
     if (actualIn && actualOut) status = lateMinutes > 0 ? "Late" : "Present";
   }
-
-  if (!(amIn || pmIn)) flags.push("missing_in");
-  if (!(amOut || pmOut)) flags.push("missing_out");
-  if (candidates.length >= 5 || candidates.length - matchedKeys.size > 0) {
-    flags.push("extra_punches", "ambiguous_punches");
-  }
-
-  const scopeStart = combineDateAndTime(dutyDate, "00:00:00");
-  const scopeEnd = combineDateAndTime(formatLocalDate(duty.end), "23:59:00");
-  const outsideWindow = allPunches.some(
-    (punch) =>
-      scopeStart &&
-      scopeEnd &&
-      punch >= scopeStart &&
-      punch <= scopeEnd &&
-      !(punch >= duty.windowStart && punch <= duty.windowEnd),
-  );
-  if (outsideWindow) flags.push("outside_window");
 
   for (const key of matchedKeys) consumedPunches.add(key);
 
@@ -4647,7 +4626,7 @@ function buildMatchedEntry(dutyDate, shift, allPunches, consumedPunches) {
     lateMinutes,
     undertimeMinutes,
     shiftTemplateId: shift.id || null,
-    reviewFlags: compactFlags(flags),
+    reviewFlags: [],
     source: "Imported",
   };
 }
@@ -7585,6 +7564,12 @@ async function handleCreateDtrEntry(req, res) {
   const employee = await resolveAttendanceEmployee(body);
   const workDate = normalizeDate(body.workDate || body.date);
   if (!workDate) return json(res, 400, { error: "Date is required" });
+  let shiftTemplateId = null;
+  try {
+    shiftTemplateId = await resolveShiftTemplateIdByCode(body.shiftTemplateCode);
+  } catch (error) {
+    return json(res, error.statusCode || 400, { error: error.message });
+  }
 
   const entry = {
     employeeId: employee.id,
@@ -7596,6 +7581,7 @@ async function handleCreateDtrEntry(req, res) {
     status: body.status,
     remarks: body.remarks || "",
     source: "Manual",
+    shiftTemplateId,
   };
   const connection = await pool.getConnection();
   try {
@@ -7632,6 +7618,14 @@ async function handleUpdateDtrEntry(req, res, id) {
     return json(res, 409, { error: "Locked DTR entries cannot be edited" });
 
   const existing = existingRows[0];
+  let shiftTemplateId = existing.shift_template_id || null;
+  if (Object.prototype.hasOwnProperty.call(body, "shiftTemplateCode")) {
+    try {
+      shiftTemplateId = await resolveShiftTemplateIdByCode(body.shiftTemplateCode);
+    } catch (error) {
+      return json(res, error.statusCode || 400, { error: error.message });
+    }
+  }
   const entry = {
     employeeId: existing.employee_id,
     workDate: normalizeDate(body.workDate || body.date || existing.work_date),
@@ -7639,13 +7633,15 @@ async function handleUpdateDtrEntry(req, res, id) {
     amOut: normalizeTimeInput(body.amOut ?? body.am_out ?? existing.am_out),
     pmIn: normalizeTimeInput(body.pmIn ?? body.pm_in ?? existing.pm_in),
     pmOut: normalizeTimeInput(body.pmOut ?? body.pm_out ?? existing.pm_out),
+    shiftTemplateId,
   };
   const stats = calculateAttendanceStats(entry);
   await pool.execute(
     `UPDATE dtr_entries
      SET work_date = :workDate, am_in = :amIn, am_out = :amOut, pm_in = :pmIn, pm_out = :pmOut,
          status = :status, late_minutes = :lateMinutes, undertime_minutes = :undertimeMinutes,
-         source = 'Adjusted', remarks = :remarks, edited_by = :editedBy, edited_at = NOW()
+         source = 'Adjusted', remarks = :remarks, shift_template_id = :shiftTemplateId,
+         edited_by = :editedBy, edited_at = NOW()
      WHERE id = :id`,
     {
       id,
@@ -10135,6 +10131,17 @@ async function handleListErrorLogs(req, res) {
      ORDER BY el.created_at DESC, el.id DESC
      LIMIT 200`,
   );
+  const [importLogRows] = await pool.query(
+    `SELECT ail.id, ail.import_id, ail.level, ail.source_row_number, ail.employee_no,
+            ail.message, ail.details, ail.created_at,
+            ai.source, ai.file_name, ai.period_from, ai.period_to, ai.row_count,
+            ai.status, ai.imported_at, u.username, u.name, u.role
+     FROM attendance_import_logs ail
+     LEFT JOIN attendance_imports ai ON BINARY ai.id = BINARY ail.import_id
+     LEFT JOIN users u ON u.id = ai.imported_by
+     ORDER BY ail.created_at DESC, ail.id DESC
+     LIMIT 200`,
+  );
 
   return json(res, 200, {
     logs: rows.map((row) => ({
@@ -10145,6 +10152,27 @@ async function handleListErrorLogs(req, res) {
       stack: row.stack || "",
       ipAddress: row.ip_address || "",
       userAgent: row.user_agent || "",
+      createdAt: row.created_at,
+      user: row.username ? { username: row.username, name: row.name, role: row.role } : null,
+    })),
+    importLogs: importLogRows.map((row) => ({
+      id: String(row.id),
+      importId: row.import_id || "",
+      level: row.level || "Info",
+      rowNumber:
+        row.source_row_number === null || row.source_row_number === undefined
+          ? null
+          : Number(row.source_row_number),
+      employeeNo: row.employee_no || "",
+      message: row.message || "",
+      details: typeof row.details === "string" ? JSON.parse(row.details || "null") : row.details,
+      source: row.source || "",
+      fileName: row.file_name || "",
+      periodFrom: normalizeDate(row.period_from),
+      periodTo: normalizeDate(row.period_to),
+      rowCount: Number(row.row_count || 0),
+      status: row.status || "",
+      importedAt: row.imported_at,
       createdAt: row.created_at,
       user: row.username ? { username: row.username, name: row.name, role: row.role } : null,
     })),

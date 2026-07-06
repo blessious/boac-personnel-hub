@@ -153,6 +153,7 @@ export type DtrPayload = {
   pmOut?: string;
   status?: string;
   remarks?: string;
+  shiftTemplateCode?: string;
 };
 
 export type DtrNoter = {

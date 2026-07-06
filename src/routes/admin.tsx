@@ -85,6 +85,24 @@ interface ErrorLog {
   user: { username: string; name: string; role: Role } | null;
 }
 
+interface ImportLog {
+  id: string;
+  importId: string;
+  level: "Info" | "Success" | "Warning" | "Error";
+  rowNumber: number | null;
+  employeeNo: string;
+  message: string;
+  source: string;
+  fileName: string;
+  periodFrom: string;
+  periodTo: string;
+  rowCount: number;
+  status: string;
+  importedAt: string;
+  createdAt: string;
+  user: { username: string; name: string; role: Role } | null;
+}
+
 interface BackupFile {
   fileName: string;
   size: number;
@@ -117,6 +135,13 @@ const ROLE_COLORS: Record<Role, string> = {
   Viewer: "bg-muted text-muted-foreground border-border",
 };
 
+const IMPORT_LOG_LEVEL_COLORS: Record<ImportLog["level"], string> = {
+  Info: "border-slate-200 bg-slate-50 text-slate-600",
+  Success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  Warning: "border-amber-200 bg-amber-50 text-amber-700",
+  Error: "border-rose-200 bg-rose-50 text-rose-700",
+};
+
 function AdminPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "Super Admin" || user?.role === "Admin";
@@ -125,6 +150,7 @@ function AdminPage() {
   const [employeeCandidates, setEmployeeCandidates] = useState<EmployeeRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [errorLogs, setErrorLogs] = useState<ErrorLog[]>([]);
+  const [importLogs, setImportLogs] = useState<ImportLog[]>([]);
   const [backups, setBackups] = useState<BackupFile[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [loadingErrors, setLoadingErrors] = useState(false);
@@ -196,8 +222,11 @@ function AdminPage() {
     if (!isAdmin) return;
     setLoadingErrors(true);
     try {
-      const result = await api<{ logs: ErrorLog[] }>("/api/admin/error-logs");
+      const result = await api<{ logs: ErrorLog[]; importLogs: ImportLog[] }>(
+        "/api/admin/error-logs",
+      );
       setErrorLogs(result.logs);
+      setImportLogs(result.importLogs || []);
     } catch (error) {
       toast.error((error as Error).message);
     } finally {
@@ -228,7 +257,7 @@ function AdminPage() {
     if (activeTab === "audit") loadAuditLogs();
     if (activeTab === "errors") loadErrorLogs();
     if (activeTab === "backup") loadBackups();
-  }, ["admin", "employees"]);
+  }, ["admin", "employees", "attendance"]);
 
   const openAddUser = () => {
     setTemporaryPassword("");
@@ -873,79 +902,158 @@ function AdminPage() {
       )}
 
       {activeTab === "errors" && (
-        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="p-4 flex items-center justify-between border-b border-border">
-            <div>
-              <h4 className="font-semibold text-foreground">Error Log</h4>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+            <div className="p-4 flex items-center justify-between border-b border-border">
+              <div>
+                <h4 className="font-semibold text-foreground">Error Log</h4>
+                <p className="text-xs text-muted-foreground">
+                  Latest {errorLogs.length} unexpected system errors and {importLogs.length} DTR
+                  import log entries
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={loadErrorLogs}
+                disabled={loadingErrors}
+                className="gap-1.5"
+              >
+                <RefreshCw className={cn("h-4 w-4", loadingErrors && "animate-spin")} /> Refresh
+              </Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[960px] text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                    <th className="px-4 py-3 font-semibold">Date/Time</th>
+                    <th className="px-4 py-3 font-semibold">User</th>
+                    <th className="px-4 py-3 font-semibold">Request</th>
+                    <th className="px-4 py-3 font-semibold">Message</th>
+                    <th className="px-4 py-3 font-semibold">Stack</th>
+                    <th className="px-4 py-3 font-semibold">IP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {errorLogs.map((log, index) => (
+                    <tr
+                      key={log.id}
+                      className={cn(
+                        "border-b border-border/50 last:border-0 align-top",
+                        index % 2 === 1 && "bg-muted/10",
+                      )}
+                    >
+                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                        {formatDateTime(log.createdAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{log.user?.name || "Unknown"}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {log.user ? `@${log.user.username}` : "No account"}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-mono text-xs">{log.method || "-"}</div>
+                        <div className="max-w-[220px] truncate text-xs text-muted-foreground">
+                          {log.path || "-"}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 max-w-[260px] break-words text-rose-700">
+                        {log.message}
+                      </td>
+                      <td className="px-4 py-3">
+                        <pre className="max-h-28 max-w-[360px] overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-2 text-[11px] text-muted-foreground">
+                          {log.stack || "-"}
+                        </pre>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{log.ipAddress || "-"}</td>
+                    </tr>
+                  ))}
+                  {errorLogs.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>
+                        {loadingErrors ? "Loading error logs..." : "No error logs found."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+            <div className="border-b border-border p-4">
+              <h4 className="font-semibold text-foreground">DTR Import Logs</h4>
               <p className="text-xs text-muted-foreground">
-                Latest {errorLogs.length} unexpected system errors
+                Row-level DTR import messages, including file and biometric import errors.
               </p>
             </div>
-            <Button
-              variant="outline"
-              onClick={loadErrorLogs}
-              disabled={loadingErrors}
-              className="gap-1.5"
-            >
-              <RefreshCw className={cn("h-4 w-4", loadingErrors && "animate-spin")} /> Refresh
-            </Button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-sm">
-              <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                  <th className="px-4 py-3 font-semibold">Date/Time</th>
-                  <th className="px-4 py-3 font-semibold">User</th>
-                  <th className="px-4 py-3 font-semibold">Request</th>
-                  <th className="px-4 py-3 font-semibold">Message</th>
-                  <th className="px-4 py-3 font-semibold">Stack</th>
-                  <th className="px-4 py-3 font-semibold">IP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {errorLogs.map((log, index) => (
-                  <tr
-                    key={log.id}
-                    className={cn(
-                      "border-b border-border/50 last:border-0 align-top",
-                      index % 2 === 1 && "bg-muted/10",
-                    )}
-                  >
-                    <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                      {formatDateTime(log.createdAt)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{log.user?.name || "Unknown"}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {log.user ? `@${log.user.username}` : "No account"}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-mono text-xs">{log.method || "-"}</div>
-                      <div className="max-w-[220px] truncate text-xs text-muted-foreground">
-                        {log.path || "-"}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 max-w-[260px] break-words text-rose-700">
-                      {log.message}
-                    </td>
-                    <td className="px-4 py-3">
-                      <pre className="max-h-28 max-w-[360px] overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-2 text-[11px] text-muted-foreground">
-                        {log.stack || "-"}
-                      </pre>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{log.ipAddress || "-"}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[940px] text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                    <th className="px-4 py-3 font-semibold">Date/Time</th>
+                    <th className="px-4 py-3 font-semibold">Level</th>
+                    <th className="px-4 py-3 font-semibold">Import</th>
+                    <th className="px-4 py-3 font-semibold">Row</th>
+                    <th className="px-4 py-3 font-semibold">Message</th>
+                    <th className="px-4 py-3 font-semibold">By</th>
                   </tr>
-                ))}
-                {errorLogs.length === 0 && (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>
-                      {loadingErrors ? "Loading error logs..." : "No error logs found."}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {importLogs.map((log, index) => (
+                    <tr
+                      key={log.id}
+                      className={cn(
+                        "border-b border-border/50 last:border-0 align-top",
+                        index % 2 === 1 && "bg-muted/10",
+                      )}
+                    >
+                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                        {formatDateTime(log.createdAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline" className={IMPORT_LOG_LEVEL_COLORS[log.level]}>
+                          {log.level}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-foreground">
+                          {log.source || "DTR"} {log.status ? `- ${log.status}` : ""}
+                        </div>
+                        <div className="max-w-[260px] truncate text-xs text-muted-foreground">
+                          {log.fileName || log.importId || "-"}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {log.periodFrom && log.periodTo
+                            ? `${log.periodFrom} to ${log.periodTo}`
+                            : `${log.rowCount || 0} imported`}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {log.rowNumber ? `Row ${log.rowNumber}` : "-"}
+                        {log.employeeNo ? (
+                          <div className="text-xs">ID: {log.employeeNo}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 max-w-md break-words">{log.message}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{log.user?.name || "System"}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {log.user ? `@${log.user.username}` : "No account"}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {importLogs.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>
+                        {loadingErrors ? "Loading DTR import logs..." : "No DTR import logs found."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

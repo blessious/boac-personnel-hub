@@ -82,7 +82,6 @@ import {
   getBiometricRealtimeStatus,
   importAllDtr,
   importSingleDtr,
-  listAttendanceImportLogs,
   listBiometricDevices,
   listDtrNoters,
   listDtr,
@@ -97,8 +96,6 @@ import {
   type BiometricRealtimeLog,
   type BiometricRealtimeStatus,
   type BiometricDevice,
-  type AttendanceImport,
-  type AttendanceImportLog,
   type DtrNoter,
   type DtrEntry,
   type DtrCorrectionPayload,
@@ -278,6 +275,7 @@ const EMPTY_DTR_FORM: DtrPayload = {
   pmIn: "",
   pmOut: "",
   remarks: "",
+  shiftTemplateCode: "manual",
 };
 
 const STATUS_CLASS: Record<string, string> = {
@@ -293,19 +291,6 @@ const CORRECTION_STATUS_CLASS: Record<DtrCorrectionStatus, string> = {
   Disapproved: "border-rose-200 bg-rose-50 text-rose-700",
   Cancelled: "border-slate-200 bg-slate-50 text-slate-600",
   Reversed: "border-violet-200 bg-violet-50 text-violet-700",
-};
-
-const IMPORT_STATUS_CLASS: Record<string, string> = {
-  Completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  Processing: "border-amber-200 bg-amber-50 text-amber-700",
-  Failed: "border-rose-200 bg-rose-50 text-rose-700",
-};
-
-const IMPORT_LOG_LEVEL_CLASS: Record<string, string> = {
-  Success: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  Warning: "border-amber-200 bg-amber-50 text-amber-700",
-  Error: "border-rose-200 bg-rose-50 text-rose-700",
-  Info: "border-slate-200 bg-slate-50 text-slate-600",
 };
 
 const EMPTY_CORRECTION_FORM: DtrCorrectionPayload = {
@@ -340,10 +325,6 @@ function AttendancePage() {
   const [employeeId, setEmployeeId] = useState("all");
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [entries, setEntries] = useState<DtrEntry[]>([]);
-  const [imports, setImports] = useState<AttendanceImport[]>([]);
-  const [selectedImport, setSelectedImport] = useState<AttendanceImport | null>(null);
-  const [importLogs, setImportLogs] = useState<AttendanceImportLog[]>([]);
-  const [loadingImportLogs, setLoadingImportLogs] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [generationLoader, setGenerationLoader] = useState<{
@@ -458,7 +439,6 @@ function AttendancePage() {
     })
       .then((result) => {
         setEntries(result.entries);
-        setImports(result.imports || []);
         const nextPagination = result.pagination || {
           total: result.summary.total,
           page: dtrPage,
@@ -834,6 +814,7 @@ function AttendancePage() {
       pmIn: entry.pmIn,
       pmOut: entry.pmOut,
       remarks: entry.remarks,
+      shiftTemplateCode: entry.shiftCode || "manual",
     });
     setShowDtrDialog(true);
   };
@@ -915,38 +896,6 @@ function AttendancePage() {
     setShowImportAllDialog(true);
   };
 
-  const openImportLog = async (importId: string) => {
-    setLoadingImportLogs(true);
-    setSelectedImport(
-      imports.find((item) => item.id === importId) || {
-        id: importId,
-        source: "DTR",
-        fileName: "Import result",
-        periodFrom: "",
-        periodTo: "",
-        rowCount: 0,
-        status: "Processing",
-        notes: "",
-        logCount: 0,
-        errorCount: 0,
-        warningCount: 0,
-        importedByName: "",
-        importedAt: "",
-      },
-    );
-    setImportLogs([]);
-    try {
-      const result = await listAttendanceImportLogs(importId);
-      setSelectedImport(result.import);
-      setImportLogs(result.logs);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Unable to load import log");
-      setSelectedImport(null);
-    } finally {
-      setLoadingImportLogs(false);
-    }
-  };
-
   const runImportAll = async () => {
     if (!massImportStartDate || !massImportEndDate) {
       toast.error("Select a start date and end date");
@@ -978,8 +927,7 @@ function AttendancePage() {
         `Import DTR complete: ${result.imported} punch(es) imported; ${result.refreshed?.recordsProcessed || 0} DTR row(s) refreshed`,
       );
       if (result.errors?.length) {
-        toast.warning(`${result.errors.length} row(s) had errors. Opening import log.`);
-        void openImportLog(result.importId);
+        toast.warning(`${result.errors.length} row(s) had errors. Check Admin > Error Log.`);
       }
       setShowImportAllDialog(false);
       setMassImportFile(null);
@@ -1189,8 +1137,7 @@ function AttendancePage() {
         `Imported ${result.imported} punch(es); refreshed ${result.refreshed.recordsProcessed} DTR row(s)`,
       );
       if (result.errors?.length) {
-        toast.warning(`${result.errors.length} row(s) need checking. Opening import log.`);
-        void openImportLog(result.importId);
+        toast.warning(`${result.errors.length} row(s) need checking. Check Admin > Error Log.`);
       }
       setShowImportDialog(false);
       setImportFile(null);
@@ -1670,95 +1617,6 @@ function AttendancePage() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-
-        {canManage && (
-          <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            <div className="flex flex-col gap-2 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">Import Logs</h2>
-                <p className="text-xs text-muted-foreground">
-                  Latest DTR import results and row-level errors.
-                </p>
-              </div>
-              <Button type="button" size="sm" variant="outline" onClick={load} disabled={loading}>
-                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                Reload
-              </Button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
-                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 text-left font-semibold">Imported</th>
-                    <th className="px-4 py-2 text-left font-semibold">Source</th>
-                    <th className="px-4 py-2 text-left font-semibold">Result</th>
-                    <th className="px-4 py-2 text-left font-semibold">Range</th>
-                    <th className="px-4 py-2 text-left font-semibold">By</th>
-                    <th className="px-4 py-2 text-right font-semibold">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {imports.map((item) => (
-                    <tr key={item.id}>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {formatDateTime(item.importedAt)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-foreground">{item.source}</div>
-                        <div className="max-w-[18rem] truncate text-xs text-muted-foreground">
-                          {item.fileName || "DTR import"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className={
-                              IMPORT_STATUS_CLASS[item.status] || IMPORT_STATUS_CLASS.Processing
-                            }
-                          >
-                            {item.status}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {item.rowCount} imported
-                            {item.errorCount ? `, ${item.errorCount} error(s)` : ""}
-                            {item.warningCount ? `, ${item.warningCount} warning(s)` : ""}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {item.periodFrom && item.periodTo
-                          ? formatDtrRangeLabel(item.periodFrom, item.periodTo)
-                          : "-"}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {item.importedByName || "System"}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void openImportLog(item.id)}
-                        >
-                          <SquareTerminal className="mr-1.5 h-3.5 w-3.5" />
-                          View Log
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                  {!imports.length && (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                        {loading ? "Loading import logs..." : "No DTR imports logged yet."}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
 
         <Tabs defaultValue="records" className="space-y-3 md:space-y-4">
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-border bg-muted/50 p-1">
@@ -2355,13 +2213,12 @@ function AttendancePage() {
               </div>
 
               <div className="mobile-desktop-table overflow-x-auto">
-                <table className="w-full min-w-[1360px] table-fixed text-left text-sm">
+                <table className="w-full min-w-[1180px] table-fixed text-left text-sm">
                   <colgroup>
                     <col className="w-[120px]" />
                     <col className="w-[240px]" />
                     <col className="w-[280px]" />
                     <col className="w-[120px]" />
-                    <col className="w-[180px]" />
                     <col className="w-[95px]" />
                     <col className="w-[95px]" />
                     <col className="w-[95px]" />
@@ -2375,7 +2232,6 @@ function AttendancePage() {
                       <th className="px-4 py-3 font-semibold">Name</th>
                       <th className="px-4 py-3 font-semibold">Office</th>
                       <th className="px-4 py-3 text-center font-semibold">Date</th>
-                      <th className="px-3 py-3 font-semibold">Shift / Review</th>
                       <th className="px-3 py-3 text-center font-semibold">AM In</th>
                       <th className="px-3 py-3 text-center font-semibold">AM Out</th>
                       <th className="px-3 py-3 text-center font-semibold">PM In</th>
@@ -2404,20 +2260,6 @@ function AttendancePage() {
                           </td>
                           <td className="px-4 py-3 text-center font-medium text-foreground">
                             {entry.workDate}
-                          </td>
-                          <td className="px-3 py-3">
-                            <div className="space-y-1">
-                              <p className="truncate text-xs font-semibold text-foreground">
-                                {entry.shiftName || "Default Schedule"}
-                              </p>
-                              {entry.reviewFlags.length ? (
-                                <p className="line-clamp-2 text-[0.68rem] font-medium text-amber-700">
-                                  {entry.reviewFlags.join(", ")}
-                                </p>
-                              ) : (
-                                <p className="text-[0.68rem] text-muted-foreground">No flags</p>
-                              )}
-                            </div>
                           </td>
                           {entry.displayLabel ? (
                             <td
@@ -2498,7 +2340,7 @@ function AttendancePage() {
                     {!entries.length && !loading && (
                       <tr>
                         <td
-                          colSpan={canManage || isEmployee ? 11 : 10}
+                          colSpan={canManage || isEmployee ? 10 : 9}
                           className="px-4 py-10 text-center text-muted-foreground"
                         >
                           {debouncedRecordSearch
@@ -2619,6 +2461,25 @@ function AttendancePage() {
                   onChange={(workDate) => setForm({ ...form, workDate })}
                 />
               </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label>Shift</Label>
+                <Select
+                  value={form.shiftTemplateCode || "manual"}
+                  onValueChange={(shiftTemplateCode) => setForm({ ...form, shiftTemplateCode })}
+                >
+                  <SelectTrigger className="min-h-11">
+                    <SelectValue placeholder="Select shift" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">Manual / Default Schedule</SelectItem>
+                    {HOSPITAL_SHIFT_PRESETS.map((preset) => (
+                      <SelectItem key={preset.value} value={preset.value}>
+                        {preset.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Field
                 label="AM In"
                 type="time"
@@ -2664,121 +2525,6 @@ function AttendancePage() {
               className="w-full bg-blue-600 text-white hover:bg-blue-700"
             >
               Save DTR
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(selectedImport)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedImport(null);
-            setImportLogs([]);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Import Log</DialogTitle>
-          </DialogHeader>
-          {selectedImport && (
-            <div className="space-y-4">
-              <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm md:grid-cols-3">
-                <div>
-                  <p className="text-xs uppercase text-muted-foreground">Source</p>
-                  <p className="font-medium text-foreground">{selectedImport.source}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {selectedImport.fileName || "DTR import"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase text-muted-foreground">Result</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={
-                        IMPORT_STATUS_CLASS[selectedImport.status] || IMPORT_STATUS_CLASS.Processing
-                      }
-                    >
-                      {selectedImport.status}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {selectedImport.rowCount} imported
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs uppercase text-muted-foreground">Imported</p>
-                  <p className="font-medium text-foreground">
-                    {formatDateTime(selectedImport.importedAt)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedImport.importedByName || "System"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="max-h-[55vh] overflow-y-auto rounded-md border border-border">
-                {loadingImportLogs ? (
-                  <div className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading import log...
-                  </div>
-                ) : importLogs.length ? (
-                  <div className="divide-y divide-border">
-                    {importLogs.map((log) => (
-                      <div
-                        key={log.id}
-                        className="grid gap-2 px-3 py-3 text-sm md:grid-cols-[8rem_7rem_1fr]"
-                      >
-                        <span className="text-xs text-muted-foreground">
-                          {formatDateTime(log.createdAt)}
-                        </span>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className={
-                              IMPORT_LOG_LEVEL_CLASS[log.level] || IMPORT_LOG_LEVEL_CLASS.Info
-                            }
-                          >
-                            {log.level}
-                          </Badge>
-                          {log.rowNumber ? (
-                            <span className="text-xs text-muted-foreground">
-                              Row {log.rowNumber}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="break-words text-foreground">{log.message}</p>
-                          {log.employeeNo ? (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Employee/Biometric ID: {log.employeeNo}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    No detailed log lines were recorded for this import.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setSelectedImport(null);
-                setImportLogs([]);
-              }}
-            >
-              Close
             </Button>
           </DialogFooter>
         </DialogContent>

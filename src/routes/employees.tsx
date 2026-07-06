@@ -88,13 +88,6 @@ const EMP_TYPE_COLOR: Record<string, string> = {
     "text-amber-700 border-amber-200 bg-amber-50 dark:text-amber-200 dark:border-amber-500/30 dark:bg-amber-500/15",
 };
 
-const EMP_STATUS_COLOR: Record<string, string> = {
-  Active:
-    "text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-200 dark:border-emerald-500/30 dark:bg-emerald-500/15",
-  Inactive:
-    "text-rose-700 border-rose-200 bg-rose-50 dark:text-rose-200 dark:border-rose-500/30 dark:bg-rose-500/15",
-};
-
 const EMPTY_FORM: Partial<EmployeeRecord> = {
   employeeId: "",
   biometricId: "",
@@ -614,8 +607,6 @@ function EmployeesPage() {
                     <th className="px-5 py-4 font-semibold">POSITION</th>
                     <th className="px-5 py-4 font-semibold">DEPARTMENT</th>
                     <th className="px-5 py-4 font-semibold">EMPLOYMENT TYPE</th>
-                    <th className="px-5 py-4 font-semibold">STATUS</th>
-                    <th className="px-5 py-4 font-semibold">DATE HIRED</th>
                     <th className="px-5 py-4 font-semibold text-right">ACTIONS</th>
                   </tr>
                 </thead>
@@ -623,7 +614,7 @@ function EmployeesPage() {
                   {loading ? (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={6}
                         className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
                       >
                         Loading employees...
@@ -632,7 +623,7 @@ function EmployeesPage() {
                   ) : employees.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={6}
                         className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
                       >
                         No employee records found.
@@ -705,21 +696,6 @@ function EmployeesPage() {
                             >
                               {employee.status}
                             </Badge>
-                          </td>
-                          <td className="px-5 py-4">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-[10px] uppercase font-semibold",
-                                EMP_STATUS_COLOR[employee.empStatus] ??
-                                  "text-foreground/80 bg-muted/50 border-border",
-                              )}
-                            >
-                              {employee.empStatus}
-                            </Badge>
-                          </td>
-                          <td className="px-5 py-4 text-muted-foreground">
-                            {formatDate(employee.dateHired)}
                           </td>
                           <td
                             className="px-5 py-4 text-right"
@@ -844,19 +820,6 @@ function EmployeesPage() {
                             )}
                           >
                             {employee.status}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span>Status</span>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[10px] uppercase font-semibold",
-                              EMP_STATUS_COLOR[employee.empStatus] ??
-                                "text-foreground/80 bg-muted/50 border-border",
-                            )}
-                          >
-                            {employee.empStatus}
                           </Badge>
                         </div>
                       </div>
