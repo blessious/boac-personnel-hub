@@ -107,8 +107,21 @@ export type AttendanceImport = {
   rowCount: number;
   status: string;
   notes: string;
+  logCount: number;
+  errorCount: number;
+  warningCount: number;
   importedByName: string;
   importedAt: string;
+};
+
+export type AttendanceImportLog = {
+  id: string;
+  level: "Info" | "Success" | "Warning" | "Error";
+  rowNumber: number | null;
+  employeeNo: string;
+  message: string;
+  details: Record<string, unknown> | null;
+  createdAt: string;
 };
 
 export type DtrListResponse = {
@@ -352,6 +365,12 @@ export function importSingleDtr(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function listAttendanceImportLogs(importId: string) {
+  return api<{ import: AttendanceImport; logs: AttendanceImportLog[] }>(
+    `/api/attendance/imports/${importId}/logs`,
+  );
 }
 
 export function refreshDtr(params: { employeeId?: string; from?: string; to?: string }) {

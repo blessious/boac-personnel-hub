@@ -1424,25 +1424,6 @@ function readBody(req) {
   });
 }
 
-async function handleVisitLog(req, res) {
-  const body = await readBody(req).catch(() => ({}));
-  const forwardedFor = req.headers["x-forwarded-for"];
-  const ip =
-    String(Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor || "")
-      .split(",")[0]
-      .trim() ||
-    req.socket.remoteAddress ||
-    "unknown";
-  console.info("[visit]", {
-    at: new Date().toISOString(),
-    ip,
-    path: body.path || "unknown",
-    referrer: body.referrer || "direct",
-    userAgent: body.userAgent || req.headers["user-agent"] || "unknown",
-  });
-  return json(res, 200, { ok: true });
-}
-
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -2289,9 +2270,88 @@ function attendanceImportRow(row) {
     rowCount: Number(row.row_count || 0),
     status: row.status,
     notes: row.notes || "",
+    logCount: Number(row.log_count || 0),
+    errorCount: Number(row.error_count || 0),
+    warningCount: Number(row.warning_count || 0),
     importedByName: row.imported_by_name || "",
     importedAt: row.imported_at,
   };
+}
+
+function attendanceImportLogRow(row) {
+  return {
+    id: String(row.id),
+    level: row.level || "Info",
+    rowNumber:
+      row.row_number === null || row.row_number === undefined ? null : Number(row.row_number),
+    employeeNo: row.employee_no || "",
+    message: row.message || "",
+    details: typeof row.details === "string" ? JSON.parse(row.details || "null") : row.details,
+    createdAt: row.created_at,
+  };
+}
+
+function cleanImportLogMessage(message) {
+  return String(message || "Import event")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+}
+
+async function insertAttendanceImportLogs(db, importId, logs) {
+  const entries = logs.filter((log) => log && log.message);
+  for (const log of entries) {
+    await db.execute(
+      `INSERT INTO attendance_import_logs
+         (import_id, level, row_number, employee_no, message, details)
+       VALUES
+         (:importId, :level, :rowNumber, :employeeNo, :message, :details)`,
+      {
+        importId,
+        level: ["Info", "Success", "Warning", "Error"].includes(log.level) ? log.level : "Info",
+        rowNumber: log.rowNumber || null,
+        employeeNo: log.employeeNo ? String(log.employeeNo).slice(0, 80) : null,
+        message: cleanImportLogMessage(log.message),
+        details: log.details ? JSON.stringify(log.details) : null,
+      },
+    );
+  }
+}
+
+async function recordFailedAttendanceImport({
+  user,
+  source = "Legacy",
+  fileName = "DTR import",
+  from = null,
+  to = null,
+  notes = null,
+  message,
+  details = null,
+}) {
+  const importId = crypto.randomUUID();
+  await pool.execute(
+    `INSERT INTO attendance_imports
+       (id, source, file_name, row_count, status, period_from, period_to, notes, imported_by)
+     VALUES
+       (:id, :source, :fileName, 0, 'Failed', :periodFrom, :periodTo, :notes, :importedBy)`,
+    {
+      id: importId,
+      source,
+      fileName: String(fileName || "DTR import").slice(0, 255),
+      periodFrom: from || null,
+      periodTo: to || null,
+      notes: notes || cleanImportLogMessage(message),
+      importedBy: user.id,
+    },
+  );
+  await insertAttendanceImportLogs(pool, importId, [
+    {
+      level: "Error",
+      message,
+      details,
+    },
+  ]);
+  return importId;
 }
 
 async function requireLeaveRead(req, res) {
@@ -2960,6 +3020,22 @@ async function initializeDatabase() {
       imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_attendance_imports_period (period_from, period_to),
       CONSTRAINT fk_attendance_imports_imported_by FOREIGN KEY (imported_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS attendance_import_logs (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      import_id CHAR(36) NOT NULL,
+      level ENUM('Info', 'Success', 'Warning', 'Error') NOT NULL DEFAULT 'Info',
+      row_number INT UNSIGNED NULL,
+      employee_no VARCHAR(80) NULL,
+      message VARCHAR(500) NOT NULL,
+      details JSON NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_attendance_import_logs_import_id (import_id),
+      INDEX idx_attendance_import_logs_level (level),
+      CONSTRAINT fk_attendance_import_logs_import_id FOREIGN KEY (import_id) REFERENCES attendance_imports(id) ON DELETE CASCADE
     ) ENGINE=InnoDB;
   `);
 
@@ -4784,13 +4860,27 @@ async function handleListDtrEntries(req, res, url) {
     page,
     pageSize,
   });
-  const [imports] = await pool.execute(
-    `SELECT ai.*, u.name AS imported_by_name
-     FROM attendance_imports ai
-     LEFT JOIN users u ON u.id = ai.imported_by
-     ORDER BY ai.imported_at DESC
-     LIMIT 8`,
-  );
+  let imports = [];
+  if (HR_WRITE_ROLES.includes(user.role)) {
+    [imports] = await pool.execute(
+      `SELECT ai.*, u.name AS imported_by_name,
+              COALESCE(logs.log_count, 0) AS log_count,
+              COALESCE(logs.error_count, 0) AS error_count,
+              COALESCE(logs.warning_count, 0) AS warning_count
+       FROM attendance_imports ai
+       LEFT JOIN users u ON u.id = ai.imported_by
+       LEFT JOIN (
+         SELECT import_id,
+                COUNT(*) AS log_count,
+                SUM(level = 'Error') AS error_count,
+                SUM(level = 'Warning') AS warning_count
+         FROM attendance_import_logs
+         GROUP BY import_id
+       ) logs ON logs.import_id = ai.id
+       ORDER BY ai.imported_at DESC
+       LIMIT 12`,
+    );
+  }
 
   return json(res, 200, {
     entries: pageResult.rows,
@@ -4807,6 +4897,45 @@ async function handleListDtrEntries(req, res, url) {
       incomplete: pageResult.summary.incomplete,
       lateMinutes: pageResult.summary.lateMinutes,
     },
+  });
+}
+
+async function handleListAttendanceImportLogs(req, res, importId) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+
+  const [imports] = await pool.execute(
+    `SELECT ai.*, u.name AS imported_by_name,
+            COALESCE(logs.log_count, 0) AS log_count,
+            COALESCE(logs.error_count, 0) AS error_count,
+            COALESCE(logs.warning_count, 0) AS warning_count
+     FROM attendance_imports ai
+     LEFT JOIN users u ON u.id = ai.imported_by
+     LEFT JOIN (
+       SELECT import_id,
+              COUNT(*) AS log_count,
+              SUM(level = 'Error') AS error_count,
+              SUM(level = 'Warning') AS warning_count
+       FROM attendance_import_logs
+       GROUP BY import_id
+     ) logs ON logs.import_id = ai.id
+     WHERE ai.id = :importId
+     LIMIT 1`,
+    { importId },
+  );
+  if (!imports[0]) return json(res, 404, { error: "Import log not found" });
+
+  const [logs] = await pool.execute(
+    `SELECT id, level, row_number, employee_no, message, details, created_at
+     FROM attendance_import_logs
+     WHERE import_id = :importId
+     ORDER BY id ASC`,
+    { importId },
+  );
+
+  return json(res, 200, {
+    import: attendanceImportRow(imports[0]),
+    logs: logs.map(attendanceImportLogRow),
   });
 }
 
@@ -5159,13 +5288,20 @@ async function importParsedPunches({
         employeeId,
       },
     );
-    if (!employee) return json(res, 404, { error: "Employee not found" });
+    if (!employee) throw new Error("Employee not found");
     employeeNoOverride = employee.employee_no;
   }
 
   const importId = crypto.randomUUID();
   let imported = 0;
   const errors = [];
+  const importLogs = [
+    {
+      level: "Info",
+      message: `Import started from ${sourceDevice || source}: ${parsed.length} punch row(s) received`,
+      details: { source, sourceDevice, from: from || null, to: to || null },
+    },
+  ];
   const dates = [];
   const connection = await pool.getConnection();
   try {
@@ -5183,8 +5319,9 @@ async function importParsedPunches({
     );
 
     for (const [index, punch] of parsed.entries()) {
+      const employeeNo = String(employeeNoOverride || punch.employeeNo || "").trim();
       try {
-        const employeeNo = employeeNoOverride || punch.employeeNo;
+        if (!employeeNo) throw new Error("Employee number or biometric ID is missing");
         const [[employee]] = await connection.execute(
           `SELECT id FROM employees WHERE employee_no = :employeeNo OR biometric_id = :employeeNo LIMIT 1`,
           { employeeNo },
@@ -5208,10 +5345,19 @@ async function importParsedPunches({
         dates.push(punch.punchAt.slice(0, 10));
         imported++;
       } catch (error) {
-        errors.push(`Row ${index + 1}: ${error.message}`);
+        const message = error.message || "Unable to import row";
+        errors.push(`Row ${index + 1}: ${message}`);
+        importLogs.push({
+          level: "Error",
+          rowNumber: index + 1,
+          employeeNo,
+          message,
+          details: { raw: punch.raw || null, punchAt: punch.punchAt || null },
+        });
       }
     }
 
+    const sortedDates = dates.slice().sort();
     await connection.execute(
       `UPDATE attendance_imports
        SET row_count = :rowCount, status = :status, period_from = :periodFrom, period_to = :periodTo, notes = :notes
@@ -5220,11 +5366,21 @@ async function importParsedPunches({
         id: importId,
         rowCount: imported,
         status: imported ? "Completed" : "Failed",
-        periodFrom: dates.length ? dates.sort()[0] : null,
-        periodTo: dates.length ? dates.sort()[dates.length - 1] : null,
-        notes: errors.length ? errors.slice(0, 10).join("\n") : body.notes || null,
+        periodFrom: sortedDates[0] || null,
+        periodTo: sortedDates[sortedDates.length - 1] || null,
+        notes: errors.length
+          ? `${errors.length} row(s) had errors`
+          : body.notes
+            ? String(body.notes)
+            : null,
       },
     );
+    importLogs.push({
+      level: errors.length ? "Warning" : "Success",
+      message: `Imported ${imported} punch(es); ${errors.length} row(s) had errors`,
+      details: { imported, errors: errors.length },
+    });
+    await insertAttendanceImportLogs(connection, importId, importLogs);
     await connection.commit();
   } catch (error) {
     await connection.rollback();
@@ -5233,12 +5389,31 @@ async function importParsedPunches({
     connection.release();
   }
 
-  const refreshed = await refreshDtrEntries({
-    employeeId: employeeId || "",
-    from: from || (dates.length ? dates.sort()[0] : ""),
-    to: to || (dates.length ? dates.sort()[dates.length - 1] : ""),
-    userId: user.id,
-  });
+  let refreshed;
+  const sortedDates = dates.slice().sort();
+  try {
+    refreshed = await refreshDtrEntries({
+      employeeId: employeeId || "",
+      from: from || sortedDates[0] || "",
+      to: to || sortedDates[sortedDates.length - 1] || "",
+      userId: user.id,
+    });
+    await insertAttendanceImportLogs(pool, importId, [
+      {
+        level: "Success",
+        message: `DTR refreshed: ${refreshed.recordsProcessed} row(s); ${refreshed.punchesProcessed} punch(es) checked`,
+        details: refreshed,
+      },
+    ]);
+  } catch (error) {
+    await insertAttendanceImportLogs(pool, importId, [
+      {
+        level: "Error",
+        message: `DTR refresh failed: ${error.message}`,
+      },
+    ]);
+    throw error;
+  }
   await logAudit(
     user.id,
     "attendance.import_file",
@@ -5265,10 +5440,32 @@ async function handleImportDtrFile(req, res) {
       dateInRange(String(punch.punchAt || "").slice(0, 10), from, to),
     );
   } catch (error) {
-    return json(res, 400, { error: error.message });
+    const importId = await recordFailedAttendanceImport({
+      user,
+      source: "Legacy",
+      fileName,
+      from,
+      to,
+      notes: body.notes || null,
+      message: `Unable to read DTR file: ${error.message}`,
+      details: { fileName },
+    });
+    return json(res, 400, { error: error.message, importId });
   }
-  if (!parsed.length)
-    return json(res, 400, { error: "No valid DTR punches found in the selected range" });
+  if (!parsed.length) {
+    const message = "No valid DTR punches found in the selected range";
+    const importId = await recordFailedAttendanceImport({
+      user,
+      source: "Legacy",
+      fileName,
+      from,
+      to,
+      notes: body.notes || null,
+      message,
+      details: { fileName },
+    });
+    return json(res, 400, { error: message, importId });
+  }
 
   const result = await importParsedPunches({
     user,
@@ -5329,11 +5526,34 @@ async function handleImportSingleDtr(req, res) {
         employeeKeys.has(String(punch.employeeNo || "").trim()),
       );
     } catch (error) {
-      return json(res, 500, { error: `Failed to fetch biometric data: ${error.message}` });
+      const importId = await recordFailedAttendanceImport({
+        user,
+        source: "Biometric",
+        fileName: `Biometric ${device.name || device.ip_address}`,
+        from,
+        to,
+        message: `Failed to fetch biometric data: ${error.message}`,
+        details: { deviceId: device.id, ipAddress: device.ip_address },
+      });
+      return json(res, 500, {
+        error: `Failed to fetch biometric data: ${error.message}`,
+        importId,
+      });
     }
     if (!parsed.length) {
+      const message = "No biometric punches found for the selected employee and date range";
+      const importId = await recordFailedAttendanceImport({
+        user,
+        source: "Biometric",
+        fileName: `Biometric ${device.name || device.ip_address}`,
+        from,
+        to,
+        message,
+        details: { deviceId: device.id, ipAddress: device.ip_address, employeeId },
+      });
       return json(res, 400, {
-        error: "No biometric punches found for the selected employee and date range",
+        error: message,
+        importId,
       });
     }
 
@@ -5373,10 +5593,30 @@ async function handleImportSingleDtr(req, res) {
       dateInRange(String(punch.punchAt || "").slice(0, 10), from, to),
     );
   } catch (error) {
-    return json(res, 400, { error: error.message });
+    const importId = await recordFailedAttendanceImport({
+      user,
+      source: "Legacy",
+      fileName,
+      from,
+      to,
+      message: `Unable to read DTR file: ${error.message}`,
+      details: { fileName, employeeId },
+    });
+    return json(res, 400, { error: error.message, importId });
   }
-  if (!parsed.length)
-    return json(res, 400, { error: "No valid DTR punches found in the selected range" });
+  if (!parsed.length) {
+    const message = "No valid DTR punches found in the selected range";
+    const importId = await recordFailedAttendanceImport({
+      user,
+      source: "Legacy",
+      fileName,
+      from,
+      to,
+      message,
+      details: { fileName, employeeId },
+    });
+    return json(res, 400, { error: message, importId });
+  }
 
   const result = await importParsedPunches({
     user,
@@ -5436,10 +5676,32 @@ async function handleImportAllDtr(req, res) {
         dateInRange(String(punch.punchAt || "").slice(0, 10), from, to),
       );
     } catch (error) {
-      return json(res, 500, { error: `Failed to fetch biometric data: ${error.message}` });
+      const importId = await recordFailedAttendanceImport({
+        user,
+        source: "Biometric",
+        fileName: `Biometric ${device.name || device.ip_address}`,
+        from,
+        to,
+        message: `Failed to fetch biometric data: ${error.message}`,
+        details: { deviceId: device.id, ipAddress: device.ip_address },
+      });
+      return json(res, 500, {
+        error: `Failed to fetch biometric data: ${error.message}`,
+        importId,
+      });
     }
     if (!parsed.length) {
-      return json(res, 400, { error: "No biometric punches found for the selected date range" });
+      const message = "No biometric punches found for the selected date range";
+      const importId = await recordFailedAttendanceImport({
+        user,
+        source: "Biometric",
+        fileName: `Biometric ${device.name || device.ip_address}`,
+        from,
+        to,
+        message,
+        details: { deviceId: device.id, ipAddress: device.ip_address },
+      });
+      return json(res, 400, { error: message, importId });
     }
 
     const result = await importParsedPunches({
@@ -5477,10 +5739,30 @@ async function handleImportAllDtr(req, res) {
       dateInRange(String(punch.punchAt || "").slice(0, 10), from, to),
     );
   } catch (error) {
-    return json(res, 400, { error: error.message });
+    const importId = await recordFailedAttendanceImport({
+      user,
+      source: "Legacy",
+      fileName,
+      from,
+      to,
+      message: `Unable to read DTR file: ${error.message}`,
+      details: { fileName },
+    });
+    return json(res, 400, { error: error.message, importId });
   }
-  if (!parsed.length)
-    return json(res, 400, { error: "No valid DTR punches found in the selected range" });
+  if (!parsed.length) {
+    const message = "No valid DTR punches found in the selected range";
+    const importId = await recordFailedAttendanceImport({
+      user,
+      source: "Legacy",
+      fileName,
+      from,
+      to,
+      message,
+      details: { fileName },
+    });
+    return json(res, 400, { error: message, importId });
+  }
 
   const result = await importParsedPunches({
     user,
@@ -5519,6 +5801,13 @@ async function handleImportDtr(req, res) {
   const source = ["CSV", "Legacy"].includes(body.source) ? body.source : "CSV";
   let imported = 0;
   const errors = [];
+  const importLogs = [
+    {
+      level: "Info",
+      message: `Import started from ${source}: ${rows.length} DTR row(s) received`,
+      details: { source },
+    },
+  ];
   const dates = [];
   const connection = await pool.getConnection();
 
@@ -5557,10 +5846,22 @@ async function handleImportDtr(req, res) {
         dates.push(workDate);
         imported++;
       } catch (error) {
-        errors.push(`Row ${index + 1}: ${error.message}`);
+        const employeeNo = String(
+          row.employeeId || row.employeeNo || row.employeeDbId || "",
+        ).trim();
+        const message = error.message || "Unable to import row";
+        errors.push(`Row ${index + 1}: ${message}`);
+        importLogs.push({
+          level: "Error",
+          rowNumber: index + 1,
+          employeeNo,
+          message,
+          details: { workDate: row.workDate || row.date || null },
+        });
       }
     }
 
+    const sortedDates = dates.slice().sort();
     await connection.execute(
       `UPDATE attendance_imports
        SET row_count = :rowCount,
@@ -5573,11 +5874,21 @@ async function handleImportDtr(req, res) {
         id: importId,
         rowCount: imported,
         status: errors.length && !imported ? "Failed" : "Completed",
-        periodFrom: dates.length ? dates.sort()[0] : null,
-        periodTo: dates.length ? dates.sort()[dates.length - 1] : null,
-        notes: errors.length ? errors.slice(0, 10).join("\n") : body.notes || null,
+        periodFrom: sortedDates[0] || null,
+        periodTo: sortedDates[sortedDates.length - 1] || null,
+        notes: errors.length
+          ? `${errors.length} row(s) had errors`
+          : body.notes
+            ? String(body.notes)
+            : null,
       },
     );
+    importLogs.push({
+      level: errors.length ? "Warning" : "Success",
+      message: `Imported ${imported} DTR row(s); ${errors.length} row(s) had errors`,
+      details: { imported, errors: errors.length },
+    });
+    await insertAttendanceImportLogs(connection, importId, importLogs);
 
     await connection.commit();
     await logAudit(
@@ -6017,12 +6328,54 @@ async function handleAdmsIclock(req, res, url) {
     error: null,
   });
   addBiometricSyncLog("info", `ADMS received ${punches.length} ATTLOG row(s) from ${sourceDevice}`);
+  const importId = crypto.randomUUID();
+  const punchDates = punches
+    .map((punch) => punch.workDate)
+    .filter(Boolean)
+    .sort();
+  await pool.execute(
+    `INSERT INTO attendance_imports
+       (id, source, file_name, row_count, status, period_from, period_to, notes, imported_by)
+     VALUES
+       (:id, 'Biometric', :fileName, 0, 'Processing', :periodFrom, :periodTo, :notes, NULL)`,
+    {
+      id: importId,
+      fileName: sourceDevice.slice(0, 255),
+      periodFrom: punchDates[0] || null,
+      periodTo: punchDates[punchDates.length - 1] || null,
+      notes: "ADMS live biometric import",
+    },
+  );
+  await insertAttendanceImportLogs(pool, importId, [
+    {
+      level: "Info",
+      message: `ADMS received ${punches.length} punch row(s) from ${sourceDevice}`,
+      details: { sourceDevice },
+    },
+  ]);
   try {
-    const result = await insertBiometricPunches({ punches, sourceDevice });
+    const result = await insertBiometricPunches({ punches, sourceDevice, importId });
     for (const [employeeId, range] of result.affectedEmployees.entries()) {
       enqueueBiometricDtrRefresh(employeeId, range.from);
       if (range.to !== range.from) enqueueBiometricDtrRefresh(employeeId, range.to);
     }
+    await pool.execute(
+      `UPDATE attendance_imports
+       SET row_count = :rowCount, status = 'Completed', notes = :notes
+       WHERE id = :id`,
+      {
+        id: importId,
+        rowCount: result.inserted,
+        notes: `Stored ${result.inserted} new punch(es); skipped ${result.skipped}`,
+      },
+    );
+    await insertAttendanceImportLogs(pool, importId, [
+      {
+        level: result.skipped ? "Warning" : "Success",
+        message: `Stored ${result.inserted} new punch(es); skipped ${result.skipped}`,
+        details: { inserted: result.inserted, skipped: result.skipped },
+      },
+    ]);
     const now = new Date().toISOString();
     setBiometricSyncStatus({
       status: "success",
@@ -6039,6 +6392,21 @@ async function handleAdmsIclock(req, res, url) {
       `ADMS stored ${result.inserted} new punch(es), skipped ${result.skipped}`,
     );
   } catch (error) {
+    await pool.execute(
+      `UPDATE attendance_imports
+       SET status = 'Failed', notes = :notes
+       WHERE id = :id`,
+      {
+        id: importId,
+        notes: `ADMS import failed: ${error.message}`,
+      },
+    );
+    await insertAttendanceImportLogs(pool, importId, [
+      {
+        level: "Error",
+        message: `ADMS import failed: ${error.message}`,
+      },
+    ]);
     setBiometricSyncStatus({
       status: "failed",
       lastSyncTime: new Date().toISOString(),
@@ -6157,6 +6525,15 @@ async function handleBiometricSyncNow(req, res) {
       );
     } catch (error) {
       errors.push(`${device.name || device.ip_address}: ${error.message}`);
+      await recordFailedAttendanceImport({
+        user,
+        source: "Biometric",
+        fileName: `Biometric ${device.name || device.ip_address}`,
+        from,
+        to,
+        message: `Biometric sync skipped device: ${error.message}`,
+        details: { deviceId: device.id, ipAddress: device.ip_address },
+      });
       addBiometricSyncLog("warn", `${device.name || device.ip_address} skipped: ${error.message}`);
     }
   }
@@ -9971,6 +10348,9 @@ async function route(req, res) {
   const dtrCorrectionReverseMatch = url.pathname.match(
     /^\/api\/attendance\/correction-requests\/([A-Za-z0-9-]+)\/reverse$/,
   );
+  const attendanceImportLogMatch = url.pathname.match(
+    /^\/api\/attendance\/imports\/([A-Za-z0-9-]+)\/logs$/,
+  );
   const dtrExcelMatch = url.pathname.match(/^\/api\/attendance\/dtr\/excel\/([^/]+)$/);
   const dtrPdfMatch = url.pathname.match(/^\/api\/attendance\/dtr\/pdf\/([^/]+)$/);
   const dtrMassPdfMatch = url.pathname.match(/^\/api\/attendance\/dtr\/mass\/pdf\/([^/]+)$/);
@@ -10013,10 +10393,6 @@ async function route(req, res) {
   if (req.method === "GET" && url.pathname === "/api/health") {
     return json(res, 200, { ok: true, database: DB_NAME });
   }
-  if (req.method === "POST" && url.pathname === "/api/visit-log") {
-    return handleVisitLog(req, res);
-  }
-
   if (req.method === "GET" && url.pathname === "/api/dashboard") return handleDashboard(req, res);
   if (req.method === "GET" && url.pathname === "/api/reports/personnel-plantilla")
     return reportHandlers.personnelPlantilla(req, res);
@@ -10139,6 +10515,8 @@ async function route(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/attendance/dtr")
     return handleListDtrEntries(req, res, url);
+  if (req.method === "GET" && attendanceImportLogMatch)
+    return handleListAttendanceImportLogs(req, res, attendanceImportLogMatch[1]);
   if (req.method === "GET" && url.pathname === "/api/attendance/correction-requests")
     return handleListDtrCorrectionRequests(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/attendance/correction-requests")
