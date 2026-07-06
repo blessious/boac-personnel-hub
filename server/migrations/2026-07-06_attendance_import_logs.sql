@@ -8,7 +8,5 @@ CREATE TABLE IF NOT EXISTS attendance_import_logs (
   details JSON NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_attendance_import_logs_import_id (import_id),
-  INDEX idx_attendance_import_logs_level (level),
-  CONSTRAINT fk_attendance_import_logs_import_id
-    FOREIGN KEY (import_id) REFERENCES attendance_imports(id) ON DELETE CASCADE
+  INDEX idx_attendance_import_logs_level (level)
 ) ENGINE=InnoDB;
