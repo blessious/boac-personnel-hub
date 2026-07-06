@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { type DateRange } from "react-day-picker";
 import {
   Activity,
   CalendarClock,
@@ -28,6 +29,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { MassDtrPrintModal } from "@/components/MassDtrPrintModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +45,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -54,6 +58,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -118,9 +123,75 @@ const formatLocalDate = (date: Date) =>
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
+const parseLocalDate = (value: string) => {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 const DEFAULT_FROM = formatLocalDate(today);
 const DEFAULT_TO = formatLocalDate(today);
 const DTR_PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+
+type DateRangePreset = {
+  label: string;
+  getRange: () => { from: string; to: string };
+};
+
+const getAttendanceDateRangePresets = (): DateRangePreset[] => [
+  {
+    label: "Today",
+    getRange: () => {
+      const now = new Date();
+      const date = formatLocalDate(now);
+      return { from: date, to: date };
+    },
+  },
+  {
+    label: "Yesterday",
+    getRange: () => {
+      const date = new Date();
+      date.setDate(date.getDate() - 1);
+      const value = formatLocalDate(date);
+      return { from: value, to: value };
+    },
+  },
+  {
+    label: "This Week",
+    getRange: () => {
+      const date = new Date();
+      const day = date.getDay();
+      const mondayOffset = day === 0 ? -6 : 1 - day;
+      const start = new Date(date);
+      start.setDate(date.getDate() + mondayOffset);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      return { from: formatLocalDate(start), to: formatLocalDate(end) };
+    },
+  },
+  {
+    label: "This Month",
+    getRange: () => {
+      const date = new Date();
+      const start = new Date(date.getFullYear(), date.getMonth(), 1);
+      const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+      return { from: formatLocalDate(start), to: formatLocalDate(end) };
+    },
+  },
+  {
+    label: "Current Pay Period",
+    getRange: () => {
+      const date = new Date();
+      const startDay = date.getDate() <= 15 ? 1 : 16;
+      const endDay =
+        date.getDate() <= 15 ? 15 : new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+      return {
+        from: formatLocalDate(new Date(date.getFullYear(), date.getMonth(), startDay)),
+        to: formatLocalDate(new Date(date.getFullYear(), date.getMonth(), endDay)),
+      };
+    },
+  },
+];
 
 type HospitalShiftPreset = {
   value: string;
@@ -228,13 +299,8 @@ function dtrTimeLabels(entry: DtrEntry) {
 }
 
 function formatDtrRangeLabel(from: string, to: string) {
-  const parse = (value: string) => {
-    const [year, month, day] = value.split("-").map(Number);
-    if (!year || !month || !day) return null;
-    return new Date(year, month - 1, day);
-  };
-  const fromDate = parse(from);
-  const toDate = parse(to);
+  const fromDate = parseLocalDate(from);
+  const toDate = parseLocalDate(to);
   if (!fromDate || !toDate) return `${from} - ${to}`;
   const month = new Intl.DateTimeFormat("en-US", { month: "short" }).format(fromDate);
   const fromDay = fromDate.getDate();
@@ -1367,6 +1433,51 @@ function AttendancePage() {
     setTo((value) => shiftDateString(value, days));
     setDtrPage(1);
   };
+  const renderMoreActions = () => (
+    <>
+      {canManage && (
+        <>
+          <DropdownMenuLabel>Operations</DropdownMenuLabel>
+          <DropdownMenuItem disabled={busy} onClick={refresh}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh processed DTR
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={busy} onClick={() => setShowScheduleDialog(true)}>
+            <Settings2 className="mr-2 h-4 w-4" />
+            Bulk schedule
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={openAdd}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add manual DTR
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={openImport}>
+            <Upload className="mr-2 h-4 w-4" />
+            Import one employee
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Reports</DropdownMenuLabel>
+          <DropdownMenuItem disabled={busy} onClick={openExport}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            View DTR
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={openMassPrint}>
+            <FileDown className="mr-2 h-4 w-4" />
+            Mass export
+          </DropdownMenuItem>
+        </>
+      )}
+      {isEmployee && (
+        <>
+          <DropdownMenuLabel>Employee actions</DropdownMenuLabel>
+          <DropdownMenuItem onClick={openActivityLabelRequest}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add activity label
+          </DropdownMenuItem>
+        </>
+      )}
+    </>
+  );
+  const hasMoreActions = canManage || isEmployee;
 
   return (
     <AppShell
@@ -1424,24 +1535,18 @@ function AttendancePage() {
                   </Select>
                 </div>
               )}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
                 <Label className="text-xs uppercase text-muted-foreground font-semibold">
-                  From
+                  Date Range
                 </Label>
-                <Input
-                  type="date"
-                  value={from}
-                  onChange={(event) => setFrom(event.target.value)}
-                  className="h-9"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase text-muted-foreground font-semibold">To</Label>
-                <Input
-                  type="date"
-                  value={to}
-                  onChange={(event) => setTo(event.target.value)}
-                  className="h-9"
+                <AttendanceDateRangePicker
+                  from={from}
+                  to={to}
+                  onApply={(nextFrom, nextTo) => {
+                    setFrom(nextFrom);
+                    setTo(nextTo);
+                    setDtrPage(1);
+                  }}
                 />
               </div>
               {!isEmployee && (
@@ -1461,70 +1566,48 @@ function AttendancePage() {
                 </div>
               )}
             </div>
-            <div className="mobile-action-row flex flex-wrap items-center justify-end gap-2 border-t border-border/50 pt-4 mt-2">
-              <Button variant="outline" size="sm" onClick={load} disabled={loading} className="h-9">
-                <RefreshCw className="mr-1.5 h-4 w-4" /> Reload
-              </Button>
-              {canManage && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={refresh}
-                    disabled={busy}
-                    className="h-9"
-                  >
-                    <RefreshCw className="mr-1.5 h-4 w-4" /> Refresh DTR
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowScheduleDialog(true)}
-                    disabled={busy}
-                    className="h-9"
-                  >
-                    <Settings2 className="mr-1.5 h-4 w-4" /> Schedule
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openImportAll}
-                    disabled={busy}
-                    className="h-9"
-                  >
-                    <Upload className="mr-1.5 h-4 w-4" /> Import DTR
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={openAdd} className="h-9">
-                    <Plus className="mr-1.5 h-4 w-4" /> Add DTR
-                  </Button>
-                </>
-              )}
-              {isEmployee ? (
+            <div className="flex flex-col gap-3 border-t border-border/50 pt-4 mt-2 lg:flex-row lg:items-center lg:justify-between">
+              <p className="text-xs text-muted-foreground">Records for {dtrRangeLabel}</p>
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={openExport}
-                  disabled={busy}
+                  onClick={load}
+                  disabled={loading}
                   className="h-9"
                 >
-                  <FileText className="mr-1.5 h-4 w-4" />
-                  View DTR PDF
+                  <RefreshCw className="mr-1.5 h-4 w-4" /> Reload
                 </Button>
-              ) : (
-                <>
-                  {canManage && (
-                    <Button variant="outline" size="sm" onClick={openImport} className="h-9">
-                      <Upload className="mr-1.5 h-4 w-4" /> Import Single DTR
-                    </Button>
-                  )}
-                  <Button variant="outline" size="sm" onClick={openExport} className="h-9">
-                    <FileSpreadsheet className="mr-1.5 h-4 w-4" /> View DTR
+                {canManage ? (
+                  <Button size="sm" onClick={openImportAll} disabled={busy} className="h-9">
+                    <Upload className="mr-1.5 h-4 w-4" /> Import DTR
                   </Button>
-                  <Button variant="outline" size="sm" onClick={openMassPrint} className="h-9">
-                    <FileDown className="mr-1.5 h-4 w-4" /> Mass Export
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openExport}
+                    disabled={busy}
+                    className="h-9"
+                  >
+                    <FileText className="mr-1.5 h-4 w-4" />
+                    {isEmployee ? "View DTR PDF" : "View DTR"}
                   </Button>
-                </>
-              )}
+                )}
+                {hasMoreActions && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-9">
+                        More
+                        <ChevronDown className="ml-1 h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64">
+                      {renderMoreActions()}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -1556,66 +1639,63 @@ function AttendancePage() {
           </Button>
         </div>
 
-        <div className="md:hidden">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 w-full rounded-xl bg-white font-semibold shadow-sm"
-              >
-                Actions
-                <ChevronDown className="ml-2 h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem disabled={loading} onClick={load}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Reload
-              </DropdownMenuItem>
-              {canManage && (
-                <>
-                  <DropdownMenuItem disabled={busy} onClick={() => setShowScheduleDialog(true)}>
-                    <Settings2 className="mr-2 h-4 w-4" />
-                    Schedule
-                  </DropdownMenuItem>
-                  <DropdownMenuItem disabled={busy} onClick={openImportAll}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Import DTR
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={openAdd}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add DTR
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={openImport}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Import Single DTR
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={openMassPrint}>
-                    <FileDown className="mr-2 h-4 w-4" />
-                    Mass Export
-                  </DropdownMenuItem>
-                </>
-              )}
-              {isEmployee ? (
-                <>
-                  <DropdownMenuItem disabled={busy} onClick={openExport}>
-                    <FileText className="mr-2 h-4 w-4" />
-                    View DTR PDF
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={openActivityLabelRequest}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Activity Label
-                  </DropdownMenuItem>
-                </>
-              ) : (
-                <DropdownMenuItem onClick={openExport}>
-                  <FileSpreadsheet className="mr-2 h-4 w-4" />
-                  View DTR
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div
+          className={
+            hasMoreActions
+              ? "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 md:hidden"
+              : "grid grid-cols-2 gap-2 md:hidden"
+          }
+        >
+          <Button
+            type="button"
+            variant="outline"
+            onClick={load}
+            disabled={loading}
+            className="h-11 min-w-0 rounded-xl bg-white font-semibold shadow-sm"
+          >
+            <RefreshCw className="mr-1.5 h-4 w-4" />
+            Reload
+          </Button>
+          {canManage ? (
+            <Button
+              type="button"
+              onClick={openImportAll}
+              disabled={busy}
+              className="h-11 min-w-0 rounded-xl bg-[#0b57d0] font-semibold text-white shadow-sm hover:bg-[#0647ad]"
+            >
+              <Upload className="mr-1.5 h-4 w-4" />
+              Import DTR
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={openExport}
+              disabled={busy}
+              className="h-11 min-w-0 rounded-xl bg-white font-semibold shadow-sm"
+            >
+              <FileText className="mr-1.5 h-4 w-4" />
+              View DTR
+            </Button>
+          )}
+          {hasMoreActions && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-xl bg-white px-3 font-semibold shadow-sm"
+                  aria-label="More attendance actions"
+                >
+                  More
+                  <ChevronDown className="ml-1 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                {renderMoreActions()}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         <Tabs defaultValue="records" className="space-y-3 md:space-y-4">
@@ -2198,18 +2278,6 @@ function AttendancePage() {
                       : "No DTR records found for this filter."}
                   </div>
                 )}
-              </div>
-
-              <div className="pb-1 md:hidden">
-                <Button
-                  type="button"
-                  onClick={canManage ? refresh : load}
-                  disabled={busy || loading}
-                  className="h-12 w-full rounded-xl bg-[#0b57d0] text-sm font-bold text-white shadow-[0_10px_18px_rgba(11,87,208,0.18)] hover:bg-[#0647ad]"
-                >
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Refresh DTR
-                </Button>
               </div>
 
               <div className="mobile-desktop-table overflow-x-auto">
@@ -3615,6 +3683,149 @@ function AttendancePage() {
         />
       )}
     </AppShell>
+  );
+}
+
+function AttendanceDateRangePicker({
+  from,
+  to,
+  onApply,
+}: {
+  from: string;
+  to: string;
+  onApply: (from: string, to: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftFrom, setDraftFrom] = useState(from);
+  const [draftTo, setDraftTo] = useState(to);
+  const presets = useMemo(() => getAttendanceDateRangePresets(), []);
+  const draftFromDate = parseLocalDate(draftFrom);
+  const draftToDate = parseLocalDate(draftTo);
+  const selectedRange: DateRange | undefined = draftFromDate
+    ? { from: draftFromDate, to: draftToDate || draftFromDate }
+    : undefined;
+  const rangeIsValid = Boolean(
+    draftFromDate && draftToDate && draftFromDate.getTime() <= draftToDate.getTime(),
+  );
+
+  const resetDraft = () => {
+    setDraftFrom(from);
+    setDraftTo(to);
+  };
+
+  const choosePreset = (preset: DateRangePreset) => {
+    const nextRange = preset.getRange();
+    setDraftFrom(nextRange.from);
+    setDraftTo(nextRange.to);
+  };
+
+  const apply = () => {
+    if (!rangeIsValid) {
+      toast.error("Select a valid date range");
+      return;
+    }
+    onApply(draftFrom, draftTo);
+    setOpen(false);
+  };
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen) resetDraft();
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="h-9 w-full justify-between bg-background px-3">
+          <span className="truncate text-left">{formatDtrRangeLabel(from, to)}</span>
+          <CalendarClock className="ml-2 h-4 w-4 text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[min(92vw,46rem)] p-0">
+        <div className="grid gap-0 md:grid-cols-[12rem_minmax(0,1fr)]">
+          <div className="border-b border-border p-3 md:border-b-0 md:border-r">
+            <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Presets</p>
+            <div className="grid gap-1">
+              {presets.map((preset) => (
+                <Button
+                  key={preset.label}
+                  type="button"
+                  variant="ghost"
+                  className="h-8 justify-start px-2 text-sm"
+                  onClick={() => choosePreset(preset)}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="p-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase text-muted-foreground">From</Label>
+                <Input
+                  type="date"
+                  value={draftFrom}
+                  onChange={(event) => setDraftFrom(event.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase text-muted-foreground">To</Label>
+                <Input
+                  type="date"
+                  value={draftTo}
+                  onChange={(event) => setDraftTo(event.target.value)}
+                  className="h-9"
+                />
+              </div>
+            </div>
+
+            <div className="mt-3 overflow-x-auto rounded-md border border-border">
+              <Calendar
+                mode="range"
+                numberOfMonths={2}
+                selected={selectedRange}
+                onSelect={(range) => {
+                  if (!range?.from) {
+                    setDraftFrom("");
+                    setDraftTo("");
+                    return;
+                  }
+                  setDraftFrom(formatLocalDate(range.from));
+                  setDraftTo(formatLocalDate(range.to || range.from));
+                }}
+                className="mx-auto"
+              />
+            </div>
+
+            {!rangeIsValid && (
+              <p className="mt-2 text-xs font-medium text-destructive">
+                Select a start date that is not after the end date.
+              </p>
+            )}
+
+            <div className="mt-3 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  resetDraft();
+                  setOpen(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={apply} disabled={!rangeIsValid}>
+                Apply
+              </Button>
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
