@@ -103,6 +103,16 @@ const BIOMETRIC_PYTHON_EXE =
 const BIOMETRIC_SYNC_LOG_LIMIT = 200;
 const DTR_DUPLICATE_GAP_MINUTES = 1;
 const DEFAULT_SHIFT_BUFFER_MINUTES = 240;
+const EMPLOYEE_DISPLAY_NAME_SQL = `TRIM(CONCAT_WS(' ',
+  NULLIF(TRIM(e.firstname), ''),
+  CASE
+    WHEN CHAR_LENGTH(TRIM(COALESCE(e.middlename, ''))) = 1
+      THEN CONCAT(UPPER(TRIM(e.middlename)), '.')
+    ELSE NULLIF(TRIM(e.middlename), '')
+  END,
+  NULLIF(TRIM(e.lastname), ''),
+  NULLIF(TRIM(e.name_ext), '')
+))`;
 const HOSPITAL_SHIFT_TEMPLATES = [
   {
     code: "regular_8_5",
@@ -1540,6 +1550,27 @@ function normalizeDate(value) {
   return String(value).slice(0, 10);
 }
 
+function formatMiddleName(value) {
+  const middleName = String(value || "").trim();
+  if (!middleName) return "";
+  return middleName.length === 1 && !middleName.endsWith(".")
+    ? `${middleName.toUpperCase()}.`
+    : middleName;
+}
+
+function formatEmployeeName(employee, fallback = "Employee") {
+  const name = [
+    employee?.firstname,
+    formatMiddleName(employee?.middlename),
+    employee?.lastname,
+    employee?.nameExt ?? employee?.name_ext,
+  ]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return name || fallback;
+}
+
 function employeeRow(row) {
   const profile = parseJson(row.profile_json, {});
   return {
@@ -1775,7 +1806,7 @@ function leaveApplicationRow(row) {
     id: row.id,
     employeeId: row.employee_id,
     employeeNo: row.employee_no,
-    employeeName: [row.lastname, row.firstname].filter(Boolean).join(", "),
+    employeeName: formatEmployeeName(row, ""),
     department: row.department || "",
     position: row.position || "",
     leaveTypeId: row.leave_type_id,
@@ -2042,21 +2073,6 @@ function latestEventMatch(candidates, start, end, used) {
 
 function midpointDate(start, end) {
   return new Date(start.getTime() + (end.getTime() - start.getTime()) / 2);
-}
-
-function boundaryEventMatch(candidates, target, used, start, end, preferBefore) {
-  const available = candidates.filter((punch) => {
-    const key = punchKey(punch);
-    return !used.has(key) && punch >= start && punch <= end;
-  });
-  const match = preferBefore
-    ? [...available].reverse().find((punch) => punch <= target) ||
-      available.find((punch) => punch > target)
-    : available.find((punch) => punch >= target) ||
-      [...available].reverse().find((punch) => punch < target);
-
-  if (match) used.add(punchKey(match));
-  return match || null;
 }
 
 function calculateAttendanceStats(entry) {
@@ -2440,7 +2456,7 @@ async function changeLeaveBalance(
 async function readLeaveApplication(id) {
   const [rows] = await pool.execute(
     `SELECT la.*, lt.code AS leave_code, lt.name AS leave_name,
-            e.employee_no, e.firstname, e.lastname, e.department, e.position,
+            e.employee_no, e.firstname, e.middlename, e.lastname, e.name_ext, e.department, e.position,
             u.name AS approver_name,
             ru.name AS recommended_by_name
      FROM leave_applications la
@@ -3554,7 +3570,7 @@ async function getSessionUser(req) {
 
   const [rows] = await pool.execute(
     `SELECT u.id, u.username, u.name, u.role, u.photo_url, u.must_change_password, u.employee_id,
-            e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+            e.employee_no, ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name
      FROM sessions s
      INNER JOIN users u ON u.id = s.user_id
      LEFT JOIN employees e ON e.id = u.employee_id
@@ -3624,7 +3640,7 @@ async function handleLogin(req, res) {
   const [rows] = await pool.execute(
     `SELECT u.id, u.username, u.password_hash, u.name, u.role, u.photo_url, u.must_change_password,
             u.failed_login_attempts, u.locked_at, u.employee_id,
-            e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+            e.employee_no, ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name
      FROM users u
      LEFT JOIN employees e ON e.id = u.employee_id
      WHERE u.username = :username AND u.is_active = 1
@@ -3724,7 +3740,7 @@ async function handleProfileUpdate(req, res) {
 
   const [rows] = await pool.execute(
     `SELECT u.id, u.username, u.name, u.role, u.photo_url, u.must_change_password, u.employee_id,
-            e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+            e.employee_no, ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name
      FROM users u
      LEFT JOIN employees e ON e.id = u.employee_id
      WHERE u.id = :id LIMIT 1`,
@@ -3777,7 +3793,7 @@ async function handleChangePassword(req, res) {
 
   const [updated] = await pool.execute(
     `SELECT u.id, u.username, u.name, u.role, u.photo_url, u.must_change_password, u.employee_id,
-            e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+            e.employee_no, ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name
      FROM users u
      LEFT JOIN employees e ON e.id = u.employee_id
      WHERE u.id = :id LIMIT 1`,
@@ -3793,7 +3809,7 @@ async function handleListUsers(req, res) {
   const [rows] = await pool.query(
     `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password,
             u.failed_login_attempts, u.locked_at, u.employee_id,
-            u.created_at, u.updated_at, e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+            u.created_at, u.updated_at, e.employee_no, ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name
      FROM users u
      LEFT JOIN employees e ON e.id = u.employee_id
      ORDER BY u.name ASC, u.username ASC`,
@@ -3860,7 +3876,7 @@ async function handleCreateUser(req, res) {
     const [rows] = await pool.execute(
       `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password,
               u.failed_login_attempts, u.locked_at, u.employee_id,
-              u.created_at, u.updated_at, e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+              u.created_at, u.updated_at, e.employee_no, ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name
        FROM users u
        LEFT JOIN employees e ON e.id = u.employee_id
        WHERE u.id = :id LIMIT 1`,
@@ -3920,7 +3936,7 @@ async function handleUpdateUser(req, res, id) {
   const [rows] = await pool.execute(
     `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password,
             u.failed_login_attempts, u.locked_at, u.employee_id,
-            u.created_at, u.updated_at, e.employee_no, CONCAT(e.lastname, ', ', e.firstname) AS employee_name
+            u.created_at, u.updated_at, e.employee_no, ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name
      FROM users u
      LEFT JOIN employees e ON e.id = u.employee_id
      WHERE u.id = :id LIMIT 1`,
@@ -4238,7 +4254,7 @@ async function readAttendanceRows({
   const safeOffset = Math.max(0, Number(offset || 0));
   const [rows] = await pool.execute(
     `SELECT d.*, e.employee_no, e.biometric_id, e.department, e.position,
-            CONCAT(e.lastname, ', ', e.firstname) AS employee_name,
+            ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name,
             st.code AS shift_code, st.name AS shift_name, st.shift_type,
             u.name AS edited_by_name
      FROM dtr_entries d
@@ -4392,7 +4408,7 @@ async function resolveAttendanceEmployee(row) {
   if (!employeeDbId && !employeeValue) throw new Error("Employee ID is required");
 
   const [rows] = await pool.execute(
-    `SELECT id, employee_no, firstname, lastname
+    `SELECT id, employee_no, firstname, middlename, lastname, name_ext
      FROM employees
      WHERE id = :employeeDbId OR employee_no = :employeeValue OR biometric_id = :employeeValue
      LIMIT 1`,
@@ -4540,27 +4556,12 @@ function buildMatchedEntry(dutyDate, shift, allPunches, consumedPunches) {
     if (!breakStart || !breakEnd) return null;
     if (breakEnd < breakStart) breakEnd.setDate(breakEnd.getDate() + 1);
 
+    const toleranceMinutes = Math.max(shift.earlyBuffer, shift.lateBuffer);
     const amInCutoff = midpointDate(duty.start, breakStart);
-    const lunchMidpoint = midpointDate(breakStart, breakEnd);
-    const pmInCutoff = midpointDate(breakEnd, duty.end);
 
     amIn = earliestEventMatch(candidates, duty.windowStart, amInCutoff, matchedKeys);
-    amOut = boundaryEventMatch(
-      candidates,
-      breakStart,
-      matchedKeys,
-      amIn || amInCutoff,
-      lunchMidpoint,
-      true,
-    );
-    pmIn = boundaryEventMatch(
-      candidates,
-      breakEnd,
-      matchedKeys,
-      amOut || breakStart,
-      pmInCutoff,
-      false,
-    );
+    amOut = closestEventMatch(candidates, breakStart, matchedKeys, toleranceMinutes);
+    pmIn = closestEventMatch(candidates, breakEnd, matchedKeys, toleranceMinutes);
     pmOut = latestEventMatch(
       candidates,
       pmIn || breakEnd,
@@ -4946,10 +4947,28 @@ async function handleListDtrNoters(req, res) {
      UNION ALL
      SELECT
        CONCAT('employee-', id) AS id,
-       TRIM(CONCAT_WS(' ', firstname, middlename, lastname, name_ext)) AS name,
+       TRIM(CONCAT_WS(' ',
+         NULLIF(TRIM(firstname), ''),
+         CASE
+           WHEN CHAR_LENGTH(TRIM(COALESCE(middlename, ''))) = 1
+             THEN CONCAT(UPPER(TRIM(middlename)), '.')
+           ELSE NULLIF(TRIM(middlename), '')
+         END,
+         NULLIF(TRIM(lastname), ''),
+         NULLIF(TRIM(name_ext), '')
+       )) AS name,
        position,
        department AS office,
-       COALESCE(NULLIF(dtr_signatory, ''), TRIM(CONCAT_WS(' ', firstname, middlename, lastname, name_ext))) AS signatory,
+       COALESCE(NULLIF(dtr_signatory, ''), TRIM(CONCAT_WS(' ',
+         NULLIF(TRIM(firstname), ''),
+         CASE
+           WHEN CHAR_LENGTH(TRIM(COALESCE(middlename, ''))) = 1
+             THEN CONCAT(UPPER(TRIM(middlename)), '.')
+           ELSE NULLIF(TRIM(middlename), '')
+         END,
+         NULLIF(TRIM(lastname), ''),
+         NULLIF(TRIM(name_ext), '')
+       ))) AS signatory,
        1 AS is_active
      FROM employees
      WHERE is_dtr_noter = 1 AND emp_status = 'Active'
@@ -5904,6 +5923,203 @@ async function handleRefreshDtr(req, res) {
   return json(res, 200, result);
 }
 
+function scheduleRow(row) {
+  return {
+    employeeId: String(row.employee_id),
+    employeeNo: String(row.employee_no || ""),
+    employeeName: formatEmployeeName(row, ""),
+    lastname: row.lastname || "",
+    firstname: row.firstname || "",
+    department: row.department || "",
+    position: row.position || "",
+    empStatus: row.emp_status || "Active",
+    scheduleAmIn: formatTime(row.schedule_am_in) || "08:00",
+    scheduleAmOut: formatTime(row.schedule_am_out) || "12:00",
+    schedulePmIn: formatTime(row.schedule_pm_in) || "13:00",
+    schedulePmOut: formatTime(row.schedule_pm_out) || "17:00",
+    overrideCount: Number(row.override_count || 0),
+  };
+}
+
+function scheduleOverrideRow(row) {
+  return {
+    id: String(row.id),
+    employeeId: String(row.employee_id),
+    employeeName: formatEmployeeName(row, ""),
+    department: row.department || "",
+    workDate: normalizeDate(row.work_date),
+    amIn: formatTime(row.am_in) || "",
+    amOut: formatTime(row.am_out) || "",
+    pmIn: formatTime(row.pm_in) || "",
+    pmOut: formatTime(row.pm_out) || "",
+    shiftTemplateId: row.shift_template_id ? String(row.shift_template_id) : "",
+    shiftCode: row.shift_code || "",
+    shiftName: row.shift_name || "",
+    updatedAt: row.updated_at || "",
+  };
+}
+
+function shiftTemplateRow(row) {
+  return {
+    id: String(row.id),
+    code: row.code || "",
+    name: row.name || "",
+    shiftType: row.shift_type || "split",
+    startTime: formatTime(row.start_time) || "",
+    endTime: formatTime(row.end_time) || "",
+    breakStart: formatTime(row.break_start) || "",
+    breakEnd: formatTime(row.break_end) || "",
+    active: Boolean(row.active),
+  };
+}
+
+async function handleListEmployeeSchedules(req, res, url) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  if (!HR_READ_ROLES.includes(user.role)) {
+    json(res, 403, { error: "HR schedule access required" });
+    return;
+  }
+
+  const q = String(url.searchParams.get("q") || "").trim();
+  const department = String(url.searchParams.get("department") || "all").trim();
+  const from = normalizeDate(url.searchParams.get("from"));
+  const to = normalizeDate(url.searchParams.get("to"));
+  const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+  const pageSize = Math.min(100, Math.max(10, Number(url.searchParams.get("pageSize") || 50)));
+  const offset = (page - 1) * pageSize;
+  if ((from && !to) || (!from && to)) {
+    return json(res, 400, { error: "Start and end dates are required" });
+  }
+  if (from && to && from > to) {
+    return json(res, 400, { error: "Start date cannot be after end date" });
+  }
+
+  const where = ["1 = 1"];
+  const params = {};
+  if (q) {
+    where.push(`(
+      e.employee_no LIKE :search OR e.lastname LIKE :search OR e.firstname LIKE :search
+      OR e.middlename LIKE :search OR e.department LIKE :search OR e.position LIKE :search
+    )`);
+    params.search = `%${q}%`;
+  }
+  if (department && department !== "all") {
+    where.push("e.department = :department");
+    params.department = department;
+  }
+
+  const overrideCountWhere = from && to ? "WHERE work_date BETWEEN :fromDate AND :toDate" : "";
+  if (from && to) {
+    params.fromDate = from;
+    params.toDate = to;
+  }
+
+  const whereSql = where.join(" AND ");
+  const [countRows] = await pool.execute(
+    `SELECT COUNT(*) AS total FROM employees e WHERE ${whereSql}`,
+    params,
+  );
+  const [employees] = await pool.execute(
+    `SELECT e.id AS employee_id, e.employee_no, e.lastname, e.firstname,
+            e.middlename, e.name_ext, e.department, e.position, e.emp_status,
+            e.schedule_am_in, e.schedule_am_out, e.schedule_pm_in, e.schedule_pm_out,
+            COALESCE(override_counts.override_count, 0) AS override_count
+     FROM employees e
+     LEFT JOIN (
+       SELECT employee_id, COUNT(*) AS override_count
+       FROM employee_schedule_overrides
+       ${overrideCountWhere}
+       GROUP BY employee_id
+     ) override_counts ON override_counts.employee_id = e.id
+     WHERE ${whereSql}
+     ORDER BY e.lastname, e.firstname
+     LIMIT ${pageSize} OFFSET ${offset}`,
+    params,
+  );
+
+  const employeeIds = employees.map((employee) => String(employee.employee_id));
+  let overrides = [];
+  if (employeeIds.length && from && to) {
+    const [rows] = await pool.execute(
+      `SELECT eso.id, eso.employee_id, e.lastname, e.firstname, e.middlename, e.name_ext, e.department,
+              DATE_FORMAT(eso.work_date, '%Y-%m-%d') AS work_date,
+              eso.am_in, eso.am_out, eso.pm_in, eso.pm_out, eso.updated_at,
+              st.id AS shift_template_id, st.code AS shift_code, st.name AS shift_name
+       FROM employee_schedule_overrides eso
+       INNER JOIN employees e ON e.id = eso.employee_id
+       LEFT JOIN employee_shift_assignments esa
+         ON esa.employee_id = eso.employee_id AND esa.duty_date = eso.work_date
+       LEFT JOIN shift_templates st ON st.id = esa.shift_template_id
+       WHERE eso.employee_id IN (${employeeIds.map(() => "?").join(",")})
+         AND eso.work_date BETWEEN ? AND ?
+       ORDER BY eso.work_date DESC, e.lastname, e.firstname`,
+      [...employeeIds, from, to],
+    );
+    overrides = rows.map(scheduleOverrideRow);
+  }
+
+  const [departmentRows] = await pool.execute(
+    `SELECT DISTINCT department FROM employees
+     WHERE department IS NOT NULL AND department <> ''
+     ORDER BY department`,
+  );
+  const [templateRows] = await pool.execute(
+    `SELECT id, code, name, shift_type, start_time, end_time, break_start, break_end, active
+     FROM shift_templates
+     WHERE active = 1
+     ORDER BY start_time, name`,
+  );
+
+  return json(res, 200, {
+    employees: employees.map(scheduleRow),
+    overrides,
+    departments: departmentRows.map((row) => row.department),
+    shiftTemplates: templateRows.map(shiftTemplateRow),
+    pagination: {
+      total: Number(countRows[0]?.total || 0),
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(Number(countRows[0]?.total || 0) / pageSize)),
+    },
+  });
+}
+
+async function handleDeleteEmployeeScheduleOverride(req, res, employeeId, workDate) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const normalizedDate = normalizeDate(workDate);
+  if (!employeeId || !normalizedDate) return json(res, 400, { error: "Invalid schedule override" });
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.execute(
+      `DELETE FROM employee_schedule_overrides
+       WHERE employee_id = :employeeId AND work_date = :workDate`,
+      { employeeId, workDate: normalizedDate },
+    );
+    await connection.execute(
+      `DELETE FROM employee_shift_assignments
+       WHERE employee_id = :employeeId AND duty_date = :workDate`,
+      { employeeId, workDate: normalizedDate },
+    );
+    await connection.commit();
+    await logAudit(
+      user.id,
+      "attendance.schedule_override_delete",
+      { employeeId, workDate: normalizedDate },
+      req,
+    );
+    return json(res, 200, { ok: true, deleted: result.affectedRows || 0 });
+  } catch (error) {
+    await connection.rollback();
+    return json(res, 400, { error: error.message });
+  } finally {
+    connection.release();
+  }
+}
+
 async function handleBulkEmployeeSchedule(req, res, overrides = false) {
   const user = await requireAttendanceWrite(req, res);
   if (!user) return;
@@ -5946,6 +6162,7 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
       const startDate = normalizeDate(body.startDate || body.from);
       const endDate = normalizeDate(body.endDate || body.to);
       if (!startDate || !endDate) throw new Error("Start and end dates are required");
+      if (startDate > endDate) throw new Error("Start date cannot be after end date");
       const skipWeekends = body.skipWeekends !== false;
       const cursor = new Date(`${startDate}T00:00:00`);
       const end = new Date(`${endDate}T00:00:00`);
@@ -6591,29 +6808,20 @@ async function prepareDtrExport(req, res) {
     to: bounds.to,
     limit: 1000,
   });
+  const employeeName = formatEmployeeName(employee);
   const noter = {
     signatory: String(
-      body.noterSignatory ||
-        body.noter_signatory ||
-        employee.dtrSignatory ||
-        employee.lastname ||
-        "",
+      body.noterSignatory || body.noter_signatory || employee.dtrSignatory || employeeName || "",
     ).trim(),
     position: String(body.noterPosition || body.noter_position || "Immediate Supervisor").trim(),
   };
   const payload = {
     employee: {
       id: employee.id,
-      name: [employee.firstname, employee.middlename, employee.lastname, employee.nameExt]
-        .filter(Boolean)
-        .join(" "),
+      name: employeeName,
       position: employee.position,
       department: employee.department,
-      signatory:
-        employee.dtrSignatory ||
-        [employee.firstname, employee.middlename, employee.lastname, employee.nameExt]
-          .filter(Boolean)
-          .join(" "),
+      signatory: employee.dtrSignatory || employeeName,
       scheduleAmIn: employee.scheduleAmIn,
       scheduleAmOut: employee.scheduleAmOut,
       schedulePmIn: employee.schedulePmIn,
@@ -6805,14 +7013,7 @@ async function handleGenerateMassDtrPdf(req, res) {
         limit: 1000,
       });
       rowCount += rows.length;
-      const employeeName = [
-        employee.firstname,
-        employee.middlename,
-        employee.lastname,
-        employee.nameExt,
-      ]
-        .filter(Boolean)
-        .join(" ");
+      const employeeName = formatEmployeeName(employee);
       const payload = {
         employee: {
           id: employee.id,
@@ -6830,7 +7031,7 @@ async function handleGenerateMassDtrPdf(req, res) {
             body.noterSignatory ||
               body.noter_signatory ||
               employee.dtrSignatory ||
-              employee.lastname ||
+              employeeName ||
               "",
           ).trim(),
           position: String(
@@ -6988,7 +7189,7 @@ async function readDtrCorrectionRequests({
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const [rows] = await pool.execute(
     `SELECT r.*, e.employee_no, e.department,
-            CONCAT(e.lastname, ', ', e.firstname) AS employee_name,
+            ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name,
             creator.name AS created_by_name,
             reviewer.name AS reviewed_by_name,
             reverser.name AS reversed_by_name
@@ -7762,7 +7963,7 @@ async function handleBulkCreateEmployeeAccounts(req, res) {
         const username = await generateEmployeeUsername(connection, employee);
         const temporaryPassword = generateTemporaryPassword();
         const passwordHash = hashPassword(temporaryPassword);
-        const accountName = [employee.firstname, employee.lastname].filter(Boolean).join(" ");
+        const accountName = formatEmployeeName(employee);
         const [accountResult] = await connection.execute(
           `INSERT INTO users (username, password_hash, name, role, employee_id, must_change_password)
            VALUES (:username, :passwordHash, :name, 'Employee', :employeeId, 1)`,
@@ -7773,7 +7974,7 @@ async function handleBulkCreateEmployeeAccounts(req, res) {
           userId: accountResult.insertId,
           employeeId: employee.id,
           employeeNo: employee.employee_no,
-          employeeName: [employee.lastname, employee.firstname].filter(Boolean).join(", "),
+          employeeName: formatEmployeeName(employee),
           username,
           temporaryPassword,
         });
@@ -7782,7 +7983,7 @@ async function handleBulkCreateEmployeeAccounts(req, res) {
           skipped.push({
             employeeId: employee.id,
             employeeNo: employee.employee_no,
-            employeeName: [employee.lastname, employee.firstname].filter(Boolean).join(", "),
+            employeeName: formatEmployeeName(employee),
             reason:
               error?.code === "ER_DUP_ENTRY"
                 ? "Account already exists"
@@ -7857,7 +8058,7 @@ async function handleBulkResetEmployeePasswords(req, res) {
         userId: account.user_id,
         employeeId: account.employee_id,
         employeeNo: account.employee_no,
-        employeeName: [account.lastname, account.firstname].filter(Boolean).join(", "),
+        employeeName: formatEmployeeName(account),
         username: account.username,
         temporaryPassword,
       });
@@ -7925,7 +8126,7 @@ async function handleCreateEmployee(req, res) {
     const username = await generateEmployeeUsername(connection, data);
     const temporaryPassword = generateTemporaryPassword();
     const passwordHash = hashPassword(temporaryPassword);
-    const accountName = [data.firstname, data.lastname].filter(Boolean).join(" ");
+    const accountName = formatEmployeeName(data);
     const [accountResult] = await connection.execute(
       `INSERT INTO users (username, password_hash, name, role, employee_id, must_change_password)
        VALUES (:username, :passwordHash, :name, 'Employee', :employeeId, 1)`,
@@ -8531,7 +8732,7 @@ async function handleEmployeeLeave(req, res, employeeId) {
   );
   const [applicationRows] = await pool.execute(
     `SELECT la.*, lt.code AS leave_code, lt.name AS leave_name,
-            e.employee_no, e.firstname, e.lastname, e.department, e.position,
+            e.employee_no, e.firstname, e.middlename, e.lastname, e.name_ext, e.department, e.position,
             u.name AS approver_name,
             ru.name AS recommended_by_name
      FROM leave_applications la
@@ -8641,7 +8842,7 @@ async function handleListLeaveApplications(req, res, url) {
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const [rows] = await pool.execute(
     `SELECT la.*, lt.code AS leave_code, lt.name AS leave_name,
-            e.employee_no, e.firstname, e.lastname, e.department, e.position,
+            e.employee_no, e.firstname, e.middlename, e.lastname, e.name_ext, e.department, e.position,
             u.name AS approver_name,
             ru.name AS recommended_by_name
      FROM leave_applications la
@@ -9616,7 +9817,9 @@ async function handleActivateSalaryGradeTable(req, res) {
       `SELECT e.id employee_id,
               e.employee_no,
               e.firstname,
+              e.middlename,
               e.lastname,
+              e.name_ext,
               pi.id plantilla_item_id,
               pi.item_number,
               pi.salary_grade_id old_salary_grade_id,
@@ -9655,7 +9858,7 @@ async function handleActivateSalaryGradeTable(req, res) {
       .map((employee) => ({
         employeeId: employee.employee_id,
         employeeNo: employee.employee_no,
-        employeeName: [employee.lastname, employee.firstname].filter(Boolean).join(", "),
+        employeeName: formatEmployeeName(employee),
         itemNumber: employee.item_number,
         grade: Number(employee.old_grade),
         step: Number(employee.old_step),
@@ -9679,7 +9882,7 @@ async function handleActivateSalaryGradeTable(req, res) {
     );
 
     for (const employee of employees) {
-      const employeeName = [employee.lastname, employee.firstname].filter(Boolean).join(", ");
+      const employeeName = formatEmployeeName(employee);
       const baseResult = {
         employeeId: employee.employee_id,
         employeeNo: employee.employee_no,
@@ -10380,6 +10583,9 @@ async function route(req, res) {
   const attendanceImportLogMatch = url.pathname.match(
     /^\/api\/attendance\/imports\/([A-Za-z0-9-]+)\/logs$/,
   );
+  const scheduleOverrideMatch = url.pathname.match(
+    /^\/api\/attendance\/schedule\/overrides\/([A-Za-z0-9-]+)\/(\d{4}-\d{2}-\d{2})$/,
+  );
   const dtrExcelMatch = url.pathname.match(/^\/api\/attendance\/dtr\/excel\/([^/]+)$/);
   const dtrPdfMatch = url.pathname.match(/^\/api\/attendance\/dtr\/pdf\/([^/]+)$/);
   const dtrMassPdfMatch = url.pathname.match(/^\/api\/attendance\/dtr\/mass\/pdf\/([^/]+)$/);
@@ -10576,10 +10782,19 @@ async function route(req, res) {
     return handleCheckUnimportedDtrs(req, res, unimportedDtrMatch[1]);
   if (req.method === "POST" && url.pathname === "/api/attendance/refresh")
     return handleRefreshDtr(req, res);
+  if (req.method === "GET" && url.pathname === "/api/attendance/schedules")
+    return handleListEmployeeSchedules(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/attendance/schedule/bulk")
     return handleBulkEmployeeSchedule(req, res, false);
   if (req.method === "POST" && url.pathname === "/api/attendance/schedule/overrides")
     return handleBulkEmployeeSchedule(req, res, true);
+  if (req.method === "DELETE" && scheduleOverrideMatch)
+    return handleDeleteEmployeeScheduleOverride(
+      req,
+      res,
+      scheduleOverrideMatch[1],
+      scheduleOverrideMatch[2],
+    );
   if (req.method === "GET" && url.pathname === "/api/attendance/noters")
     return handleListDtrNoters(req, res);
   if (req.method === "POST" && url.pathname === "/api/attendance/noters")

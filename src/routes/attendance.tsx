@@ -68,6 +68,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TablePagination } from "@/components/ui/table-pagination";
 import {
   createDtr,
   createDtrCorrectionRequest,
@@ -111,7 +112,12 @@ import {
 import { canReadHrRecords, canWriteHrRecords, useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 import { useRealtimeRefresh } from "@/lib/realtime";
-import { formatDisplayDate, formatDisplayDateTime, formatDisplayDateRange } from "@/lib/utils";
+import {
+  formatDisplayDate,
+  formatDisplayDateTime,
+  formatDisplayDateRange,
+  formatEmployeeName,
+} from "@/lib/utils";
 
 export const Route = createFileRoute("/attendance")({
   component: AttendancePage,
@@ -132,7 +138,6 @@ const parseLocalDate = (value: string) => {
 };
 const DEFAULT_FROM = formatLocalDate(today);
 const DEFAULT_TO = formatLocalDate(today);
-const DTR_PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 
 type DateRangePreset = {
   label: string;
@@ -682,7 +687,7 @@ function AttendancePage() {
     () =>
       employees.map((employee) => ({
         id: employee.id,
-        label: `${employee.lastname}, ${employee.firstname} (${employee.employeeId})`,
+        label: `${formatEmployeeName(employee)} (${employee.employeeId})`,
       })),
     [employees],
   );
@@ -709,7 +714,7 @@ function AttendancePage() {
     () =>
       employees.map((employee) => ({
         id: employee.id,
-        label: `${employee.lastname}, ${employee.firstname} (${employee.employeeId})`,
+        label: `${formatEmployeeName(employee)} (${employee.employeeId})`,
         department: employee.department || "",
       })),
     [employees],
@@ -739,7 +744,7 @@ function AttendancePage() {
       employees.map((employee) => ({
         id: employee.id,
         employeeNo: employee.employeeId,
-        name: [employee.lastname, employee.firstname].filter(Boolean).join(", "),
+        name: formatEmployeeName(employee),
         position: employee.position || "",
         office: employee.department || "",
       })),
@@ -2416,57 +2421,21 @@ function AttendancePage() {
                   </tbody>
                 </table>
               </div>
-              <div className="hidden flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:flex">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>
-                    Page {dtrPagination.page} of {dtrTotalPages}
-                  </span>
-                  <span className="hidden sm:inline">-</span>
-                  <span>
-                    {dtrTotal ? `${dtrStart}-${dtrEnd} of ${dtrTotal} record(s)` : "No records"}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  <Select
-                    value={String(dtrPageSize)}
-                    onValueChange={(value) => {
-                      setDtrPageSize(Number(value));
-                      setDtrPage(1);
-                    }}
-                  >
-                    <SelectTrigger className="h-9 w-[120px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DTR_PAGE_SIZE_OPTIONS.map((option) => (
-                        <SelectItem key={option} value={String(option)}>
-                          {option} / page
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9"
-                    disabled={loading || dtrPagination.page <= 1}
-                    onClick={() => setDtrPage((page) => Math.max(1, page - 1))}
-                  >
-                    <ChevronLeft className="mr-1 h-4 w-4" />
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9"
-                    disabled={loading || dtrPagination.page >= dtrTotalPages}
-                    onClick={() => setDtrPage((page) => Math.min(dtrTotalPages, page + 1))}
-                  >
-                    Next
-                    <ChevronRight className="ml-1 h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+              <TablePagination
+                className="hidden md:flex"
+                page={dtrPagination.page}
+                totalPages={dtrTotalPages}
+                total={dtrTotal}
+                pageSize={dtrPageSize}
+                itemLabel="records"
+                onPageChange={setDtrPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setDtrPageSize(nextPageSize);
+                  setDtrPage(1);
+                }}
+                disabled={loading}
+                maxPageSize={200}
+              />
             </section>
           </TabsContent>
         </Tabs>

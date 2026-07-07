@@ -60,8 +60,7 @@ def full_name(employee, application):
     middlename = employee.get("middlename") or ""
     name_ext = employee.get("nameExt") or ""
     if lastname or firstname:
-        first = " ".join(part for part in [firstname, name_ext] if part)
-        return f"{lastname}, {first} {middlename}".strip()
+        return " ".join(part for part in [firstname, middlename, lastname, name_ext] if part)
     return application.get("employeeName") or ""
 
 

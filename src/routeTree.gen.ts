@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ServiceRecordsRouteImport } from './routes/service-records'
 import { Route as SelfServiceRouteImport } from './routes/self-service'
+import { Route as SchedulesRouteImport } from './routes/schedules'
 import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as PlantillaRouteImport } from './routes/plantilla'
@@ -40,6 +41,11 @@ const ServiceRecordsRoute = ServiceRecordsRouteImport.update({
 const SelfServiceRoute = SelfServiceRouteImport.update({
   id: '/self-service',
   path: '/self-service',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SchedulesRoute = SchedulesRouteImport.update({
+  id: '/schedules',
+  path: '/schedules',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RequestsRoute = RequestsRouteImport.update({
@@ -126,6 +132,7 @@ export interface FileRoutesByFullPath {
   '/plantilla': typeof PlantillaRoute
   '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
+  '/schedules': typeof SchedulesRoute
   '/self-service': typeof SelfServiceRoute
   '/service-records': typeof ServiceRecordsRoute
   '/settings': typeof SettingsRoute
@@ -145,6 +152,7 @@ export interface FileRoutesByTo {
   '/plantilla': typeof PlantillaRoute
   '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
+  '/schedules': typeof SchedulesRoute
   '/self-service': typeof SelfServiceRoute
   '/service-records': typeof ServiceRecordsRoute
   '/settings': typeof SettingsRoute
@@ -165,6 +173,7 @@ export interface FileRoutesById {
   '/plantilla': typeof PlantillaRoute
   '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
+  '/schedules': typeof SchedulesRoute
   '/self-service': typeof SelfServiceRoute
   '/service-records': typeof ServiceRecordsRoute
   '/settings': typeof SettingsRoute
@@ -186,6 +195,7 @@ export interface FileRouteTypes {
     | '/plantilla'
     | '/reports'
     | '/requests'
+    | '/schedules'
     | '/self-service'
     | '/service-records'
     | '/settings'
@@ -205,6 +215,7 @@ export interface FileRouteTypes {
     | '/plantilla'
     | '/reports'
     | '/requests'
+    | '/schedules'
     | '/self-service'
     | '/service-records'
     | '/settings'
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
     | '/plantilla'
     | '/reports'
     | '/requests'
+    | '/schedules'
     | '/self-service'
     | '/service-records'
     | '/settings'
@@ -244,6 +256,7 @@ export interface RootRouteChildren {
   PlantillaRoute: typeof PlantillaRoute
   ReportsRoute: typeof ReportsRoute
   RequestsRoute: typeof RequestsRoute
+  SchedulesRoute: typeof SchedulesRoute
   SelfServiceRoute: typeof SelfServiceRoute
   ServiceRecordsRoute: typeof ServiceRecordsRoute
   SettingsRoute: typeof SettingsRoute
@@ -270,6 +283,13 @@ declare module '@tanstack/react-router' {
       path: '/self-service'
       fullPath: '/self-service'
       preLoaderRoute: typeof SelfServiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/schedules': {
+      id: '/schedules'
+      path: '/schedules'
+      fullPath: '/schedules'
+      preLoaderRoute: typeof SchedulesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/requests': {
@@ -400,6 +420,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlantillaRoute: PlantillaRoute,
   ReportsRoute: ReportsRoute,
   RequestsRoute: RequestsRoute,
+  SchedulesRoute: SchedulesRoute,
   SelfServiceRoute: SelfServiceRoute,
   ServiceRecordsRoute: ServiceRecordsRoute,
   SettingsRoute: SettingsRoute,

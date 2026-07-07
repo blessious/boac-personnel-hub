@@ -35,7 +35,7 @@ import {
   type ServiceRecord,
   type ServiceRecordForm,
 } from "@/lib/service-records-api";
-import { formatDisplayDate } from "@/lib/utils";
+import { formatDisplayDate, formatEmployeeName } from "@/lib/utils";
 export const Route = createFileRoute("/service-records")({ component: ServiceRecordsPage });
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 function ServiceRecordsPage() {
@@ -81,7 +81,7 @@ function ServiceRecordsPage() {
     load(employeeId);
   }, [employeeId, load]);
   const filteredEmployees = employees.filter((e) =>
-    `${e.lastname} ${e.firstname} ${e.employeeId}`.toLowerCase().includes(query.toLowerCase()),
+    `${formatEmployeeName(e)} ${e.employeeId}`.toLowerCase().includes(query.toLowerCase()),
   );
   const selected = employees.find((e) => e.id === employeeId);
   const openForm = (r?: ServiceRecord) => {
@@ -168,9 +168,7 @@ function ServiceRecordsPage() {
                 onClick={() => setEmployeeId(e.id)}
                 className={`w-full rounded-md px-3 py-2 text-left text-sm ${employeeId === e.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
               >
-                <div className="font-medium">
-                  {e.lastname}, {e.firstname}
-                </div>
+                <div className="font-medium">{formatEmployeeName(e)}</div>
                 <div className="text-xs opacity-75">{e.employeeId}</div>
               </button>
             ))}
@@ -198,9 +196,7 @@ function ServiceRecordsPage() {
                     }}
                     className={`w-full rounded-lg px-3 py-2 text-left text-sm ${employeeId === e.id ? "bg-blue-50 text-blue-700" : "hover:bg-muted"}`}
                   >
-                    <span className="block font-semibold">
-                      {e.lastname}, {e.firstname}
-                    </span>
+                    <span className="block font-semibold">{formatEmployeeName(e)}</span>
                     <span className="block text-xs text-muted-foreground">{e.employeeId}</span>
                   </button>
                 ))}
@@ -244,7 +240,7 @@ function ServiceRecordsPage() {
                 </div>
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-bold text-foreground">
-                    {selected?.lastname}, {selected?.firstname}
+                    {formatEmployeeName(selected)}
                   </h2>
                   <p className="truncate text-sm text-muted-foreground">{selected?.employeeId}</p>
                   <p className="text-sm font-semibold text-blue-700">
@@ -254,9 +250,7 @@ function ServiceRecordsPage() {
               </div>
               <div className="hidden flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4 md:flex">
                 <div>
-                  <h2 className="font-semibold">
-                    {selected?.lastname}, {selected?.firstname}
-                  </h2>
+                  <h2 className="font-semibold">{formatEmployeeName(selected)}</h2>
                   <p className="text-sm text-muted-foreground">
                     {selected?.employeeId} - {records.length} service period(s)
                   </p>

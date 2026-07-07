@@ -45,7 +45,16 @@ export async function initializePlantillaSchema(pool, employeeIdDefinition) {
 const selectSql = `SELECT pi.*,p.title position_title,sg.ordinance,sg.grade,sg.step,sg.amount salary_amount,
  s.name sector_name,o.name office_name,d.name division_name,se.name section_name,pt.name plantilla_type_name,b.name budget_code_name,
  po.id occupancy_id,po.employee_id,po.date_from occupancy_date_from,po.movement_type,po.appointment_number,
- e.employee_no,CONCAT(e.lastname,', ',e.firstname) employee_name FROM plantilla_items pi
+ e.employee_no,TRIM(CONCAT_WS(' ',
+  NULLIF(TRIM(e.firstname), ''),
+  CASE
+    WHEN CHAR_LENGTH(TRIM(COALESCE(e.middlename, ''))) = 1
+      THEN CONCAT(UPPER(TRIM(e.middlename)), '.')
+    ELSE NULLIF(TRIM(e.middlename), '')
+  END,
+  NULLIF(TRIM(e.lastname), ''),
+  NULLIF(TRIM(e.name_ext), '')
+ )) employee_name FROM plantilla_items pi
  JOIN positions p ON p.id=pi.position_id LEFT JOIN salary_grades sg ON sg.id=pi.salary_grade_id
  LEFT JOIN hr_reference_values s ON s.id=pi.sector_ref_id LEFT JOIN hr_reference_values o ON o.id=pi.office_ref_id
  LEFT JOIN hr_reference_values d ON d.id=pi.division_ref_id LEFT JOIN hr_reference_values se ON se.id=pi.section_ref_id

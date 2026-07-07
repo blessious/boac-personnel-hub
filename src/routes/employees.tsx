@@ -9,8 +9,6 @@ import {
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   Activity,
-  ChevronLeft,
-  ChevronRight,
   Copy,
   Eye,
   MoreVertical,
@@ -52,6 +50,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TablePagination } from "@/components/ui/table-pagination";
 import { useAuth } from "@/lib/auth";
 import {
   createEmployee,
@@ -66,7 +65,7 @@ import {
   type SettingsOptions,
   type DashboardResponse,
 } from "@/lib/employees-api";
-import { cn, formatDisplayDate } from "@/lib/utils";
+import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -216,7 +215,7 @@ function EmployeesPage() {
       toast.success(result.account ? "Employee and account created" : "Employee added");
       if (result.account) {
         setCreatedAccount({
-          employeeName: `${result.employee.firstname} ${result.employee.lastname}`.trim(),
+          employeeName: formatEmployeeName(result.employee),
           credentials: result.account,
         });
       }
@@ -237,7 +236,7 @@ function EmployeesPage() {
   const remove = async (employee: EmployeeRecord) => {
     if (
       !window.confirm(
-        `Delete ${employee.lastname}, ${employee.firstname} from Employee Management? The database record will be kept.`,
+        `Delete ${formatEmployeeName(employee)} from Employee Management? The database record will be kept.`,
       )
     )
       return;
@@ -657,7 +656,7 @@ function EmployeesPage() {
                                 {employee.photoUrl ? (
                                   <img
                                     src={employee.photoUrl}
-                                    alt={`${employee.firstname} ${employee.lastname}`}
+                                    alt={formatEmployeeName(employee)}
                                     className="h-full w-full object-cover rounded-full"
                                   />
                                 ) : (
@@ -666,7 +665,7 @@ function EmployeesPage() {
                               </div>
                               <div>
                                 <div className="font-semibold text-foreground">
-                                  {employee.lastname}, {employee.firstname} {employee.middlename}
+                                  {formatEmployeeName(employee)}
                                 </div>
                               </div>
                             </div>
@@ -772,7 +771,7 @@ function EmployeesPage() {
                           {employee.photoUrl ? (
                             <img
                               src={employee.photoUrl}
-                              alt={`${employee.firstname} ${employee.lastname}`}
+                              alt={formatEmployeeName(employee)}
                               className="h-full w-full rounded-full object-cover"
                             />
                           ) : (
@@ -781,7 +780,7 @@ function EmployeesPage() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-semibold text-foreground">
-                            {employee.lastname}, {employee.firstname} {employee.middlename}
+                            {formatEmployeeName(employee)}
                           </div>
                           <div className="mt-1 text-xs text-muted-foreground">
                             {employee.itemNo || employee.employeeId || "-"}
@@ -844,84 +843,19 @@ function EmployeesPage() {
             </div>
           )}
 
-          {/* Pagination */}
-          <div className="flex flex-col sm:flex-row items-center justify-between border-t border-border/50 p-4 text-xs text-muted-foreground gap-4">
-            <div>
-              Showing {employees.length === 0 ? 0 : (page - 1) * pageSize + 1} to{" "}
-              {Math.min(page * pageSize, total)} of {total} employees
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((value) => Math.max(1, value - 1))}
-                  disabled={page === 1}
-                  className="h-8 w-8 p-0 text-muted-foreground"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-
-                {/* Simplified pagination display to match screenshot's style */}
-                <div className="flex items-center gap-1 mx-1">
-                  <div className="h-8 w-8 rounded-md bg-blue-600 text-white grid place-items-center font-medium">
-                    {page}
-                  </div>
-                  {totalPages > 1 && page < totalPages && (
-                    <div
-                      className="h-8 w-8 rounded-md border border-border text-muted-foreground grid place-items-center font-medium hover:bg-muted/50 cursor-pointer"
-                      onClick={() => setPage(page + 1)}
-                    >
-                      {page + 1}
-                    </div>
-                  )}
-                  {totalPages > page + 1 && (
-                    <div className="h-8 w-8 grid place-items-center text-muted-foreground/70">
-                      ...
-                    </div>
-                  )}
-                  {totalPages > page + 1 && (
-                    <div
-                      className="h-8 w-8 rounded-md border border-border text-muted-foreground grid place-items-center font-medium hover:bg-muted/50 cursor-pointer"
-                      onClick={() => setPage(totalPages)}
-                    >
-                      {totalPages}
-                    </div>
-                  )}
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-                  disabled={page === totalPages}
-                  className="h-8 w-8 p-0 text-muted-foreground"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Label htmlFor="employee-page-size" className="text-xs font-normal">
-                  Show
-                </Label>
-                <Input
-                  id="employee-page-size"
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={pageSize}
-                  onChange={(event) => {
-                    const next = Math.min(100, Math.max(1, Number(event.target.value) || 1));
-                    setPageSize(next);
-                    setPage(1);
-                  }}
-                  className="h-8 w-20 bg-card text-xs"
-                />
-              </div>
-            </div>
-          </div>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            itemLabel="employees"
+            onPageChange={setPage}
+            onPageSizeChange={(nextPageSize) => {
+              setPageSize(nextPageSize);
+              setPage(1);
+            }}
+            maxPageSize={100}
+          />
         </div>
       </div>
 
@@ -1079,7 +1013,7 @@ function EmployeesPage() {
               <Input
                 value={form.dtrSignatory ?? ""}
                 onChange={(e) => setForm({ ...form, dtrSignatory: e.target.value })}
-                placeholder={`${form.firstname ?? ""} ${form.lastname ?? ""}`.trim()}
+                placeholder={formatEmployeeName(form, "")}
               />
             </Field>
             <Field label="Date Hired">

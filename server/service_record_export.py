@@ -16,7 +16,7 @@ def money(v):
     except: return None
 
 def employee_name(e):
-    parts=[e.get("firstname"),e.get("middlename"),e.get("lastname"),e.get("name_ext")]
+    parts=[e.get("firstname"),e.get("middlename"),e.get("lastname"),e.get("nameExt") or e.get("name_ext")]
     return " ".join(txt(x).strip() for x in parts if txt(x).strip())
 
 def xlsx(data,out):

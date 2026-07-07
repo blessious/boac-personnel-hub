@@ -50,7 +50,7 @@ import {
   type LeaveBalance,
   type LeaveStatus,
 } from "@/lib/leave-api";
-import { cn, formatDisplayDate } from "@/lib/utils";
+import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
 
 export const Route = createFileRoute("/employees/$id")({
   component: EmployeeFile,
@@ -322,7 +322,7 @@ function EmployeeFile() {
             {employee.employeeId}
           </div>
           <div className="truncate text-sm font-semibold sm:text-base">
-            {employee.lastname}, {employee.firstname} {employee.middlename}
+            {formatEmployeeName(employee)}
           </div>
         </div>
       </div>
@@ -558,7 +558,7 @@ function PersonalTab({
           <Input
             value={form.dtrSignatory}
             onChange={(e) => set("dtrSignatory", e.target.value)}
-            placeholder={`${form.firstname} ${form.lastname}`.trim()}
+            placeholder={formatEmployeeName(form, "")}
           />
         </Field>
         <Field label="Agency">

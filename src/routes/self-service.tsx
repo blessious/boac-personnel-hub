@@ -68,7 +68,7 @@ import {
 } from "@/lib/leave-api";
 import { listDtr, type DtrEntry, type DtrListResponse } from "@/lib/attendance-api";
 import { submitLeaveRequest } from "@/lib/requests-api";
-import { cn, formatDisplayDate } from "@/lib/utils";
+import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
 import { useRealtimeRefresh } from "@/lib/realtime";
 
 export const Route = createFileRoute("/self-service")({
@@ -1784,11 +1784,7 @@ function ProfileLoading() {
 }
 
 function formatFullName(employee: EmployeeRecord) {
-  return (
-    [employee.firstname, employee.middlename, employee.lastname, employee.nameExt]
-      .filter(Boolean)
-      .join(" ") || "Employee"
-  );
+  return formatEmployeeName(employee);
 }
 
 function getInitials(employee: EmployeeRecord) {

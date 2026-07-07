@@ -289,6 +289,50 @@
     gap: 0.5rem;
   }
 
+  .app-frame main table {
+    width: 100%;
+    text-align: left;
+    font-size: 0.75rem;
+  }
+
+  .app-frame main table thead {
+    background: var(--color-card);
+  }
+
+  .app-frame main table thead tr {
+    border-bottom: 1px solid color-mix(in oklab, var(--color-border) 50%, transparent);
+  }
+
+  .app-frame main table th {
+    height: 3rem;
+    padding: 1rem 1.25rem;
+    vertical-align: middle;
+    color: var(--color-muted-foreground);
+    font-size: 0.75rem;
+    font-weight: 650;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+  }
+
+  .app-frame main table td {
+    padding: 1rem 1.25rem;
+    vertical-align: middle;
+    font-size: 0.75rem;
+  }
+
+  .app-frame main table tbody tr {
+    border-bottom: 1px solid color-mix(in oklab, var(--color-border) 50%, transparent);
+    transition: background-color 160ms ease;
+  }
+
+  .app-frame main table tbody tr:hover {
+    background: rgb(239 246 255 / 80%);
+  }
+
+  .dark .app-frame main table tbody tr:hover {
+    background: rgb(255 255 255 / 6%);
+  }
+
   .mobile-bottom-nav {
     position: fixed;
     right: 0;

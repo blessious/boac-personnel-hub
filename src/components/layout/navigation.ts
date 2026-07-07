@@ -2,6 +2,7 @@ import {
   ArrowRightLeft,
   BarChart3,
   CalendarDays,
+  CalendarRange,
   ClipboardCheck,
   FileClock,
   LayoutDashboard,
@@ -20,6 +21,7 @@ export type AppNavItem = {
     | "/"
     | "/employees"
     | "/attendance"
+    | "/schedules"
     | "/plantilla"
     | "/movements"
     | "/service-records"
@@ -46,6 +48,7 @@ export const APP_NAV: AppNavItem[] = [
   { to: "/my-profile", label: "My Profile", shortLabel: "Profile", icon: UserCircle },
   { to: "/employees", label: "Employee Management", shortLabel: "Employees", icon: Users },
   { to: "/attendance", label: "Attendance", shortLabel: "Attendance", icon: CalendarDays },
+  { to: "/schedules", label: "Schedule Management", shortLabel: "Schedules", icon: CalendarRange },
   { to: "/plantilla", label: "Plantilla & PSIPOP", shortLabel: "Plantilla", icon: Landmark },
   { to: "/movements", label: "Employee Movements", shortLabel: "Movements", icon: ArrowRightLeft },
   { to: "/service-records", label: "Service Records", shortLabel: "Records", icon: FileClock },
@@ -77,7 +80,7 @@ function sectionForNavItem(item: AppNavItem): (typeof NAV_SECTION_ORDER)[number]
   ) {
     return "Employee Records";
   }
-  if (["/attendance", "/leave", "/self-service", "/requests"].includes(item.to)) {
+  if (["/attendance", "/schedules", "/leave", "/self-service", "/requests"].includes(item.to)) {
     return "Attendance & Leave";
   }
   if (item.to === "/reports") return "Reports";
@@ -106,6 +109,7 @@ export function navForRole(role: string | undefined) {
         "/",
         "/employees",
         "/attendance",
+        "/schedules",
         "/plantilla",
         "/movements",
         "/service-records",
@@ -120,6 +124,7 @@ export function navForRole(role: string | undefined) {
         "/",
         "/employees",
         "/attendance",
+        "/schedules",
         "/plantilla",
         "/movements",
         "/service-records",

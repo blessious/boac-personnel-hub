@@ -128,7 +128,16 @@ export async function initializeMovementSchema(pool, employeeIdDefinition) {
 }
 
 const MOVEMENT_SELECT = `SELECT m.*,
- CONCAT(e.lastname,', ',e.firstname) employee_name,e.employee_no,
+ TRIM(CONCAT_WS(' ',
+  NULLIF(TRIM(e.firstname), ''),
+  CASE
+    WHEN CHAR_LENGTH(TRIM(COALESCE(e.middlename, ''))) = 1
+      THEN CONCAT(UPPER(TRIM(e.middlename)), '.')
+    ELSE NULLIF(TRIM(e.middlename), '')
+  END,
+  NULLIF(TRIM(e.lastname), ''),
+  NULLIF(TRIM(e.name_ext), '')
+ )) employee_name,e.employee_no,
  COALESCE(tp.title,ip.title) target_position_title,pi.item_number target_item_number,
  sg.grade target_grade,sg.step target_step,sg.amount target_salary,
  prep.name prepared_by_name,rev.name reviewed_by_name,app.name approved_by_name,post.name posted_by_name

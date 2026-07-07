@@ -15,7 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { cn, formatDisplayDate, formatDisplayDateTime } from "@/lib/utils";
+import { cn, formatDisplayDate, formatDisplayDateTime, formatEmployeeName } from "@/lib/utils";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import {
@@ -936,8 +936,7 @@ function MovementDialog({
                 <div className="min-w-0">
                   <span className="font-medium">Employee: </span>
                   <span className="break-words">
-                    {selectedEmployee.lastname}, {selectedEmployee.firstname} (
-                    {selectedEmployee.employeeId})
+                    {formatEmployeeName(selectedEmployee)} ({selectedEmployee.employeeId})
                   </span>
                 </div>
               )}
@@ -967,7 +966,7 @@ function MovementDialog({
             label="Employee"
             value={form.employeeId}
             set={(v) => setForm({ ...form, employeeId: v })}
-            rows={employees.map((e) => [e.id, `${e.lastname}, ${e.firstname} (${e.employeeId})`])}
+            rows={employees.map((e) => [e.id, `${formatEmployeeName(e)} (${e.employeeId})`])}
           />
           <SelectField
             label="Personnel action"

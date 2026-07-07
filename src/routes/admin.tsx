@@ -42,7 +42,7 @@ import {
 import { ROLE_DESCRIPTIONS, ROLE_LABELS, ROLE_OPTIONS, type Role, useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import type { EmployeeRecord } from "@/lib/employees-api";
-import { cn, formatDisplayDateTime } from "@/lib/utils";
+import { cn, formatDisplayDateTime, formatEmployeeName } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
@@ -305,9 +305,9 @@ function AdminPage() {
             {
               id: item.employeeId,
               employeeId: item.employeeNo,
-              firstname: item.employeeName.split(", ")[1] || item.employeeName,
+              firstname: item.employeeName || item.name,
               middlename: "",
-              lastname: item.employeeName.split(", ")[0] || "",
+              lastname: "",
               nameExt: "",
               department: "",
               position: "",
@@ -1269,7 +1269,7 @@ function UserDialog({
                 onChange({
                   ...form,
                   employeeId: nextEmployeeId,
-                  name: employee ? `${employee.firstname} ${employee.lastname}` : form.name,
+                  name: employee ? formatEmployeeName(employee) : form.name,
                   username: mode === "add" && employee ? suggestUsername(employee) : form.username,
                   role: form.role || "Employee",
                 });
@@ -1282,7 +1282,7 @@ function UserDialog({
                 <SelectItem value="none">No linked employee</SelectItem>
                 {employeeCandidates.map((employee) => (
                   <SelectItem key={employee.id} value={employee.id}>
-                    {employee.lastname}, {employee.firstname} - {employee.employeeId}
+                    {formatEmployeeName(employee)} - {employee.employeeId}
                   </SelectItem>
                 ))}
               </SelectContent>

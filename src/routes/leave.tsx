@@ -55,7 +55,7 @@ import {
   type LeaveStatus,
   type LeaveType,
 } from "@/lib/leave-api";
-import { cn, formatDisplayDate } from "@/lib/utils";
+import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
 
 export const Route = createFileRoute("/leave")({
   component: LeavePage,
@@ -704,7 +704,7 @@ function LeavePage() {
                 <SelectContent>
                   {employees.map((employee) => (
                     <SelectItem key={employee.id} value={employee.id}>
-                      {employee.lastname}, {employee.firstname} · {employee.employeeId}
+                      {formatEmployeeName(employee)} · {employee.employeeId}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1164,7 +1164,7 @@ function CreditLedgerPanel({
               <SelectContent>
                 {employees.map((employee) => (
                   <SelectItem key={employee.id} value={employee.id}>
-                    {employee.lastname}, {employee.firstname} - {employee.employeeId}
+                    {formatEmployeeName(employee)} - {employee.employeeId}
                   </SelectItem>
                 ))}
               </SelectContent>

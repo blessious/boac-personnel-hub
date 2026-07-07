@@ -56,3 +56,25 @@ function parseDisplayDate(value?: string | Date | null) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
+
+export function formatEmployeeName(
+  employee?: {
+    firstname?: string | null;
+    middlename?: string | null;
+    lastname?: string | null;
+    nameExt?: string | null;
+  } | null,
+  fallback = "Employee",
+) {
+  if (!employee) return fallback;
+  const middleName = String(employee.middlename || "").trim();
+  const middlePart =
+    middleName.length === 1 && !middleName.endsWith(".")
+      ? `${middleName.toUpperCase()}.`
+      : middleName;
+  const name = [employee.firstname, middlePart, employee.lastname, employee.nameExt]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return name || fallback;
+}

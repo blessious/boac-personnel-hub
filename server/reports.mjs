@@ -203,7 +203,16 @@ async function buildPersonnelPlantillaReport(pool) {
              COALESCE(pt.name, '') AS plantillaType,
              pi.item_status AS itemStatus,
              CASE WHEN po.id IS NULL THEN 'Vacant' ELSE 'Occupied' END AS occupancyStatus,
-             CONCAT(e.lastname, ', ', e.firstname) AS occupantName,
+             TRIM(CONCAT_WS(' ',
+               NULLIF(TRIM(e.firstname), ''),
+               CASE
+                 WHEN CHAR_LENGTH(TRIM(COALESCE(e.middlename, ''))) = 1
+                   THEN CONCAT(UPPER(TRIM(e.middlename)), '.')
+                 ELSE NULLIF(TRIM(e.middlename), '')
+               END,
+               NULLIF(TRIM(e.lastname), ''),
+               NULLIF(TRIM(e.name_ext), '')
+             )) AS occupantName,
              e.employee_no AS occupantNo
       FROM plantilla_items pi
       INNER JOIN positions p ON p.id = pi.position_id
