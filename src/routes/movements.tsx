@@ -80,6 +80,7 @@ export const Route = createFileRoute("/movements")({
   },
   component: MovementsPage,
 });
+const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 const ITEM_ACTIONS = new Set([
   "Original Appointment",
   "Promotion",
