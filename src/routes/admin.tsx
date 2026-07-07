@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -22,10 +22,10 @@ import { toast } from "sonner";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -204,6 +204,7 @@ function AdminPage() {
   const [loadingPermissions, setLoadingPermissions] = useState(false);
   const [savingPermissionRole, setSavingPermissionRole] = useState<Role | null>(null);
   const [rolePermissionData, setRolePermissionData] = useState<RolePermissionResponse | null>(null);
+  const [selectedPermissionRole, setSelectedPermissionRole] = useState<Role>("HR");
   const [creatingBackup, setCreatingBackup] = useState(false);
   const [showAddUser, setShowAddUser] = useState(false);
   const [showEditUser, setShowEditUser] = useState(false);
@@ -668,6 +669,20 @@ function AdminPage() {
     return Array.from(groups.entries()).map(([group, permissions]) => ({ group, permissions }));
   }, [rolePermissionData]);
 
+  const selectedRolePermissions = rolePermissionData?.matrix[selectedPermissionRole];
+  const selectedRoleAllowedCount = rolePermissionData
+    ? rolePermissionData.permissions.filter(
+        (permission) => selectedRolePermissions?.[permission.key],
+      ).length
+    : 0;
+  const selectedRoleTotalCount = rolePermissionData?.permissions.length || 0;
+  const countRolePermissions = (role: Role) =>
+    rolePermissionData
+      ? rolePermissionData.permissions.filter(
+          (permission) => rolePermissionData.matrix[role]?.[permission.key],
+        ).length
+      : 0;
+
   const toggleRolePermission = (role: Role, permission: PermissionKey, allowed: boolean) => {
     if (!rolePermissionData || !canManageRolePermissions) return;
     if (rolePermissionData.locked[role]?.includes(permission)) return;
@@ -968,12 +983,12 @@ function AdminPage() {
       )}
 
       {activeTab === "permissions" && (
-        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="p-4 flex flex-wrap items-center justify-between gap-3 border-b border-border">
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
             <div>
               <h4 className="font-semibold text-foreground">Role Permission Review</h4>
               <p className="text-xs text-muted-foreground">
-                Review each role's allowed modules, privileges, and system functions.
+                Select a role, then turn the functions that role can use on or off.
               </p>
             </div>
             <Button
@@ -992,94 +1007,132 @@ function AdminPage() {
               current matrix only.
             </div>
           )}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-muted-foreground">
-                  <th className="sticky left-0 z-10 bg-card px-4 py-3 font-semibold">Function</th>
-                  {rolePermissionData?.roles.map((role) => (
-                    <th key={role} className="px-3 py-3 text-center font-semibold">
-                      {role}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {permissionGroups.map(({ group, permissions }) => (
-                  <Fragment key={group}>
-                    <tr className="border-b border-border bg-muted/30">
-                      <td
-                        className="sticky left-0 z-10 bg-muted px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                        colSpan={(rolePermissionData?.roles.length || 0) + 1}
+
+          {!rolePermissionData ? (
+            <div className="px-4 py-12 text-center text-muted-foreground">
+              {loadingPermissions ? "Loading role permissions..." : "No role permissions loaded."}
+            </div>
+          ) : (
+            <div>
+              <div className="border-b border-border bg-muted/20 p-4">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                  {rolePermissionData.roles.map((role) => {
+                    const active = selectedPermissionRole === role;
+                    const allowedCount = countRolePermissions(role);
+                    return (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => setSelectedPermissionRole(role)}
+                        className={cn(
+                          "rounded-lg border p-3 text-left transition-colors",
+                          active
+                            ? "border-blue-300 bg-blue-50 text-blue-900"
+                            : "border-border bg-card hover:bg-muted/40",
+                        )}
                       >
-                        {group}
-                      </td>
-                    </tr>
-                    {permissions.map((permission) => (
-                      <tr key={permission.key} className="border-b border-border/50 align-top">
-                        <td className="sticky left-0 z-10 max-w-sm bg-card px-4 py-3">
-                          <div className="font-medium text-foreground">{permission.label}</div>
-                          <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                            {permission.description}
-                          </div>
-                          <div className="mt-1 font-mono text-[10px] text-muted-foreground/80">
-                            {permission.key}
-                          </div>
-                        </td>
-                        {rolePermissionData?.roles.map((role) => {
-                          const locked = rolePermissionData.locked[role]?.includes(permission.key);
-                          const checked = Boolean(
-                            rolePermissionData.matrix[role]?.[permission.key],
-                          );
-                          return (
-                            <td key={`${role}-${permission.key}`} className="px-3 py-3 text-center">
-                              <div className="flex justify-center">
-                                <Checkbox
-                                  checked={checked}
-                                  disabled={!canManageRolePermissions || locked}
-                                  onCheckedChange={(value) =>
-                                    toggleRolePermission(role, permission.key, value === true)
-                                  }
-                                  aria-label={`${role} ${permission.label}`}
-                                  title={
-                                    locked ? "Locked for Super Admin safety" : permission.label
-                                  }
-                                />
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </Fragment>
-                ))}
-                {!rolePermissionData && (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={7}>
-                      {loadingPermissions
-                        ? "Loading role permissions..."
-                        : "No role permissions loaded."}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {rolePermissionData && (
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border p-4">
-              {rolePermissionData.roles.map((role) => (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold">{role}</span>
+                          {role === "Super Admin" && (
+                            <Badge
+                              variant="outline"
+                              className="border-blue-200 bg-white text-blue-700"
+                            >
+                              Protected
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          {allowedCount} of {rolePermissionData.permissions.length} functions on
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+                <div>
+                  <div className="text-sm font-semibold text-foreground">
+                    Editing {selectedPermissionRole}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {selectedRoleAllowedCount} of {selectedRoleTotalCount} functions enabled
+                  </div>
+                </div>
                 <Button
-                  key={role}
-                  variant={role === "Super Admin" ? "default" : "outline"}
-                  onClick={() => saveRolePermissions(role)}
+                  onClick={() => saveRolePermissions(selectedPermissionRole)}
                   disabled={!canManageRolePermissions || savingPermissionRole !== null}
-                  className={cn(
-                    role === "Super Admin" && "bg-blue-600 hover:bg-blue-700 text-white",
-                  )}
+                  className="bg-blue-600 text-white hover:bg-blue-700"
                 >
-                  {savingPermissionRole === role ? "Saving..." : `Save ${role}`}
+                  {savingPermissionRole === selectedPermissionRole ? "Saving..." : "Save Changes"}
                 </Button>
-              ))}
+              </div>
+
+              <div className="divide-y divide-border">
+                {permissionGroups.map(({ group, permissions }) => (
+                  <section key={group} className="p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {group}
+                      </h5>
+                      <span className="text-xs text-muted-foreground">
+                        {
+                          permissions.filter(
+                            (permission) => selectedRolePermissions?.[permission.key],
+                          ).length
+                        }{" "}
+                        / {permissions.length} enabled
+                      </span>
+                    </div>
+                    <div className="grid gap-2 lg:grid-cols-2">
+                      {permissions.map((permission) => {
+                        const locked = rolePermissionData.locked[selectedPermissionRole]?.includes(
+                          permission.key,
+                        );
+                        const checked = Boolean(selectedRolePermissions?.[permission.key]);
+                        return (
+                          <div
+                            key={permission.key}
+                            className={cn(
+                              "flex min-h-[86px] items-start justify-between gap-4 rounded-lg border border-border bg-background p-3",
+                              checked && "border-blue-200 bg-blue-50/40",
+                            )}
+                          >
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="font-medium text-foreground">
+                                  {permission.label}
+                                </div>
+                                {locked && (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-blue-200 bg-white text-blue-700"
+                                  >
+                                    Locked
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                {permission.description}
+                              </div>
+                            </div>
+                            <Switch
+                              checked={checked}
+                              disabled={!canManageRolePermissions || locked}
+                              onCheckedChange={(value) =>
+                                toggleRolePermission(selectedPermissionRole, permission.key, value)
+                              }
+                              aria-label={`${selectedPermissionRole} ${permission.label}`}
+                              title={locked ? "Locked for Super Admin safety" : permission.label}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
             </div>
           )}
         </div>
