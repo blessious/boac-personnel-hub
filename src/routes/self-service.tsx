@@ -592,11 +592,17 @@ function EmployeeServicesHome() {
         </section>
 
         <Tabs defaultValue="requests" className="space-y-4">
-          <div className="overflow-x-auto">
-            <TabsList className="h-auto justify-start gap-1 bg-muted/50 p-1">
-              <TabsTrigger value="requests">Requests</TabsTrigger>
-              <TabsTrigger value="attendance">Attendance</TabsTrigger>
-              <TabsTrigger value="records">Records</TabsTrigger>
+          <div className="overflow-x-auto pb-1">
+            <TabsList className="h-auto min-w-max justify-start gap-1 bg-muted/50 p-1">
+              <TabsTrigger value="requests" className="min-w-max">
+                Requests
+              </TabsTrigger>
+              <TabsTrigger value="attendance" className="min-w-max">
+                Attendance
+              </TabsTrigger>
+              <TabsTrigger value="records" className="min-w-max">
+                Records
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -1040,14 +1046,26 @@ function ProfileTabs({
 }) {
   return (
     <Tabs defaultValue="personal" className="space-y-4">
-      <div className="overflow-x-auto">
-        <TabsList className="h-auto justify-start gap-1 bg-muted/50 p-1">
-          <TabsTrigger value="personal">Personal</TabsTrigger>
-          <TabsTrigger value="contact">Contact</TabsTrigger>
-          <TabsTrigger value="work">Work</TabsTrigger>
-          <TabsTrigger value="wes">WES</TabsTrigger>
-          <TabsTrigger value="ids">IDs</TabsTrigger>
-          <TabsTrigger value="records">Records</TabsTrigger>
+      <div className="overflow-x-auto pb-1">
+        <TabsList className="h-auto min-w-max justify-start gap-1 bg-muted/50 p-1">
+          <TabsTrigger value="personal" className="min-w-max">
+            Personal
+          </TabsTrigger>
+          <TabsTrigger value="contact" className="min-w-max">
+            Contact
+          </TabsTrigger>
+          <TabsTrigger value="work" className="min-w-max">
+            Work
+          </TabsTrigger>
+          <TabsTrigger value="wes" className="min-w-max">
+            WES
+          </TabsTrigger>
+          <TabsTrigger value="ids" className="min-w-max">
+            IDs
+          </TabsTrigger>
+          <TabsTrigger value="records" className="min-w-max">
+            Records
+          </TabsTrigger>
         </TabsList>
       </div>
 

@@ -1642,27 +1642,18 @@ function AttendancePage() {
 
         <Tabs defaultValue="records" className="space-y-3 md:space-y-4">
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-border bg-muted/50 p-1">
-            <TabsTrigger
-              value="records"
-              className="flex flex-1 items-center gap-2 py-2 md:flex-none"
-            >
+            <TabsTrigger value="records" className="flex min-w-max items-center gap-2 py-2">
               <CalendarClock className="hidden h-4 w-4 md:block" />
               Daily Time Records
             </TabsTrigger>
             {(canApprove || isEmployee) && (
-              <TabsTrigger
-                value="corrections"
-                className="flex flex-1 items-center gap-2 py-2 md:flex-none"
-              >
+              <TabsTrigger value="corrections" className="flex min-w-max items-center gap-2 py-2">
                 <FileText className="hidden h-4 w-4 md:block" />
                 Corrections
               </TabsTrigger>
             )}
             {canManage && (
-              <TabsTrigger
-                value="biometrics"
-                className="flex flex-1 items-center gap-2 py-2 md:flex-none"
-              >
+              <TabsTrigger value="biometrics" className="flex min-w-max items-center gap-2 py-2">
                 <RadioTower className="hidden h-4 w-4 md:block" />
                 Biometric
               </TabsTrigger>
