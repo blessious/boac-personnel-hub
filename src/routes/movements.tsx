@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRightLeft,
   CalendarDays,
+  Check,
   ChevronRight,
   CheckCircle2,
   Clock3,
@@ -12,6 +13,7 @@ import {
   Search,
   Send,
   Undo2,
+  ChevronsUpDown,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,6 +30,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api } from "@/lib/api";
 import { canWriteHrRecords, useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord, type SettingsOptions } from "@/lib/employees-api";
@@ -69,7 +80,6 @@ export const Route = createFileRoute("/movements")({
   },
   component: MovementsPage,
 });
-const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 const ITEM_ACTIONS = new Set([
   "Original Appointment",
   "Promotion",
@@ -1154,34 +1164,66 @@ function SelectField({
   set: (x: string) => void;
   rows: readonly (readonly string[])[];
 }) {
-  const [query, setQuery] = useState("");
-  const filteredRows = useMemo(() => {
-    const search = query.trim().toLowerCase();
-    if (!search) return rows;
-    return rows.filter((row) => row.join(" ").toLowerCase().includes(search));
-  }, [query, rows]);
+  const [open, setOpen] = useState(false);
+  const selectedRow = rows.find(([id]) => id === value);
 
   return (
     <Field label={label}>
-      {rows.length > 8 && (
-        <div className="relative mb-2">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={`Search ${label.toLowerCase()}...`}
-            className="h-9 pl-9"
-          />
-        </div>
-      )}
-      <select className={selectClass} value={value} onChange={(e) => set(e.target.value)}>
-        <option value="">Select...</option>
-        {filteredRows.map(([id, name]) => (
-          <option value={id} key={id}>
-            {name}
-          </option>
-        ))}
-      </select>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="h-9 w-full justify-between px-3 font-normal"
+          >
+            <span className={cn("truncate", !selectedRow && "text-muted-foreground")}>
+              {selectedRow?.[1] || "Select..."}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0">
+          <Command
+            filter={(candidateValue, search) => {
+              const row = rows.find(([id]) => id === candidateValue);
+              if (!row) return 0;
+              return row.join(" ").toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
+            }}
+          >
+            <CommandInput placeholder={`Search ${label.toLowerCase()}...`} />
+            <CommandList>
+              <CommandEmpty>No matches found.</CommandEmpty>
+              <CommandGroup>
+                <CommandItem
+                  value="__empty__"
+                  onSelect={() => {
+                    set("");
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={cn("h-4 w-4", !value ? "opacity-100" : "opacity-0")} />
+                  <span>Select...</span>
+                </CommandItem>
+                {rows.map(([id, name]) => (
+                  <CommandItem
+                    key={id}
+                    value={id}
+                    onSelect={() => {
+                      set(id);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check className={cn("h-4 w-4", value === id ? "opacity-100" : "opacity-0")} />
+                    <span className="truncate">{name}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </Field>
   );
 }
