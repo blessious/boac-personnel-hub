@@ -140,7 +140,7 @@
   --sidebar-foreground: oklch(0.92 0.01 260);
   --sidebar-primary: oklch(0.55 0.18 255);
   --sidebar-primary-foreground: oklch(0.18 0.02 260);
-  --sidebar-accent: oklch(0.28 0.03 260);
+  --sidebar-accent: oklch(0.34 0.04 260);
   --sidebar-accent-foreground: oklch(0.97 0.005 250);
   --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.55 0.18 255);
@@ -558,17 +558,23 @@
     line-height: 2rem;
   }
 
-  .mobile-app-content input,
+  .mobile-app-content input:not([type="radio"]):not([type="checkbox"]),
   .mobile-app-content button,
   .mobile-app-content [role="combobox"] {
     border-radius: 0.875rem;
   }
 
-  .mobile-app-content input,
+  .mobile-app-content input:not([type="radio"]):not([type="checkbox"]),
   .mobile-app-content [role="combobox"] {
     min-height: 2.75rem;
     background: #fff;
     box-shadow: 0 8px 20px rgb(15 35 80 / 5%);
+  }
+
+  .mobile-app-content button[role="radio"],
+  .mobile-app-content button[role="switch"] {
+    border-radius: 9999px;
+    min-height: unset;
   }
 
   .mobile-app-content .rounded-xl,
@@ -612,7 +618,7 @@
     padding: 0.875rem;
   }
 
-  .mobile-app-content button,
+  .mobile-app-content button:not([role="radio"]):not([role="switch"]),
   .mobile-app-content [role="button"] {
     min-height: 2.5rem;
   }
@@ -728,7 +734,7 @@
     color: var(--color-foreground);
   }
 
-  .dark .mobile-app-content input,
+  .dark .mobile-app-content input:not([type="radio"]):not([type="checkbox"]),
   .dark .mobile-app-content select,
   .dark .mobile-app-content textarea,
   .dark .mobile-app-content [role="combobox"],

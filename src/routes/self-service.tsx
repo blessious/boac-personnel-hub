@@ -2,23 +2,34 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   Bell,
+  Briefcase,
+  Building2,
+  Cake,
   CalendarCheck,
   CalendarClock,
+  CalendarDays,
   ChevronRight,
   ClipboardCheck,
   Clock,
   Download,
+  Droplet,
   FileText,
+  Flag,
+  Heart,
   IdCard,
+  Landmark,
   Mail,
+  MapPin,
   Newspaper,
   Phone,
   Pencil,
   Plus,
+  Shield,
   ShieldCheck,
   Sparkles,
   Trash2,
   UserCircle,
+  UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { GenerationLoader } from "@/components/GenerationLoader";
@@ -893,74 +904,125 @@ function ProfileHeader({
 }) {
   const fullName = formatFullName(employee);
   const initials = getInitials(employee);
+  const employmentStatus = employee.status || employee.empStatus || "Active";
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-      <div className="border-b border-border bg-muted/20 px-5 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Personal 201 Record
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">My Profile</h2>
-          </div>
-          <Button variant="outline" onClick={onOpenProfile} className="w-full sm:w-auto">
-            Full 201 File
-            <ChevronRight className="ml-2 h-4 w-4" />
-          </Button>
+    <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/20 px-4 py-3 sm:px-5">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Personal 201 Record
+          </p>
+          <h2 className="mt-1 text-lg font-semibold text-foreground">My Profile</h2>
         </div>
+        <Button variant="outline" onClick={onOpenProfile} className="w-full sm:w-auto">
+          Full 201 File
+          <ChevronRight className="ml-2 h-4 w-4" />
+        </Button>
       </div>
-      <div className="p-5 lg:p-6">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
-            <Avatar className="h-24 w-24 shrink-0 border border-border bg-muted shadow-sm">
-              {employee.photoUrl ? <AvatarImage src={employee.photoUrl} alt={fullName} /> : null}
-              <AvatarFallback className="bg-sky-50 text-2xl font-semibold text-sky-700">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
 
-            <div className="min-w-0">
-              <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                <UserCircle className="h-3.5 w-3.5" />
-                Employee Identity
-              </div>
-              <div className="flex flex-wrap items-start gap-2">
-                <h3 className="max-w-full break-words text-3xl font-bold tracking-tight text-foreground">
-                  {fullName}
-                </h3>
+      <div className="p-4 sm:p-5 lg:p-6">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="flex min-w-0 flex-col gap-5 sm:flex-row">
+            <div className="relative h-28 w-28 shrink-0">
+              <Avatar className="h-28 w-28 border border-border bg-muted shadow-sm ring-4 ring-background">
+                {employee.photoUrl ? <AvatarImage src={employee.photoUrl} alt={fullName} /> : null}
+                <AvatarFallback className="bg-sky-50 text-2xl font-semibold text-sky-700">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <span className="absolute bottom-2 right-1 h-5 w-5 rounded-full border-4 border-card bg-emerald-500" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge
                   variant="outline"
-                  className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                  className="gap-1.5 border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700"
                 >
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   {employee.empStatus || "Active"}
                 </Badge>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                  <Briefcase className="h-3.5 w-3.5 text-blue-600" />
+                  {employee.position || "Position not set"}
+                </span>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {employee.position || "Position not set"}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                <span className="rounded-full border border-border bg-muted/50 px-3 py-1 text-muted-foreground">
-                  ID: {valueOrDash(employee.employeeId)}
-                </span>
-                <span className="rounded-full border border-border bg-muted/50 px-3 py-1 text-muted-foreground">
-                  {valueOrDash(employee.department)}
-                </span>
-                <span className="rounded-full border border-border bg-muted/50 px-3 py-1 text-muted-foreground">
-                  {valueOrDash(employee.status)}
-                </span>
+              <h3 className="mt-3 max-w-2xl break-words text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl">
+                {fullName}
+              </h3>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <ProfileChip icon={IdCard} label={`ID: ${valueOrDash(employee.employeeId)}`} />
+                <ProfileChip icon={Building2} label={valueOrDash(employee.department)} />
+                <ProfileChip icon={ShieldCheck} label={valueOrDash(employmentStatus)} />
               </div>
             </div>
           </div>
 
-          <div className="grid content-start gap-3 rounded-lg border border-border bg-background/60 p-4">
-            <DetailItem label="Employee No" value={employee.employeeId} />
-            <DetailItem label="Department" value={employee.department} />
-            <DetailItem label="Employment Status" value={employee.status || employee.empStatus} />
+          <div className="grid content-start overflow-hidden rounded-xl border border-border bg-background">
+            <ProfileIdentityRow
+              icon={UserRound}
+              label="Employee No"
+              value={employee.employeeId}
+              iconClassName="bg-blue-50 text-blue-600"
+            />
+            <ProfileIdentityRow
+              icon={Building2}
+              label="Department"
+              value={employee.department}
+              iconClassName="bg-indigo-50 text-indigo-600"
+            />
+            <ProfileIdentityRow
+              icon={ShieldCheck}
+              label="Employment Status"
+              value={employmentStatus}
+              iconClassName="bg-emerald-50 text-emerald-600"
+            />
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function ProfileChip({
+  icon: Icon,
+  label,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+}) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-blue-600" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+function ProfileIdentityRow({
+  icon: Icon,
+  label,
+  value,
+  iconClassName,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value?: string | number | null;
+  iconClassName: string;
+}) {
+  return (
+    <div className="grid grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-3 border-b border-border px-4 py-3.5 last:border-b-0">
+      <div className={cn("grid h-9 w-9 place-items-center rounded-lg", iconClassName)}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="grid min-w-0 gap-0.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-3">
+        <p className="text-sm font-medium text-muted-foreground">{label}</p>
+        <p className="break-words text-sm font-semibold text-foreground sm:text-right">
+          {valueOrDash(value)}
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -991,13 +1053,13 @@ function ProfileQuickStats({
   const contactStatus = employee.cellphoneNo || employee.email ? "Available" : "Needs Update";
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
       <ProfileRecordCard
         title="Contact"
         value={contactStatus}
         subtext={employee.email || employee.cellphoneNo || "No contact details recorded"}
-        icon={<Phone className="h-5 w-5 text-blue-600" />}
-        iconBg="bg-blue-50"
+        icon={Phone}
+        iconClassName="bg-blue-50 text-blue-600"
       />
       <ProfileRecordCard
         title="Employment"
@@ -1007,22 +1069,22 @@ function ProfileQuickStats({
             ? `Hired ${formatDisplayDate(employee.dateHired || employee.dateEmployed)}`
             : "Hire date not set"
         }
-        icon={<IdCard className="h-5 w-5 text-emerald-600" />}
-        iconBg="bg-emerald-50"
+        icon={Briefcase}
+        iconClassName="bg-emerald-50 text-emerald-600"
       />
       <ProfileRecordCard
         title="201 Records"
         value={recordCount}
         subtext={`${governmentIds}/5 government IDs recorded`}
-        icon={<ShieldCheck className="h-5 w-5 text-amber-600" />}
-        iconBg="bg-amber-50"
+        icon={ShieldCheck}
+        iconClassName="bg-amber-50 text-amber-600"
       />
       <ProfileRecordCard
         title="Leave & Requests"
         value={formatNumber(availableLeaveCredits)}
         subtext={`${pending} pending request${pending === 1 ? "" : "s"}`}
-        icon={<ClipboardCheck className="h-5 w-5 text-rose-600" />}
-        iconBg="bg-rose-50"
+        icon={ClipboardCheck}
+        iconClassName="bg-rose-50 text-rose-600"
       />
     </div>
   );
@@ -1032,26 +1094,26 @@ function ProfileRecordCard({
   title,
   value,
   subtext,
-  icon,
-  iconBg,
+  icon: Icon,
+  iconClassName,
 }: {
   title: string;
   value: string | number;
   subtext: string;
-  icon: React.ReactNode;
-  iconBg: string;
+  icon: React.ComponentType<{ className?: string }>;
+  iconClassName: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-start gap-3">
-        <div className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-lg", iconBg)}>
-          {icon}
+        <div className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-xl", iconClassName)}>
+          <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {title}
+          <p className="text-xs font-semibold text-muted-foreground">{title}</p>
+          <p className="mt-1 break-words text-lg font-semibold leading-6 text-foreground">
+            {value}
           </p>
-          <p className="mt-1 break-words text-lg font-semibold text-foreground">{value}</p>
           <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">{subtext}</p>
         </div>
       </div>
@@ -1088,12 +1150,12 @@ function ProfileTabs({
       <TabsContent value="personal" className="mt-0">
         <CleanPanel title="Personal Information" icon={UserCircle}>
           <DetailGrid>
-            <DetailItem label="Birthday" value={formatDisplayDate(employee.birthday)} />
-            <DetailItem label="Gender" value={employee.gender} />
-            <DetailItem label="Civil Status" value={employee.civilStatus} />
-            <DetailItem label="Citizenship" value={employee.citizenship} />
-            <DetailItem label="Blood Type" value={employee.bloodType} />
-            <DetailItem label="Place of Birth" value={employee.placeOfBirth} wide />
+            <DetailItem icon={Cake} label="Birthday" value={formatDisplayDate(employee.birthday)} />
+            <DetailItem icon={UserRound} label="Gender" value={employee.gender} />
+            <DetailItem icon={Heart} label="Civil Status" value={employee.civilStatus} />
+            <DetailItem icon={Flag} label="Citizenship" value={employee.citizenship} />
+            <DetailItem icon={Droplet} label="Blood Type" value={employee.bloodType} />
+            <DetailItem icon={MapPin} label="Place of Birth" value={employee.placeOfBirth} wide />
           </DetailGrid>
         </CleanPanel>
       </TabsContent>
@@ -1101,10 +1163,24 @@ function ProfileTabs({
       <TabsContent value="contact" className="mt-0">
         <CleanPanel title="Contact Details" icon={Mail}>
           <DetailGrid>
-            <DetailItem label="Email" value={employee.email} />
-            <DetailItem label="Mobile" value={employee.cellphoneNo || employee.residentialTelNo} />
-            <DetailItem label="Residential Address" value={employee.residentialAddress} wide />
-            <DetailItem label="Permanent Address" value={employee.permanentAddress} wide />
+            <DetailItem icon={Mail} label="Email" value={employee.email} />
+            <DetailItem
+              icon={Phone}
+              label="Mobile"
+              value={employee.cellphoneNo || employee.residentialTelNo}
+            />
+            <DetailItem
+              icon={MapPin}
+              label="Residential Address"
+              value={employee.residentialAddress}
+              wide
+            />
+            <DetailItem
+              icon={MapPin}
+              label="Permanent Address"
+              value={employee.permanentAddress}
+              wide
+            />
           </DetailGrid>
         </CleanPanel>
       </TabsContent>
@@ -1112,15 +1188,16 @@ function ProfileTabs({
       <TabsContent value="work" className="mt-0">
         <CleanPanel title="Work Information" icon={IdCard}>
           <DetailGrid>
-            <DetailItem label="Department" value={employee.department} />
-            <DetailItem label="Position" value={employee.position} />
-            <DetailItem label="Employee Level" value={employee.level} />
-            <DetailItem label="Employment Status" value={employee.status} />
+            <DetailItem icon={Building2} label="Department" value={employee.department} />
+            <DetailItem icon={Briefcase} label="Position" value={employee.position} />
+            <DetailItem icon={Landmark} label="Employee Level" value={employee.level} />
+            <DetailItem icon={ShieldCheck} label="Employment Status" value={employee.status} />
             <DetailItem
+              icon={CalendarDays}
               label="Date Hired"
               value={formatDisplayDate(employee.dateHired || employee.dateEmployed)}
             />
-            <DetailItem label="Item No" value={employee.itemNo} />
+            <DetailItem icon={IdCard} label="Item No" value={employee.itemNo} />
           </DetailGrid>
         </CleanPanel>
       </TabsContent>
@@ -1136,11 +1213,11 @@ function ProfileTabs({
       <TabsContent value="ids" className="mt-0">
         <CleanPanel title="Government IDs" icon={ShieldCheck}>
           <DetailGrid>
-            <DetailItem label="GSIS" value={employee.gsis} />
-            <DetailItem label="SSS" value={employee.sss} />
-            <DetailItem label="Pag-IBIG" value={employee.pagibig} />
-            <DetailItem label="PhilHealth" value={employee.philhealth} />
-            <DetailItem label="TIN" value={employee.tin} />
+            <DetailItem icon={Shield} label="GSIS" value={employee.gsis} />
+            <DetailItem icon={Shield} label="SSS" value={employee.sss} />
+            <DetailItem icon={Shield} label="Pag-IBIG" value={employee.pagibig} />
+            <DetailItem icon={Shield} label="PhilHealth" value={employee.philhealth} />
+            <DetailItem icon={Shield} label="TIN" value={employee.tin} />
           </DetailGrid>
         </CleanPanel>
       </TabsContent>
@@ -1162,6 +1239,7 @@ function ProfileTabs({
               {balances.slice(0, 3).map((balance) => (
                 <DetailItem
                   key={balance.id}
+                  icon={ClipboardCheck}
                   label={balance.code || balance.name}
                   value={formatNumber(balance.balance)}
                 />
@@ -1510,12 +1588,12 @@ function CleanPanel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center gap-2">
-        <div className="grid h-8 w-8 place-items-center rounded-xl bg-sky-50 text-sky-700">
+        <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-600">
           <Icon className="h-4 w-4" />
         </div>
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <h3 className="text-base font-semibold text-foreground">{title}</h3>
       </div>
       {children}
     </section>
@@ -1523,24 +1601,38 @@ function CleanPanel({
 }
 
 function DetailGrid({ children }: { children: React.ReactNode }) {
-  return <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">{children}</div>;
+  return (
+    <div className="grid gap-0 overflow-hidden rounded-xl border border-border">{children}</div>
+  );
 }
 
 function DetailItem({
+  icon: Icon,
   label,
   value,
   wide,
 }: {
+  icon?: React.ComponentType<{ className?: string }>;
   label: string;
   value?: string | number | null;
   wide?: boolean;
 }) {
   return (
-    <div className={cn("min-w-0 border-b border-border/60 pb-3", wide && "sm:col-span-2")}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 break-words text-sm font-medium leading-6 text-foreground">
-        {valueOrDash(value)}
-      </p>
+    <div
+      className={cn(
+        "grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-3 border-b border-border bg-background px-3 py-3 last:border-b-0 sm:px-4",
+        wide && "sm:grid-cols-[2rem_minmax(0,1fr)]",
+      )}
+    >
+      <div className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600">
+        {Icon ? <Icon className="h-4 w-4" /> : <IdCard className="h-4 w-4" />}
+      </div>
+      <div className="grid min-w-0 gap-1 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)] sm:items-center sm:gap-4">
+        <p className="text-sm font-medium text-muted-foreground">{label}</p>
+        <p className="break-words text-sm font-semibold leading-6 text-foreground sm:text-right">
+          {valueOrDash(value)}
+        </p>
+      </div>
     </div>
   );
 }

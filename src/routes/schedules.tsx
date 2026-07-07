@@ -24,7 +24,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { formatLocalDate } from "@/components/ui/date-range-utils";
 import {
@@ -138,6 +140,16 @@ function SchedulesPage() {
     () => new Map(overrides.map((override) => [override.employeeId, override])),
     [overrides],
   );
+
+  const toggleEmployeeSelection = (employeeId: string, checked: boolean) => {
+    setSelectedIds((current) =>
+      checked
+        ? current.includes(employeeId)
+          ? current
+          : [...current, employeeId]
+        : current.filter((id) => id !== employeeId),
+    );
+  };
 
   const load = useCallback(() => {
     if (!canRead) {
@@ -387,7 +399,7 @@ function SchedulesPage() {
       subtitle="Maintain employee default schedules and date-specific duty overrides"
     >
       <div className="space-y-5">
-        <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+        <section className="rounded-lg border border-border bg-card p-3 shadow-sm sm:p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="grid flex-1 gap-3 md:grid-cols-[minmax(220px,1fr)_220px_170px]">
               <div className="space-y-1.5">
@@ -425,7 +437,12 @@ function SchedulesPage() {
                 onChange={setScheduleDate}
               />
             </div>
-            <Button variant="outline" onClick={load} disabled={loading}>
+            <Button
+              variant="outline"
+              onClick={load}
+              disabled={loading}
+              className="w-full sm:w-auto"
+            >
               <RefreshCw className={cn("mr-1.5 h-4 w-4", loading && "animate-spin")} />
               Refresh
             </Button>
@@ -438,7 +455,7 @@ function SchedulesPage() {
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_390px]">
           <section className="rounded-lg border border-border bg-card shadow-sm">
-            <div className="flex flex-col gap-2 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 border-b border-border p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
               <div>
                 <div className="flex items-center gap-2 font-semibold">
                   <Users className="h-4 w-4 text-blue-600" />
@@ -461,80 +478,101 @@ function SchedulesPage() {
                 {selectedAllVisible ? "Clear visible" : "Select visible"}
               </Button>
             </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10" />
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Schedule</TableHead>
-                  <TableHead className="hidden lg:table-cell">Office</TableHead>
-                  <TableHead className="w-28 text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                      <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
-                      Loading schedules...
-                    </TableCell>
+                    <TableHead className="w-10" />
+                    <TableHead>Employee</TableHead>
+                    <TableHead>Schedule</TableHead>
+                    <TableHead className="hidden lg:table-cell">Office</TableHead>
+                    <TableHead className="w-28 text-right">Actions</TableHead>
                   </TableRow>
-                ) : employees.length ? (
-                  employees.map((employee) => {
-                    const selected = selectedIds.includes(employee.employeeId);
-                    const override = overridesByEmployee.get(employee.employeeId);
-                    return (
-                      <TableRow key={employee.employeeId} data-state={selected ? "selected" : ""}>
-                        <TableCell>
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={(event) =>
-                              setSelectedIds((current) =>
-                                event.target.checked
-                                  ? [...current, employee.employeeId]
-                                  : current.filter((id) => id !== employee.employeeId),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium">{employee.employeeName}</div>
-                        </TableCell>
-                        <TableCell>
-                          <ScheduleTimeText
-                            amIn={override?.amIn || employee.scheduleAmIn}
-                            amOut={override?.amOut || employee.scheduleAmOut}
-                            pmIn={override?.pmIn || employee.schedulePmIn}
-                            pmOut={override?.pmOut || employee.schedulePmOut}
-                            source={override ? "Override" : "Default"}
-                          />
-                        </TableCell>
-                        <TableCell className="hidden max-w-[260px] truncate text-muted-foreground lg:table-cell">
-                          {employee.department || "-"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEmployeeSchedule(employee)}
-                          >
-                            <Eye className="mr-1.5 h-4 w-4" />
-                            View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                      No employees match the current filters.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                        <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
+                        Loading schedules...
+                      </TableCell>
+                    </TableRow>
+                  ) : employees.length ? (
+                    employees.map((employee) => {
+                      const selected = selectedIds.includes(employee.employeeId);
+                      const override = overridesByEmployee.get(employee.employeeId);
+                      return (
+                        <TableRow key={employee.employeeId} data-state={selected ? "selected" : ""}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selected}
+                              onCheckedChange={(checked) =>
+                                toggleEmployeeSelection(employee.employeeId, checked === true)
+                              }
+                              aria-label={`Select ${employee.employeeName}`}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium">{employee.employeeName}</div>
+                          </TableCell>
+                          <TableCell>
+                            <ScheduleTimeText
+                              amIn={override?.amIn || employee.scheduleAmIn}
+                              amOut={override?.amOut || employee.scheduleAmOut}
+                              pmIn={override?.pmIn || employee.schedulePmIn}
+                              pmOut={override?.pmOut || employee.schedulePmOut}
+                              source={override ? "Override" : "Default"}
+                            />
+                          </TableCell>
+                          <TableCell className="hidden max-w-[260px] truncate text-muted-foreground lg:table-cell">
+                            {employee.department || "-"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEmployeeSchedule(employee)}
+                            >
+                              <Eye className="mr-1.5 h-4 w-4" />
+                              View
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                        No employees match the current filters.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="grid gap-3 p-3 md:hidden">
+              {loading ? (
+                <MobileState icon="loading" message="Loading schedules..." />
+              ) : employees.length ? (
+                employees.map((employee) => {
+                  const selected = selectedIds.includes(employee.employeeId);
+                  const override = overridesByEmployee.get(employee.employeeId);
+                  return (
+                    <EmployeeScheduleCard
+                      key={employee.employeeId}
+                      employee={employee}
+                      override={override}
+                      selected={selected}
+                      onSelect={(checked) => toggleEmployeeSelection(employee.employeeId, checked)}
+                      onOpen={() => openEmployeeSchedule(employee)}
+                    />
+                  );
+                })
+              ) : (
+                <MobileState message="No employees match the current filters." />
+              )}
+            </div>
             <TablePagination
               page={page}
               totalPages={totalPages}
@@ -552,7 +590,7 @@ function SchedulesPage() {
           </section>
 
           <aside className="space-y-5">
-            <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+            <section className="rounded-lg border border-border bg-card p-3 shadow-sm sm:p-4 xl:sticky xl:top-4">
               <div className="flex items-center gap-2 font-semibold">
                 <CalendarDays className="h-4 w-4 text-blue-600" />
                 Apply Schedule
@@ -630,7 +668,7 @@ function SchedulesPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-2 gap-3">
                   <Field
                     label="AM In"
                     type="time"
@@ -661,7 +699,7 @@ function SchedulesPage() {
                   />
                 </div>
                 <Button
-                  className="w-full bg-blue-600 text-white hover:bg-blue-700"
+                  className="h-10 w-full bg-blue-600 text-white hover:bg-blue-700"
                   disabled={!canManage || saving || !selectedIds.length}
                   onClick={saveSchedule}
                 >
@@ -678,66 +716,82 @@ function SchedulesPage() {
         </div>
 
         <section className="rounded-lg border border-border bg-card shadow-sm">
-          <div className="border-b border-border p-4">
+          <div className="border-b border-border p-3 sm:p-4">
             <div className="font-semibold">Date Overrides</div>
             <p className="text-sm text-muted-foreground">
               Overrides shown for the selected employee page on {formatDisplayDate(scheduleDate)}.
             </p>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Employee</TableHead>
-                <TableHead>Schedule</TableHead>
-                <TableHead className="hidden md:table-cell">Shift</TableHead>
-                <TableHead className="w-12" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {overrides.length ? (
-                overrides.map((override) => (
-                  <TableRow key={override.id}>
-                    <TableCell className="font-medium">
-                      {formatDisplayDate(override.workDate)}
-                    </TableCell>
-                    <TableCell>
-                      <div>{override.employeeName}</div>
-                      <div className="text-xs text-muted-foreground">{override.department}</div>
-                    </TableCell>
-                    <TableCell>
-                      <ScheduleTimeText
-                        amIn={override.amIn}
-                        amOut={override.amOut}
-                        pmIn={override.pmIn}
-                        pmOut={override.pmOut}
-                      />
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {override.shiftName || "Manual"}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={!canManage}
-                        onClick={() => setOverrideToDelete(override)}
-                        title="Remove override"
-                      >
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Schedule</TableHead>
+                  <TableHead className="hidden md:table-cell">Shift</TableHead>
+                  <TableHead className="w-12" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {overrides.length ? (
+                  overrides.map((override) => (
+                    <TableRow key={override.id}>
+                      <TableCell className="font-medium">
+                        {formatDisplayDate(override.workDate)}
+                      </TableCell>
+                      <TableCell>
+                        <div>{override.employeeName}</div>
+                        <div className="text-xs text-muted-foreground">{override.department}</div>
+                      </TableCell>
+                      <TableCell>
+                        <ScheduleTimeText
+                          amIn={override.amIn}
+                          amOut={override.amOut}
+                          pmIn={override.pmIn}
+                          pmOut={override.pmOut}
+                        />
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {override.shiftName || "Manual"}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={!canManage}
+                          onClick={() => setOverrideToDelete(override)}
+                          title="Remove override"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                      No date overrides found for this range.
                     </TableCell>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                    No date overrides found for this range.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="grid gap-3 p-3 md:hidden">
+            {overrides.length ? (
+              overrides.map((override) => (
+                <OverrideScheduleCard
+                  key={override.id}
+                  override={override}
+                  canManage={canManage}
+                  onDelete={() => setOverrideToDelete(override)}
+                />
+              ))
+            ) : (
+              <MobileState message="No date overrides found for this range." />
+            )}
+          </div>
         </section>
       </div>
 
@@ -745,13 +799,13 @@ function SchedulesPage() {
         open={Boolean(activeEmployee)}
         onOpenChange={(open) => !open && setActiveEmployee(null)}
       >
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+        <DialogContent className="max-h-[92vh] overflow-y-auto p-4 sm:max-w-4xl sm:p-6">
           <DialogHeader>
             <DialogTitle>Employee Schedule</DialogTitle>
           </DialogHeader>
           {activeEmployee && (
             <div className="space-y-5">
-              <div className="grid gap-3 rounded-lg border border-border p-4 md:grid-cols-[1fr_auto]">
+              <div className="grid gap-3 rounded-lg border border-border p-3 md:grid-cols-[1fr_auto] sm:p-4">
                 <div>
                   <div className="text-lg font-semibold">{activeEmployee.employeeName}</div>
                   <div className="mt-1 text-sm text-muted-foreground">
@@ -778,66 +832,86 @@ function SchedulesPage() {
                       {formatDisplayDate(scheduleDate)}
                     </p>
                   </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Schedule</TableHead>
-                        <TableHead className="hidden md:table-cell">Shift</TableHead>
-                        <TableHead className="w-24 text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {activeEmployeeOverrides.length ? (
-                        activeEmployeeOverrides.map((override) => (
-                          <TableRow key={override.id}>
-                            <TableCell className="font-medium">
-                              {formatDisplayDate(override.workDate)}
-                            </TableCell>
-                            <TableCell>
-                              <ScheduleTimeText
-                                amIn={override.amIn}
-                                amOut={override.amOut}
-                                pmIn={override.pmIn}
-                                pmOut={override.pmOut}
-                              />
-                            </TableCell>
-                            <TableCell className="hidden md:table-cell">
-                              {override.shiftName || "Manual"}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  disabled={!canManage}
-                                  onClick={() => loadOverrideIntoIndividualForm(override)}
-                                  title="Edit override"
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  disabled={!canManage}
-                                  onClick={() => setOverrideToDelete(override)}
-                                  title="Remove override"
-                                >
-                                  <Trash2 className="h-4 w-4 text-red-600" />
-                                </Button>
-                              </div>
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Schedule</TableHead>
+                          <TableHead className="hidden md:table-cell">Shift</TableHead>
+                          <TableHead className="w-24 text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {activeEmployeeOverrides.length ? (
+                          activeEmployeeOverrides.map((override) => (
+                            <TableRow key={override.id}>
+                              <TableCell className="font-medium">
+                                {formatDisplayDate(override.workDate)}
+                              </TableCell>
+                              <TableCell>
+                                <ScheduleTimeText
+                                  amIn={override.amIn}
+                                  amOut={override.amOut}
+                                  pmIn={override.pmIn}
+                                  pmOut={override.pmOut}
+                                />
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                {override.shiftName || "Manual"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    disabled={!canManage}
+                                    onClick={() => loadOverrideIntoIndividualForm(override)}
+                                    title="Edit override"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    disabled={!canManage}
+                                    onClick={() => setOverrideToDelete(override)}
+                                    title="Remove override"
+                                  >
+                                    <Trash2 className="h-4 w-4 text-red-600" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell
+                              colSpan={4}
+                              className="py-8 text-center text-muted-foreground"
+                            >
+                              No overrides for this employee in the selected range.
                             </TableCell>
                           </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                            No overrides for this employee in the selected range.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="grid gap-3 p-3 md:hidden">
+                    {activeEmployeeOverrides.length ? (
+                      activeEmployeeOverrides.map((override) => (
+                        <OverrideScheduleCard
+                          key={override.id}
+                          override={override}
+                          canManage={canManage}
+                          onEdit={() => loadOverrideIntoIndividualForm(override)}
+                          onDelete={() => setOverrideToDelete(override)}
+                        />
+                      ))
+                    ) : (
+                      <MobileState message="No overrides for this employee in the selected range." />
+                    )}
+                  </div>
                 </section>
 
                 <section className="rounded-lg border border-border p-4">
@@ -914,7 +988,7 @@ function SchedulesPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid grid-cols-2 gap-3">
                       <Field
                         label="AM In"
                         type="time"
@@ -949,12 +1023,16 @@ function SchedulesPage() {
               </div>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setActiveEmployee(null)}>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setActiveEmployee(null)}
+              className="w-full sm:w-auto"
+            >
               Close
             </Button>
             <Button
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
               disabled={!canManage || saving || !activeEmployee}
               onClick={saveIndividualSchedule}
             >
@@ -1020,6 +1098,128 @@ function Field({
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       />
+    </div>
+  );
+}
+
+function EmployeeScheduleCard({
+  employee,
+  override,
+  selected,
+  onSelect,
+  onOpen,
+}: {
+  employee: ScheduleEmployee;
+  override?: ScheduleOverride;
+  selected: boolean;
+  onSelect: (checked: boolean) => void;
+  onOpen: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border bg-background p-3 shadow-sm transition-colors",
+        selected ? "border-blue-300 bg-blue-50/60" : "border-border",
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={(checked) => onSelect(checked === true)}
+          className="mt-1"
+          aria-label={`Select ${employee.employeeName}`}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium">{employee.employeeName}</div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+            {employee.department || "No department"}
+          </div>
+        </div>
+        <Badge variant={override ? "default" : "secondary"} className="shrink-0">
+          {override ? "Override" : "Default"}
+        </Badge>
+      </div>
+
+      <div className="mt-3 rounded-md bg-muted/60 p-3">
+        <ScheduleTimeText
+          amIn={override?.amIn || employee.scheduleAmIn}
+          amOut={override?.amOut || employee.scheduleAmOut}
+          pmIn={override?.pmIn || employee.schedulePmIn}
+          pmOut={override?.pmOut || employee.schedulePmOut}
+        />
+      </div>
+
+      <Button variant="outline" className="mt-3 h-10 w-full" onClick={onOpen}>
+        <Eye className="mr-1.5 h-4 w-4" />
+        View Schedule
+      </Button>
+    </div>
+  );
+}
+
+function OverrideScheduleCard({
+  override,
+  canManage,
+  onEdit,
+  onDelete,
+}: {
+  override: ScheduleOverride;
+  canManage: boolean;
+  onEdit?: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-background p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-medium">{formatDisplayDate(override.workDate)}</div>
+          <div className="mt-0.5 truncate text-sm text-muted-foreground">
+            {override.employeeName}
+          </div>
+          {override.department && (
+            <div className="truncate text-xs text-muted-foreground">{override.department}</div>
+          )}
+        </div>
+        <Badge variant="outline" className="shrink-0">
+          {override.shiftName || "Manual"}
+        </Badge>
+      </div>
+
+      <div className="mt-3 rounded-md bg-muted/60 p-3">
+        <ScheduleTimeText
+          amIn={override.amIn}
+          amOut={override.amOut}
+          pmIn={override.pmIn}
+          pmOut={override.pmOut}
+        />
+      </div>
+
+      <div className={cn("mt-3 grid gap-2", onEdit ? "grid-cols-2" : "grid-cols-1")}>
+        {onEdit && (
+          <Button variant="outline" className="h-10" disabled={!canManage} onClick={onEdit}>
+            <Pencil className="mr-1.5 h-4 w-4" />
+            Edit
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          className="h-10 text-red-600 hover:text-red-700"
+          disabled={!canManage}
+          onClick={onDelete}
+        >
+          <Trash2 className="mr-1.5 h-4 w-4" />
+          Remove
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function MobileState({ message, icon }: { message: string; icon?: "loading" }) {
+  return (
+    <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+      {icon === "loading" && <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />}
+      {message}
     </div>
   );
 }

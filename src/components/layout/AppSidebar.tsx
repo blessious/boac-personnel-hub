@@ -73,7 +73,7 @@ export function AppSidebar() {
             <div className="truncate text-[13px] font-bold text-sidebar-foreground">
               {agency.name || "STRH — HRIS"}
             </div>
-            <div className="truncate text-[11px] text-slate-600">
+            <div className="truncate text-[11px] text-sidebar-foreground/65">
               {agency.tagline || "DOH Southern Tagalog Region"}
             </div>
           </div>
@@ -81,7 +81,7 @@ export function AppSidebar() {
         <button
           onClick={toggleSidebar}
           className={cn(
-            "grid h-6 w-6 shrink-0 place-items-center rounded-md text-slate-600 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
+            "grid h-6 w-6 shrink-0 place-items-center rounded-md text-sidebar-foreground/65 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             collapsed && "absolute right-1 mt-0",
           )}
           aria-label="Toggle sidebar"
@@ -95,7 +95,7 @@ export function AppSidebar() {
           {navSections.map((section) => (
             <div key={section.label} className={cn(!collapsed && "mb-2 last:mb-0")}>
               {!collapsed && (
-                <div className="px-3 pb-1.5 pt-1.5 text-[9px] font-semibold uppercase tracking-widest text-slate-500">
+                <div className="px-3 pb-1.5 pt-1.5 text-[9px] font-semibold uppercase tracking-widest text-sidebar-foreground/55">
                   {section.label}
                 </div>
               )}
@@ -110,15 +110,17 @@ export function AppSidebar() {
                       className={cn(
                         "group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150",
                         active
-                          ? "bg-primary/10 text-primary"
-                          : "text-slate-700 hover:text-slate-950 hover:bg-muted/50",
+                          ? "bg-sidebar-primary/15 text-sidebar-primary"
+                          : "text-sidebar-foreground/82 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                         collapsed && "justify-center px-0",
                       )}
                     >
                       <Icon
                         className={cn(
                           "h-4 w-4 shrink-0",
-                          active ? "text-primary" : "text-slate-600 group-hover:text-slate-900",
+                          active
+                            ? "text-sidebar-primary"
+                            : "text-sidebar-foreground/65 group-hover:text-sidebar-accent-foreground",
                         )}
                       />
                       {!collapsed && <span className="flex-1 leading-snug">{item.label}</span>}
@@ -160,7 +162,7 @@ export function AppSidebar() {
         <button
           onClick={logout}
           className={cn(
-            "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-200 hover:bg-destructive/10 hover:text-destructive",
+            "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/82 transition-all duration-200 hover:bg-destructive/10 hover:text-destructive",
             collapsed && "justify-center px-0",
           )}
         >
