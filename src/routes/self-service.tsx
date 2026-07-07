@@ -931,9 +931,9 @@ function ProfileHeader({
       </div>
 
       <div className="p-4 sm:p-5 lg:p-6">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="flex min-w-0 flex-col gap-5 sm:flex-row">
-            <div className="relative h-28 w-28 shrink-0">
+        <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-start">
+          <div className="shrink-0">
+            <div className="relative h-28 w-28">
               <Avatar className="h-28 w-28 border border-border bg-muted shadow-sm ring-4 ring-background">
                 {employee.photoUrl ? <AvatarImage src={employee.photoUrl} alt={fullName} /> : null}
                 <AvatarFallback className="bg-sky-50 text-2xl font-semibold text-sky-700">
@@ -942,61 +942,40 @@ function ProfileHeader({
               </Avatar>
               <span className="absolute bottom-2 right-1 h-5 w-5 rounded-full border-4 border-card bg-emerald-500" />
             </div>
+          </div>
 
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  variant="outline"
-                  className="gap-1.5 border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  {employee.empStatus || "Active"}
-                </Badge>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                  <Briefcase className="h-3.5 w-3.5 text-blue-600" />
-                  {employee.position || "Position not set"}
-                </span>
-              </div>
-              <h3 className="mt-3 max-w-2xl break-words text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl">
-                {fullName}
-              </h3>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <ProfileChip icon={IdCard} label={`ID: ${valueOrDash(employee.employeeId)}`} />
-                <ProfileChip icon={Building2} label={valueOrDash(employee.department)} />
-                <ProfileChip icon={ShieldCheck} label={valueOrDash(employmentStatus)} />
-              </div>
+          <div className="min-w-0 flex-1 sm:pt-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge
+                variant="outline"
+                className="gap-1.5 border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                {employee.empStatus || "Active"}
+              </Badge>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                <Briefcase className="h-3.5 w-3.5 text-blue-600" />
+                {employee.position || "Position not set"}
+              </span>
+            </div>
+            <h3 className="mt-3 max-w-3xl break-words text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl">
+              {fullName}
+            </h3>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <ProfileChip icon={IdCard} label={`ID: ${valueOrDash(employee.employeeId)}`} />
+              <ProfileChip icon={Building2} label={valueOrDash(employee.department)} />
+              <ProfileChip icon={ShieldCheck} label={valueOrDash(employmentStatus)} />
+            </div>
+            <div className="mt-8 flex justify-start">
+              <Button
+                onClick={onOpenProfile}
+                className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
+              >
+                Full 201 File
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
             </div>
           </div>
-
-          <div className="grid content-start overflow-hidden rounded-xl border border-border bg-background">
-            <ProfileIdentityRow
-              icon={UserRound}
-              label="Employee No"
-              value={employee.employeeId}
-              iconClassName="bg-blue-50 text-blue-600"
-            />
-            <ProfileIdentityRow
-              icon={Building2}
-              label="Department"
-              value={employee.department}
-              iconClassName="bg-indigo-50 text-indigo-600"
-            />
-            <ProfileIdentityRow
-              icon={ShieldCheck}
-              label="Employment Status"
-              value={employmentStatus}
-              iconClassName="bg-emerald-50 text-emerald-600"
-            />
-          </div>
-        </div>
-        <div className="mt-5 flex justify-end">
-          <Button
-            onClick={onOpenProfile}
-            className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
-          >
-            Full 201 File
-            <ChevronRight className="ml-2 h-4 w-4" />
-          </Button>
         </div>
       </div>
     </section>
@@ -1015,32 +994,6 @@ function ProfileChip({
       <Icon className="h-3.5 w-3.5 shrink-0 text-blue-600" />
       <span className="truncate">{label}</span>
     </span>
-  );
-}
-
-function ProfileIdentityRow({
-  icon: Icon,
-  label,
-  value,
-  iconClassName,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value?: string | number | null;
-  iconClassName: string;
-}) {
-  return (
-    <div className="grid grid-cols-[2.25rem_minmax(0,1fr)] items-center gap-3 border-b border-border px-4 py-3.5 last:border-b-0">
-      <div className={cn("grid h-9 w-9 place-items-center rounded-lg", iconClassName)}>
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="grid min-w-0 gap-0.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-3">
-        <p className="text-sm font-medium text-muted-foreground">{label}</p>
-        <p className="break-words text-sm font-semibold text-foreground sm:text-right">
-          {valueOrDash(value)}
-        </p>
-      </div>
-    </div>
   );
 }
 
