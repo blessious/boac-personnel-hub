@@ -195,62 +195,71 @@ export function EmployeeDashboardHome() {
       ) : (
         <div className="space-y-5">
           <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-            <div className="relative p-5 lg:p-6">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
-                  <Avatar className="h-20 w-20 border border-border bg-muted shadow-sm">
+            <div className="p-4 sm:p-5 lg:p-6">
+              <div className="flex flex-col gap-5 md:flex-row md:items-center">
+                <div className="relative h-28 w-28 shrink-0">
+                  <Avatar className="h-28 w-28 border border-border bg-muted shadow-sm ring-4 ring-background">
                     {employee.photoUrl ? (
                       <AvatarImage src={employee.photoUrl} alt={formatFullName(employee)} />
                     ) : null}
-                    <AvatarFallback className="bg-sky-50 text-xl font-semibold text-sky-700">
+                    <AvatarFallback className="bg-sky-50 text-2xl font-semibold text-sky-700">
                       {getInitials(employee)}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="min-w-0">
-                    <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Employee Dashboard
-                    </div>
-                    <h2 className="text-3xl font-bold tracking-tight text-foreground">
-                      Welcome, {employee.firstname || user?.name}
-                    </h2>
-                    <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                      {employee.position || "Position not set"} -{" "}
-                      {employee.department || "Department not set"}
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Badge
-                        variant="outline"
-                        className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700"
-                      >
-                        {todayStatus}
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className="rounded-full border-amber-200 bg-amber-50 text-amber-700"
-                      >
-                        {pendingRequests} pending request{pendingRequests === 1 ? "" : "s"}
-                      </Badge>
-                    </div>
+                  <span className="absolute bottom-2 right-1 h-5 w-5 rounded-full border-4 border-card bg-emerald-500" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                    <UserRound className="h-3.5 w-3.5" />
+                    Employee Dashboard
+                  </div>
+                  <h2 className="mt-3 break-words text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl">
+                    Welcome, {employee.firstname || user?.name}
+                  </h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    {employee.position || "Position not set"} ·{" "}
+                    {employee.department || "Department not set"}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Badge
+                      variant="outline"
+                      className="gap-1.5 rounded-full border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      {todayStatus}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="rounded-full border-amber-200 bg-amber-50 px-3 py-1 text-amber-700"
+                    >
+                      {pendingRequests} pending request{pendingRequests === 1 ? "" : "s"}
+                    </Badge>
                   </div>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:w-[300px]">
-                  <Button variant="outline" onClick={openProfile} className="w-full">
-                    My Profile
-                  </Button>
-                  <Button
-                    onClick={openServices}
-                    className="w-full bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    Self-Service
-                    <ChevronRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <Button
+                  variant="outline"
+                  onClick={openProfile}
+                  className="h-12 w-full rounded-xl bg-white font-semibold shadow-sm"
+                >
+                  <UserRound className="mr-2 h-4 w-4 text-blue-600" />
+                  My Profile
+                </Button>
+                <Button
+                  onClick={openServices}
+                  className="h-12 w-full rounded-xl bg-blue-600 font-semibold text-white shadow-sm hover:bg-blue-700"
+                >
+                  Self-Service
+                  <ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
               </div>
             </div>
           </section>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <DashboardMetricCard
               title="Today's DTR"
               value={formatPunchRange(todayDtr?.amIn, todayDtr?.amOut)}
@@ -300,27 +309,27 @@ export function EmployeeDashboardHome() {
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <CleanPanel title="Quick Actions" icon={Sparkles}>
-              <div className="grid gap-3 md:grid-cols-2">
-                <ActionButton
+            <CleanPanel title="Quick Actions" icon={ClipboardCheck}>
+              <div className="overflow-hidden rounded-xl border border-border">
+                <DashboardActionRow
                   icon={ClipboardCheck}
                   title="Apply Leave"
                   description="Start a leave request from self-service."
                   onClick={openServices}
                 />
-                <ActionButton
+                <DashboardActionRow
                   icon={CalendarClock}
                   title="View Attendance"
                   description="Check DTR and correction options."
                   onClick={openAttendance}
                 />
-                <ActionButton
+                <DashboardActionRow
                   icon={FileText}
                   title="Request Certificate"
                   description="Prepare COE and HR document requests."
                   onClick={openServices}
                 />
-                <ActionButton
+                <DashboardActionRow
                   icon={UserCircle}
                   title="Review Profile"
                   description="Check your personal and employment details."
@@ -331,7 +340,11 @@ export function EmployeeDashboardHome() {
 
             <CleanPanel title="Recent Requests" icon={Bell}>
               <RequestList applications={leave?.applications.slice(0, 4) || []} />
-              <Button variant="outline" onClick={openRequests} className="mt-3 w-full">
+              <Button
+                variant="outline"
+                onClick={openRequests}
+                className="mt-3 h-11 w-full rounded-xl bg-white font-semibold shadow-sm"
+              >
                 View All Requests
               </Button>
             </CleanPanel>
@@ -1432,6 +1445,35 @@ function CleanStat({
   );
 }
 
+function DashboardActionRow({
+  icon: Icon,
+  title,
+  description,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-center gap-3 border-b border-border bg-background px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-muted/30"
+    >
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600">
+        <Icon className="h-4 w-4" />
+      </div>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-foreground">{title}</span>
+        <span className="mt-0.5 block truncate text-xs text-muted-foreground">{description}</span>
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" />
+    </button>
+  );
+}
+
 function DashboardMetricCard({
   title,
   value,
@@ -1452,13 +1494,11 @@ function DashboardMetricCard({
   trend: "up" | "down";
 }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm transition-colors hover:bg-muted/10">
+    <div className="relative min-h-[9.25rem] overflow-hidden rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-sm transition-colors hover:bg-muted/10">
       <div className="mb-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {title}
-          </p>
-          <h2 className="mt-2 truncate text-2xl font-bold text-foreground">{value}</h2>
+          <p className="text-xs font-semibold leading-4 text-muted-foreground">{title}</p>
+          <h2 className="mt-2 truncate text-2xl font-bold leading-none text-foreground">{value}</h2>
         </div>
         <div className={cn("rounded-xl p-2.5 ring-1 ring-black/5", iconBg)}>{icon}</div>
       </div>
