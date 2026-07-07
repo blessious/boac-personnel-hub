@@ -187,53 +187,61 @@ function Dashboard() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-4">
-          <StatCard
-            title="Total Employees"
-            value={loading ? "..." : totalEmployees}
-            subtext="Current records"
-            subtextColor="text-muted-foreground"
-            icon={<Users className="h-5 w-5 text-blue-600" />}
-            iconBg="bg-blue-50"
-            chartColor="stroke-blue-500"
-            trend="up"
-          />
-          <StatCard
-            title="Permanent / Regular"
-            value={loading ? "..." : permanentRegularEmployees}
-            subtext={`${permanentRegularPct}% of total`}
-            subtextColor="text-muted-foreground"
-            subtextDot="bg-emerald-500"
-            icon={<Briefcase className="h-5 w-5 text-emerald-600" />}
-            iconBg="bg-emerald-50"
-            chartColor="stroke-emerald-500"
-            trend="up"
-          />
-          <StatCard
-            title="JO / COS Employees"
-            value={loading ? "..." : joCosEmployees}
-            subtext={`${joCosPct}% of total`}
-            subtextColor="text-muted-foreground"
-            subtextDot="bg-amber-500"
-            icon={<UserCheck className="h-5 w-5 text-amber-600" />}
-            iconBg="bg-amber-50"
-            chartColor="stroke-amber-500"
-            trend="down"
-          />
-          <StatCard
-            title="Active Employees"
-            value={loading ? "..." : activeEmployees}
-            subtext={`${activePct}% of total`}
-            subtextColor="text-muted-foreground"
-            subtextDot="bg-blue-500"
-            icon={<UserCheck className="h-5 w-5 text-blue-600" />}
-            iconBg="bg-blue-50"
-            chartColor="stroke-blue-500"
-            trend="up"
-          />
+          <div className="dash-card-stagger">
+            <StatCard
+              title="Total Employees"
+              value={loading ? "..." : totalEmployees}
+              subtext="Current records"
+              subtextColor="text-muted-foreground"
+              icon={<Users className="h-5 w-5 text-blue-600" />}
+              iconBg="bg-blue-50"
+              chartColor="stroke-blue-500"
+              trend="up"
+            />
+          </div>
+          <div className="dash-card-stagger">
+            <StatCard
+              title="Permanent / Regular"
+              value={loading ? "..." : permanentRegularEmployees}
+              subtext={`${permanentRegularPct}% of total`}
+              subtextColor="text-muted-foreground"
+              subtextDot="bg-emerald-500"
+              icon={<Briefcase className="h-5 w-5 text-emerald-600" />}
+              iconBg="bg-emerald-50"
+              chartColor="stroke-emerald-500"
+              trend="up"
+            />
+          </div>
+          <div className="dash-card-stagger">
+            <StatCard
+              title="JO / COS Employees"
+              value={loading ? "..." : joCosEmployees}
+              subtext={`${joCosPct}% of total`}
+              subtextColor="text-muted-foreground"
+              subtextDot="bg-amber-500"
+              icon={<UserCheck className="h-5 w-5 text-amber-600" />}
+              iconBg="bg-amber-50"
+              chartColor="stroke-amber-500"
+              trend="down"
+            />
+          </div>
+          <div className="dash-card-stagger">
+            <StatCard
+              title="Active Employees"
+              value={loading ? "..." : activeEmployees}
+              subtext={`${activePct}% of total`}
+              subtextColor="text-muted-foreground"
+              subtextDot="bg-blue-500"
+              icon={<UserCheck className="h-5 w-5 text-blue-600" />}
+              iconBg="bg-blue-50"
+              chartColor="stroke-blue-500"
+              trend="up"
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:gap-6 lg:grid-cols-12">
-          <section className="col-span-2 flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-5">
+          <section className="dash-card-stagger col-span-2 flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-5">
             <div className="mb-6">
               <h3 className="text-base font-semibold text-foreground">Workforce Age Profile</h3>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -259,7 +267,7 @@ function Dashboard() {
             </div>
           </section>
 
-          <section className="flex h-full flex-col rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-3">
+          <section className="dash-card-stagger flex h-full flex-col rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-3">
             <div>
               <h3 className="text-base font-semibold text-foreground">Employment Type Mix</h3>
               <p className="mt-1 text-xs text-muted-foreground">Distribution by employment type.</p>
@@ -324,7 +332,7 @@ function Dashboard() {
             </div>
           </section>
 
-          <section className="flex h-full flex-col rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-4">
+          <section className="dash-card-stagger flex h-full flex-col rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-4">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Employees by Division</h3>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -359,7 +367,7 @@ function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-12">
-          <section className="hidden flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm md:flex lg:col-span-4">
+          <section className="dash-card-stagger hidden flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm md:flex lg:col-span-4">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Gender Distribution</h3>
               <p className="mt-1 text-xs text-muted-foreground">Workforce by gender.</p>
@@ -410,7 +418,7 @@ function Dashboard() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-8">
+          <section className="dash-card-stagger rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-8">
             <div className="mb-5">
               <h3 className="text-base font-semibold text-foreground">Quick Links</h3>
             </div>

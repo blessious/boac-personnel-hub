@@ -33,6 +33,8 @@ function LoginPage() {
   const search = useSearch({ from: "/login" });
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  const pendingRedirectRef = useRef<string | null>(null);
   const passwordInputRef = useRef<HTMLInputElement | null>(null);
 
   const form = useForm<FormData>({
@@ -45,15 +47,41 @@ function LoginPage() {
   const agencyName = agency.tagline || "SOUTHERN TAGALOG REGIONAL HOSPITAL";
 
   useEffect(() => {
-    if (user) {
+    if (user && !exiting) {
       navigate({ to: "/" });
       return;
     }
-    form.reset({ username: "", password: "" });
-    window.setTimeout(() => {
-      if (passwordInputRef.current) passwordInputRef.current.value = "";
-    }, 0);
-  }, [user, navigate, form]);
+    if (!user) {
+      form.reset({ username: "", password: "" });
+      window.setTimeout(() => {
+        if (passwordInputRef.current) passwordInputRef.current.value = "";
+      }, 0);
+    }
+  }, [user, navigate, form, exiting]);
+
+  const doNavigate = (redirect: string) => {
+    if (redirect.startsWith("/employees/")) {
+      const id = redirect.split("/").filter(Boolean).at(-1);
+      if (id) {
+        navigate({ to: "/employees/$id", params: { id } });
+        return;
+      }
+    }
+    if (
+      redirect === "/" ||
+      redirect === "/employees" ||
+      redirect === "/attendance" ||
+      redirect === "/self-service" ||
+      redirect === "/leave" ||
+      redirect === "/reports" ||
+      redirect === "/settings" ||
+      redirect === "/admin"
+    ) {
+      navigate({ to: redirect });
+    } else {
+      navigate({ to: "/" });
+    }
+  };
 
   const onSubmit = async (data: FormData) => {
     setSubmitting(true);
@@ -62,27 +90,12 @@ function LoginPage() {
       form.reset({ username: "", password: "" });
       toast.success("Welcome back!");
       const redirect = search.redirect || "/";
-      if (redirect.startsWith("/employees/")) {
-        const id = redirect.split("/").filter(Boolean).at(-1);
-        if (id) {
-          navigate({ to: "/employees/$id", params: { id } });
-          return;
-        }
-      }
-      if (
-        redirect === "/" ||
-        redirect === "/employees" ||
-        redirect === "/attendance" ||
-        redirect === "/self-service" ||
-        redirect === "/leave" ||
-        redirect === "/reports" ||
-        redirect === "/settings" ||
-        redirect === "/admin"
-      ) {
-        navigate({ to: redirect });
-      } else {
-        navigate({ to: "/" });
-      }
+      // Start exit animation, then navigate after it finishes
+      pendingRedirectRef.current = redirect;
+      setExiting(true);
+      setTimeout(() => {
+        doNavigate(pendingRedirectRef.current || "/");
+      }, 600);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -91,7 +104,7 @@ function LoginPage() {
   };
 
   return (
-    <main className="relative flex min-h-dvh overflow-hidden bg-white text-[#08275b] md:bg-[#f5f9ff] md:px-8 md:py-5 lg:px-10">
+    <main className={`relative flex min-h-dvh overflow-hidden bg-white text-[#08275b] md:bg-[#f5f9ff] md:px-8 md:py-5 lg:px-10${exiting ? " login-page-fade-out" : ""}`}>
       <div
         className="absolute inset-x-0 top-0 h-[52dvh] bg-cover bg-center opacity-100 md:inset-0 md:h-auto md:bg-left-bottom md:opacity-85"
         style={{ backgroundImage: `url(${bannerSrc})` }}
@@ -102,7 +115,7 @@ function LoginPage() {
       <div className="absolute -bottom-20 left-0 right-0 hidden h-24 rotate-[1.5deg] bg-[#0036a5] md:block" />
 
       <section className="relative z-10 mx-auto flex min-h-dvh w-full flex-col justify-end md:grid md:min-h-[calc(100vh-2.5rem)] md:max-w-6xl md:grid-cols-1 md:items-center md:gap-8 lg:grid-cols-[1fr_410px]">
-        <div className="flex min-h-[52dvh] flex-col justify-between px-6 pb-9 pt-8 text-[#08275b] md:h-full md:min-h-[22rem] md:px-0 md:py-2 lg:py-6">
+        <div className={`flex min-h-[52dvh] flex-col justify-between px-6 pb-9 pt-8 text-[#08275b] md:h-full md:min-h-[22rem] md:px-0 md:py-2 lg:py-6${exiting ? " login-exit-left" : " login-enter-left"}`}>
           <div className="flex items-center gap-3">
             <img
               src={logoSrc}
@@ -145,7 +158,7 @@ function LoginPage() {
           </div>
         </div>
 
-        <div className="flex justify-center md:justify-center lg:justify-end">
+        <div className={`flex justify-center md:justify-center lg:justify-end${exiting ? " login-exit-right" : " login-enter-right"}`}>
           <div className="w-full rounded-t-[2rem] border border-white bg-white px-6 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-7 shadow-[0_-18px_46px_rgba(8,29,66,0.18)] md:max-w-[410px] md:rounded-xl md:border-white/80 md:bg-white/95 md:p-7 md:shadow-[0_24px_70px_rgba(21,56,112,0.18)] md:backdrop-blur">
             <div className="mb-7">
               <h2 className="text-2xl font-extrabold tracking-normal text-[#0b2454]">Sign in</h2>

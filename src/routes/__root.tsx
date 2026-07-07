@@ -155,8 +155,10 @@ function AppLayout() {
         <Outlet />
       ) : (
         <div className="app-frame flex min-h-dvh w-full bg-background">
-          <AppSidebar />
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="dash-sidebar-enter">
+            <AppSidebar />
+          </div>
+          <div className="dash-content-enter flex min-w-0 flex-1 flex-col">
             <AppHeader title={title || "STRH HRIS"} subtitle={subtitle} />
             <main className="mobile-app-content min-w-0 flex-1 p-3 sm:p-4 xl:p-5">
               <Outlet />

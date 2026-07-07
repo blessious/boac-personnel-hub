@@ -811,3 +811,149 @@
     transition-duration: 1ms;
   }
 }
+
+/* ─── Login page entrance / exit animations ─── */
+
+@keyframes login-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-60px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes login-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(60px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes login-slide-out-left {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-80px);
+  }
+}
+
+@keyframes login-slide-out-right {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(80px);
+  }
+}
+
+@keyframes login-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.login-enter-left {
+  animation: login-slide-in-left 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.login-enter-right {
+  animation: login-slide-in-right 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+}
+
+.login-exit-left {
+  animation: login-slide-out-left 0.5s cubic-bezier(0.55, 0, 1, 0.45) both;
+}
+
+.login-exit-right {
+  animation: login-slide-out-right 0.5s cubic-bezier(0.55, 0, 1, 0.45) both;
+}
+
+.login-page-fade-out {
+  animation: login-fade-out 0.55s cubic-bezier(0.55, 0, 1, 0.45) 0.15s both;
+}
+
+/* ─── Dashboard entrance animations ─── */
+
+@keyframes dash-sidebar-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes dash-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dash-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dash-sidebar-enter {
+  animation: dash-sidebar-enter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dash-content-enter {
+  animation: dash-content-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
+}
+
+.dash-card-stagger {
+  animation: dash-card-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dash-card-stagger:nth-child(1) { animation-delay: 0.08s; }
+.dash-card-stagger:nth-child(2) { animation-delay: 0.14s; }
+.dash-card-stagger:nth-child(3) { animation-delay: 0.20s; }
+.dash-card-stagger:nth-child(4) { animation-delay: 0.26s; }
+.dash-card-stagger:nth-child(5) { animation-delay: 0.32s; }
+.dash-card-stagger:nth-child(6) { animation-delay: 0.38s; }
+.dash-card-stagger:nth-child(7) { animation-delay: 0.44s; }
+.dash-card-stagger:nth-child(8) { animation-delay: 0.50s; }
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .login-enter-left,
+  .login-enter-right,
+  .login-exit-left,
+  .login-exit-right,
+  .login-page-fade-out,
+  .dash-sidebar-enter,
+  .dash-content-enter,
+  .dash-card-stagger {
+    animation-duration: 1ms !important;
+    animation-delay: 0s !important;
+  }
+}
