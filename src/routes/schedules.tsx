@@ -25,6 +25,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { formatLocalDate } from "@/components/ui/date-range-utils";
 import {
   Dialog,
   DialogContent,
@@ -67,12 +69,6 @@ export const Route = createFileRoute("/schedules")({
 });
 
 const today = new Date();
-const formatLocalDate = (date: Date) =>
-  [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
 const DEFAULT_SCHEDULE_DATE = formatLocalDate(today);
 type ScheduleForm = {
   target: "default" | "override";
@@ -586,21 +582,18 @@ function SchedulesPage() {
                   </Select>
                 </div>
                 {form.target === "override" && (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field
-                      label="Start Date"
-                      type="date"
-                      value={form.startDate}
-                      onChange={(startDate) => setForm((current) => ({ ...current, startDate }))}
-                      disabled={!canManage}
-                    />
-                    <Field
-                      label="End Date"
-                      type="date"
-                      value={form.endDate}
-                      onChange={(endDate) => setForm((current) => ({ ...current, endDate }))}
-                      disabled={!canManage}
-                    />
+                  <div className="grid gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Date Range</Label>
+                      <DateRangePicker
+                        from={form.startDate}
+                        to={form.endDate}
+                        disabled={!canManage}
+                        onApply={(startDate, endDate) =>
+                          setForm((current) => ({ ...current, startDate, endDate }))
+                        }
+                      />
+                    </div>
                     <label className="flex items-center gap-2 text-sm sm:col-span-2">
                       <input
                         type="checkbox"
@@ -869,25 +862,22 @@ function SchedulesPage() {
                       </Select>
                     </div>
                     {individualForm.target === "override" && (
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                        <Field
-                          label="Start Date"
-                          type="date"
-                          value={individualForm.startDate}
-                          disabled={!canManage}
-                          onChange={(startDate) =>
-                            setIndividualForm((current) => ({ ...current, startDate }))
-                          }
-                        />
-                        <Field
-                          label="End Date"
-                          type="date"
-                          value={individualForm.endDate}
-                          disabled={!canManage}
-                          onChange={(endDate) =>
-                            setIndividualForm((current) => ({ ...current, endDate }))
-                          }
-                        />
+                      <div className="grid gap-3">
+                        <div className="space-y-1.5">
+                          <Label>Date Range</Label>
+                          <DateRangePicker
+                            from={individualForm.startDate}
+                            to={individualForm.endDate}
+                            disabled={!canManage}
+                            onApply={(startDate, endDate) =>
+                              setIndividualForm((current) => ({
+                                ...current,
+                                startDate,
+                                endDate,
+                              }))
+                            }
+                          />
+                        </div>
                         <label className="flex items-center gap-2 text-sm">
                           <input
                             type="checkbox"

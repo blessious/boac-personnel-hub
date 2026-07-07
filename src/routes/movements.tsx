@@ -468,7 +468,6 @@ function MovementsPage() {
                 <div className="mt-1 truncate text-sm font-semibold text-foreground">
                   {m.employeeName}
                 </div>
-                <div className="truncate text-xs text-muted-foreground">{m.employeeNo}</div>
               </div>
               <Status value={m.status} />
             </div>
@@ -525,10 +524,7 @@ function MovementsPage() {
             {displayedMovements.map((m) => (
               <tr className="border-t" key={m.id}>
                 <td className="whitespace-nowrap p-3 font-medium">{m.controlNumber}</td>
-                <td className="p-3">
-                  {m.employeeName}
-                  <div className="text-xs text-muted-foreground">{m.employeeNo}</div>
-                </td>
+                <td className="p-3">{m.employeeName}</td>
                 <td className="p-3">
                   {m.actionType}
                   <div className="text-xs text-muted-foreground">{m.authorityNumber || "-"}</div>
@@ -690,7 +686,6 @@ function MovementDetailDialog({
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h3 className="text-base font-semibold">{movement.employeeName}</h3>
-                      <p className="text-sm text-muted-foreground">{movement.employeeNo}</p>
                     </div>
                     <Status value={movement.status} />
                   </div>
@@ -935,9 +930,7 @@ function MovementDialog({
               {selectedEmployee && (
                 <div className="min-w-0">
                   <span className="font-medium">Employee: </span>
-                  <span className="break-words">
-                    {formatEmployeeName(selectedEmployee)} ({selectedEmployee.employeeId})
-                  </span>
+                  <span className="break-words">{formatEmployeeName(selectedEmployee)}</span>
                 </div>
               )}
               {selectedItem && (
@@ -966,7 +959,11 @@ function MovementDialog({
             label="Employee"
             value={form.employeeId}
             set={(v) => setForm({ ...form, employeeId: v })}
-            rows={employees.map((e) => [e.id, `${formatEmployeeName(e)} (${e.employeeId})`])}
+            rows={employees.map((e) => [
+              e.id,
+              formatEmployeeName(e),
+              [e.employeeId, e.department, e.position].join(" "),
+            ])}
           />
           <SelectField
             label="Personnel action"
@@ -1157,11 +1154,29 @@ function SelectField({
   set: (x: string) => void;
   rows: readonly (readonly string[])[];
 }) {
+  const [query, setQuery] = useState("");
+  const filteredRows = useMemo(() => {
+    const search = query.trim().toLowerCase();
+    if (!search) return rows;
+    return rows.filter((row) => row.join(" ").toLowerCase().includes(search));
+  }, [query, rows]);
+
   return (
     <Field label={label}>
+      {rows.length > 8 && (
+        <div className="relative mb-2">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={`Search ${label.toLowerCase()}...`}
+            className="h-9 pl-9"
+          />
+        </div>
+      )}
       <select className={selectClass} value={value} onChange={(e) => set(e.target.value)}>
         <option value="">Select...</option>
-        {rows.map(([id, name]) => (
+        {filteredRows.map(([id, name]) => (
           <option value={id} key={id}>
             {name}
           </option>

@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
-import { type DateRange } from "react-day-picker";
 import {
   Activity,
   CalendarClock,
@@ -29,7 +28,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { MassDtrPrintModal } from "@/components/MassDtrPrintModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { formatLocalDate, parseLocalDate } from "@/components/ui/date-range-utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,7 +58,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -124,80 +123,8 @@ export const Route = createFileRoute("/attendance")({
 });
 
 const today = new Date();
-const formatLocalDate = (date: Date) =>
-  [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-const parseLocalDate = (value: string) => {
-  const [year, month, day] = value.split("-").map(Number);
-  if (!year || !month || !day) return null;
-  const date = new Date(year, month - 1, day);
-  return Number.isNaN(date.getTime()) ? null : date;
-};
 const DEFAULT_FROM = formatLocalDate(today);
 const DEFAULT_TO = formatLocalDate(today);
-
-type DateRangePreset = {
-  label: string;
-  getRange: () => { from: string; to: string };
-};
-
-const getAttendanceDateRangePresets = (): DateRangePreset[] => [
-  {
-    label: "Today",
-    getRange: () => {
-      const now = new Date();
-      const date = formatLocalDate(now);
-      return { from: date, to: date };
-    },
-  },
-  {
-    label: "Yesterday",
-    getRange: () => {
-      const date = new Date();
-      date.setDate(date.getDate() - 1);
-      const value = formatLocalDate(date);
-      return { from: value, to: value };
-    },
-  },
-  {
-    label: "This Week",
-    getRange: () => {
-      const date = new Date();
-      const day = date.getDay();
-      const mondayOffset = day === 0 ? -6 : 1 - day;
-      const start = new Date(date);
-      start.setDate(date.getDate() + mondayOffset);
-      const end = new Date(start);
-      end.setDate(start.getDate() + 6);
-      return { from: formatLocalDate(start), to: formatLocalDate(end) };
-    },
-  },
-  {
-    label: "This Month",
-    getRange: () => {
-      const date = new Date();
-      const start = new Date(date.getFullYear(), date.getMonth(), 1);
-      const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-      return { from: formatLocalDate(start), to: formatLocalDate(end) };
-    },
-  },
-  {
-    label: "Current Pay Period",
-    getRange: () => {
-      const date = new Date();
-      const startDay = date.getDate() <= 15 ? 1 : 16;
-      const endDay =
-        date.getDate() <= 15 ? 15 : new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-      return {
-        from: formatLocalDate(new Date(date.getFullYear(), date.getMonth(), startDay)),
-        to: formatLocalDate(new Date(date.getFullYear(), date.getMonth(), endDay)),
-      };
-    },
-  },
-];
 
 type HospitalShiftPreset = {
   value: string;
@@ -323,10 +250,15 @@ function shiftDateString(value: string, days: number) {
   return formatLocalDate(date);
 }
 
-function filterEmployeeOptions(options: Array<{ id: string; label: string }>, searchValue: string) {
+function filterEmployeeOptions(
+  options: Array<{ id: string; label: string; searchText?: string }>,
+  searchValue: string,
+) {
   const search = searchValue.trim().toLowerCase();
   if (!search) return options;
-  return options.filter((employee) => employee.label.toLowerCase().includes(search));
+  return options.filter((employee) =>
+    [employee.label, employee.searchText].join(" ").toLowerCase().includes(search),
+  );
 }
 
 const EMPTY_DTR_FORM: DtrPayload = {
@@ -430,6 +362,7 @@ function AttendancePage() {
   const [filterEmployeeSearch, setFilterEmployeeSearch] = useState("");
   const [formEmployeeSearch, setFormEmployeeSearch] = useState("");
   const [exportEmployeeSearch, setExportEmployeeSearch] = useState("");
+  const [correctionEmployeeSearch, setCorrectionEmployeeSearch] = useState("");
   const [exportNoterSearch, setExportNoterSearch] = useState("");
   const [scheduleDepartment, setScheduleDepartment] = useState("all");
   const [scheduleEmployeeSearch, setScheduleEmployeeSearch] = useState("");
@@ -687,7 +620,8 @@ function AttendancePage() {
     () =>
       employees.map((employee) => ({
         id: employee.id,
-        label: `${formatEmployeeName(employee)} (${employee.employeeId})`,
+        label: formatEmployeeName(employee),
+        searchText: [employee.employeeId, employee.department, employee.position].join(" "),
       })),
     [employees],
   );
@@ -703,6 +637,10 @@ function AttendancePage() {
     () => filterEmployeeOptions(employeeOptions, exportEmployeeSearch),
     [employeeOptions, exportEmployeeSearch],
   );
+  const filteredCorrectionEmployeeOptions = useMemo(
+    () => filterEmployeeOptions(employeeOptions, correctionEmployeeSearch),
+    [correctionEmployeeSearch, employeeOptions],
+  );
   const scheduleDepartments = useMemo(
     () =>
       Array.from(new Set(employees.map((employee) => employee.department).filter(Boolean))).sort(
@@ -714,7 +652,8 @@ function AttendancePage() {
     () =>
       employees.map((employee) => ({
         id: employee.id,
-        label: `${formatEmployeeName(employee)} (${employee.employeeId})`,
+        label: formatEmployeeName(employee),
+        searchText: [employee.employeeId, employee.department, employee.position].join(" "),
         department: employee.department || "",
       })),
     [employees],
@@ -724,7 +663,8 @@ function AttendancePage() {
     return scheduleEmployeeOptions.filter((employee) => {
       const matchesDepartment =
         scheduleDepartment === "all" || employee.department === scheduleDepartment;
-      const matchesSearch = !search || employee.label.toLowerCase().includes(search);
+      const matchesSearch =
+        !search || [employee.label, employee.searchText].join(" ").toLowerCase().includes(search);
       return matchesDepartment && matchesSearch;
     });
   }, [scheduleDepartment, scheduleEmployeeOptions, scheduleEmployeeSearch]);
@@ -1540,9 +1480,10 @@ function AttendancePage() {
                 <Label className="text-xs uppercase text-muted-foreground font-semibold">
                   Date Range
                 </Label>
-                <AttendanceDateRangePicker
+                <DateRangePicker
                   from={from}
                   to={to}
+                  labelFormatter={formatDtrRangeLabel}
                   onApply={(nextFrom, nextTo) => {
                     setFrom(nextFrom);
                     setTo(nextTo);
@@ -2052,7 +1993,6 @@ function AttendancePage() {
                         <tr key={request.id} className="border-t border-border">
                           <td className="px-4 py-3">
                             <p className="font-medium">{request.employeeName}</p>
-                            <p className="text-xs text-muted-foreground">{request.employeeNo}</p>
                           </td>
                           <td className="px-4 py-3">{formatDisplayDate(request.workDate)}</td>
                           <td className="px-4 py-3">
@@ -2577,7 +2517,7 @@ function AttendancePage() {
                   <Input
                     value={importSearch}
                     onChange={(event) => setImportSearch(event.target.value)}
-                    placeholder="Search by name, ID, or office"
+                    placeholder="Search employees..."
                     className="pl-9"
                   />
                 </div>
@@ -2598,9 +2538,11 @@ function AttendancePage() {
                         <span className="block truncate font-medium text-foreground">
                           {employee.name || employee.employeeNo}
                         </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {employee.employeeNo} {employee.office ? `- ${employee.office}` : ""}
-                        </span>
+                        {employee.office && (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {employee.office}
+                          </span>
+                        )}
                         {employee.position && (
                           <span className="block truncate text-xs text-muted-foreground">
                             {employee.position}
@@ -3423,11 +3365,28 @@ function AttendancePage() {
                     <SelectValue placeholder="Select employee" />
                   </SelectTrigger>
                   <SelectContent>
-                    {employeeOptions.map((employee) => (
+                    <div className="sticky top-0 z-10 bg-popover p-2">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                        <Input
+                          value={correctionEmployeeSearch}
+                          onChange={(event) => setCorrectionEmployeeSearch(event.target.value)}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          placeholder="Search employees..."
+                          className="h-8 pl-9"
+                        />
+                      </div>
+                    </div>
+                    {filteredCorrectionEmployeeOptions.map((employee) => (
                       <SelectItem key={employee.id} value={employee.id}>
                         {employee.label}
                       </SelectItem>
                     ))}
+                    {filteredCorrectionEmployeeOptions.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No employees found.
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -3648,149 +3607,6 @@ function AttendancePage() {
         />
       )}
     </AppShell>
-  );
-}
-
-function AttendanceDateRangePicker({
-  from,
-  to,
-  onApply,
-}: {
-  from: string;
-  to: string;
-  onApply: (from: string, to: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [draftFrom, setDraftFrom] = useState(from);
-  const [draftTo, setDraftTo] = useState(to);
-  const presets = useMemo(() => getAttendanceDateRangePresets(), []);
-  const draftFromDate = parseLocalDate(draftFrom);
-  const draftToDate = parseLocalDate(draftTo);
-  const selectedRange: DateRange | undefined = draftFromDate
-    ? { from: draftFromDate, to: draftToDate || draftFromDate }
-    : undefined;
-  const rangeIsValid = Boolean(
-    draftFromDate && draftToDate && draftFromDate.getTime() <= draftToDate.getTime(),
-  );
-
-  const resetDraft = () => {
-    setDraftFrom(from);
-    setDraftTo(to);
-  };
-
-  const choosePreset = (preset: DateRangePreset) => {
-    const nextRange = preset.getRange();
-    setDraftFrom(nextRange.from);
-    setDraftTo(nextRange.to);
-  };
-
-  const apply = () => {
-    if (!rangeIsValid) {
-      toast.error("Select a valid date range");
-      return;
-    }
-    onApply(draftFrom, draftTo);
-    setOpen(false);
-  };
-
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        if (nextOpen) resetDraft();
-      }}
-    >
-      <PopoverTrigger asChild>
-        <Button variant="outline" className="h-9 w-full justify-between bg-background px-3">
-          <span className="truncate text-left">{formatDtrRangeLabel(from, to)}</span>
-          <CalendarClock className="ml-2 h-4 w-4 text-muted-foreground" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[min(92vw,46rem)] p-0">
-        <div className="grid gap-0 md:grid-cols-[12rem_minmax(0,1fr)]">
-          <div className="border-b border-border p-3 md:border-b-0 md:border-r">
-            <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Presets</p>
-            <div className="grid gap-1">
-              {presets.map((preset) => (
-                <Button
-                  key={preset.label}
-                  type="button"
-                  variant="ghost"
-                  className="h-8 justify-start px-2 text-sm"
-                  onClick={() => choosePreset(preset)}
-                >
-                  {preset.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase text-muted-foreground">From</Label>
-                <Input
-                  type="date"
-                  value={draftFrom}
-                  onChange={(event) => setDraftFrom(event.target.value)}
-                  className="h-9"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs uppercase text-muted-foreground">To</Label>
-                <Input
-                  type="date"
-                  value={draftTo}
-                  onChange={(event) => setDraftTo(event.target.value)}
-                  className="h-9"
-                />
-              </div>
-            </div>
-
-            <div className="mt-3 overflow-x-auto rounded-md border border-border">
-              <Calendar
-                mode="range"
-                numberOfMonths={2}
-                selected={selectedRange}
-                onSelect={(range) => {
-                  if (!range?.from) {
-                    setDraftFrom("");
-                    setDraftTo("");
-                    return;
-                  }
-                  setDraftFrom(formatLocalDate(range.from));
-                  setDraftTo(formatLocalDate(range.to || range.from));
-                }}
-                className="mx-auto"
-              />
-            </div>
-
-            {!rangeIsValid && (
-              <p className="mt-2 text-xs font-medium text-destructive">
-                Select a start date that is not after the end date.
-              </p>
-            )}
-
-            <div className="mt-3 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  resetDraft();
-                  setOpen(false);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button type="button" onClick={apply} disabled={!rangeIsValid}>
-                Apply
-              </Button>
-            </div>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }
 

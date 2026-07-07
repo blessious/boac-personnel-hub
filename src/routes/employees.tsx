@@ -425,7 +425,7 @@ function EmployeesPage() {
             <div className="relative order-2 col-span-3 w-full lg:order-none lg:max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
               <Input
-                placeholder="Search by name, ID, or email..."
+                placeholder="Search employees..."
                 className="pl-9 bg-card text-card-foreground"
                 value={q}
                 onChange={(event) => {
@@ -593,7 +593,6 @@ function EmployeesPage() {
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-border/50 text-muted-foreground uppercase tracking-wider">
-                    <th className="px-5 py-4 font-semibold">EMPLOYEE NO</th>
                     <th className="px-5 py-4 font-semibold">FULL NAME</th>
                     <th className="px-5 py-4 font-semibold">POSITION</th>
                     <th className="px-5 py-4 font-semibold">DEPARTMENT</th>
@@ -605,7 +604,7 @@ function EmployeesPage() {
                   {loading ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={5}
                         className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
                       >
                         Loading employees...
@@ -614,7 +613,7 @@ function EmployeesPage() {
                   ) : employees.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={5}
                         className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
                       >
                         No employee records found.
@@ -642,9 +641,6 @@ function EmployeesPage() {
                             navigate({ to: "/employees/$id", params: { id: employee.id } })
                           }
                         >
-                          <td className="px-5 py-4 text-muted-foreground font-medium whitespace-nowrap">
-                            {employee.itemNo || employee.employeeId || "-"}
-                          </td>
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
                               <div
@@ -781,9 +777,6 @@ function EmployeesPage() {
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-semibold text-foreground">
                             {formatEmployeeName(employee)}
-                          </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {employee.itemNo || employee.employeeId || "-"}
                           </div>
                         </div>
                       </div>

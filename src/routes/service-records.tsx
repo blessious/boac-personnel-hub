@@ -1,18 +1,32 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   BriefcaseBusiness,
   Building2,
+  CalendarDays,
   Download,
   FileClock,
+  FileSpreadsheet,
   Info,
+  Loader2,
   Plus,
   Search,
   Trash2,
+  UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,9 +49,8 @@ import {
   type ServiceRecord,
   type ServiceRecordForm,
 } from "@/lib/service-records-api";
-import { formatDisplayDate, formatEmployeeName } from "@/lib/utils";
+import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
 export const Route = createFileRoute("/service-records")({ component: ServiceRecordsPage });
-const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 function ServiceRecordsPage() {
   const { user } = useAuth(),
     canManage = canWriteHrRecords(user?.role);
@@ -47,16 +60,20 @@ function ServiceRecordsPage() {
     [warnings, setWarnings] = useState<string[]>([]),
     [query, setQuery] = useState(""),
     [loading, setLoading] = useState(false),
+    [loadingEmployees, setLoadingEmployees] = useState(true),
     [edit, setEdit] = useState<ServiceRecord | null | undefined>(undefined),
     [form, setForm] = useState<ServiceRecordForm>(emptyServiceRecord),
+    [recordToDelete, setRecordToDelete] = useState<ServiceRecord | null>(null),
     [busy, setBusy] = useState(false);
   useEffect(() => {
+    setLoadingEmployees(true);
     loadAllEmployees()
       .then((x) => {
         setEmployees(x);
         if (user?.employeeId && !canReadHrRecords(user.role)) setEmployeeId(user.employeeId);
       })
-      .catch((e) => toast.error(e.message));
+      .catch((e) => toast.error(e.message))
+      .finally(() => setLoadingEmployees(false));
   }, [user]);
   const load = useCallback(
     async (id = employeeId) => {
@@ -81,9 +98,17 @@ function ServiceRecordsPage() {
     load(employeeId);
   }, [employeeId, load]);
   const filteredEmployees = employees.filter((e) =>
-    `${formatEmployeeName(e)} ${e.employeeId}`.toLowerCase().includes(query.toLowerCase()),
+    [formatEmployeeName(e), e.employeeId, e.department, e.position]
+      .join(" ")
+      .toLowerCase()
+      .includes(query.toLowerCase()),
   );
   const selected = employees.find((e) => e.id === employeeId);
+  const summary = useMemo(() => {
+    const automatic = records.filter((record) => record.source === "Automatic").length;
+    const manual = records.length - automatic;
+    return { automatic, manual };
+  }, [records]);
   const openForm = (r?: ServiceRecord) => {
     setEdit(r || null);
     setForm(
@@ -110,6 +135,14 @@ function ServiceRecordsPage() {
   };
   const save = async () => {
     if (!employeeId) return;
+    if (!form.serviceFrom || !form.positionTitle.trim()) {
+      toast.error("Service from and position are required");
+      return;
+    }
+    if (form.serviceTo && form.serviceFrom > form.serviceTo) {
+      toast.error("Service from cannot be after service to");
+      return;
+    }
     setBusy(true);
     try {
       await saveServiceRecord(employeeId, form, edit?.id);
@@ -122,14 +155,18 @@ function ServiceRecordsPage() {
       setBusy(false);
     }
   };
-  const remove = async (r: ServiceRecord) => {
-    if (!confirm(`Delete manual period beginning ${formatDisplayDate(r.serviceFrom)}?`)) return;
+  const confirmRemove = async () => {
+    if (!recordToDelete) return;
     try {
-      await deleteServiceRecord(r.id);
+      setBusy(true);
+      await deleteServiceRecord(recordToDelete.id);
       toast.success("Legacy period deleted");
+      setRecordToDelete(null);
       await load();
     } catch (e) {
       toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   };
   const doExport = async (format: "xlsx" | "pdf") => {
@@ -150,37 +187,74 @@ function ServiceRecordsPage() {
       title="Service Records"
       subtitle="Movement-derived service history, controlled legacy encoding, and HRIS-generated exports"
     >
-      <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
-        <aside className="hidden rounded-lg border bg-card p-3 md:block">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              placeholder="Find employee"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+      <div className="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <aside className="hidden rounded-xl border border-border bg-card shadow-sm md:block">
+          <div className="border-b border-border p-4">
+            <div className="flex items-center gap-2 font-semibold">
+              <UserRound className="h-4 w-4 text-blue-600" />
+              Employees
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Select one employee to view or export service records.
+            </p>
           </div>
-          <div className="mt-2 max-h-[38vh] space-y-1 overflow-y-auto lg:max-h-[70vh]">
-            {filteredEmployees.map((e) => (
-              <button
-                key={e.id}
-                onClick={() => setEmployeeId(e.id)}
-                className={`w-full rounded-md px-3 py-2 text-left text-sm ${employeeId === e.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-              >
-                <div className="font-medium">{formatEmployeeName(e)}</div>
-                <div className="text-xs opacity-75">{e.employeeId}</div>
-              </button>
-            ))}
+          <div className="p-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Search employees..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            <div className="mt-3 max-h-[38vh] space-y-1 overflow-y-auto pr-1 lg:max-h-[68vh]">
+              {loadingEmployees && (
+                <div className="flex items-center justify-center gap-2 px-3 py-6 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading employees...
+                </div>
+              )}
+              {filteredEmployees.map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => setEmployeeId(e.id)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                    employeeId === e.id
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-foreground hover:bg-muted",
+                  )}
+                >
+                  <AvatarInitials employee={e} selected={employeeId === e.id} />
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{formatEmployeeName(e)}</div>
+                    <div
+                      className={cn(
+                        "truncate text-xs",
+                        employeeId === e.id ? "text-blue-100" : "text-muted-foreground",
+                      )}
+                    >
+                      {e.position || e.department || "No assignment"}
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {!loadingEmployees && filteredEmployees.length === 0 && (
+                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  No employees found.
+                </div>
+              )}
+            </div>
           </div>
         </aside>
-        <section>
+        <section className="min-w-0">
           <div className="mb-3 space-y-3 md:hidden">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="Search employee"
+                placeholder="Search employees..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
@@ -197,7 +271,9 @@ function ServiceRecordsPage() {
                     className={`w-full rounded-lg px-3 py-2 text-left text-sm ${employeeId === e.id ? "bg-blue-50 text-blue-700" : "hover:bg-muted"}`}
                   >
                     <span className="block font-semibold">{formatEmployeeName(e)}</span>
-                    <span className="block text-xs text-muted-foreground">{e.employeeId}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {e.position || e.department || "No assignment"}
+                    </span>
                   </button>
                 ))}
                 {!filteredEmployees.length && (
@@ -209,8 +285,12 @@ function ServiceRecordsPage() {
             )}
           </div>
           {!employeeId ? (
-            <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-              Select an employee to generate a service record.
+            <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center text-muted-foreground shadow-sm">
+              <FileClock className="mx-auto mb-3 h-10 w-10 text-muted-foreground/70" />
+              <div className="font-medium text-foreground">Select an employee</div>
+              <p className="mt-1 text-sm">
+                Choose an employee from the list to view service periods and generate exports.
+              </p>
             </div>
           ) : (
             <>
@@ -222,7 +302,7 @@ function ServiceRecordsPage() {
                   </Button>
                 )}
                 <Button variant="outline" disabled={busy} onClick={() => doExport("xlsx")}>
-                  <Download className="mr-2 h-4 w-4" />
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
                   Excel
                 </Button>
                 <Button
@@ -235,41 +315,63 @@ function ServiceRecordsPage() {
                 </Button>
               </div>
               <div className="mb-3 grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/45 p-4 shadow-sm md:hidden">
-                <div className="grid h-14 w-14 place-items-center rounded-full bg-blue-100 text-lg font-bold text-blue-700">
-                  {selected ? `${selected.firstname[0] || ""}${selected.lastname[0] || ""}` : "--"}
-                </div>
+                <AvatarInitials employee={selected} size="lg" />
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-bold text-foreground">
                     {formatEmployeeName(selected)}
                   </h2>
-                  <p className="truncate text-sm text-muted-foreground">{selected?.employeeId}</p>
                   <p className="text-sm font-semibold text-blue-700">
                     {records.length} service period(s)
                   </p>
                 </div>
               </div>
-              <div className="hidden flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4 md:flex">
-                <div>
-                  <h2 className="font-semibold">{formatEmployeeName(selected)}</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {selected?.employeeId} - {records.length} service period(s)
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {canManage && (
-                    <Button variant="outline" onClick={() => openForm()}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add legacy period
+              <div className="hidden rounded-xl border border-border bg-card p-4 shadow-sm md:block">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <AvatarInitials employee={selected} size="lg" />
+                    <div className="min-w-0">
+                      <h2 className="truncate text-lg font-semibold">
+                        {formatEmployeeName(selected)}
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        {selected?.position || selected?.department || "No assignment"} -{" "}
+                        {records.length} service period(s)
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {canManage && (
+                      <Button variant="outline" onClick={() => openForm()}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add legacy period
+                      </Button>
+                    )}
+                    <Button variant="outline" disabled={busy} onClick={() => doExport("xlsx")}>
+                      <FileSpreadsheet className="mr-2 h-4 w-4" />
+                      Excel
                     </Button>
-                  )}
-                  <Button variant="outline" disabled={busy} onClick={() => doExport("xlsx")}>
-                    <Download className="mr-2 h-4 w-4" />
-                    Excel
-                  </Button>
-                  <Button disabled={busy} onClick={() => doExport("pdf")}>
-                    <Download className="mr-2 h-4 w-4" />
-                    PDF
-                  </Button>
+                    <Button disabled={busy} onClick={() => doExport("pdf")}>
+                      <Download className="mr-2 h-4 w-4" />
+                      PDF
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <SummaryTile
+                    label="Total Periods"
+                    value={records.length}
+                    icon={<FileClock className="h-4 w-4 text-blue-600" />}
+                  />
+                  <SummaryTile
+                    label="Movement Rows"
+                    value={summary.automatic}
+                    icon={<BriefcaseBusiness className="h-4 w-4 text-emerald-600" />}
+                  />
+                  <SummaryTile
+                    label="Legacy Rows"
+                    value={summary.manual}
+                    icon={<CalendarDays className="h-4 w-4 text-amber-600" />}
+                  />
                 </div>
               </div>
               {warnings.length > 0 && (
@@ -341,7 +443,10 @@ function ServiceRecordsPage() {
                             </p>
                           </div>
                           <span
-                            className={`rounded-full px-2 py-1 text-center text-xs ${r.source === "Automatic" ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"}`}
+                            className={cn(
+                              "rounded-full px-2 py-1 text-center text-xs",
+                              sourceBadgeClass(r.source),
+                            )}
                           >
                             {r.source}
                           </span>
@@ -365,7 +470,7 @@ function ServiceRecordsPage() {
                           size="icon"
                           variant="ghost"
                           title="Delete"
-                          onClick={() => remove(r)}
+                          onClick={() => setRecordToDelete(r)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -379,93 +484,110 @@ function ServiceRecordsPage() {
                   </div>
                 )}
               </div>
-              <div className="mobile-desktop-table mt-3 overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-left">
-                    <tr>
-                      {[
-                        "Period",
-                        "Position / Designation",
-                        "Department",
-                        "Status / Action",
-                        "Salary / SG",
-                        "Item No.",
-                        "Source",
-                        "Actions",
-                      ].map((x) => (
-                        <th className="p-3" key={x}>
-                          {x}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {records.map((r) => (
-                      <tr className="border-t" key={r.id}>
-                        <td className="whitespace-nowrap p-3">
-                          {formatDisplayDate(r.serviceFrom)}
-                          <br />
-                          <span className="text-xs text-muted-foreground">
-                            to {r.serviceTo ? formatDisplayDate(r.serviceTo) : "Present"}
-                          </span>
-                        </td>
-                        <td className="p-3 font-medium">{r.positionTitle}</td>
-                        <td className="p-3">{r.department || "-"}</td>
-                        <td className="p-3">
-                          {r.appointmentStatus || "-"}
-                          {r.separationCause && (
-                            <div className="text-xs text-red-700">{r.separationCause}</div>
-                          )}
-                        </td>
-                        <td className="p-3">
-                          {r.annualSalary != null ? `PHP ${r.annualSalary.toLocaleString()}` : "-"}
-                          <div className="text-xs text-muted-foreground">
-                            {r.salaryGrade != null
-                              ? `SG ${r.salaryGrade}, Step ${r.salaryStep ?? "-"}`
-                              : ""}
-                          </div>
-                        </td>
-                        <td className="p-3">{r.itemNumber || "-"}</td>
-                        <td className="p-3">
-                          <span
-                            className={`rounded-full px-2 py-1 text-xs ${r.source === "Automatic" ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"}`}
-                          >
-                            {r.source}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          {canManage && r.source === "Manual" && (
-                            <div className="flex gap-1">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                title="Edit"
-                                onClick={() => openForm(r)}
-                              >
-                                <FileClock className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                title="Delete"
-                                onClick={() => remove(r)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                    {!records.length && (
+              <div className="mobile-desktop-table mt-3 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+                <div className="border-b border-border px-4 py-3">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <FileClock className="h-4 w-4 text-blue-600" />
+                    Service Periods
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Automatic rows are generated from posted movements; legacy rows are encoded
+                    here.
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-left">
                       <tr>
-                        <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                          {loading ? "Loading..." : "No service periods available."}
-                        </td>
+                        {[
+                          "Period",
+                          "Position / Designation",
+                          "Department",
+                          "Status / Action",
+                          "Salary / SG",
+                          "Item No.",
+                          "Source",
+                          "Actions",
+                        ].map((x) => (
+                          <th className="p-3" key={x}>
+                            {x}
+                          </th>
+                        ))}
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {records.map((r) => (
+                        <tr className="border-t" key={r.id}>
+                          <td className="whitespace-nowrap p-3">
+                            {formatDisplayDate(r.serviceFrom)}
+                            <br />
+                            <span className="text-xs text-muted-foreground">
+                              to {r.serviceTo ? formatDisplayDate(r.serviceTo) : "Present"}
+                            </span>
+                          </td>
+                          <td className="p-3 font-medium">{r.positionTitle}</td>
+                          <td className="p-3">{r.department || "-"}</td>
+                          <td className="p-3">
+                            {r.appointmentStatus || "-"}
+                            {r.separationCause && (
+                              <div className="text-xs text-red-700">{r.separationCause}</div>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            {r.annualSalary != null
+                              ? `PHP ${r.annualSalary.toLocaleString()}`
+                              : "-"}
+                            <div className="text-xs text-muted-foreground">
+                              {r.salaryGrade != null
+                                ? `SG ${r.salaryGrade}, Step ${r.salaryStep ?? "-"}`
+                                : ""}
+                            </div>
+                          </td>
+                          <td className="p-3">{r.itemNumber || "-"}</td>
+                          <td className="p-3">
+                            <span
+                              className={cn(
+                                "rounded-full px-2 py-1 text-xs",
+                                sourceBadgeClass(r.source),
+                              )}
+                            >
+                              {r.source}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            {canManage && r.source === "Manual" && (
+                              <div className="flex gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  title="Edit"
+                                  onClick={() => openForm(r)}
+                                >
+                                  <FileClock className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  title="Delete"
+                                  onClick={() => setRecordToDelete(r)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {!records.length && (
+                        <tr>
+                          <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                            {loading ? "Loading..." : "No service periods available."}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               <p className="mt-3 flex gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
@@ -490,6 +612,35 @@ function ServiceRecordsPage() {
         save={save}
         busy={busy}
       />
+      <AlertDialog
+        open={Boolean(recordToDelete)}
+        onOpenChange={(open) => !open && setRecordToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete legacy service period?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the manually encoded period beginning{" "}
+              {recordToDelete ? formatDisplayDate(recordToDelete.serviceFrom) : ""}. Automatic
+              movement-derived rows are not affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmRemove();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              Delete Period
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }
@@ -520,6 +671,10 @@ function ServiceDialog({
         <DialogHeader>
           <DialogTitle>{edit ? "Edit" : "Add"} legacy service period</DialogTitle>
         </DialogHeader>
+        <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+          Use this only for service periods that are not already represented by posted personnel
+          movements.
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field l="Service from">
             <Input type="date" value={form.serviceFrom} onChange={f("serviceFrom")} />
@@ -528,7 +683,11 @@ function ServiceDialog({
             <Input type="date" value={form.serviceTo} onChange={f("serviceTo")} />
           </Field>
           <Field l="Position / designation">
-            <Input value={form.positionTitle} onChange={f("positionTitle")} />
+            <Input
+              value={form.positionTitle}
+              onChange={f("positionTitle")}
+              placeholder="Required"
+            />
           </Field>
           <Field l="Department / office">
             <Input value={form.department} onChange={f("department")} />
@@ -537,7 +696,11 @@ function ServiceDialog({
             <Input value={form.agency} onChange={f("agency")} />
           </Field>
           <Field l="Appointment status">
-            <Input value={form.appointmentStatus} onChange={f("appointmentStatus")} />
+            <Input
+              value={form.appointmentStatus}
+              onChange={f("appointmentStatus")}
+              placeholder="Permanent, Casual, JO/COS..."
+            />
           </Field>
           <Field l="Annual salary">
             <Input
@@ -588,6 +751,54 @@ function ServiceDialog({
       </DialogContent>
     </Dialog>
   );
+}
+function AvatarInitials({
+  employee,
+  selected,
+  size = "md",
+}: {
+  employee?: EmployeeRecord | null;
+  selected?: boolean;
+  size?: "md" | "lg";
+}) {
+  const initials = employee
+    ? `${employee.firstname?.[0] || ""}${employee.lastname?.[0] || ""}`.toUpperCase() || "--"
+    : "--";
+  return (
+    <div
+      className={cn(
+        "grid shrink-0 place-items-center rounded-full font-bold",
+        size === "lg" ? "h-14 w-14 text-lg" : "h-9 w-9 text-xs",
+        selected ? "bg-white/20 text-white" : "bg-blue-100 text-blue-700",
+      )}
+    >
+      {initials}
+    </div>
+  );
+}
+function SummaryTile({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-medium uppercase text-muted-foreground">{label}</span>
+        {icon}
+      </div>
+      <div className="mt-1 text-xl font-semibold text-foreground">{value}</div>
+    </div>
+  );
+}
+function sourceBadgeClass(source: ServiceRecord["source"]) {
+  if (source === "Automatic") return "bg-blue-100 text-blue-800";
+  if (source === "Manual") return "bg-amber-100 text-amber-800";
+  return "bg-slate-100 text-slate-700";
 }
 function Field({ l, children }: { l: string; children: React.ReactNode }) {
   return (

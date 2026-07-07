@@ -364,9 +364,6 @@ function PlantillaPage() {
                 >
                   {i.occupant ? i.occupant.employeeName : "Vacant"}
                 </span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {i.occupant?.employeeNo || "-"}
-                </span>
               </div>
             </div>
             <div className="flex flex-wrap justify-end gap-1">
@@ -453,10 +450,7 @@ function PlantillaPage() {
                 </td>
                 <td className="p-3">
                   {i.occupant ? (
-                    <>
-                      <span className="font-medium">{i.occupant.employeeName}</span>
-                      <div className="text-xs text-muted-foreground">{i.occupant.employeeNo}</div>
-                    </>
+                    <span className="font-medium">{i.occupant.employeeName}</span>
                   ) : (
                     <span className="text-amber-700">Vacant</span>
                   )}
