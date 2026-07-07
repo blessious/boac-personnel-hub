@@ -4,3 +4,55 @@ import { twMerge } from "tailwind-merge";
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+export function formatDisplayDate(value?: string | Date | null, fallback = "-") {
+  const date = parseDisplayDate(value);
+  if (!date) return value ? String(value) : fallback;
+
+  return [
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+    String(date.getFullYear()),
+  ].join("/");
+}
+
+export function formatDisplayDateTime(value?: string | Date | null, fallback = "-") {
+  const date = parseDisplayDate(value);
+  if (!date) return value ? String(value) : fallback;
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export function formatDisplayDateRange(
+  from?: string | Date | null,
+  to?: string | Date | null,
+  fallback = "-",
+) {
+  const fromText = formatDisplayDate(from, fallback);
+  const toText = formatDisplayDate(to, fallback);
+  if (fromText === fallback && toText === fallback) return fallback;
+  if (fromText === toText || toText === fallback) return fromText;
+  if (fromText === fallback) return toText;
+  return `${fromText} - ${toText}`;
+}
+
+function parseDisplayDate(value?: string | Date | null) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+  const isoDateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDateOnly) {
+    const [, year, month, day] = isoDateOnly;
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}

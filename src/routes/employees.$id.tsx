@@ -50,7 +50,7 @@ import {
   type LeaveBalance,
   type LeaveStatus,
 } from "@/lib/leave-api";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 
 export const Route = createFileRoute("/employees/$id")({
   component: EmployeeFile,
@@ -1034,14 +1034,7 @@ function formatRecordDate(value: unknown, present = false) {
   if (!raw) return present ? "Present" : "";
   if (["present", "current"].includes(raw.toLowerCase())) return "Present";
 
-  const date = new Date(raw);
-  if (!Number.isFinite(date.getTime())) return raw;
-
-  return date.toLocaleDateString("en-PH", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  return formatDisplayDate(raw, raw);
 }
 
 function formatDuration(payload: SectionRow["payload"]) {
@@ -1268,6 +1261,7 @@ function renderSectionValue(
   payload: Record<string, string | number | boolean | null>,
 ) {
   const value = String(payload[field.key] ?? "");
+  if (field.type === "date") return formatDisplayDate(value, "");
   if (field.type !== "file") return value;
   const data = String(payload[`${field.key}Data`] ?? "");
   if (!value) return "";
@@ -1383,7 +1377,7 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
                       <div className="min-w-0">
                         <div className="font-medium leading-5 text-foreground">{balance.name}</div>
                         <div className="text-xs text-muted-foreground">
-                          Updated {new Date(balance.updatedAt).toLocaleDateString()}
+                          Updated {formatDisplayDate(balance.updatedAt)}
                         </div>
                       </div>
                     </td>
@@ -1444,7 +1438,7 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
                   latestLedgerEntries.map((entry) => (
                     <tr key={entry.id} className="border-b border-border/50 last:border-0">
                       <td className="px-3 py-2.5 text-muted-foreground">
-                        {new Date(entry.createdAt).toLocaleDateString()}
+                        {formatDisplayDate(entry.createdAt)}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="font-medium">{entry.code}</div>
@@ -1565,7 +1559,8 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
                     <tr key={application.id} className="border-b border-border/50 last:border-0">
                       <td className="px-3 py-2.5">{application.leaveName}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">
-                        {application.dateFrom} to {application.dateTo}
+                        {formatDisplayDate(application.dateFrom)} to{" "}
+                        {formatDisplayDate(application.dateTo)}
                       </td>
                       <td className="px-3 py-2.5">
                         {formatLeaveNumber(application.daysRequested)}
@@ -1615,7 +1610,7 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
                         {adjustment.reason || "-"}
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground">
-                        {new Date(adjustment.createdAt).toLocaleDateString()}
+                        {formatDisplayDate(adjustment.createdAt)}
                       </td>
                     </tr>
                   ))

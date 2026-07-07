@@ -66,7 +66,7 @@ import {
   type SettingsOptions,
   type DashboardResponse,
 } from "@/lib/employees-api";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -318,15 +318,7 @@ function EmployeesPage() {
   const joCosPct = totalEmployees > 0 ? Math.round((joCosEmployees / totalEmployees) * 100) : 0;
   const activePct = totalEmployees > 0 ? Math.round((activeEmployees / totalEmployees) * 100) : 0;
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return "-";
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    } catch {
-      return dateStr;
-    }
-  };
+  const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
   return (
     <AppShell

@@ -55,7 +55,7 @@ import {
   type LeaveStatus,
   type LeaveType,
 } from "@/lib/leave-api";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 
 export const Route = createFileRoute("/leave")({
   component: LeavePage,
@@ -442,8 +442,8 @@ function LeavePage() {
                       <p className="text-xs text-muted-foreground">{application.leaveCode}</p>
                     </div>
                     <div className="border-l border-border/70 pl-3 text-sm text-muted-foreground">
-                      <p>{application.dateFrom} to</p>
-                      <p>{application.dateTo}</p>
+                      <p>{formatDisplayDate(application.dateFrom)} to</p>
+                      <p>{formatDisplayDate(application.dateTo)}</p>
                     </div>
                     <div className="border-l border-border/70 pl-3 text-center">
                       <p className="text-sm font-bold text-foreground">
@@ -583,7 +583,8 @@ function LeavePage() {
                         <div className="text-xs text-muted-foreground">{application.leaveCode}</div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {application.dateFrom} to {application.dateTo}
+                        {formatDisplayDate(application.dateFrom)} to{" "}
+                        {formatDisplayDate(application.dateTo)}
                       </td>
                       <td className="px-4 py-3 font-medium">
                         {formatNumber(application.daysRequested)}
@@ -951,8 +952,9 @@ function LeavePage() {
                 {decision?.application.employeeName}
               </div>
               <div className="text-muted-foreground">
-                {decision?.application.leaveName} - {decision?.application.dateFrom} to{" "}
-                {decision?.application.dateTo}
+                {decision?.application.leaveName} -{" "}
+                {formatDisplayDate(decision?.application.dateFrom)} to{" "}
+                {formatDisplayDate(decision?.application.dateTo)}
               </div>
             </div>
             <Field label="Remarks">
@@ -1242,7 +1244,7 @@ function CreditLedgerPanel({
                     data.ledger.map((entry) => (
                       <tr key={entry.id} className="border-b border-border/50 last:border-0">
                         <td className="px-3 py-2.5 text-muted-foreground">
-                          {new Date(entry.createdAt).toLocaleDateString()}
+                          {formatDisplayDate(entry.createdAt)}
                         </td>
                         <td className="px-3 py-2.5">{entry.name}</td>
                         <td className="px-3 py-2.5">{formatLedgerType(entry.entryType)}</td>

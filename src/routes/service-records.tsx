@@ -35,6 +35,7 @@ import {
   type ServiceRecord,
   type ServiceRecordForm,
 } from "@/lib/service-records-api";
+import { formatDisplayDate } from "@/lib/utils";
 export const Route = createFileRoute("/service-records")({ component: ServiceRecordsPage });
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
 function ServiceRecordsPage() {
@@ -122,7 +123,7 @@ function ServiceRecordsPage() {
     }
   };
   const remove = async (r: ServiceRecord) => {
-    if (!confirm(`Delete manual period beginning ${r.serviceFrom}?`)) return;
+    if (!confirm(`Delete manual period beginning ${formatDisplayDate(r.serviceFrom)}?`)) return;
     try {
       await deleteServiceRecord(r.id);
       toast.success("Legacy period deleted");
@@ -304,9 +305,11 @@ function ServiceRecordsPage() {
                       <div className="min-w-0">
                         <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3">
                           <div className="text-sm">
-                            <p className="font-semibold text-foreground">{r.serviceFrom}</p>
+                            <p className="font-semibold text-foreground">
+                              {formatDisplayDate(r.serviceFrom)}
+                            </p>
                             <p className="mt-1 text-muted-foreground">
-                              to {r.serviceTo || "Present"}
+                              to {r.serviceTo ? formatDisplayDate(r.serviceTo) : "Present"}
                             </p>
                           </div>
                           <div className="min-w-0">
@@ -406,10 +409,10 @@ function ServiceRecordsPage() {
                     {records.map((r) => (
                       <tr className="border-t" key={r.id}>
                         <td className="whitespace-nowrap p-3">
-                          {r.serviceFrom}
+                          {formatDisplayDate(r.serviceFrom)}
                           <br />
                           <span className="text-xs text-muted-foreground">
-                            to {r.serviceTo || "Present"}
+                            to {r.serviceTo ? formatDisplayDate(r.serviceTo) : "Present"}
                           </span>
                         </td>
                         <td className="p-3 font-medium">{r.positionTitle}</td>

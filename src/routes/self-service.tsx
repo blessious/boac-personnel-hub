@@ -68,7 +68,7 @@ import {
 } from "@/lib/leave-api";
 import { listDtr, type DtrEntry, type DtrListResponse } from "@/lib/attendance-api";
 import { submitLeaveRequest } from "@/lib/requests-api";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { useRealtimeRefresh } from "@/lib/realtime";
 
 export const Route = createFileRoute("/self-service")({
@@ -1004,7 +1004,7 @@ function ProfileQuickStats({
         value={employee.status || "-"}
         subtext={
           employee.dateHired || employee.dateEmployed
-            ? `Hired ${formatDate(employee.dateHired || employee.dateEmployed)}`
+            ? `Hired ${formatDisplayDate(employee.dateHired || employee.dateEmployed)}`
             : "Hire date not set"
         }
         icon={<IdCard className="h-5 w-5 text-emerald-600" />}
@@ -1088,7 +1088,7 @@ function ProfileTabs({
       <TabsContent value="personal" className="mt-0">
         <CleanPanel title="Personal Information" icon={UserCircle}>
           <DetailGrid>
-            <DetailItem label="Birthday" value={formatDate(employee.birthday)} />
+            <DetailItem label="Birthday" value={formatDisplayDate(employee.birthday)} />
             <DetailItem label="Gender" value={employee.gender} />
             <DetailItem label="Civil Status" value={employee.civilStatus} />
             <DetailItem label="Citizenship" value={employee.citizenship} />
@@ -1118,7 +1118,7 @@ function ProfileTabs({
             <DetailItem label="Employment Status" value={employee.status} />
             <DetailItem
               label="Date Hired"
-              value={formatDate(employee.dateHired || employee.dateEmployed)}
+              value={formatDisplayDate(employee.dateHired || employee.dateEmployed)}
             />
             <DetailItem label="Item No" value={employee.itemNo} />
           </DetailGrid>
@@ -1304,9 +1304,9 @@ function WorkExperienceSheetPanel({
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <h4 className="font-semibold text-foreground">
-                    {formatDate(String(row.payload.dateFrom || ""))} to{" "}
+                    {formatDisplayDate(String(row.payload.dateFrom || ""))} to{" "}
                     {String(row.payload.dateTo || "").trim()
-                      ? formatDate(String(row.payload.dateTo || ""))
+                      ? formatDisplayDate(String(row.payload.dateTo || ""))
                       : "Present"}
                   </h4>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -1712,7 +1712,7 @@ function RequestList({ applications }: { applications: LeaveApplication[] }) {
           <div>
             <p className="text-sm font-medium text-foreground">{item.leaveName}</p>
             <p className="text-xs text-muted-foreground">
-              {formatDate(item.dateFrom)} to {formatDate(item.dateTo)} -{" "}
+              {formatDisplayDate(item.dateFrom)} to {formatDisplayDate(item.dateTo)} -{" "}
               {formatNumber(item.daysRequested)} day(s)
             </p>
           </div>
@@ -1799,17 +1799,6 @@ function getInitials(employee: EmployeeRecord) {
       .join("")
       .toUpperCase() || "ME"
   );
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
 }
 
 function formatNumber(value?: number | string | null) {

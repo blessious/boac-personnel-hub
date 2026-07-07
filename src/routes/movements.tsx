@@ -15,7 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate, formatDisplayDateTime } from "@/lib/utils";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import {
@@ -477,8 +477,8 @@ function MovementsPage() {
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <CalendarDays className="h-4 w-4" />
                   <span>
-                    {m.effectiveDate}
-                    {m.endDate ? ` to ${m.endDate}` : ""}
+                    {formatDisplayDate(m.effectiveDate)}
+                    {m.endDate ? ` to ${formatDisplayDate(m.endDate)}` : ""}
                   </span>
                 </div>
               </div>
@@ -542,9 +542,11 @@ function MovementsPage() {
                   {toMeta(m) && <div className="text-xs text-muted-foreground">{toMeta(m)}</div>}
                 </td>
                 <td className="whitespace-nowrap p-3">
-                  {m.effectiveDate}
+                  {formatDisplayDate(m.effectiveDate)}
                   {m.endDate && (
-                    <div className="text-xs text-muted-foreground">until {m.endDate}</div>
+                    <div className="text-xs text-muted-foreground">
+                      until {formatDisplayDate(m.endDate)}
+                    </div>
                   )}
                 </td>
                 <td className="p-3">
@@ -696,7 +698,10 @@ function MovementDetailDialog({
                     <DetailValue label="Personnel action" value={movement.actionType} />
                     <DetailValue label="Effectivity" value={dateRange(movement)} />
                     <DetailValue label="Authority" value={movement.authorityNumber || "-"} />
-                    <DetailValue label="Authority date" value={movement.authorityDate || "-"} />
+                    <DetailValue
+                      label="Authority date"
+                      value={formatDisplayDate(movement.authorityDate)}
+                    />
                   </div>
                 </section>
 
@@ -769,7 +774,7 @@ function MovementDetailDialog({
                           {event.eventType}: {event.fromStatus || "New"} to {event.toStatus}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {new Date(event.createdAt).toLocaleString()} - {event.actor}
+                          {formatDisplayDateTime(event.createdAt)} - {event.actor}
                         </div>
                         {event.remarks && <p className="mt-1">{event.remarks}</p>}
                       </div>
@@ -1186,8 +1191,8 @@ function titleCase(x: string) {
 }
 function dateRange(movement: Movement) {
   return movement.endDate
-    ? `${movement.effectiveDate} to ${movement.endDate}`
-    : movement.effectiveDate;
+    ? `${formatDisplayDate(movement.effectiveDate)} to ${formatDisplayDate(movement.endDate)}`
+    : formatDisplayDate(movement.effectiveDate);
 }
 async function loadAllEmployees() {
   const first = await listEmployees({ pageSize: 100 });

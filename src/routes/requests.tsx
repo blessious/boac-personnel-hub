@@ -14,7 +14,7 @@ import {
   type RequestRecord,
   type RequestStatus,
 } from "@/lib/requests-api";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { useRealtimeRefresh } from "@/lib/realtime";
 
 export const Route = createFileRoute("/requests")({
@@ -204,12 +204,14 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
               <div className="mobile-record-card__field">
                 <span className="mobile-record-card__label">From</span>
                 <span className="mobile-record-card__value">
-                  {formatDate(application.dateFrom)}
+                  {formatDisplayDate(application.dateFrom)}
                 </span>
               </div>
               <div className="mobile-record-card__field">
                 <span className="mobile-record-card__label">To</span>
-                <span className="mobile-record-card__value">{formatDate(application.dateTo)}</span>
+                <span className="mobile-record-card__value">
+                  {formatDisplayDate(application.dateTo)}
+                </span>
               </div>
               <div className="mobile-record-card__field">
                 <span className="mobile-record-card__label">{application.metricLabel}</span>
@@ -251,7 +253,8 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
                   <div className="text-xs text-muted-foreground">{application.kind}</div>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
-                  {formatDate(application.dateFrom)} to {formatDate(application.dateTo)}
+                  {formatDisplayDate(application.dateFrom)} to{" "}
+                  {formatDisplayDate(application.dateTo)}
                 </td>
                 <td className="px-4 py-3 font-medium">{application.metricValue}</td>
                 <td className="px-4 py-3">
@@ -339,15 +342,4 @@ function summarize(applications: RequestRecord[]) {
     },
     { Pending: 0, Approved: 0, Disapproved: 0, Cancelled: 0, Reversed: 0, total: 0 },
   );
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
 }

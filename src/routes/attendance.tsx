@@ -111,6 +111,7 @@ import {
 import { canReadHrRecords, canWriteHrRecords, useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 import { useRealtimeRefresh } from "@/lib/realtime";
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayDateRange } from "@/lib/utils";
 
 export const Route = createFileRoute("/attendance")({
   component: AttendancePage,
@@ -301,22 +302,12 @@ function dtrTimeLabels(entry: DtrEntry) {
 function formatDtrRangeLabel(from: string, to: string) {
   const fromDate = parseLocalDate(from);
   const toDate = parseLocalDate(to);
-  if (!fromDate || !toDate) return `${from} - ${to}`;
-  const month = new Intl.DateTimeFormat("en-US", { month: "short" }).format(fromDate);
-  const fromDay = fromDate.getDate();
-  const toMonth = new Intl.DateTimeFormat("en-US", { month: "short" }).format(toDate);
-  const toDay = toDate.getDate();
-  const year = toDate.getFullYear();
-  return month === toMonth
-    ? `${month} ${fromDay} - ${toDay}, ${year}`
-    : `${month} ${fromDay} - ${toMonth} ${toDay}, ${year}`;
+  if (!fromDate || !toDate) return formatDisplayDateRange(from, to);
+  return formatDisplayDateRange(fromDate, toDate);
 }
 
 function formatDateTime(value?: string | Date | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString();
+  return formatDisplayDateTime(value);
 }
 
 function shiftDateString(value: string, days: number) {
@@ -913,7 +904,12 @@ function AttendancePage() {
   };
 
   const remove = async (entry: DtrEntry) => {
-    if (!window.confirm(`Delete DTR for ${entry.employeeName} on ${entry.workDate}?`)) return;
+    if (
+      !window.confirm(
+        `Delete DTR for ${entry.employeeName} on ${formatDisplayDate(entry.workDate)}?`,
+      )
+    )
+      return;
     try {
       await deleteDtr(entry.id);
       toast.success("DTR deleted");
@@ -1938,7 +1934,7 @@ function AttendancePage() {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {realtimeStatus?.lastSyncTime
-                            ? new Date(realtimeStatus.lastSyncTime).toLocaleString()
+                            ? formatDisplayDateTime(realtimeStatus.lastSyncTime)
                             : "Waiting for ADMS"}
                         </p>
                       </div>
@@ -2053,7 +2049,7 @@ function AttendancePage() {
                             <p className="font-medium">{request.employeeName}</p>
                             <p className="text-xs text-muted-foreground">{request.employeeNo}</p>
                           </td>
-                          <td className="px-4 py-3">{request.workDate}</td>
+                          <td className="px-4 py-3">{formatDisplayDate(request.workDate)}</td>
                           <td className="px-4 py-3">
                             {request.requestType === "Label" ? "DTR Label" : "Time Correction"}
                           </td>
@@ -2185,7 +2181,7 @@ function AttendancePage() {
                             {entry.employeeName}
                           </h3>
                           <p className="mt-1 text-xs font-medium text-[#53637f]">
-                            {entry.workDate}
+                            {formatDisplayDate(entry.workDate)}
                           </p>
                         </div>
 
@@ -2214,7 +2210,7 @@ function AttendancePage() {
                             type="button"
                             onClick={() => openCorrection(entry, "Times")}
                             title="Correct Time Entries"
-                            aria-label={`Correct time entries for ${entry.workDate}`}
+                            aria-label={`Correct time entries for ${formatDisplayDate(entry.workDate)}`}
                             className="grid h-8 w-5 place-items-center text-[#64748b]"
                           >
                             <ChevronRight className="h-4 w-4" />
@@ -2224,7 +2220,7 @@ function AttendancePage() {
                             type="button"
                             onClick={() => openEdit(entry)}
                             title="Edit DTR"
-                            aria-label={`Edit DTR for ${entry.workDate}`}
+                            aria-label={`Edit DTR for ${formatDisplayDate(entry.workDate)}`}
                             className="grid h-8 w-5 place-items-center text-[#64748b]"
                           >
                             <ChevronRight className="h-4 w-4" />
@@ -2327,7 +2323,7 @@ function AttendancePage() {
                             {entry.department || "-"}
                           </td>
                           <td className="px-4 py-3 text-center font-medium text-foreground">
-                            {entry.workDate}
+                            {formatDisplayDate(entry.workDate)}
                           </td>
                           {entry.displayLabel ? (
                             <td
@@ -2376,7 +2372,7 @@ function AttendancePage() {
                                     size="icon"
                                     onClick={() => openCorrection(entry, "Times")}
                                     title="Correct Time Entries"
-                                    aria-label={`Correct time entries for ${entry.workDate}`}
+                                    aria-label={`Correct time entries for ${formatDisplayDate(entry.workDate)}`}
                                   >
                                     <Pencil className="h-4 w-4" />
                                   </Button>
@@ -3577,7 +3573,7 @@ function AttendancePage() {
                 <div>
                   <p className="font-semibold">{selectedCorrection.employeeName}</p>
                   <p className="text-sm text-muted-foreground">
-                    {selectedCorrection.workDate} -{" "}
+                    {formatDisplayDate(selectedCorrection.workDate)} -{" "}
                     {selectedCorrection.requestType === "Label" ? "DTR Label" : "Time Correction"}
                   </p>
                 </div>
@@ -3599,13 +3595,13 @@ function AttendancePage() {
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Filed by {selectedCorrection.createdByName || "Employee"} on{" "}
-                  {new Date(selectedCorrection.createdAt).toLocaleString()}
+                  {formatDisplayDateTime(selectedCorrection.createdAt)}
                   {selectedCorrection.requestIp ? ` - IP ${selectedCorrection.requestIp}` : ""}
                 </p>
                 {selectedCorrection.reviewedAt && (
                   <p className="mt-2 text-xs text-muted-foreground">
                     Reviewed by {selectedCorrection.reviewedByName} on{" "}
-                    {new Date(selectedCorrection.reviewedAt).toLocaleString()}
+                    {formatDisplayDateTime(selectedCorrection.reviewedAt)}
                     {selectedCorrection.reviewIp ? ` - IP ${selectedCorrection.reviewIp}` : ""}
                   </p>
                 )}
@@ -3652,7 +3648,7 @@ function AttendancePage() {
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-medium">{event.eventType}</p>
                         <time className="text-xs text-muted-foreground">
-                          {new Date(event.createdAt).toLocaleString()}
+                          {formatDisplayDateTime(event.createdAt)}
                         </time>
                       </div>
                       <p className="text-xs text-muted-foreground">

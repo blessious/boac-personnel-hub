@@ -42,7 +42,7 @@ import {
 import { ROLE_DESCRIPTIONS, ROLE_LABELS, ROLE_OPTIONS, type Role, useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import type { EmployeeRecord } from "@/lib/employees-api";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDateTime } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
@@ -586,7 +586,7 @@ function AdminPage() {
     }
   };
 
-  const formatDateTime = (value: string) => new Date(value).toLocaleString();
+  const formatDateTime = (value: string) => formatDisplayDateTime(value);
 
   const formatBytes = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;

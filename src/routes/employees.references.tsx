@@ -57,7 +57,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { canWriteHrRecords, useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { useRealtimeRefresh } from "@/lib/realtime";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 
 export const Route = createFileRoute("/employees/references")({
   component: EmployeeReferencesPage,
@@ -700,8 +700,8 @@ function EmployeeReferencesPage() {
       title: "Activate salary table?",
       description:
         missingCount > 0
-          ? `Activate ${ordinance} effective ${activationDate}. This table has ${missingCount} open standard grade/step rows; the backend will block activation if any active plantilla item needs one of those rows.`
-          : `Activate ${ordinance} effective ${activationDate}. This will update active plantilla salaries and add 201 Salary records for affected active employees.`,
+          ? `Activate ${ordinance} effective ${formatDisplayDate(activationDate)}. This table has ${missingCount} open standard grade/step rows; the backend will block activation if any active plantilla item needs one of those rows.`
+          : `Activate ${ordinance} effective ${formatDisplayDate(activationDate)}. This will update active plantilla salaries and add 201 Salary records for affected active employees.`,
       confirmLabel: "Activate Table",
       onConfirm: () => activateSalaryTableConfirmed(ordinance),
     });
@@ -1082,8 +1082,8 @@ function EmployeeReferencesPage() {
                   <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                     <ClipboardCheck className="h-4 w-4" />
                     Activated {activationSummary.ordinance} effective{" "}
-                    {activationSummary.effectivityDate}: {activationSummary.updated} updated,{" "}
-                    {activationSummary.skipped} skipped.
+                    {formatDisplayDate(activationSummary.effectivityDate)}:{" "}
+                    {activationSummary.updated} updated, {activationSummary.skipped} skipped.
                   </div>
                 )}
               </div>

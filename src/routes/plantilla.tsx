@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDateTime } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -643,7 +643,7 @@ function PlantillaPage() {
               <div className="rounded border p-3" key={h.id}>
                 <div className="font-medium">{h.action}</div>
                 <div className="text-xs text-muted-foreground">
-                  {new Date(h.createdAt).toLocaleString()} - {h.changedBy || "System"}
+                  {formatDisplayDateTime(h.createdAt)} - {h.changedBy || "System"}
                 </div>
               </div>
             ))}

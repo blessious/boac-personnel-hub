@@ -13,7 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDate } from "@/lib/utils";
 import { canReadHrRecords, canSeeApprovals, canWriteHrRecords, useAuth } from "@/lib/auth";
 import { getDashboard, type DashboardResponse } from "@/lib/employees-api";
 import { EmployeeDashboardHome } from "@/routes/self-service";
@@ -159,11 +159,7 @@ function Dashboard() {
 
   const divisions = [...(data?.byDivision ?? [])].sort((a, b) => b.total - a.total).slice(0, 4);
   const firstName = getFirstName(user?.employeeName || user?.name || user?.username);
-  const currentDate = new Date().toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  const currentDate = formatDisplayDate(new Date());
 
   return (
     <AppShell title="" subtitle="">

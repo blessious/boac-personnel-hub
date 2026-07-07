@@ -40,7 +40,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { listLeaveApplications } from "@/lib/leave-api";
 import { listDtrCorrectionRequests } from "@/lib/attendance-api";
 import { useRealtime } from "@/lib/realtime";
-import { cn } from "@/lib/utils";
+import { cn, formatDisplayDateTime } from "@/lib/utils";
 import { groupNavItems, navForRole } from "@/components/layout/navigation";
 
 export function AppHeader({ title, subtitle }: { title: string; subtitle?: string }) {
@@ -484,12 +484,5 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
 }
 
 function formatNotificationTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+  return formatDisplayDateTime(value, "");
 }
