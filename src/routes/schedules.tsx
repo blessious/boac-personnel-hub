@@ -1132,7 +1132,7 @@ function EmployeeScheduleCard({
           <Checkbox
             checked={selected}
             onCheckedChange={(checked) => onSelect(checked === true)}
-            className="h-5 w-5 rounded-md"
+            className="size-5 min-h-5 min-w-5 rounded-md"
             aria-label={`Select ${employee.employeeName}`}
           />
         </div>
