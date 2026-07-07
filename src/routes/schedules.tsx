@@ -3,12 +3,16 @@ import type { Dispatch, SetStateAction } from "react";
 import {
   CalendarDays,
   CheckCircle2,
+  ChevronRight,
+  Clock,
+  Building2,
   Eye,
   Loader2,
   Pencil,
   RefreshCw,
   Search,
   Trash2,
+  UserRound,
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -399,7 +403,7 @@ function SchedulesPage() {
       subtitle="Maintain employee default schedules and date-specific duty overrides"
     >
       <div className="space-y-5">
-        <section className="rounded-lg border border-border bg-card p-3 shadow-sm sm:p-4">
+        <section className="rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="grid flex-1 gap-3 md:grid-cols-[minmax(220px,1fr)_220px_170px]">
               <div className="space-y-1.5">
@@ -441,7 +445,7 @@ function SchedulesPage() {
               variant="outline"
               onClick={load}
               disabled={loading}
-              className="w-full sm:w-auto"
+              className="h-11 w-full rounded-xl bg-white font-semibold shadow-sm sm:h-10 sm:w-auto sm:rounded-md"
             >
               <RefreshCw className={cn("mr-1.5 h-4 w-4", loading && "animate-spin")} />
               Refresh
@@ -454,7 +458,7 @@ function SchedulesPage() {
         </section>
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_390px]">
-          <section className="rounded-lg border border-border bg-card shadow-sm">
+          <section className="rounded-xl border border-border bg-card shadow-sm">
             <div className="flex flex-col gap-3 border-b border-border p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
               <div>
                 <div className="flex items-center gap-2 font-semibold">
@@ -474,6 +478,7 @@ function SchedulesPage() {
                     selectedAllVisible ? [] : employees.map((employee) => employee.employeeId),
                   )
                 }
+                className="h-10 rounded-xl md:rounded-md"
               >
                 {selectedAllVisible ? "Clear visible" : "Select visible"}
               </Button>
@@ -551,7 +556,7 @@ function SchedulesPage() {
               </Table>
             </div>
 
-            <div className="grid gap-3 p-3 md:hidden">
+            <div className="mobile-record-list grid gap-3 p-3 md:hidden">
               {loading ? (
                 <MobileState icon="loading" message="Loading schedules..." />
               ) : employees.length ? (
@@ -590,7 +595,7 @@ function SchedulesPage() {
           </section>
 
           <aside className="space-y-5">
-            <section className="rounded-lg border border-border bg-card p-3 shadow-sm sm:p-4 xl:sticky xl:top-4">
+            <section className="rounded-xl border border-border bg-card p-3 shadow-sm sm:p-4 xl:sticky xl:top-4">
               <div className="flex items-center gap-2 font-semibold">
                 <CalendarDays className="h-4 w-4 text-blue-600" />
                 Apply Schedule
@@ -633,18 +638,18 @@ function SchedulesPage() {
                       />
                     </div>
                     <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={form.skipWeekends}
                         disabled={!canManage}
-                        onChange={(event) =>
+                        onCheckedChange={(checked) =>
                           setForm((current) => ({
                             ...current,
-                            skipWeekends: event.target.checked,
+                            skipWeekends: checked === true,
                           }))
                         }
+                        aria-label="Skip Saturdays and Sundays"
                       />
-                      Skip Saturdays and Sundays
+                      <span>Skip Saturdays and Sundays</span>
                     </label>
                   </div>
                 )}
@@ -715,7 +720,7 @@ function SchedulesPage() {
           </aside>
         </div>
 
-        <section className="rounded-lg border border-border bg-card shadow-sm">
+        <section className="rounded-xl border border-border bg-card shadow-sm">
           <div className="border-b border-border p-3 sm:p-4">
             <div className="font-semibold">Date Overrides</div>
             <p className="text-sm text-muted-foreground">
@@ -778,7 +783,7 @@ function SchedulesPage() {
               </TableBody>
             </Table>
           </div>
-          <div className="grid gap-3 p-3 md:hidden">
+          <div className="mobile-record-list grid gap-3 p-3 md:hidden">
             {overrides.length ? (
               overrides.map((override) => (
                 <OverrideScheduleCard
@@ -953,18 +958,18 @@ function SchedulesPage() {
                           />
                         </div>
                         <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={individualForm.skipWeekends}
                             disabled={!canManage}
-                            onChange={(event) =>
+                            onCheckedChange={(checked) =>
                               setIndividualForm((current) => ({
                                 ...current,
-                                skipWeekends: event.target.checked,
+                                skipWeekends: checked === true,
                               }))
                             }
+                            aria-label="Skip Saturdays and Sundays"
                           />
-                          Skip Saturdays and Sundays
+                          <span>Skip Saturdays and Sundays</span>
                         </label>
                       </div>
                     )}
@@ -1116,44 +1121,65 @@ function EmployeeScheduleCard({
   onOpen: () => void;
 }) {
   return (
-    <div
+    <article
       className={cn(
-        "rounded-lg border bg-background p-3 shadow-sm transition-colors",
-        selected ? "border-blue-300 bg-blue-50/60" : "border-border",
+        "rounded-xl border bg-white p-3 shadow-sm transition-colors",
+        selected ? "border-blue-300 bg-blue-50/50" : "border-border",
       )}
     >
-      <div className="flex items-start gap-3">
-        <Checkbox
-          checked={selected}
-          onCheckedChange={(checked) => onSelect(checked === true)}
-          className="mt-1"
-          aria-label={`Select ${employee.employeeName}`}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="truncate font-medium">{employee.employeeName}</div>
-          <div className="mt-0.5 truncate text-xs text-muted-foreground">
-            {employee.department || "No department"}
+      <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto_1.25rem] items-center gap-3">
+        <div className="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(checked) => onSelect(checked === true)}
+            className="h-5 w-5 rounded-md"
+            aria-label={`Select ${employee.employeeName}`}
+          />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-bold text-foreground">{employee.employeeName}</div>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <Building2 className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{employee.department || "No department"}</span>
           </div>
         </div>
-        <Badge variant={override ? "default" : "secondary"} className="shrink-0">
+        <Badge
+          variant={override ? "default" : "secondary"}
+          className="shrink-0 rounded-full px-2 py-1 text-[0.68rem]"
+        >
           {override ? "Override" : "Default"}
         </Badge>
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
       </div>
 
-      <div className="mt-3 rounded-md bg-muted/60 p-3">
-        <ScheduleTimeText
-          amIn={override?.amIn || employee.scheduleAmIn}
-          amOut={override?.amOut || employee.scheduleAmOut}
-          pmIn={override?.pmIn || employee.schedulePmIn}
-          pmOut={override?.pmOut || employee.schedulePmOut}
-        />
+      <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border/70 pt-3">
+        <div className="border-l border-border/70 pl-3">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Clock className="h-3.5 w-3.5" />
+            AM Duty
+          </span>
+          <span className="block truncate text-sm font-semibold text-foreground">
+            {formatTime(override?.amIn || employee.scheduleAmIn)} -{" "}
+            {formatTime(override?.amOut || employee.scheduleAmOut)}
+          </span>
+        </div>
+        <div className="border-l border-border/70 pl-3">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Clock className="h-3.5 w-3.5" />
+            PM Duty
+          </span>
+          <span className="block truncate text-sm font-semibold text-foreground">
+            {formatTime(override?.pmIn || employee.schedulePmIn)} -{" "}
+            {formatTime(override?.pmOut || employee.schedulePmOut)}
+          </span>
+        </div>
       </div>
 
-      <Button variant="outline" className="mt-3 h-10 w-full" onClick={onOpen}>
+      <Button variant="outline" className="mt-3 h-10 w-full rounded-xl" onClick={onOpen}>
         <Eye className="mr-1.5 h-4 w-4" />
         View Schedule
       </Button>
-    </div>
+    </article>
   );
 }
 
@@ -1169,41 +1195,67 @@ function OverrideScheduleCard({
   onDelete: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-background p-3 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
+    <article className="rounded-xl border border-border bg-white p-3 shadow-sm">
+      <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-3">
+        <div className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+          <CalendarDays className="h-5 w-5" />
+        </div>
         <div className="min-w-0">
-          <div className="font-medium">{formatDisplayDate(override.workDate)}</div>
-          <div className="mt-0.5 truncate text-sm text-muted-foreground">
-            {override.employeeName}
+          <div className="truncate text-sm font-bold text-foreground">
+            {formatDisplayDate(override.workDate)}
+          </div>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <UserRound className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{override.employeeName}</span>
           </div>
           {override.department && (
-            <div className="truncate text-xs text-muted-foreground">{override.department}</div>
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <Building2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{override.department}</span>
+            </div>
           )}
         </div>
-        <Badge variant="outline" className="shrink-0">
+        <Badge variant="outline" className="shrink-0 rounded-full px-2 py-1 text-[0.68rem]">
           {override.shiftName || "Manual"}
         </Badge>
       </div>
 
-      <div className="mt-3 rounded-md bg-muted/60 p-3">
-        <ScheduleTimeText
-          amIn={override.amIn}
-          amOut={override.amOut}
-          pmIn={override.pmIn}
-          pmOut={override.pmOut}
-        />
+      <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border/70 pt-3">
+        <div className="border-l border-border/70 pl-3">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Clock className="h-3.5 w-3.5" />
+            AM Duty
+          </span>
+          <span className="block truncate text-sm font-semibold text-foreground">
+            {formatTime(override.amIn)} - {formatTime(override.amOut)}
+          </span>
+        </div>
+        <div className="border-l border-border/70 pl-3">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Clock className="h-3.5 w-3.5" />
+            PM Duty
+          </span>
+          <span className="block truncate text-sm font-semibold text-foreground">
+            {formatTime(override.pmIn)} - {formatTime(override.pmOut)}
+          </span>
+        </div>
       </div>
 
       <div className={cn("mt-3 grid gap-2", onEdit ? "grid-cols-2" : "grid-cols-1")}>
         {onEdit && (
-          <Button variant="outline" className="h-10" disabled={!canManage} onClick={onEdit}>
+          <Button
+            variant="outline"
+            className="h-10 rounded-xl"
+            disabled={!canManage}
+            onClick={onEdit}
+          >
             <Pencil className="mr-1.5 h-4 w-4" />
             Edit
           </Button>
         )}
         <Button
           variant="outline"
-          className="h-10 text-red-600 hover:text-red-700"
+          className="h-10 rounded-xl text-red-600 hover:text-red-700"
           disabled={!canManage}
           onClick={onDelete}
         >
@@ -1211,7 +1263,7 @@ function OverrideScheduleCard({
           Remove
         </Button>
       </div>
-    </div>
+    </article>
   );
 }
 

@@ -413,12 +413,6 @@ export function EmployeeProfileHome() {
       ) : (
         <div className="space-y-5">
           <ProfileHeader employee={employee} onOpenProfile={openFullProfile} />
-          <ProfileQuickStats
-            employee={employee}
-            balances={leave?.balances || []}
-            applications={leave?.applications || []}
-            sections={sections}
-          />
           <ProfileTabs
             employee={employee}
             sections={sections}
@@ -915,10 +909,6 @@ function ProfileHeader({
           </p>
           <h2 className="mt-1 text-lg font-semibold text-foreground">My Profile</h2>
         </div>
-        <Button variant="outline" onClick={onOpenProfile} className="w-full sm:w-auto">
-          Full 201 File
-          <ChevronRight className="ml-2 h-4 w-4" />
-        </Button>
       </div>
 
       <div className="p-4 sm:p-5 lg:p-6">
@@ -980,6 +970,15 @@ function ProfileHeader({
             />
           </div>
         </div>
+        <div className="mt-5 flex justify-end">
+          <Button
+            onClick={onOpenProfile}
+            className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
+          >
+            Full 201 File
+            <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </section>
   );
@@ -1021,101 +1020,6 @@ function ProfileIdentityRow({
         <p className="break-words text-sm font-semibold text-foreground sm:text-right">
           {valueOrDash(value)}
         </p>
-      </div>
-    </div>
-  );
-}
-
-function ProfileQuickStats({
-  employee,
-  balances,
-  applications,
-  sections,
-}: {
-  employee: EmployeeRecord;
-  balances: LeaveBalance[];
-  applications: LeaveApplication[];
-  sections: Record<string, SectionRow[]>;
-}) {
-  const pending = applications.filter((item) => item.status === "Pending").length;
-  const availableLeaveCredits = balances.reduce(
-    (total, balance) => total + Number(balance.balance || 0),
-    0,
-  );
-  const recordCount = Object.values(sections).reduce((total, rows) => total + countRows(rows), 0);
-  const governmentIds = [
-    employee.gsis,
-    employee.sss,
-    employee.pagibig,
-    employee.philhealth,
-    employee.tin,
-  ].filter(Boolean).length;
-  const contactStatus = employee.cellphoneNo || employee.email ? "Available" : "Needs Update";
-
-  return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-      <ProfileRecordCard
-        title="Contact"
-        value={contactStatus}
-        subtext={employee.email || employee.cellphoneNo || "No contact details recorded"}
-        icon={Phone}
-        iconClassName="bg-blue-50 text-blue-600"
-      />
-      <ProfileRecordCard
-        title="Employment"
-        value={employee.status || "-"}
-        subtext={
-          employee.dateHired || employee.dateEmployed
-            ? `Hired ${formatDisplayDate(employee.dateHired || employee.dateEmployed)}`
-            : "Hire date not set"
-        }
-        icon={Briefcase}
-        iconClassName="bg-emerald-50 text-emerald-600"
-      />
-      <ProfileRecordCard
-        title="201 Records"
-        value={recordCount}
-        subtext={`${governmentIds}/5 government IDs recorded`}
-        icon={ShieldCheck}
-        iconClassName="bg-amber-50 text-amber-600"
-      />
-      <ProfileRecordCard
-        title="Leave & Requests"
-        value={formatNumber(availableLeaveCredits)}
-        subtext={`${pending} pending request${pending === 1 ? "" : "s"}`}
-        icon={ClipboardCheck}
-        iconClassName="bg-rose-50 text-rose-600"
-      />
-    </div>
-  );
-}
-
-function ProfileRecordCard({
-  title,
-  value,
-  subtext,
-  icon: Icon,
-  iconClassName,
-}: {
-  title: string;
-  value: string | number;
-  subtext: string;
-  icon: React.ComponentType<{ className?: string }>;
-  iconClassName: string;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-xl", iconClassName)}>
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold text-muted-foreground">{title}</p>
-          <p className="mt-1 break-words text-lg font-semibold leading-6 text-foreground">
-            {value}
-          </p>
-          <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">{subtext}</p>
-        </div>
       </div>
     </div>
   );
