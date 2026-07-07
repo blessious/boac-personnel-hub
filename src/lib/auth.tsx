@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
@@ -32,6 +32,32 @@ export const ROLE_OPTIONS: Role[] = [
   "Viewer",
 ];
 
+export type PermissionKey =
+  | "dashboard.view"
+  | "employees.read"
+  | "employees.write"
+  | "attendance.read"
+  | "attendance.write"
+  | "leave.read"
+  | "leave.write"
+  | "approvals.manage"
+  | "plantilla.read"
+  | "plantilla.write"
+  | "movements.read"
+  | "movements.write"
+  | "service_records.read"
+  | "service_records.write"
+  | "reports.view"
+  | "admin.users"
+  | "admin.audit"
+  | "admin.errors"
+  | "admin.backups"
+  | "settings.manage"
+  | "role_permissions.manage"
+  | "my_profile.access"
+  | "self_service.access"
+  | "requests.access";
+
 export function isSelfServiceRole(role: Role | string | undefined): role is "Employee" {
   return role === "Employee";
 }
@@ -53,6 +79,7 @@ export interface User {
   username: string;
   name: string;
   role: Role;
+  permissions?: PermissionKey[];
   photoUrl?: string;
   mustChangePassword?: boolean;
   employeeId?: string;
@@ -66,6 +93,7 @@ interface AuthCtx {
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<User>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<User>;
+  hasPermission: (permission: PermissionKey) => boolean;
   can: (action: "edit" | "delete" | "manageUsers" | "approve" | "configureSystem") => boolean;
   ready: boolean;
 }
@@ -140,16 +168,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const can = (action: "edit" | "delete" | "manageUsers" | "approve" | "configureSystem") => {
     if (!user) return false;
-    if (user.role === "Super Admin") return true;
-    if (user.role === "Admin") return action === "manageUsers" || action === "configureSystem";
-    if (user.role === "HR") return action === "edit" || action === "delete";
-    if (user.role === "Approver") return action === "approve";
+    const permissions = new Set(user.permissions || []);
+    if (action === "manageUsers") return permissions.has("admin.users");
+    if (action === "configureSystem") return permissions.has("settings.manage");
+    if (action === "approve") return permissions.has("approvals.manage");
+    if (action === "edit" || action === "delete") return permissions.has("employees.write");
     return false;
   };
 
+  const hasPermission = useCallback(
+    (permission: PermissionKey) => Boolean(user?.permissions?.includes(permission)),
+    [user?.permissions],
+  );
+
   if (!ready) return null;
   return (
-    <Ctx.Provider value={{ user, login, logout, updateProfile, changePassword, can, ready }}>
+    <Ctx.Provider
+      value={{ user, login, logout, updateProfile, changePassword, hasPermission, can, ready }}
+    >
       {children}
     </Ctx.Provider>
   );

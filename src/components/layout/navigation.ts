@@ -14,7 +14,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { canReadHrRecords, isSelfServiceRole } from "@/lib/auth";
+import type { PermissionKey } from "@/lib/auth";
 
 export type AppNavItem = {
   to:
@@ -36,6 +36,7 @@ export type AppNavItem = {
   shortLabel: string;
   icon: LucideIcon;
   exact?: boolean;
+  permission: PermissionKey;
 };
 
 export type AppNavSection = {
@@ -44,25 +45,105 @@ export type AppNavSection = {
 };
 
 export const APP_NAV: AppNavItem[] = [
-  { to: "/", label: "Dashboard", shortLabel: "Dashboard", icon: LayoutDashboard, exact: true },
-  { to: "/my-profile", label: "My Profile", shortLabel: "Profile", icon: UserCircle },
-  { to: "/employees", label: "Employee Management", shortLabel: "Employees", icon: Users },
-  { to: "/attendance", label: "Attendance", shortLabel: "Attendance", icon: CalendarDays },
-  { to: "/schedules", label: "Schedule Management", shortLabel: "Schedules", icon: CalendarRange },
-  { to: "/plantilla", label: "Plantilla & PSIPOP", shortLabel: "Plantilla", icon: Landmark },
-  { to: "/movements", label: "Employee Movements", shortLabel: "Movements", icon: ArrowRightLeft },
-  { to: "/service-records", label: "Service Records", shortLabel: "Records", icon: FileClock },
-  { to: "/leave", label: "Leave Management", shortLabel: "Leave", icon: ClipboardCheck },
+  {
+    to: "/",
+    label: "Dashboard",
+    shortLabel: "Dashboard",
+    icon: LayoutDashboard,
+    exact: true,
+    permission: "dashboard.view",
+  },
+  {
+    to: "/my-profile",
+    label: "My Profile",
+    shortLabel: "Profile",
+    icon: UserCircle,
+    permission: "my_profile.access",
+  },
+  {
+    to: "/employees",
+    label: "Employee Management",
+    shortLabel: "Employees",
+    icon: Users,
+    permission: "employees.read",
+  },
+  {
+    to: "/attendance",
+    label: "Attendance",
+    shortLabel: "Attendance",
+    icon: CalendarDays,
+    permission: "attendance.read",
+  },
+  {
+    to: "/schedules",
+    label: "Schedule Management",
+    shortLabel: "Schedules",
+    icon: CalendarRange,
+    permission: "attendance.write",
+  },
+  {
+    to: "/plantilla",
+    label: "Plantilla & PSIPOP",
+    shortLabel: "Plantilla",
+    icon: Landmark,
+    permission: "plantilla.read",
+  },
+  {
+    to: "/movements",
+    label: "Employee Movements",
+    shortLabel: "Movements",
+    icon: ArrowRightLeft,
+    permission: "movements.read",
+  },
+  {
+    to: "/service-records",
+    label: "Service Records",
+    shortLabel: "Records",
+    icon: FileClock,
+    permission: "service_records.read",
+  },
+  {
+    to: "/leave",
+    label: "Leave Management",
+    shortLabel: "Leave",
+    icon: ClipboardCheck,
+    permission: "leave.read",
+  },
   {
     to: "/self-service",
     label: "Self-Service Portal",
     shortLabel: "Services",
     icon: MonitorSmartphone,
+    permission: "self_service.access",
   },
-  { to: "/requests", label: "My Requests", shortLabel: "Requests", icon: ClipboardCheck },
-  { to: "/reports", label: "Reports & Analytics", shortLabel: "Reports", icon: BarChart3 },
-  { to: "/admin", label: "System Administration", shortLabel: "Admin", icon: ShieldCheck },
-  { to: "/settings", label: "Settings", shortLabel: "Settings", icon: Settings },
+  {
+    to: "/requests",
+    label: "My Requests",
+    shortLabel: "Requests",
+    icon: ClipboardCheck,
+    permission: "requests.access",
+  },
+  {
+    to: "/reports",
+    label: "Reports & Analytics",
+    shortLabel: "Reports",
+    icon: BarChart3,
+    permission: "reports.view",
+  },
+  {
+    to: "/admin",
+    label: "System Administration",
+    shortLabel: "Admin",
+    icon: ShieldCheck,
+    permission: "admin.users",
+  },
+  {
+    to: "/settings",
+    label: "Settings",
+    shortLabel: "Settings",
+    icon: Settings,
+    permission: "settings.manage",
+  },
 ];
 
 const NAV_SECTION_ORDER = [
@@ -95,51 +176,70 @@ export function groupNavItems(items: AppNavItem[]): AppNavSection[] {
 }
 
 export function navForRole(role: string | undefined) {
-  const selfServiceOnly = ["/my-profile", "/self-service", "/requests"];
-  if (role === "Super Admin") return APP_NAV;
-  if (role === "Admin") {
-    return APP_NAV.filter((item) => ["/", "/admin", "/settings"].includes(item.to));
-  }
-  if (role === "HR") {
-    return APP_NAV.filter((item) => !["/admin", "/settings", ...selfServiceOnly].includes(item.to));
-  }
-  if (role === "Approver") {
-    return APP_NAV.filter((item) =>
-      [
-        "/",
-        "/employees",
-        "/attendance",
-        "/schedules",
-        "/plantilla",
-        "/movements",
-        "/service-records",
-        "/leave",
-        "/reports",
-      ].includes(item.to),
-    );
-  }
-  if (canReadHrRecords(role)) {
-    return APP_NAV.filter((item) =>
-      [
-        "/",
-        "/employees",
-        "/attendance",
-        "/schedules",
-        "/plantilla",
-        "/movements",
-        "/service-records",
-        "/reports",
-      ].includes(item.to),
-    );
-  }
-  if (isSelfServiceRole(role)) {
-    return APP_NAV.filter((item) =>
-      ["/", "/my-profile", "/self-service", "/attendance", "/requests"].includes(item.to),
-    );
-  }
-  return [];
+  const fallbackByRole: Record<string, PermissionKey[]> = {
+    "Super Admin": APP_NAV.map((item) => item.permission),
+    Admin: ["dashboard.view", "admin.users", "settings.manage"],
+    HR: [
+      "dashboard.view",
+      "employees.read",
+      "attendance.read",
+      "attendance.write",
+      "leave.read",
+      "plantilla.read",
+      "movements.read",
+      "service_records.read",
+      "reports.view",
+    ],
+    Approver: [
+      "dashboard.view",
+      "employees.read",
+      "attendance.read",
+      "leave.read",
+      "plantilla.read",
+      "movements.read",
+      "service_records.read",
+      "reports.view",
+    ],
+    Employee: [
+      "dashboard.view",
+      "my_profile.access",
+      "self_service.access",
+      "attendance.read",
+      "requests.access",
+    ],
+    Viewer: [
+      "dashboard.view",
+      "employees.read",
+      "attendance.read",
+      "plantilla.read",
+      "movements.read",
+      "service_records.read",
+      "reports.view",
+    ],
+  };
+  return navForPermissions(fallbackByRole[role || ""] || []);
+}
+
+export function navForPermissions(permissions: PermissionKey[] | undefined) {
+  const allowed = new Set(permissions || []);
+  return APP_NAV.filter((item) => {
+    if (item.to === "/admin") {
+      return [
+        "admin.users",
+        "admin.audit",
+        "admin.errors",
+        "admin.backups",
+        "role_permissions.manage",
+      ].some((permission) => allowed.has(permission));
+    }
+    return allowed.has(item.permission);
+  });
 }
 
 export function mobileTabsForRole(role: string | undefined) {
   return navForRole(role).slice(0, 5);
+}
+
+export function mobileTabsForPermissions(permissions: PermissionKey[] | undefined) {
+  return navForPermissions(permissions).slice(0, 5);
 }

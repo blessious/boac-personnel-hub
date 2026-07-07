@@ -8,14 +8,7 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
-import {
-  AuthProvider,
-  canReadHrRecords,
-  canSeeApprovals,
-  isSelfServiceRole,
-  useAuth,
-  type Role,
-} from "@/lib/auth";
+import { AuthProvider, useAuth, type PermissionKey } from "@/lib/auth";
 import { SettingsProvider } from "@/lib/settings-context";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppHeader } from "@/components/layout/AppHeader";
@@ -126,7 +119,7 @@ function AppLayout() {
     !user ||
     isLoginPage ||
     isChangePasswordPage ||
-    canAccessPath(user.role, location.pathname, user.employeeId);
+    canAccessPath(user.permissions || [], location.pathname, user.employeeId);
 
   useEffect(() => {
     if (!user && !isLoginPage) {
@@ -137,7 +130,11 @@ function AppLayout() {
       navigate({ to: "/change-password", replace: true });
       return;
     }
-    if (user && !isLoginPage && !canAccessPath(user.role, location.pathname, user.employeeId)) {
+    if (
+      user &&
+      !isLoginPage &&
+      !canAccessPath(user.permissions || [], location.pathname, user.employeeId)
+    ) {
       navigate({ to: "/", replace: true });
     }
   }, [user, isLoginPage, isChangePasswordPage, location.pathname, navigate]);
@@ -172,23 +169,35 @@ function AppLayout() {
   );
 }
 
-function canAccessPath(role: Role, pathname: string, employeeId?: string) {
-  const isSelfServicePath =
-    pathname.startsWith("/self-service") ||
-    pathname.startsWith("/my-profile") ||
-    pathname.startsWith("/requests");
-
-  if (role === "Super Admin") return true;
-  if (pathname === "/") return true;
-  if (isSelfServicePath) return isSelfServiceRole(role);
-  if (role === "Admin") return pathname.startsWith("/admin") || pathname.startsWith("/settings");
-  if (isSelfServiceRole(role)) {
-    if (pathname === "/attendance") return true;
-    return Boolean(employeeId && pathname === `/employees/${employeeId}`);
+function canAccessPath(permissions: PermissionKey[], pathname: string, employeeId?: string) {
+  const allowed = new Set(permissions);
+  if (pathname === "/") return allowed.has("dashboard.view");
+  if (pathname.startsWith("/self-service")) return allowed.has("self_service.access");
+  if (pathname.startsWith("/my-profile")) return allowed.has("my_profile.access");
+  if (pathname.startsWith("/requests")) return allowed.has("requests.access");
+  if (pathname.startsWith("/admin")) {
+    return [
+      "admin.users",
+      "admin.audit",
+      "admin.errors",
+      "admin.backups",
+      "role_permissions.manage",
+    ].some((permission) => allowed.has(permission as PermissionKey));
   }
-  if (pathname.startsWith("/admin")) return false;
-  if (pathname.startsWith("/settings")) return false;
-  if (pathname.startsWith("/leave")) return role === "HR" || canSeeApprovals(role);
-  if (pathname.startsWith("/attendance")) return canReadHrRecords(role);
-  return canReadHrRecords(role);
+  if (pathname.startsWith("/settings")) return allowed.has("settings.manage");
+  if (pathname.startsWith("/leave")) return allowed.has("leave.read");
+  if (pathname.startsWith("/attendance")) return allowed.has("attendance.read");
+  if (pathname.startsWith("/schedules")) return allowed.has("attendance.write");
+  if (pathname.startsWith("/plantilla")) return allowed.has("plantilla.read");
+  if (pathname.startsWith("/movements")) return allowed.has("movements.read");
+  if (pathname.startsWith("/service-records")) return allowed.has("service_records.read");
+  if (pathname.startsWith("/reports")) return allowed.has("reports.view");
+  if (pathname.startsWith("/employees/")) {
+    return (
+      allowed.has("employees.read") ||
+      Boolean(employeeId && pathname === `/employees/${employeeId}`)
+    );
+  }
+  if (pathname.startsWith("/employees")) return allowed.has("employees.read");
+  return false;
 }

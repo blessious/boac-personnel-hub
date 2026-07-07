@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { cn, formatDisplayDate } from "@/lib/utils";
-import { canReadHrRecords, canSeeApprovals, canWriteHrRecords, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { getDashboard, type DashboardResponse } from "@/lib/employees-api";
 import { EmployeeDashboardHome } from "@/routes/self-service";
 import { useRealtimeRefresh } from "@/lib/realtime";
@@ -24,19 +24,28 @@ export const Route = createFileRoute("/")({
 });
 
 function Dashboard() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [data, setData] = useState<DashboardResponse | null>(null);
-  const [loading, setLoading] = useState(user?.role !== "Employee");
+  const canReadDashboardStats = hasPermission("employees.read");
+  const [loading, setLoading] = useState(canReadDashboardStats);
   const [error, setError] = useState("");
-  const quickLinks =
-    user?.role === "Admin"
+  const quickLinks = [
+    ...(hasPermission("admin.users") ||
+    hasPermission("admin.audit") ||
+    hasPermission("admin.errors") ||
+    hasPermission("admin.backups") ||
+    hasPermission("role_permissions.manage")
       ? [
           {
             to: "/admin" as const,
-            icon: <ShieldCheck className="h-5 w-5 text-rose-600" />,
+            icon: <ShieldCheck className="h-5 w-5 text-fuchsia-600" />,
             label: "System Admin",
-            bg: "bg-rose-50",
+            bg: "bg-fuchsia-50",
           },
+        ]
+      : []),
+    ...(hasPermission("settings.manage")
+      ? [
           {
             to: "/settings" as const,
             icon: <Settings className="h-5 w-5 text-slate-600" />,
@@ -44,69 +53,61 @@ function Dashboard() {
             bg: "bg-slate-50",
           },
         ]
-      : [
-          ...(user?.role === "Super Admin"
-            ? [
-                {
-                  to: "/admin" as const,
-                  icon: <ShieldCheck className="h-5 w-5 text-fuchsia-600" />,
-                  label: "System Admin",
-                  bg: "bg-fuchsia-50",
-                },
-                {
-                  to: "/settings" as const,
-                  icon: <Settings className="h-5 w-5 text-slate-600" />,
-                  label: "Settings",
-                  bg: "bg-slate-50",
-                },
-              ]
-            : []),
-          ...(canWriteHrRecords(user?.role)
-            ? [
-                {
-                  to: "/employees" as const,
-                  icon: <UserPlus className="h-5 w-5 text-blue-600" />,
-                  label: "Add Employee",
-                  bg: "bg-blue-50",
-                },
-              ]
-            : []),
-          ...(user?.role === "HR" || canSeeApprovals(user?.role)
-            ? [
-                {
-                  to: "/leave" as const,
-                  icon: <CalendarIcon className="h-5 w-5 text-emerald-600" />,
-                  label: "Leave Requests",
-                  bg: "bg-emerald-50",
-                },
-              ]
-            : []),
-          ...(canReadHrRecords(user?.role)
-            ? [
-                {
-                  to: "/employees" as const,
-                  icon: <FileText className="h-5 w-5 text-purple-600" />,
-                  label: "Employee Directory",
-                  bg: "bg-purple-50",
-                },
-                {
-                  to: "/reports" as const,
-                  icon: <BarChart3 className="h-5 w-5 text-amber-600" />,
-                  label: "Reports",
-                  bg: "bg-amber-50",
-                },
-                {
-                  to: "/attendance" as const,
-                  icon: <Clock className="h-5 w-5 text-teal-600" />,
-                  label: "Attendance",
-                  bg: "bg-teal-50",
-                },
-              ]
-            : []),
-        ];
+      : []),
+    ...(hasPermission("employees.write")
+      ? [
+          {
+            to: "/employees" as const,
+            icon: <UserPlus className="h-5 w-5 text-blue-600" />,
+            label: "Add Employee",
+            bg: "bg-blue-50",
+          },
+        ]
+      : []),
+    ...(hasPermission("leave.read") || hasPermission("approvals.manage")
+      ? [
+          {
+            to: "/leave" as const,
+            icon: <CalendarIcon className="h-5 w-5 text-emerald-600" />,
+            label: "Leave Requests",
+            bg: "bg-emerald-50",
+          },
+        ]
+      : []),
+    ...(hasPermission("employees.read")
+      ? [
+          {
+            to: "/employees" as const,
+            icon: <FileText className="h-5 w-5 text-purple-600" />,
+            label: "Employee Directory",
+            bg: "bg-purple-50",
+          },
+        ]
+      : []),
+    ...(hasPermission("reports.view")
+      ? [
+          {
+            to: "/reports" as const,
+            icon: <BarChart3 className="h-5 w-5 text-amber-600" />,
+            label: "Reports",
+            bg: "bg-amber-50",
+          },
+        ]
+      : []),
+    ...(hasPermission("attendance.read")
+      ? [
+          {
+            to: "/attendance" as const,
+            icon: <Clock className="h-5 w-5 text-teal-600" />,
+            label: "Attendance",
+            bg: "bg-teal-50",
+          },
+        ]
+      : []),
+  ];
 
   const load = () => {
-    if (user?.role === "Employee") {
+    if (!canReadDashboardStats) {
       setLoading(false);
       setError("");
       return;
@@ -119,10 +120,10 @@ function Dashboard() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [user?.role]);
+  useEffect(load, [canReadDashboardStats]);
   useRealtimeRefresh(load, ["employees", "leave", "attendance"]);
 
-  if (user?.role === "Employee") {
+  if (!canReadDashboardStats && hasPermission("self_service.access")) {
     return <EmployeeDashboardHome />;
   }
 

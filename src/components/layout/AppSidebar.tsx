@@ -1,22 +1,22 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { LogOut, ChevronLeft, ChevronRight, Stethoscope } from "lucide-react";
-import { canSeeApprovals, isSelfServiceRole, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { getDashboard } from "@/lib/employees-api";
 import { listLeaveApplications } from "@/lib/leave-api";
 import { listDtrCorrectionRequests } from "@/lib/attendance-api";
 import { cn } from "@/lib/utils";
-import { groupNavItems, navForRole } from "@/components/layout/navigation";
+import { groupNavItems, navForPermissions } from "@/components/layout/navigation";
 
 export function AppSidebar() {
   const { agency, sidebarCollapsed: collapsed, toggleSidebar } = useSettings();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const { user, logout } = useAuth();
-  const nav = navForRole(user?.role);
+  const { user, logout, hasPermission } = useAuth();
+  const nav = navForPermissions(user?.permissions);
   const navSections = groupNavItems(nav);
-  const canSeeLeaveNotifications = canSeeApprovals(user?.role);
-  const canSeeEmployeeStats = !isSelfServiceRole(user?.role);
+  const canSeeLeaveNotifications = hasPermission("approvals.manage");
+  const canSeeEmployeeStats = hasPermission("employees.read");
 
   const { data: dashboard } = useQuery({
     queryKey: ["dashboard"],

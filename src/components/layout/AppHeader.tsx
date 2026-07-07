@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   CheckCheck,
 } from "lucide-react";
-import { canSeeApprovals, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect } from "react";
@@ -41,10 +41,10 @@ import { listLeaveApplications } from "@/lib/leave-api";
 import { listDtrCorrectionRequests } from "@/lib/attendance-api";
 import { useRealtime } from "@/lib/realtime";
 import { cn, formatDisplayDateTime } from "@/lib/utils";
-import { groupNavItems, navForRole } from "@/components/layout/navigation";
+import { groupNavItems, navForPermissions } from "@/components/layout/navigation";
 
 export function AppHeader({ title, subtitle }: { title: string; subtitle?: string }) {
-  const { user, logout, updateProfile } = useAuth();
+  const { user, logout, updateProfile, hasPermission } = useAuth();
   const { theme, toggleTheme, agency } = useSettings();
   const dark = theme === "dark";
   const navigate = useNavigate();
@@ -53,7 +53,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", photoUrl: "" });
-  const canSeeLeaveNotifications = canSeeApprovals(user?.role);
+  const canSeeLeaveNotifications = hasPermission("approvals.manage");
   const { connected, notifications, unreadCount, markRead, markAllRead } = useRealtime();
 
   const { data: leaveNotifications } = useQuery({
@@ -108,7 +108,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
   const isActive = (to: string, exact?: boolean) =>
     exact ? path === to : path === to || path.startsWith(to + "/");
 
-  const mobileNav = navForRole(user?.role);
+  const mobileNav = navForPermissions(user?.permissions);
   const mobileNavSections = groupNavItems(mobileNav);
 
   return (

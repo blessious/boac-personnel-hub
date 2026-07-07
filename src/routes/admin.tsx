@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +40,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ROLE_DESCRIPTIONS, ROLE_LABELS, ROLE_OPTIONS, type Role, useAuth } from "@/lib/auth";
+import {
+  ROLE_DESCRIPTIONS,
+  ROLE_LABELS,
+  ROLE_OPTIONS,
+  type PermissionKey,
+  type Role,
+  useAuth,
+} from "@/lib/auth";
 import { api } from "@/lib/api";
 import type { EmployeeRecord } from "@/lib/employees-api";
 import { cn, formatDisplayDateTime, formatEmployeeName } from "@/lib/utils";
@@ -48,7 +56,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-type AdminTab = "users" | "audit" | "errors" | "backup";
+type AdminTab = "users" | "permissions" | "audit" | "errors" | "backup";
 
 interface AdminUser {
   id: number;
@@ -119,11 +127,38 @@ interface BulkEmployeeAccount {
   temporaryPassword: string;
 }
 
-const ADMIN_TABS: { key: AdminTab; label: string; icon: typeof Users }[] = [
-  { key: "users", label: "User Management", icon: Users },
-  { key: "audit", label: "Audit Log", icon: Activity },
-  { key: "errors", label: "Error Log", icon: Bug },
-  { key: "backup", label: "Data Backup", icon: Database },
+interface RolePermissionDefinition {
+  key: PermissionKey;
+  label: string;
+  description: string;
+  group: string;
+}
+
+type RolePermissionMatrix = Record<Role, Record<PermissionKey, boolean>>;
+
+interface RolePermissionResponse {
+  permissions: RolePermissionDefinition[];
+  roles: Role[];
+  locked: Partial<Record<Role, PermissionKey[]>>;
+  matrix: RolePermissionMatrix;
+}
+
+const ADMIN_TABS: {
+  key: AdminTab;
+  label: string;
+  icon: typeof Users;
+  permission: PermissionKey;
+}[] = [
+  { key: "users", label: "User Management", icon: Users, permission: "admin.users" },
+  {
+    key: "permissions",
+    label: "Role Permissions",
+    icon: ShieldCheck,
+    permission: "role_permissions.manage",
+  },
+  { key: "audit", label: "Audit Log", icon: Activity, permission: "admin.audit" },
+  { key: "errors", label: "Error Log", icon: Bug, permission: "admin.errors" },
+  { key: "backup", label: "Data Backup", icon: Database, permission: "admin.backups" },
 ];
 
 const ROLE_COLORS: Record<Role, string> = {
@@ -143,8 +178,19 @@ const IMPORT_LOG_LEVEL_COLORS: Record<ImportLog["level"], string> = {
 };
 
 function AdminPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "Super Admin" || user?.role === "Admin";
+  const { user, hasPermission } = useAuth();
+  const canManageUsers = hasPermission("admin.users");
+  const canManageRolePermissions = hasPermission("role_permissions.manage");
+  const visibleTabs = useMemo(
+    () =>
+      ADMIN_TABS.filter((tab) =>
+        tab.key === "permissions"
+          ? canManageRolePermissions || canManageUsers
+          : hasPermission(tab.permission),
+      ),
+    [canManageRolePermissions, canManageUsers, hasPermission],
+  );
+  const isAdmin = visibleTabs.length > 0;
   const [activeTab, setActiveTab] = useState<AdminTab>("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [employeeCandidates, setEmployeeCandidates] = useState<EmployeeRecord[]>([]);
@@ -155,6 +201,9 @@ function AdminPage() {
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [loadingErrors, setLoadingErrors] = useState(false);
   const [loadingBackups, setLoadingBackups] = useState(false);
+  const [loadingPermissions, setLoadingPermissions] = useState(false);
+  const [savingPermissionRole, setSavingPermissionRole] = useState<Role | null>(null);
+  const [rolePermissionData, setRolePermissionData] = useState<RolePermissionResponse | null>(null);
   const [creatingBackup, setCreatingBackup] = useState(false);
   const [showAddUser, setShowAddUser] = useState(false);
   const [showEditUser, setShowEditUser] = useState(false);
@@ -180,21 +229,21 @@ function AdminPage() {
   });
 
   const loadUsers = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!canManageUsers) return;
     try {
       const result = await api<{ users: AdminUser[] }>("/api/admin/users");
       setUsers(result.users);
     } catch (error) {
       toast.error((error as Error).message);
     }
-  }, [isAdmin]);
+  }, [canManageUsers]);
 
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
 
   const loadEmployeeCandidates = async () => {
-    if (!isAdmin) return;
+    if (!canManageUsers) return;
     try {
       const result = await api<{ employees: EmployeeRecord[] }>(
         "/api/admin/employee-account-candidates",
@@ -206,7 +255,7 @@ function AdminPage() {
   };
 
   const loadAuditLogs = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!hasPermission("admin.audit")) return;
     setLoadingAudit(true);
     try {
       const result = await api<{ logs: AuditLog[] }>("/api/admin/audit-logs");
@@ -216,10 +265,10 @@ function AdminPage() {
     } finally {
       setLoadingAudit(false);
     }
-  }, [isAdmin]);
+  }, [hasPermission]);
 
   const loadErrorLogs = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!hasPermission("admin.errors")) return;
     setLoadingErrors(true);
     try {
       const result = await api<{ logs: ErrorLog[]; importLogs: ImportLog[] }>(
@@ -232,10 +281,10 @@ function AdminPage() {
     } finally {
       setLoadingErrors(false);
     }
-  }, [isAdmin]);
+  }, [hasPermission]);
 
   const loadBackups = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!hasPermission("admin.backups")) return;
     setLoadingBackups(true);
     try {
       const result = await api<{ backups: BackupFile[] }>("/api/admin/backups");
@@ -245,15 +294,38 @@ function AdminPage() {
     } finally {
       setLoadingBackups(false);
     }
-  }, [isAdmin]);
+  }, [hasPermission]);
+
+  const loadRolePermissions = useCallback(async () => {
+    if (!canManageRolePermissions && !canManageUsers) return;
+    setLoadingPermissions(true);
+    try {
+      const result = await api<RolePermissionResponse>("/api/admin/role-permissions");
+      setRolePermissionData(result);
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setLoadingPermissions(false);
+    }
+  }, [canManageRolePermissions, canManageUsers]);
 
   useEffect(() => {
+    if (activeTab === "permissions") loadRolePermissions();
     if (activeTab === "audit") loadAuditLogs();
     if (activeTab === "errors") loadErrorLogs();
     if (activeTab === "backup") loadBackups();
-  }, [activeTab, loadAuditLogs, loadBackups, loadErrorLogs]);
+  }, [activeTab, loadAuditLogs, loadBackups, loadErrorLogs, loadRolePermissions]);
+
+  useEffect(() => {
+    if (visibleTabs.length === 0) return;
+    if (!visibleTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(visibleTabs[0].key);
+    }
+  }, [activeTab, visibleTabs]);
+
   useRealtimeRefresh(() => {
     loadUsers();
+    if (activeTab === "permissions") loadRolePermissions();
     if (activeTab === "audit") loadAuditLogs();
     if (activeTab === "errors") loadErrorLogs();
     if (activeTab === "backup") loadBackups();
@@ -586,6 +658,51 @@ function AdminPage() {
     }
   };
 
+  const permissionGroups = useMemo(() => {
+    const groups = new Map<string, RolePermissionDefinition[]>();
+    for (const permission of rolePermissionData?.permissions || []) {
+      const current = groups.get(permission.group) || [];
+      current.push(permission);
+      groups.set(permission.group, current);
+    }
+    return Array.from(groups.entries()).map(([group, permissions]) => ({ group, permissions }));
+  }, [rolePermissionData]);
+
+  const toggleRolePermission = (role: Role, permission: PermissionKey, allowed: boolean) => {
+    if (!rolePermissionData || !canManageRolePermissions) return;
+    if (rolePermissionData.locked[role]?.includes(permission)) return;
+    setRolePermissionData({
+      ...rolePermissionData,
+      matrix: {
+        ...rolePermissionData.matrix,
+        [role]: {
+          ...rolePermissionData.matrix[role],
+          [permission]: allowed,
+        },
+      },
+    });
+  };
+
+  const saveRolePermissions = async (role: Role) => {
+    if (!rolePermissionData || !canManageRolePermissions) return;
+    setSavingPermissionRole(role);
+    try {
+      const permissions = rolePermissionData.permissions
+        .filter((permission) => rolePermissionData.matrix[role]?.[permission.key])
+        .map((permission) => permission.key);
+      const result = await api<RolePermissionResponse>("/api/admin/role-permissions", {
+        method: "PATCH",
+        body: JSON.stringify({ role, permissions }),
+      });
+      setRolePermissionData(result);
+      toast.success(`${role} permissions saved`);
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setSavingPermissionRole(null);
+    }
+  };
+
   const formatDateTime = (value: string) => formatDisplayDateTime(value);
 
   const formatBytes = (bytes: number) => {
@@ -621,6 +738,23 @@ function AdminPage() {
       ? ROLE_OPTIONS
       : ROLE_OPTIONS.filter((role) => role !== "Super Admin");
 
+  if (!isAdmin) {
+    return (
+      <AppShell
+        title="System Administration"
+        subtitle="Manage users, audit logs, and system configuration"
+      >
+        <div className="rounded-xl border border-border bg-card p-8 text-center shadow-sm">
+          <ShieldCheck className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+          <h4 className="font-semibold text-foreground">System Administration access required</h4>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Your account does not have any administration permissions.
+          </p>
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell
       title="System Administration"
@@ -641,7 +775,7 @@ function AdminPage() {
       </div>
 
       <div className="flex flex-wrap gap-1 bg-muted/40 rounded-xl p-1 w-fit mb-5">
-        {ADMIN_TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
@@ -830,6 +964,124 @@ function AdminPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {activeTab === "permissions" && (
+        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+          <div className="p-4 flex flex-wrap items-center justify-between gap-3 border-b border-border">
+            <div>
+              <h4 className="font-semibold text-foreground">Role Permission Review</h4>
+              <p className="text-xs text-muted-foreground">
+                Review each role's allowed modules, privileges, and system functions.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={loadRolePermissions}
+              disabled={loadingPermissions}
+              className="gap-1.5"
+            >
+              <RefreshCw className={cn("h-4 w-4", loadingPermissions && "animate-spin")} />
+              Refresh
+            </Button>
+          </div>
+          {!canManageRolePermissions && (
+            <div className="border-b border-border bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+              Only Super Admin accounts can change role permissions. This account can review the
+              current matrix only.
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1040px] text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <th className="sticky left-0 z-10 bg-card px-4 py-3 font-semibold">Function</th>
+                  {rolePermissionData?.roles.map((role) => (
+                    <th key={role} className="px-3 py-3 text-center font-semibold">
+                      {role}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {permissionGroups.map(({ group, permissions }) => (
+                  <Fragment key={group}>
+                    <tr className="border-b border-border bg-muted/30">
+                      <td
+                        className="sticky left-0 z-10 bg-muted px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                        colSpan={(rolePermissionData?.roles.length || 0) + 1}
+                      >
+                        {group}
+                      </td>
+                    </tr>
+                    {permissions.map((permission) => (
+                      <tr key={permission.key} className="border-b border-border/50 align-top">
+                        <td className="sticky left-0 z-10 max-w-sm bg-card px-4 py-3">
+                          <div className="font-medium text-foreground">{permission.label}</div>
+                          <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                            {permission.description}
+                          </div>
+                          <div className="mt-1 font-mono text-[10px] text-muted-foreground/80">
+                            {permission.key}
+                          </div>
+                        </td>
+                        {rolePermissionData?.roles.map((role) => {
+                          const locked = rolePermissionData.locked[role]?.includes(permission.key);
+                          const checked = Boolean(
+                            rolePermissionData.matrix[role]?.[permission.key],
+                          );
+                          return (
+                            <td key={`${role}-${permission.key}`} className="px-3 py-3 text-center">
+                              <div className="flex justify-center">
+                                <Checkbox
+                                  checked={checked}
+                                  disabled={!canManageRolePermissions || locked}
+                                  onCheckedChange={(value) =>
+                                    toggleRolePermission(role, permission.key, value === true)
+                                  }
+                                  aria-label={`${role} ${permission.label}`}
+                                  title={
+                                    locked ? "Locked for Super Admin safety" : permission.label
+                                  }
+                                />
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+                {!rolePermissionData && (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={7}>
+                      {loadingPermissions
+                        ? "Loading role permissions..."
+                        : "No role permissions loaded."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {rolePermissionData && (
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border p-4">
+              {rolePermissionData.roles.map((role) => (
+                <Button
+                  key={role}
+                  variant={role === "Super Admin" ? "default" : "outline"}
+                  onClick={() => saveRolePermissions(role)}
+                  disabled={!canManageRolePermissions || savingPermissionRole !== null}
+                  className={cn(
+                    role === "Super Admin" && "bg-blue-600 hover:bg-blue-700 text-white",
+                  )}
+                >
+                  {savingPermissionRole === role ? "Saving..." : `Save ${role}`}
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

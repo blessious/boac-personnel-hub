@@ -1,17 +1,17 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
-import { canSeeApprovals, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { listLeaveApplications } from "@/lib/leave-api";
 import { listDtrCorrectionRequests } from "@/lib/attendance-api";
 import { cn } from "@/lib/utils";
-import { mobileTabsForRole } from "@/components/layout/navigation";
+import { mobileTabsForPermissions } from "@/components/layout/navigation";
 
 export function MobileBottomNav() {
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const { user } = useAuth();
-  const tabs = mobileTabsForRole(user?.role);
-  const canSeeLeaveNotifications = canSeeApprovals(user?.role);
+  const { user, hasPermission } = useAuth();
+  const tabs = mobileTabsForPermissions(user?.permissions);
+  const canSeeLeaveNotifications = hasPermission("approvals.manage");
 
   const { data: leaveNotifications } = useQuery({
     queryKey: ["leave-notifications", user?.role],

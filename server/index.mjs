@@ -185,6 +185,218 @@ const HR_WRITE_ROLES = ["Super Admin", "HR"];
 const APPROVAL_ROLES = ["Super Admin", "Approver"];
 const LEAVE_READ_ROLES = ["Super Admin", "HR", "Approver"];
 const SYSTEM_ADMIN_ROLES = ["Super Admin", "Admin"];
+const PERMISSIONS = [
+  {
+    key: "dashboard.view",
+    label: "Dashboard",
+    description: "Open the main HRIS dashboard.",
+    group: "General",
+  },
+  {
+    key: "employees.read",
+    label: "View employee records",
+    description: "Search and open employee records, including 201 file details.",
+    group: "Employee Records",
+  },
+  {
+    key: "employees.write",
+    label: "Manage employee records",
+    description: "Create, update, delete, and maintain employee record sections.",
+    group: "Employee Records",
+  },
+  {
+    key: "attendance.read",
+    label: "View attendance",
+    description: "View DTR entries, schedules, biometric status, and attendance exports.",
+    group: "Attendance",
+  },
+  {
+    key: "attendance.write",
+    label: "Manage attendance",
+    description: "Import, edit, refresh, approve corrections, and manage attendance setup.",
+    group: "Attendance",
+  },
+  {
+    key: "leave.read",
+    label: "View leave",
+    description: "View leave applications, balances, ledgers, and leave reports.",
+    group: "Leave",
+  },
+  {
+    key: "leave.write",
+    label: "Manage leave",
+    description: "Configure leave types, adjust balances, and maintain leave records.",
+    group: "Leave",
+  },
+  {
+    key: "approvals.manage",
+    label: "Approvals",
+    description: "Review, approve, reject, return, or reverse approval workflows.",
+    group: "Approvals",
+  },
+  {
+    key: "plantilla.read",
+    label: "View plantilla",
+    description: "View plantilla items, occupancy, vacancies, and history.",
+    group: "Plantilla",
+  },
+  {
+    key: "plantilla.write",
+    label: "Manage plantilla",
+    description: "Create, edit, delete, fill, and update plantilla items.",
+    group: "Plantilla",
+  },
+  {
+    key: "movements.read",
+    label: "View movements",
+    description: "View employee movement drafts, queues, events, and posted actions.",
+    group: "Movements",
+  },
+  {
+    key: "movements.write",
+    label: "Prepare movements",
+    description: "Create, edit, submit, post, return, and reverse personnel movements.",
+    group: "Movements",
+  },
+  {
+    key: "service_records.read",
+    label: "View service records",
+    description: "View and export employee service records.",
+    group: "Service Records",
+  },
+  {
+    key: "service_records.write",
+    label: "Manage service records",
+    description: "Create, edit, and delete manual service record entries.",
+    group: "Service Records",
+  },
+  {
+    key: "reports.view",
+    label: "Reports",
+    description: "Open and export reports and analytics.",
+    group: "Reports",
+  },
+  {
+    key: "admin.users",
+    label: "User management",
+    description:
+      "Create users, assign roles, reset passwords, unlock accounts, and print credentials.",
+    group: "System Administration",
+  },
+  {
+    key: "admin.audit",
+    label: "Audit log",
+    description: "View recorded privileged system actions.",
+    group: "System Administration",
+  },
+  {
+    key: "admin.errors",
+    label: "Error log",
+    description: "View system errors and centralized import logs.",
+    group: "System Administration",
+  },
+  {
+    key: "admin.backups",
+    label: "Backups",
+    description: "Create, view, and download system backups.",
+    group: "System Administration",
+  },
+  {
+    key: "settings.manage",
+    label: "Settings",
+    description: "Manage agency branding, references, departments, positions, and salary grades.",
+    group: "System Administration",
+  },
+  {
+    key: "role_permissions.manage",
+    label: "Role permissions",
+    description: "View and change role permission checklists.",
+    group: "System Administration",
+  },
+  {
+    key: "my_profile.access",
+    label: "My Profile",
+    description: "Open the logged-in user's own employee profile.",
+    group: "Self Service",
+  },
+  {
+    key: "self_service.access",
+    label: "Self-Service Portal",
+    description: "Use employee self-service tools.",
+    group: "Self Service",
+  },
+  {
+    key: "requests.access",
+    label: "My Requests",
+    description: "Submit and track employee requests.",
+    group: "Self Service",
+  },
+];
+const PERMISSION_KEYS = new Set(PERMISSIONS.map((permission) => permission.key));
+const LOCKED_SUPER_ADMIN_PERMISSIONS = new Set([
+  "dashboard.view",
+  "admin.users",
+  "admin.audit",
+  "admin.errors",
+  "admin.backups",
+  "settings.manage",
+  "role_permissions.manage",
+]);
+const DEFAULT_ROLE_PERMISSIONS = {
+  "Super Admin": PERMISSIONS.map((permission) => permission.key),
+  Admin: [
+    "dashboard.view",
+    "admin.users",
+    "admin.audit",
+    "admin.errors",
+    "admin.backups",
+    "settings.manage",
+  ],
+  HR: [
+    "dashboard.view",
+    "employees.read",
+    "employees.write",
+    "attendance.read",
+    "attendance.write",
+    "leave.read",
+    "leave.write",
+    "plantilla.read",
+    "plantilla.write",
+    "movements.read",
+    "movements.write",
+    "service_records.read",
+    "service_records.write",
+    "reports.view",
+  ],
+  Approver: [
+    "dashboard.view",
+    "employees.read",
+    "attendance.read",
+    "leave.read",
+    "approvals.manage",
+    "plantilla.read",
+    "movements.read",
+    "service_records.read",
+    "reports.view",
+  ],
+  Employee: [
+    "dashboard.view",
+    "attendance.read",
+    "my_profile.access",
+    "self_service.access",
+    "requests.access",
+  ],
+  Viewer: [
+    "dashboard.view",
+    "employees.read",
+    "attendance.read",
+    "plantilla.read",
+    "movements.read",
+    "service_records.read",
+    "reports.view",
+  ],
+};
+let rolePermissionCache = null;
 const ROLE_ALIASES = new Map([
   ["super admin", "Super Admin"],
   ["super administrator", "Super Admin"],
@@ -1490,12 +1702,65 @@ function validatePassword(password) {
   return errors;
 }
 
+function defaultPermissionsForRole(role) {
+  return new Set(DEFAULT_ROLE_PERMISSIONS[role] || []);
+}
+
+async function loadRolePermissionCache() {
+  const matrix = Object.fromEntries(ROLES.map((role) => [role, defaultPermissionsForRole(role)]));
+  const [rows] = await pool.query(`SELECT role, permission_key, allowed FROM role_permissions`);
+  for (const row of rows) {
+    const role = normalizeRole(row.role);
+    if (!ROLES.includes(role) || !PERMISSION_KEYS.has(row.permission_key)) continue;
+    if (Number(row.allowed) === 1) matrix[role].add(row.permission_key);
+    else matrix[role].delete(row.permission_key);
+  }
+  for (const key of LOCKED_SUPER_ADMIN_PERMISSIONS) {
+    matrix["Super Admin"].add(key);
+  }
+  rolePermissionCache = matrix;
+  return matrix;
+}
+
+async function permissionsForRole(role) {
+  const normalizedRole = normalizeRole(role);
+  if (!ROLES.includes(normalizedRole)) return [];
+  const matrix = rolePermissionCache || (await loadRolePermissionCache());
+  return Array.from(matrix[normalizedRole] || []).filter((key) => PERMISSION_KEYS.has(key));
+}
+
+async function hasPermission(userOrRole, permissionKey) {
+  const role = typeof userOrRole === "string" ? userOrRole : userOrRole?.role;
+  if (!PERMISSION_KEYS.has(permissionKey)) return false;
+  return (await permissionsForRole(role)).includes(permissionKey);
+}
+
+function permissionMatrixResponse(matrix) {
+  return {
+    permissions: PERMISSIONS,
+    roles: ROLES,
+    locked: { "Super Admin": Array.from(LOCKED_SUPER_ADMIN_PERMISSIONS) },
+    matrix: Object.fromEntries(
+      ROLES.map((role) => [
+        role,
+        Object.fromEntries(
+          PERMISSIONS.map((permission) => [
+            permission.key,
+            Boolean(matrix[role]?.has(permission.key)),
+          ]),
+        ),
+      ]),
+    ),
+  };
+}
+
 function publicUser(row) {
   return {
     id: row.id,
     username: row.username,
     name: row.name,
     role: row.role,
+    permissions: row.permissions || [],
     photoUrl: row.photo_url || undefined,
     mustChangePassword: Boolean(row.must_change_password),
     employeeId: row.employee_id || "",
@@ -2366,7 +2631,7 @@ async function recordFailedAttendanceImport({
 async function requireLeaveRead(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!LEAVE_READ_ROLES.includes(user.role)) {
+  if (!(await hasPermission(user, "leave.read"))) {
     json(res, 403, { error: "Leave Management access required" });
     return null;
   }
@@ -2376,7 +2641,7 @@ async function requireLeaveRead(req, res) {
 async function requireLeaveWrite(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!HR_WRITE_ROLES.includes(user.role)) {
+  if (!(await hasPermission(user, "leave.write"))) {
     json(res, 403, { error: "HR access required" });
     return null;
   }
@@ -2386,7 +2651,7 @@ async function requireLeaveWrite(req, res) {
 async function requireApproval(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!APPROVAL_ROLES.includes(user.role)) {
+  if (!(await hasPermission(user, "approvals.manage"))) {
     json(res, 403, { error: "Approval access required" });
     return null;
   }
@@ -2478,7 +2743,7 @@ function validateSection(section) {
 async function requireEmployeeRead(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!HR_READ_ROLES.includes(user.role)) {
+  if (!(await hasPermission(user, "employees.read"))) {
     json(res, 403, { error: "Employee Management access required" });
     return null;
   }
@@ -2488,21 +2753,21 @@ async function requireEmployeeRead(req, res) {
 async function requireEmployeeWrite(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!HR_WRITE_ROLES.includes(user.role)) {
+  if (!(await hasPermission(user, "employees.write"))) {
     json(res, 403, { error: "HR access required" });
     return null;
   }
   return user;
 }
 
-function canWriteEmployeeRecord(user, employeeId) {
-  return HR_WRITE_ROLES.includes(user.role) || user.employeeId === employeeId;
+async function canWriteEmployeeRecord(user, employeeId) {
+  return (await hasPermission(user, "employees.write")) || user.employeeId === employeeId;
 }
 
 async function requireAttendanceRead(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (![...HR_READ_ROLES, "Employee"].includes(user.role)) {
+  if (!(await hasPermission(user, "attendance.read"))) {
     json(res, 403, { error: "Attendance access required" });
     return null;
   }
@@ -2512,15 +2777,55 @@ async function requireAttendanceRead(req, res) {
 async function requireAttendanceWrite(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!HR_WRITE_ROLES.includes(user.role)) {
+  if (!(await hasPermission(user, "attendance.write"))) {
     json(res, 403, { error: "HR attendance access required" });
     return null;
   }
   return user;
 }
 
-function canReadEmployeeAttendance(user, employeeId) {
-  return HR_READ_ROLES.includes(user.role) || user.employeeId === employeeId;
+async function canReadEmployeeAttendance(user, employeeId) {
+  return (await hasPermission(user, "attendance.read")) || user.employeeId === employeeId;
+}
+
+async function requireReportView(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  if (!(await hasPermission(user, "reports.view"))) {
+    json(res, 403, { error: "Reports access required" });
+    return null;
+  }
+  return user;
+}
+
+async function requirePlantillaRead(req, res) {
+  return requirePermission(req, res, "plantilla.read", "Plantilla access required");
+}
+
+async function requirePlantillaWrite(req, res) {
+  return requirePermission(req, res, "plantilla.write", "Plantilla management access required");
+}
+
+async function requireMovementRead(req, res) {
+  return requirePermission(req, res, "movements.read", "Employee movement access required");
+}
+
+async function requireMovementWrite(req, res) {
+  return requirePermission(
+    req,
+    res,
+    "movements.write",
+    "Employee movement management access required",
+  );
+}
+
+async function requireServiceRecordWrite(req, res) {
+  return requirePermission(
+    req,
+    res,
+    "service_records.write",
+    "Service Records management access required",
+  );
 }
 
 async function readEmployeeById(id) {
@@ -2631,6 +2936,19 @@ async function initializeDatabase() {
       INDEX idx_sessions_user_id (user_id),
       INDEX idx_sessions_expires_at (expires_at),
       CONSTRAINT fk_sessions_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS role_permissions (
+      role ENUM('Super Admin', 'Admin', 'HR', 'Approver', 'Employee', 'Viewer') NOT NULL,
+      permission_key VARCHAR(80) NOT NULL,
+      allowed TINYINT(1) NOT NULL DEFAULT 0,
+      updated_by INT UNSIGNED NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (role, permission_key),
+      INDEX idx_role_permissions_updated_by (updated_by),
+      CONSTRAINT fk_role_permissions_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
 
@@ -3579,7 +3897,9 @@ async function getSessionUser(req) {
     { token },
   );
 
-  return rows[0] ? publicUser(rows[0]) : null;
+  if (!rows[0]) return null;
+  rows[0].permissions = await permissionsForRole(rows[0].role);
+  return publicUser(rows[0]);
 }
 
 async function requireUser(req, res) {
@@ -3594,8 +3914,18 @@ async function requireUser(req, res) {
 async function requireAdmin(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!SYSTEM_ADMIN_ROLES.includes(user.role)) {
+  if (!(await hasPermission(user, "admin.users"))) {
     json(res, 403, { error: "Admin access required" });
+    return null;
+  }
+  return user;
+}
+
+async function requirePermission(req, res, permissionKey, message = "Access required") {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  if (!(await hasPermission(user, permissionKey))) {
+    json(res, 403, { error: message });
     return null;
   }
   return user;
@@ -3702,6 +4032,7 @@ async function handleLogin(req, res) {
   );
   await logAudit(user.id, "auth.login", { username }, req);
 
+  user.permissions = await permissionsForRole(user.role);
   return json(
     res,
     200,
@@ -3746,6 +4077,7 @@ async function handleProfileUpdate(req, res) {
      WHERE u.id = :id LIMIT 1`,
     { id: user.id },
   );
+  rows[0].permissions = await permissionsForRole(rows[0].role);
   return json(res, 200, { user: publicUser(rows[0]) });
 }
 
@@ -3799,6 +4131,7 @@ async function handleChangePassword(req, res) {
      WHERE u.id = :id LIMIT 1`,
     { id: user.id },
   );
+  updated[0].permissions = await permissionsForRole(updated[0].role);
   return json(res, 200, { user: publicUser(updated[0]) });
 }
 
@@ -4012,10 +4345,86 @@ async function handleUnlockUser(req, res, id) {
   return json(res, 200, { ok: true });
 }
 
+async function handleListRolePermissions(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (
+    !(await hasPermission(user, "role_permissions.manage")) &&
+    !(await hasPermission(user, "admin.users"))
+  ) {
+    return json(res, 403, { error: "Role permission access required" });
+  }
+  const matrix = rolePermissionCache || (await loadRolePermissionCache());
+  return json(res, 200, permissionMatrixResponse(matrix));
+}
+
+async function handleUpdateRolePermissions(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (user.role !== "Super Admin" || !(await hasPermission(user, "role_permissions.manage"))) {
+    return json(res, 403, { error: "Only a Super Admin can change role permissions" });
+  }
+
+  const body = await readBody(req);
+  const role = normalizeRole(body.role);
+  const permissions = Array.isArray(body.permissions) ? body.permissions.map(String) : null;
+  if (!ROLES.includes(role)) return json(res, 400, { error: "Invalid role" });
+  if (!permissions) return json(res, 400, { error: "Permissions must be an array" });
+  const invalid = permissions.filter((permission) => !PERMISSION_KEYS.has(permission));
+  if (invalid.length) {
+    return json(res, 400, { error: `Invalid permission: ${invalid[0]}` });
+  }
+
+  const nextPermissions = new Set(permissions);
+  if (role === "Super Admin") {
+    for (const key of LOCKED_SUPER_ADMIN_PERMISSIONS) nextPermissions.add(key);
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    for (const permission of PERMISSIONS) {
+      await connection.execute(
+        `INSERT INTO role_permissions (role, permission_key, allowed, updated_by)
+         VALUES (:role, :permissionKey, :allowed, :userId)
+         ON DUPLICATE KEY UPDATE allowed = VALUES(allowed), updated_by = VALUES(updated_by)`,
+        {
+          role,
+          permissionKey: permission.key,
+          allowed: nextPermissions.has(permission.key) ? 1 : 0,
+          userId: user.id,
+        },
+      );
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  rolePermissionCache = null;
+  await pool.execute(
+    `DELETE s FROM sessions s
+      INNER JOIN users u ON u.id = s.user_id
+     WHERE u.role = :role AND u.id <> :currentUserId`,
+    { role, currentUserId: user.id },
+  );
+  await logAudit(
+    user.id,
+    "roles.permissions_update",
+    { role, permissions: Array.from(nextPermissions).sort() },
+    req,
+  );
+  const matrix = await loadRolePermissionCache();
+  return json(res, 200, permissionMatrixResponse(matrix));
+}
+
 async function handleDashboard(req, res) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (![...SYSTEM_ADMIN_ROLES, ...HR_READ_ROLES].includes(user.role)) {
+  if (!(await hasPermission(user, "dashboard.view"))) {
     return json(res, 403, { error: "Dashboard access required" });
   }
 
@@ -4828,7 +5237,7 @@ async function handleListDtrEntries(req, res, url) {
       return json(res, 400, { error: "No employee record linked to this user" });
     employeeId = user.employeeId;
   }
-  if (employeeId && !canReadEmployeeAttendance(user, employeeId)) {
+  if (employeeId && !(await canReadEmployeeAttendance(user, employeeId))) {
     return json(res, 403, { error: "You can only view your own DTR" });
   }
 
@@ -4842,7 +5251,7 @@ async function handleListDtrEntries(req, res, url) {
     pageSize,
   });
   let imports = [];
-  if (HR_WRITE_ROLES.includes(user.role)) {
+  if (await hasPermission(user, "attendance.write")) {
     [imports] = await pool.execute(
       `SELECT ai.*, u.name AS imported_by_name,
               COALESCE(logs.log_count, 0) AS log_count,
@@ -5150,7 +5559,7 @@ async function handleCheckBiometricStatus(req, res) {
 async function handleCheckUnimportedDtrs(req, res, employeeId) {
   const user = await requireAttendanceRead(req, res);
   if (!user) return;
-  if (!canReadEmployeeAttendance(user, employeeId)) {
+  if (!(await canReadEmployeeAttendance(user, employeeId))) {
     return json(res, 403, { error: "You can only view your own DTR" });
   }
   const [[row]] = await pool.execute(
@@ -5976,7 +6385,7 @@ function shiftTemplateRow(row) {
 async function handleListEmployeeSchedules(req, res, url) {
   const user = await requireAttendanceRead(req, res);
   if (!user) return;
-  if (!HR_READ_ROLES.includes(user.role)) {
+  if (!(await hasPermission(user, "employees.read"))) {
     json(res, 403, { error: "HR schedule access required" });
     return;
   }
@@ -6771,7 +7180,7 @@ async function prepareDtrExport(req, res) {
     json(res, 400, { error: "Employee is required" });
     return null;
   }
-  if (!canReadEmployeeAttendance(user, employeeId)) {
+  if (!(await canReadEmployeeAttendance(user, employeeId))) {
     json(res, 403, { error: "You can only export your own DTR" });
     return null;
   }
@@ -7242,7 +7651,7 @@ async function readDtrCorrectionRequests({
 async function handleListDtrCorrectionRequests(req, res, url) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (![...APPROVAL_ROLES, "Employee"].includes(user.role)) {
+  if (!(await hasPermission(user, "approvals.manage")) && user.role !== "Employee") {
     return json(res, 403, { error: "DTR correction request access required" });
   }
   const requestedEmployeeId = String(url.searchParams.get("employeeId") || "").trim();
@@ -7603,7 +8012,7 @@ async function handleCancelDtrCorrectionRequest(req, res, id) {
   if (!request) return json(res, 404, { error: "DTR request not found" });
   if (request.status !== "Pending")
     return json(res, 409, { error: "Only pending requests can be cancelled" });
-  if (!HR_WRITE_ROLES.includes(user.role) && user.employeeId !== request.employee_id) {
+  if (!(await hasPermission(user, "attendance.write")) && user.employeeId !== request.employee_id) {
     return json(res, 403, { error: "You can only cancel your own request" });
   }
   await pool.execute(`UPDATE dtr_correction_requests SET status = 'Cancelled' WHERE id = :id`, {
@@ -7889,9 +8298,9 @@ async function handleExportDtr(req, res, url, mass = false) {
       return json(res, 400, { error: "No employee record linked to this user" });
     employeeId = user.employeeId;
   }
-  if (mass && !HR_WRITE_ROLES.includes(user.role))
+  if (mass && !(await hasPermission(user, "attendance.write")))
     return json(res, 403, { error: "Mass export requires HR access" });
-  if (employeeId && !canReadEmployeeAttendance(user, employeeId)) {
+  if (employeeId && !(await canReadEmployeeAttendance(user, employeeId))) {
     return json(res, 403, { error: "You can only export your own DTR" });
   }
 
@@ -8165,7 +8574,7 @@ async function handleCreateEmployee(req, res) {
 async function handleGetEmployee(req, res, id) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!HR_READ_ROLES.includes(user.role) && user.employeeId !== id) {
+  if (!(await hasPermission(user, "employees.read")) && user.employeeId !== id) {
     return json(res, 403, { error: "You can only view your own employee record" });
   }
 
@@ -8185,7 +8594,7 @@ async function handleGetEmployee(req, res, id) {
 }
 
 async function buildEmployeePdsPayload(id, user) {
-  if (!HR_READ_ROLES.includes(user.role) && user.employeeId !== id) {
+  if (!(await hasPermission(user, "employees.read")) && user.employeeId !== id) {
     throw httpError(403, "You can only export your own Personal Data Sheet");
   }
   try {
@@ -8372,7 +8781,7 @@ async function handleDownloadEmployeeWesDocx(req, res, fileName) {
 async function handleUpdateEmployee(req, res, id) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!canWriteEmployeeRecord(user, id)) {
+  if (!(await canWriteEmployeeRecord(user, id))) {
     return json(res, 403, { error: "You can only update your own employee record" });
   }
 
@@ -8486,7 +8895,7 @@ async function handleDeleteEmployee(req, res, id) {
 async function handleCreateSectionRow(req, res, employeeId, section) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!canWriteEmployeeRecord(user, employeeId)) {
+  if (!(await canWriteEmployeeRecord(user, employeeId))) {
     return json(res, 403, { error: "You can only update your own 201 records" });
   }
   const config = validateSection(section);
@@ -8537,7 +8946,7 @@ async function handleCreateSectionRow(req, res, employeeId, section) {
 async function handleUpdateSectionRow(req, res, employeeId, section, rowId, suppliedPayload) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!canWriteEmployeeRecord(user, employeeId)) {
+  if (!(await canWriteEmployeeRecord(user, employeeId))) {
     return json(res, 403, { error: "You can only update your own 201 records" });
   }
   const config = validateSection(section);
@@ -8580,7 +8989,7 @@ async function handleUpdateSectionRow(req, res, employeeId, section, rowId, supp
 async function handleDeleteSectionRow(req, res, employeeId, section, rowId) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!canWriteEmployeeRecord(user, employeeId)) {
+  if (!(await canWriteEmployeeRecord(user, employeeId))) {
     return json(res, 403, { error: "You can only update your own 201 records" });
   }
   const config = validateSection(section);
@@ -8711,7 +9120,7 @@ async function handleDeleteLeaveType(req, res, id) {
 async function handleEmployeeLeave(req, res, employeeId) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!HR_READ_ROLES.includes(user.role) && user.employeeId !== employeeId) {
+  if (!(await hasPermission(user, "leave.read")) && user.employeeId !== employeeId) {
     return json(res, 403, { error: "Leave Management access required" });
   }
   const employee = await readEmployeeById(employeeId);
@@ -8930,7 +9339,7 @@ async function handleCreateLeaveApplication(req, res) {
       error: "Employee, leave type, dates, and days requested are required",
     });
   }
-  if (!HR_WRITE_ROLES.includes(user.role) && user.employeeId !== employeeId) {
+  if (!(await hasPermission(user, "leave.write")) && user.employeeId !== employeeId) {
     return json(res, 403, { error: "You can only file leave for your own employee record" });
   }
   const employee = await readEmployeeById(employeeId);
@@ -9172,7 +9581,7 @@ function httpError(statusCode, message) {
 async function buildLeaveForm6Payload(id, user) {
   const application = await readLeaveApplication(id);
   if (!application) throw httpError(404, "Leave application not found");
-  if (!LEAVE_READ_ROLES.includes(user.role) && user.employeeId !== application.employeeId) {
+  if (!(await hasPermission(user, "leave.read")) && user.employeeId !== application.employeeId) {
     throw httpError(403, "You can only export your own leave application");
   }
   try {
@@ -9425,7 +9834,7 @@ async function handlePublicAgencySettings(req, res) {
 }
 
 async function handleUpdateAgency(req, res) {
-  const admin = await requireAdmin(req, res);
+  const admin = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!admin) return;
 
   const body = await readBody(req);
@@ -9447,7 +9856,7 @@ async function handleUpdateAgency(req, res) {
 }
 
 async function handleCreateDepartment(req, res) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
   const body = await readBody(req);
   const name = String(body.name || "").trim();
@@ -9464,7 +9873,7 @@ async function handleCreateDepartment(req, res) {
 }
 
 async function handleDeleteDepartment(req, res, id) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
   await pool.execute(`DELETE FROM departments WHERE id = :id`, { id });
   await logAudit(user.id, "config.department_delete", { id }, req);
@@ -9472,7 +9881,7 @@ async function handleDeleteDepartment(req, res, id) {
 }
 
 async function handleCreatePosition(req, res) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
   const body = await readBody(req);
   const title = String(body.title || "").trim();
@@ -9488,7 +9897,7 @@ async function handleCreatePosition(req, res) {
 }
 
 async function handleDeletePosition(req, res, id) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
   await pool.execute(`DELETE FROM positions WHERE id = :id`, { id });
   await logAudit(user.id, "config.position_delete", { id }, req);
@@ -9496,7 +9905,7 @@ async function handleDeletePosition(req, res, id) {
 }
 
 async function handleCreateSalaryGrade(req, res) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
   let payload;
   try {
@@ -9562,7 +9971,7 @@ async function salaryGradeUsage(id) {
 }
 
 async function handleUpdateSalaryGrade(req, res, id) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
 
   const [[salaryGrade]] = await pool.execute(
@@ -9621,7 +10030,7 @@ async function handleUpdateSalaryGrade(req, res, id) {
 }
 
 async function handleRenameSalaryGradeTable(req, res) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
 
   const body = await readBody(req);
@@ -9701,7 +10110,7 @@ async function handleRenameSalaryGradeTable(req, res) {
 }
 
 async function handleDeleteSalaryGradeTable(req, res, url) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
 
   const body = await readBody(req);
@@ -9784,7 +10193,7 @@ function readSalaryEffectivityDate(value) {
 }
 
 async function handleActivateSalaryGradeTable(req, res) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
 
   const body = await readBody(req);
@@ -10027,7 +10436,7 @@ async function handleActivateSalaryGradeTable(req, res) {
 }
 
 async function handleDeleteSalaryGrade(req, res, id) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
   const [[salaryGrade]] = await pool.execute(
     `SELECT id, is_active FROM salary_grades WHERE id = :id LIMIT 1`,
@@ -10086,7 +10495,7 @@ async function readReferenceValue(id, category = "") {
 async function handleListReferenceValues(req, res) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!HR_READ_ROLES.includes(user.role)) {
+  if (!(await hasPermission(user, "employees.read"))) {
     return json(res, 403, { error: "Employee reference access required" });
   }
   const [rows] = await pool.query(
@@ -10198,7 +10607,7 @@ function referenceMutationError(res, error, label) {
 }
 
 async function handleCreateReferenceValue(req, res, category) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
   const config = getReferenceLibraryType(category);
   if (!config) return json(res, 404, { error: "Reference library not found" });
@@ -10234,7 +10643,7 @@ async function handleCreateReferenceValue(req, res, category) {
 }
 
 async function handleUpdateReferenceValue(req, res, category, id) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
   const config = getReferenceLibraryType(category);
   if (!config) return json(res, 404, { error: "Reference library not found" });
@@ -10279,7 +10688,7 @@ async function handleUpdateReferenceValue(req, res, category, id) {
 }
 
 async function handleDeleteReferenceValue(req, res, category, id) {
-  const user = await requireEmployeeWrite(req, res);
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
   const config = getReferenceLibraryType(category);
   if (!config) return json(res, 404, { error: "Reference library not found" });
@@ -10298,7 +10707,7 @@ async function handleDeleteReferenceValue(req, res, category, id) {
 }
 
 async function handleListAuditLogs(req, res) {
-  const admin = await requireAdmin(req, res);
+  const admin = await requirePermission(req, res, "admin.audit", "Audit log access required");
   if (!admin) return;
 
   const [rows] = await pool.query(
@@ -10323,7 +10732,7 @@ async function handleListAuditLogs(req, res) {
 }
 
 async function handleListErrorLogs(req, res) {
-  const admin = await requireAdmin(req, res);
+  const admin = await requirePermission(req, res, "admin.errors", "Error log access required");
   if (!admin) return;
 
   const [rows] = await pool.query(
@@ -10383,7 +10792,7 @@ async function handleListErrorLogs(req, res) {
 }
 
 async function handleListBackups(req, res) {
-  const admin = await requireAdmin(req, res);
+  const admin = await requirePermission(req, res, "admin.backups", "Backup access required");
   if (!admin) return;
 
   await fs.mkdir(BACKUP_DIR, { recursive: true });
@@ -10408,12 +10817,13 @@ async function handleListBackups(req, res) {
 }
 
 async function handleCreateBackup(req, res) {
-  const admin = await requireAdmin(req, res);
+  const admin = await requirePermission(req, res, "admin.backups", "Backup access required");
   if (!admin) return;
 
   await fs.mkdir(BACKUP_DIR, { recursive: true });
   const tables = [
     "users",
+    "role_permissions",
     "audit_logs",
     "error_logs",
     "agency_settings",
@@ -10468,7 +10878,7 @@ async function handleCreateBackup(req, res) {
 }
 
 async function handleDownloadBackup(req, res, fileName) {
-  const admin = await requireAdmin(req, res);
+  const admin = await requirePermission(req, res, "admin.backups", "Backup access required");
   if (!admin) return;
   const decoded = decodeURIComponent(fileName);
   if (!/^hris_db_backup_[A-Za-z0-9_.-]+\.json$/.test(decoded)) {
@@ -10666,6 +11076,10 @@ async function route(req, res) {
     return handleResetUserPassword(req, res, resetPasswordMatch[1]);
   if (req.method === "POST" && unlockUserMatch)
     return handleUnlockUser(req, res, unlockUserMatch[1]);
+  if (req.method === "GET" && url.pathname === "/api/admin/role-permissions")
+    return handleListRolePermissions(req, res);
+  if (req.method === "PATCH" && url.pathname === "/api/admin/role-permissions")
+    return handleUpdateRolePermissions(req, res);
   if (req.method === "GET" && url.pathname === "/api/admin/audit-logs")
     return handleListAuditLogs(req, res);
   if (req.method === "GET" && url.pathname === "/api/admin/error-logs")
@@ -10914,7 +11328,8 @@ await initializeDatabase();
 serviceRecordHandlers = createServiceRecordHandlers({
   pool,
   requireUser,
-  requireEmployeeWrite,
+  hasPermission,
+  requireEmployeeWrite: requireServiceRecordWrite,
   readBody,
   json,
   logAudit,
@@ -10925,7 +11340,7 @@ serviceRecordHandlers = createServiceRecordHandlers({
 });
 reportHandlers = createReportHandlers({
   pool,
-  requireEmployeeRead,
+  requireEmployeeRead: requireReportView,
   json,
   logAudit,
   runPython,
@@ -10935,8 +11350,8 @@ reportHandlers = createReportHandlers({
 });
 movementHandlers = createMovementHandlers({
   pool,
-  requireEmployeeRead,
-  requireEmployeeWrite,
+  requireEmployeeRead: requireMovementRead,
+  requireEmployeeWrite: requireMovementWrite,
   requireApproval,
   readBody,
   json,
@@ -10944,8 +11359,8 @@ movementHandlers = createMovementHandlers({
 });
 plantillaHandlers = createPlantillaHandlers({
   pool,
-  requireEmployeeRead,
-  requireEmployeeWrite,
+  requireEmployeeRead: requirePlantillaRead,
+  requireEmployeeWrite: requirePlantillaWrite,
   readBody,
   json,
   logAudit,
