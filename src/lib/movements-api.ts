@@ -21,6 +21,7 @@ export type MovementStatus =
   | "Submitted"
   | "Reviewed"
   | "Approved"
+  | "Scheduled"
   | "Posted"
   | "Rejected"
   | "Reversed";
@@ -66,6 +67,8 @@ export type Movement = {
   postedBy: string;
   decisionRemarks: string;
   reversalReason: string;
+  scheduledAt?: string | null;
+  activationError?: string;
   createdAt: string;
   updatedAt: string;
 };

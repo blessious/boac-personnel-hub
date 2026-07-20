@@ -5,6 +5,7 @@ import {
   CalendarRange,
   ClipboardCheck,
   FileClock,
+  Library,
   LayoutDashboard,
   Landmark,
   MonitorSmartphone,
@@ -20,6 +21,7 @@ export type AppNavItem = {
   to:
     | "/"
     | "/employees"
+    | "/employees/references"
     | "/attendance"
     | "/schedules"
     | "/plantilla"
@@ -65,6 +67,14 @@ export const APP_NAV: AppNavItem[] = [
     label: "Employee Management",
     shortLabel: "Employees",
     icon: Users,
+    exact: true,
+    permission: "employees.read",
+  },
+  {
+    to: "/employees/references",
+    label: "Employee References",
+    shortLabel: "References",
+    icon: Library,
     permission: "employees.read",
   },
   {
@@ -157,7 +167,14 @@ const NAV_SECTION_ORDER = [
 function sectionForNavItem(item: AppNavItem): (typeof NAV_SECTION_ORDER)[number] {
   if (item.to === "/") return "Overview";
   if (
-    ["/employees", "/my-profile", "/plantilla", "/movements", "/service-records"].includes(item.to)
+    [
+      "/employees",
+      "/employees/references",
+      "/my-profile",
+      "/plantilla",
+      "/movements",
+      "/service-records",
+    ].includes(item.to)
   ) {
     return "Employee Records";
   }

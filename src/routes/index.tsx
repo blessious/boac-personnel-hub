@@ -241,6 +241,51 @@ function Dashboard() {
           </div>
         </div>
 
+        <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-semibold">Authoritative staffing</h2>
+              <p className="text-xs text-muted-foreground">
+                Plantilla vacancy and headcount totals are based on active assignments, not employee
+                labels.
+              </p>
+            </div>
+            <Link to="/plantilla" className="text-sm font-medium text-blue-600 hover:underline">
+              Open Plantilla
+            </Link>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+            <StaffingMetric
+              label="Authorized"
+              value={data?.assignmentTotals.authorizedPlantilla ?? 0}
+            />
+            <StaffingMetric label="Filled" value={data?.assignmentTotals.filledPlantilla ?? 0} />
+            <StaffingMetric
+              label="Vacant"
+              value={data?.assignmentTotals.vacantPlantilla ?? 0}
+              attention
+            />
+            <StaffingMetric
+              label="Non-Plantilla"
+              value={data?.assignmentTotals.activeNonPlantilla ?? 0}
+            />
+            <StaffingMetric
+              label="Awaiting match"
+              value={data?.assignmentTotals.awaitingAssignment ?? 0}
+              attention
+            />
+            <StaffingMetric
+              label="Scheduled"
+              value={data?.assignmentTotals.scheduledAppointments ?? 0}
+            />
+            <StaffingMetric
+              label="Expiring soon"
+              value={data?.assignmentTotals.expiringEngagements ?? 0}
+              attention
+            />
+          </div>
+        </section>
+
         <div className="grid grid-cols-2 gap-3 md:gap-6 lg:grid-cols-12">
           <section className="dash-card-stagger col-span-2 flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-5">
             <div className="mb-6">
@@ -432,6 +477,28 @@ function Dashboard() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function StaffingMetric({
+  label,
+  value,
+  attention = false,
+}: {
+  label: string;
+  value: number;
+  attention?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border p-3",
+        attention && value > 0 ? "border-amber-200 bg-amber-50" : "bg-muted/30",
+      )}
+    >
+      <div className="text-xl font-bold">{value}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+    </div>
   );
 }
 

@@ -42,6 +42,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -68,10 +70,17 @@ import {
 import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { api } from "@/lib/api";
+import { listPlantilla, type PlantillaItem } from "@/lib/plantilla-api";
+import type { ReferenceCategory, ReferenceRow } from "@/lib/reference-libraries";
+import type { EngagementPayload } from "@/lib/assignments-api";
 
 export const Route = createFileRoute("/employees")({
   validateSearch: (search: Record<string, unknown>) => ({
     department: typeof search.department === "string" ? search.department : undefined,
+    onboard: search.onboard === "plantilla" ? "plantilla" : undefined,
+    targetPlantillaItemId:
+      typeof search.targetPlantillaItemId === "string" ? search.targetPlantillaItemId : undefined,
   }),
   component: EmployeesPage,
 });
@@ -101,6 +110,33 @@ const EMPTY_FORM: Partial<EmployeeRecord> = {
   email: "",
   dtrSignatory: "",
   isDtrNoter: false,
+};
+
+type OnboardingMode = "personal" | "plantilla" | "engagement";
+type AddEngagementForm = Pick<
+  EngagementPayload,
+  "engagementType" | "organizationId" | "designation" | "dateFrom" | "dateTo"
+>;
+const today = () => new Date().toISOString().slice(0, 10);
+const onboardingModeForStatus = (status?: string): OnboardingMode => {
+  if (status === "Unassigned") return "personal";
+  if (status === "Permanent" || status === "Regular") return "plantilla";
+  return "engagement";
+};
+const EMPTY_APPOINTMENT = {
+  controlNumber: "",
+  targetPlantillaItemId: "",
+  effectiveDate: today(),
+  authorityNumber: "",
+  authorityDate: "",
+  remarks: "",
+};
+const EMPTY_ENGAGEMENT: AddEngagementForm = {
+  engagementType: "JO",
+  organizationId: "",
+  designation: "",
+  dateFrom: today(),
+  dateTo: "",
 };
 
 function EmployeesPage() {
@@ -134,8 +170,11 @@ function EmployeesPage() {
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [form, setForm] = useState<Partial<EmployeeRecord>>(EMPTY_FORM);
-  const [departmentQuery, setDepartmentQuery] = useState("");
-  const [positionQuery, setPositionQuery] = useState("");
+  const [appointment, setAppointment] = useState(EMPTY_APPOINTMENT);
+  const [engagement, setEngagement] = useState<AddEngagementForm>(EMPTY_ENGAGEMENT);
+  const [sameDtrSignatoryAsName, setSameDtrSignatoryAsName] = useState(false);
+  const [vacancies, setVacancies] = useState<PlantillaItem[]>([]);
+  const [organizationUnits, setOrganizationUnits] = useState<ReferenceRow[]>([]);
   const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
   const [createdAccount, setCreatedAccount] = useState<{
     employeeName: string;
@@ -144,6 +183,8 @@ function EmployeesPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const selectedDepartment = search.department?.trim() || "all";
+  const onboardingMode = onboardingModeForStatus(form.status);
+  const employeeDisplayName = formatEmployeeName(form, "");
 
   const load = () => {
     setLoading(true);
@@ -166,9 +207,47 @@ function EmployeesPage() {
   }, [selectedDepartment]);
 
   useEffect(() => {
+    if (search.onboard !== "plantilla") return;
+    setForm((current) => ({ ...current, status: "Permanent" }));
+    setAppointment((current) => ({
+      ...current,
+      targetPlantillaItemId: search.targetPlantillaItemId || "",
+    }));
+    setShowAddDialog(true);
+    navigate({ search: {}, replace: true });
+  }, [navigate, search.onboard, search.targetPlantillaItemId]);
+
+  useEffect(() => {
+    if (!sameDtrSignatoryAsName) return;
+    setForm((current) => ({ ...current, dtrSignatory: formatEmployeeName(current, "") }));
+  }, [form.firstname, form.middlename, form.lastname, sameDtrSignatoryAsName]);
+
+  useEffect(() => {
     getSettingsOptions()
       .then(setOptions)
       .catch(() => setOptions({ departments: [], positions: [], salaryGrades: [] }));
+  }, []);
+
+  useEffect(() => {
+    Promise.all([
+      listPlantilla("", "Active", "vacant"),
+      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references"),
+    ])
+      .then(([plantilla, references]) => {
+        setVacancies(plantilla.items.filter((item) => !item.occupant && !item.pendingMovement));
+        setOrganizationUnits(
+          [
+            ...references.libraries.sectors,
+            ...references.libraries.offices,
+            ...references.libraries.divisions,
+            ...references.libraries.sections,
+          ].filter((row) => row.isActive),
+        );
+      })
+      .catch(() => {
+        setVacancies([]);
+        setOrganizationUnits([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -185,25 +264,12 @@ function EmployeesPage() {
     () => options.departments.map((department) => department.name),
     [options.departments],
   );
-  const filteredDepartments = useMemo(() => {
-    const query = departmentQuery.trim().toLowerCase();
-    if (!query) return departments;
-    return departments.filter((department) => department.toLowerCase().includes(query));
-  }, [departmentQuery, departments]);
   const filteredFilterDepartments = useMemo(() => {
     const query = filterDepartmentQuery.trim().toLowerCase();
     if (!query) return departments;
     return departments.filter((department) => department.toLowerCase().includes(query));
   }, [filterDepartmentQuery, departments]);
-  const positions = useMemo(
-    () => options.positions.map((position) => position.title),
-    [options.positions],
-  );
-  const filteredPositions = useMemo(() => {
-    const query = positionQuery.trim().toLowerCase();
-    if (!query) return positions;
-    return positions.filter((position) => position.toLowerCase().includes(query));
-  }, [positionQuery, positions]);
+  const selectedVacancy = vacancies.find((item) => item.id === appointment.targetPlantillaItemId);
 
   if (location.pathname !== "/employees") return <Outlet />;
 
@@ -211,8 +277,60 @@ function EmployeesPage() {
     if (isCreatingEmployee) return;
     setIsCreatingEmployee(true);
     try {
-      const result = await createEmployee(form);
-      toast.success(result.account ? "Employee and account created" : "Employee added");
+      const common = {
+        ...form,
+        department: "",
+        position: "",
+        itemNo: "",
+      };
+      const effectiveEngagement = {
+        ...engagement,
+        engagementType:
+          form.status === "Casual" ? "Casual" : (engagement.engagementType as "JO" | "COS"),
+      };
+      const result =
+        onboardingMode === "plantilla"
+          ? await createEmployee({
+              ...common,
+              status: "Permanent",
+              empStatus: "Inactive",
+              lifecycleState: "Pre-Employment",
+              createAccount: true,
+              accountActive: false,
+              appointment: {
+                controlNumber: appointment.controlNumber,
+                targetPlantillaItemId: appointment.targetPlantillaItemId,
+                effectiveDate: appointment.effectiveDate,
+                authorityNumber: appointment.authorityNumber,
+                authorityDate: appointment.authorityDate,
+                remarks: appointment.remarks,
+                supportingDocuments: [],
+              },
+            })
+          : onboardingMode === "engagement"
+            ? await createEmployee({
+                ...common,
+                status: effectiveEngagement.engagementType === "Casual" ? "Casual" : "JO/COS",
+                empStatus: "Inactive",
+                lifecycleState: "Personal Record",
+                createAccount: true,
+                accountActive: effectiveEngagement.dateFrom <= today(),
+                engagement: effectiveEngagement,
+              })
+            : await createEmployee({
+                ...common,
+                status: "Unassigned",
+                empStatus: "Inactive",
+                lifecycleState: "Personal Record",
+                createAccount: false,
+              });
+      toast.success(
+        result.appointmentDraftId
+          ? "Personal record and appointment draft created"
+          : result.engagementId
+            ? "Employee and non-Plantilla engagement created"
+            : "Personal record created",
+      );
       if (result.account) {
         setCreatedAccount({
           employeeName: formatEmployeeName(result.employee),
@@ -221,8 +339,9 @@ function EmployeesPage() {
       }
       setShowAddDialog(false);
       setForm(EMPTY_FORM);
-      setDepartmentQuery("");
-      setPositionQuery("");
+      setAppointment({ ...EMPTY_APPOINTMENT, effectiveDate: today() });
+      setEngagement({ ...EMPTY_ENGAGEMENT, dateFrom: today() });
+      setSameDtrSignatoryAsName(false);
       setPage(1);
       load();
       return result.employee;
@@ -342,11 +461,6 @@ function EmployeesPage() {
             </p>
           </div>
           <div className="mobile-action-row mt-4 flex flex-wrap gap-2 sm:mt-0">
-            <Button variant="outline" asChild>
-              <Link to="/employees/references" search={{ department: undefined }}>
-                Employee References
-              </Link>
-            </Button>
             <Button
               disabled={!canEdit}
               onClick={() => setShowAddDialog(true)}
@@ -357,12 +471,7 @@ function EmployeesPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 md:hidden">
-          <Button variant="outline" asChild className="h-11 rounded-xl bg-white shadow-sm">
-            <Link to="/employees/references" search={{ department: undefined }}>
-              Employee References
-            </Link>
-          </Button>
+        <div className="grid gap-2 md:hidden">
           <Button
             disabled={!canEdit}
             onClick={() => setShowAddDialog(true)}
@@ -856,15 +965,9 @@ function EmployeesPage() {
         open={showAddDialog}
         onOpenChange={(open) => {
           setShowAddDialog(open);
-          if (!open && departmentQuery) {
-            setDepartmentQuery("");
-          }
-          if (!open && positionQuery) {
-            setPositionQuery("");
-          }
         }}
       >
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Add Employee</DialogTitle>
           </DialogHeader>
@@ -901,80 +1004,18 @@ function EmployeesPage() {
                 onChange={(e) => setForm({ ...form, lastname: e.target.value })}
               />
             </Field>
-            <Field label="Department *">
-              <Select
-                value={form.department ?? ""}
-                onValueChange={(value) => setForm({ ...form, department: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <div className="sticky top-0 z-10 bg-popover p-2">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                      <Input
-                        value={departmentQuery}
-                        onChange={(event) => setDepartmentQuery(event.target.value)}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        placeholder="Search departments..."
-                        className="h-8 pl-9"
-                      />
-                    </div>
-                  </div>
-                  {filteredDepartments.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
-                    </SelectItem>
-                  ))}
-                  {filteredDepartments.length === 0 && (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">
-                      No departments found.
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Position *">
-              <Select
-                value={form.position ?? ""}
-                onValueChange={(value) => setForm({ ...form, position: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select position" />
-                </SelectTrigger>
-                <SelectContent>
-                  <div className="sticky top-0 z-10 bg-popover p-2">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                      <Input
-                        value={positionQuery}
-                        onChange={(event) => setPositionQuery(event.target.value)}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        placeholder="Search positions..."
-                        className="h-8 pl-9"
-                      />
-                    </div>
-                  </div>
-                  {filteredPositions.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
-                    </SelectItem>
-                  ))}
-                  {filteredPositions.length === 0 && (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">
-                      No positions found.
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Employment Status">
+            <Field label="Employment Status *">
               <Select
                 value={form.status ?? "Permanent"}
-                onValueChange={(value) =>
-                  setForm({ ...form, status: value as EmployeeRecord["status"] })
-                }
+                onValueChange={(value) => {
+                  const nextStatus = value as EmployeeRecord["status"];
+                  setForm({ ...form, status: nextStatus });
+                  if (nextStatus === "Casual") {
+                    setEngagement((current) => ({ ...current, engagementType: "Casual" }));
+                  } else if (nextStatus === "JO/COS" && engagement.engagementType === "Casual") {
+                    setEngagement((current) => ({ ...current, engagementType: "JO" }));
+                  }
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -987,6 +1028,13 @@ function EmployeesPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </Field>
+            <Field label="Email">
+              <Input
+                type="email"
+                value={form.email ?? ""}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
             </Field>
             <Field label="DTR Noter">
               <Select
@@ -1002,44 +1050,245 @@ function EmployeesPage() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="DTR Signatory">
-              <Input
-                value={form.dtrSignatory ?? ""}
-                onChange={(e) => setForm({ ...form, dtrSignatory: e.target.value })}
-                placeholder={formatEmployeeName(form, "")}
-              />
-            </Field>
-            <Field label="Date Hired">
-              <Input
-                type="date"
-                value={form.dateHired ?? ""}
-                onChange={(e) => setForm({ ...form, dateHired: e.target.value })}
-              />
-            </Field>
-            <Field label="Email">
-              <Input
-                type="email"
-                value={form.email ?? ""}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-              />
-            </Field>
+            <div className="space-y-2">
+              <Field label="DTR Signatory">
+                <Input
+                  value={form.dtrSignatory ?? ""}
+                  onChange={(e) => {
+                    setSameDtrSignatoryAsName(false);
+                    setForm({ ...form, dtrSignatory: e.target.value });
+                  }}
+                  placeholder={employeeDisplayName}
+                />
+              </Field>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={sameDtrSignatoryAsName}
+                  onCheckedChange={(checked) => {
+                    const enabled = checked === true;
+                    setSameDtrSignatoryAsName(enabled);
+                    setForm({
+                      ...form,
+                      dtrSignatory: enabled ? employeeDisplayName : form.dtrSignatory,
+                    });
+                  }}
+                />
+                Same as employee name
+              </label>
+            </div>
+            {onboardingMode === "plantilla" && (
+              <>
+                <Field label="Vacant Plantilla item *">
+                  <Select
+                    value={appointment.targetPlantillaItemId}
+                    onValueChange={(value) =>
+                      setAppointment({ ...appointment, targetPlantillaItemId: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select an authorized vacancy" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vacancies.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.itemNumber} — {item.positionTitle}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Appointment effective date *">
+                  <Input
+                    type="date"
+                    value={appointment.effectiveDate}
+                    onChange={(event) =>
+                      setAppointment({ ...appointment, effectiveDate: event.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Movement control no.">
+                  <Input
+                    placeholder="Leave blank to auto-generate"
+                    value={appointment.controlNumber}
+                    onChange={(event) =>
+                      setAppointment({
+                        ...appointment,
+                        controlNumber: event.target.value.toUpperCase(),
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Appointment / authority no.">
+                  <Input
+                    placeholder="Appointment, notice, or authority reference"
+                    value={appointment.authorityNumber}
+                    onChange={(event) =>
+                      setAppointment({ ...appointment, authorityNumber: event.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Authority date">
+                  <Input
+                    type="date"
+                    value={appointment.authorityDate}
+                    onChange={(event) =>
+                      setAppointment({ ...appointment, authorityDate: event.target.value })
+                    }
+                  />
+                </Field>
+                <div className="md:col-span-2">
+                  <Field label="Movement remarks">
+                    <Textarea
+                      value={appointment.remarks}
+                      onChange={(event) =>
+                        setAppointment({ ...appointment, remarks: event.target.value })
+                      }
+                      placeholder="Optional notes for the appointment draft"
+                    />
+                  </Field>
+                </div>
+                {selectedVacancy && (
+                  <div className="md:col-span-2 grid gap-2 rounded-lg border bg-muted/30 p-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <span className="font-medium">Position:</span> {selectedVacancy.positionTitle}
+                    </div>
+                    <div>
+                      <span className="font-medium">Item:</span> {selectedVacancy.itemNumber}
+                    </div>
+                    <div>
+                      <span className="font-medium">Organization:</span>{" "}
+                      {[
+                        selectedVacancy.sectorName,
+                        selectedVacancy.officeName,
+                        selectedVacancy.divisionName,
+                        selectedVacancy.sectionName,
+                      ]
+                        .filter(Boolean)
+                        .join(" / ") || "Not specified"}
+                    </div>
+                    <div>
+                      <span className="font-medium">Salary:</span>{" "}
+                      {selectedVacancy.salaryGrade
+                        ? `SG ${selectedVacancy.salaryGrade.grade}, Step ${selectedVacancy.salaryGrade.step} — PHP ${(selectedVacancy.authorizedSalary ?? selectedVacancy.salaryGrade.amount).toLocaleString()}`
+                        : "Not specified"}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+            {onboardingMode === "engagement" && (
+              <>
+                {form.status === "JO/COS" && (
+                  <Field label="Engagement type *">
+                    <Select
+                      value={engagement.engagementType === "COS" ? "COS" : "JO"}
+                      onValueChange={(value) =>
+                        setEngagement({
+                          ...engagement,
+                          engagementType: value as "JO" | "COS",
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="JO">JO</SelectItem>
+                        <SelectItem value="COS">COS</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                )}
+                <Field label="Official organization *">
+                  <Select
+                    value={engagement.organizationId}
+                    onValueChange={(value) =>
+                      setEngagement({ ...engagement, organizationId: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select sector, office, division, or section" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {organizationUnits.map((row) => (
+                        <SelectItem key={row.id} value={String(row.id)}>
+                          {row.name} ({row.category})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Position / designation *">
+                  <Select
+                    value={engagement.designation}
+                    onValueChange={(value) => setEngagement({ ...engagement, designation: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {options.positions.map((position) => (
+                        <SelectItem key={position.id} value={position.title}>
+                          {position.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Start date *">
+                  <Input
+                    type="date"
+                    value={engagement.dateFrom}
+                    onChange={(event) =>
+                      setEngagement({ ...engagement, dateFrom: event.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="End date *">
+                  <Input
+                    type="date"
+                    value={engagement.dateTo}
+                    onChange={(event) =>
+                      setEngagement({ ...engagement, dateTo: event.target.value })
+                    }
+                  />
+                </Field>
+              </>
+            )}
+            {onboardingMode === "personal" && (
+              <div className="md:col-span-2 rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                This creates a PDS/201 record only. No office, position, Plantilla occupancy,
+                employment status, or login account will be assigned.
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
                 setShowAddDialog(false);
-                setPositionQuery("");
               }}
             >
               Cancel
             </Button>
             <Button
-              disabled={!canEdit || isCreatingEmployee}
+              disabled={
+                !canEdit ||
+                isCreatingEmployee ||
+                !form.firstname?.trim() ||
+                !form.lastname?.trim() ||
+                (onboardingMode === "plantilla" &&
+                  (!appointment.targetPlantillaItemId || !appointment.effectiveDate)) ||
+                (onboardingMode === "engagement" &&
+                  (!engagement.organizationId ||
+                    !engagement.designation.trim() ||
+                    !engagement.dateFrom ||
+                    !engagement.dateTo))
+              }
               onClick={submit}
               className="bg-blue-600 text-white hover:bg-blue-700"
             >
-              {isCreatingEmployee ? "Adding..." : "Add Employee"}
+              {isCreatingEmployee ? "Adding..." : "Add"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1069,6 +1318,8 @@ function EmployeesPage() {
                 </div>
                 <p className="mt-3 text-xs leading-relaxed text-amber-800">
                   The password is shown only now. The employee must change it after first login.
+                  {createdAccount.credentials.active === false &&
+                    " The account will remain inactive until the approved appointment becomes effective."}
                 </p>
               </div>
             </div>

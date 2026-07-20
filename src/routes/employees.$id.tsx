@@ -40,6 +40,7 @@ import {
   updateEmployee,
   updateSectionRow,
   type EmployeeRecord,
+  type CurrentAssignment,
   type SectionRow,
   type SettingsOptions,
 } from "@/lib/employees-api";
@@ -247,6 +248,10 @@ function EmployeeFile() {
   const canManageEmployees = can("edit");
   const [active, setActive] = useState<Tab>("PERSONAL");
   const [employee, setEmployee] = useState<EmployeeRecord | null>(null);
+  const [currentAssignment, setCurrentAssignment] = useState<CurrentAssignment>({
+    substantive: null,
+    temporary: null,
+  });
   const [sections, setSections] = useState<Record<string, SectionRow[]>>({});
   const [options, setOptions] = useState<SettingsOptions>({
     departments: [],
@@ -263,6 +268,7 @@ function EmployeeFile() {
       .then((result) => {
         setEmployee(result.employee);
         setSections(result.sections);
+        setCurrentAssignment(result.currentAssignment);
       })
       .catch((err) => setError(err.message || "Unable to load employee"))
       .finally(() => setLoading(false));
@@ -327,6 +333,8 @@ function EmployeeFile() {
         </div>
       </div>
 
+      <CurrentAssignmentCard assignment={currentAssignment} employee={employee} />
+
       <div className="mt-4 border-b border-border">
         <div className="flex flex-wrap gap-x-1 sm:gap-x-2">
           {TABS.map((tab) => (
@@ -358,6 +366,7 @@ function EmployeeFile() {
             employee={employee}
             options={options}
             canEdit={canEditProfile}
+            currentAssignment={currentAssignment}
             onSaved={(updated) => setEmployee(updated)}
           />
         ) : active === "LEAVE BALANCE" ? (
@@ -377,15 +386,97 @@ function EmployeeFile() {
   );
 }
 
+function CurrentAssignmentCard({
+  assignment,
+  employee,
+}: {
+  assignment: CurrentAssignment;
+  employee: EmployeeRecord;
+}) {
+  const substantive = assignment.substantive;
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-card p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Current assignment
+          </div>
+          <div className="mt-1 text-lg font-semibold">
+            {substantive?.position || "No active assignment"}
+          </div>
+        </div>
+        <Badge variant={substantive ? "default" : "secondary"}>
+          {substantive?.kind || employee.lifecycleState || "Personal record"}
+        </Badge>
+      </div>
+      {substantive ? (
+        <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <AssignmentValue
+            label={substantive.kind === "Plantilla" ? "Plantilla item" : "Engagement"}
+            value={substantive.itemNumber || substantive.engagementType || "-"}
+          />
+          <AssignmentValue
+            label="Organization"
+            value={substantive.organizationPath?.join(" / ") || substantive.organization || "-"}
+          />
+          <AssignmentValue
+            label="Effectivity"
+            value={`${formatDisplayDate(substantive.dateFrom)}${substantive.dateTo ? ` to ${formatDisplayDate(substantive.dateTo)}` : ""}`}
+          />
+          <AssignmentValue
+            label="Salary / rate"
+            value={
+              substantive.salaryGrade
+                ? `SG ${substantive.salaryGrade.grade}, Step ${substantive.salaryGrade.step} · PHP ${substantive.salaryGrade.amount.toLocaleString()}`
+                : substantive.rate != null
+                  ? `PHP ${substantive.rate.toLocaleString()}`
+                  : "-"
+            }
+          />
+          <AssignmentValue label="Appointment type" value={substantive.appointmentType || "-"} />
+          <AssignmentValue label="Authority" value={substantive.authorityNumber || "-"} />
+          <AssignmentValue label="Funding" value={substantive.fundingSource || "-"} />
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">
+          This person has no active Plantilla occupancy or non-Plantilla engagement. Legacy
+          department, position, and item values below are shown only as migration context.
+        </p>
+      )}
+      {assignment.temporary && (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+          <strong>{assignment.temporary.type}:</strong>{" "}
+          {assignment.temporary.position || "Temporary assignment"}
+          {assignment.temporary.organization
+            ? ` · ${assignment.temporary.organization}`
+            : ""} · {formatDisplayDate(assignment.temporary.dateFrom)} to{" "}
+          {formatDisplayDate(assignment.temporary.dateTo)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssignmentValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-0.5 font-medium">{value}</div>
+    </div>
+  );
+}
+
 function PersonalTab({
   employee,
   options,
   canEdit,
+  currentAssignment,
   onSaved,
 }: {
   employee: EmployeeRecord;
   options: SettingsOptions;
   canEdit: boolean;
+  currentAssignment: CurrentAssignment;
   onSaved: (employee: EmployeeRecord) => void;
 }) {
   const [form, setForm] = useState<EmployeeRecord>(employee);
@@ -393,6 +484,7 @@ function PersonalTab({
   const [positionQuery, setPositionQuery] = useState("");
   const departments = options.departments.map((department) => department.name);
   const positions = options.positions.map((position) => position.title);
+  const hasPlantillaOccupancy = currentAssignment.substantive?.kind === "Plantilla";
   const filteredDepartments = useMemo(() => {
     const query = departmentQuery.trim().toLowerCase();
     if (!query) return departments;
@@ -424,8 +516,19 @@ function PersonalTab({
         <Field label="Employee ID">
           <Input value={form.employeeId} onChange={(e) => set("employeeId", e.target.value)} />
         </Field>
-        <Field label="Department" required>
-          <Select value={form.department} onValueChange={(value) => set("department", value)}>
+        <Field label="Biometric ID">
+          <Input
+            value={form.biometricId}
+            onChange={(e) => set("biometricId", e.target.value)}
+            placeholder="Device user ID / attendance ID"
+          />
+        </Field>
+        <Field label="Department" required={!hasPlantillaOccupancy}>
+          <Select
+            disabled={hasPlantillaOccupancy}
+            value={form.department}
+            onValueChange={(value) => set("department", value)}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select department" />
             </SelectTrigger>
@@ -453,8 +556,12 @@ function PersonalTab({
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Position" required>
-          <Select value={form.position} onValueChange={(value) => set("position", value)}>
+        <Field label="Position" required={!hasPlantillaOccupancy}>
+          <Select
+            disabled={hasPlantillaOccupancy}
+            value={form.position}
+            onValueChange={(value) => set("position", value)}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select position" />
             </SelectTrigger>
@@ -532,7 +639,11 @@ function PersonalTab({
           />
         </Field>
         <Field label="Item No">
-          <Input value={form.itemNo} onChange={(e) => set("itemNo", e.target.value)} />
+          <Input
+            disabled={hasPlantillaOccupancy}
+            value={form.itemNo}
+            onChange={(e) => set("itemNo", e.target.value)}
+          />
         </Field>
         <Field label="Employment Status">
           <RadioGroup

@@ -11,6 +11,7 @@ import { initializePlantillaSchema, createPlantillaHandlers } from "./plantilla.
 import { initializeMovementSchema, createMovementHandlers } from "./movements.mjs";
 import { initializeServiceRecordSchema, createServiceRecordHandlers } from "./service-records.mjs";
 import { createReportHandlers } from "./reports.mjs";
+import { initializeAssignmentSchema, createAssignmentHandlers } from "./assignments.mjs";
 
 function loadServerEnv() {
   const candidates = [".env.local", ".env", ".env.defaults"];
@@ -247,6 +248,19 @@ const PERMISSIONS = [
     group: "Plantilla",
   },
   {
+    key: "plantilla.reconcile",
+    label: "Reconcile plantilla",
+    description: "Confirm legacy employee-to-item matches and create audited occupancy history.",
+    group: "Plantilla",
+  },
+  {
+    key: "engagements.manage",
+    label: "Manage non-Plantilla engagements",
+    description:
+      "Create, renew, schedule, and terminate JO, COS, casual, and contractual engagements.",
+    group: "Employee Records",
+  },
+  {
     key: "movements.read",
     label: "View movements",
     description: "View employee movement drafts, queues, events, and posted actions.",
@@ -362,6 +376,8 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "leave.write",
     "plantilla.read",
     "plantilla.write",
+    "plantilla.reconcile",
+    "engagements.manage",
     "movements.read",
     "movements.write",
     "service_records.read",
@@ -1374,6 +1390,10 @@ function realtimeTopic(pathname) {
   if (pathname.startsWith("/api/attendance")) return "attendance";
   if (pathname.startsWith("/api/leave")) return "leave";
   if (pathname.startsWith("/api/employees")) return "employees";
+  if (pathname.startsWith("/api/plantilla") || pathname.startsWith("/api/movements"))
+    return "employees";
+  if (pathname.startsWith("/api/engagements") || pathname.startsWith("/api/assignments"))
+    return "employees";
   if (pathname.startsWith("/api/settings")) return "settings";
   if (pathname.startsWith("/api/admin")) return "admin";
   if (pathname.startsWith("/api/auth")) return "auth";
@@ -1855,6 +1875,8 @@ function employeeRow(row) {
     dateEmployed: normalizeDate(row.date_employed),
     itemNo: row.item_no || "",
     empStatus: row.emp_status || "Active",
+    lifecycleState: row.lifecycle_state || "Active",
+    currentOrganizationId: row.current_org_unit_ref_id ? Number(row.current_org_unit_ref_id) : null,
     birthday: normalizeDate(row.birthday),
     gender: row.gender || "",
     civilStatus: row.civil_status || "",
@@ -1907,11 +1929,13 @@ function employeeDbPayload(body, existing = {}) {
   const department = String(body.department ?? existing.department ?? "").trim();
   const position = String(body.position ?? existing.position ?? "").trim();
   const status = String(body.status ?? existing.status ?? "Permanent").trim();
+  const lifecycleState = String(body.lifecycleState ?? existing.lifecycleState ?? "Active").trim();
+  const assignmentRequired = !["Personal Record", "Pre-Employment"].includes(lifecycleState);
 
   if (!firstname) throw new Error("First name is required");
   if (!lastname) throw new Error("Last name is required");
-  if (!department) throw new Error("Department is required");
-  if (!position) throw new Error("Position is required");
+  if (assignmentRequired && !department) throw new Error("Department is required");
+  if (assignmentRequired && !position) throw new Error("Position is required");
   if (!status) throw new Error("Employment status is required");
 
   const profile = {};
@@ -1935,6 +1959,8 @@ function employeeDbPayload(body, existing = {}) {
     dateEmployed: body.dateEmployed || existing.dateEmployed || null,
     itemNo: String(body.itemNo ?? existing.itemNo ?? "").trim(),
     empStatus: String(body.empStatus ?? existing.empStatus ?? "Active").trim() || "Active",
+    lifecycleState,
+    currentOrganizationId: body.currentOrganizationId ?? existing.currentOrganizationId ?? null,
     birthday: body.birthday || existing.birthday || null,
     gender: String(body.gender ?? existing.gender ?? "").trim(),
     civilStatus: String(body.civilStatus ?? existing.civilStatus ?? "").trim(),
@@ -2806,6 +2832,28 @@ async function requirePlantillaWrite(req, res) {
   return requirePermission(req, res, "plantilla.write", "Plantilla management access required");
 }
 
+async function requireAssignmentRead(req, res) {
+  return requirePermission(req, res, "employees.read", "Employee assignment access required");
+}
+
+async function requireReconciliationWrite(req, res) {
+  return requirePermission(
+    req,
+    res,
+    "plantilla.reconcile",
+    "Plantilla reconciliation access required",
+  );
+}
+
+async function requireEngagementWrite(req, res) {
+  return requirePermission(
+    req,
+    res,
+    "engagements.manage",
+    "Non-Plantilla engagement access required",
+  );
+}
+
 async function requireMovementRead(req, res) {
   return requirePermission(req, res, "movements.read", "Employee movement access required");
 }
@@ -3154,6 +3202,7 @@ async function initializeDatabase() {
 
   await initializePlantillaSchema(pool, employeeIdDefinition);
   await initializeMovementSchema(pool, employeeIdDefinition);
+  await initializeAssignmentSchema(pool, employeeIdDefinition);
   await initializeServiceRecordSchema(pool, employeeIdDefinition);
 
   for (const { table, single } of Object.values(EMPLOYEE_SECTION_TABLES)) {
@@ -4435,6 +4484,15 @@ async function handleDashboard(req, res) {
       SUM(status LIKE '%Job Order%' OR status LIKE '%COS%' OR status LIKE '%Contract%') AS jobOrderEmployees
     FROM employees
   `);
+  const [[assignmentTotals]] = await pool.query(`
+    SELECT
+      (SELECT COUNT(*) FROM plantilla_items WHERE item_status = 'Active') AS authorizedPlantilla,
+      (SELECT COUNT(*) FROM plantilla_occupancies WHERE status = 'Active') AS filledPlantilla,
+      (SELECT COUNT(DISTINCT employee_id) FROM non_plantilla_engagements WHERE status = 'Active') AS activeNonPlantilla,
+      (SELECT COUNT(*) FROM personnel_movements WHERE status = 'Scheduled') AS scheduledAppointments,
+      (SELECT COUNT(*) FROM non_plantilla_engagements WHERE status = 'Active' AND date_to BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)) AS expiringEngagements,
+      (SELECT COUNT(*) FROM employees e WHERE e.is_hidden = 0 AND NOT EXISTS (SELECT 1 FROM plantilla_occupancies po WHERE po.employee_id=e.id AND po.status='Active') AND NOT EXISTS (SELECT 1 FROM non_plantilla_engagements ne WHERE ne.employee_id=e.id AND ne.status='Active')) AS awaitingAssignment
+  `);
 
   const [byDivision] = await pool.query(`
     SELECT department,
@@ -4517,6 +4575,19 @@ async function handleDashboard(req, res) {
     totalEmployees: Number(totals.totalEmployees || 0),
     regularEmployees: Number(totals.regularEmployees || 0),
     jobOrderEmployees: Number(totals.jobOrderEmployees || 0),
+    assignmentTotals: {
+      authorizedPlantilla: Number(assignmentTotals.authorizedPlantilla || 0),
+      filledPlantilla: Number(assignmentTotals.filledPlantilla || 0),
+      vacantPlantilla: Math.max(
+        0,
+        Number(assignmentTotals.authorizedPlantilla || 0) -
+          Number(assignmentTotals.filledPlantilla || 0),
+      ),
+      activeNonPlantilla: Number(assignmentTotals.activeNonPlantilla || 0),
+      scheduledAppointments: Number(assignmentTotals.scheduledAppointments || 0),
+      expiringEngagements: Number(assignmentTotals.expiringEngagements || 0),
+      awaitingAssignment: Number(assignmentTotals.awaitingAssignment || 0),
+    },
     byDivision: byDivision.map((row) => ({
       department: row.department,
       filled: Number(row.filled || 0),
@@ -8510,6 +8581,8 @@ async function handleCreateEmployee(req, res) {
   }
   const id = crypto.randomUUID();
   const employeeNo = data.employeeNo || `EMP-${Date.now()}`;
+  const createAccount = body.createAccount !== false;
+  const accountActive = body.accountActive !== false;
 
   let connection;
   let committed = false;
@@ -8520,46 +8593,255 @@ async function handleCreateEmployee(req, res) {
     await connection.execute(
       `INSERT INTO employees (
         id, employee_no, biometric_id, firstname, middlename, lastname, name_ext, department, position, status, level,
-        status_class, date_hired, date_employed, item_no, emp_status, birthday, gender, civil_status,
+        status_class, date_hired, date_employed, item_no, emp_status, lifecycle_state, current_org_unit_ref_id,
+        birthday, gender, civil_status,
         email, cellphone_no, photo_url, schedule_am_in, schedule_am_out, schedule_pm_in, schedule_pm_out,
         dtr_signatory, dtr_noter_id, is_dtr_noter, regular, profile_json
       ) VALUES (
         :id, :employeeNo, :biometricId, :firstname, :middlename, :lastname, :nameExt, :department, :position, :status, :level,
-        :statusClass, :dateHired, :dateEmployed, :itemNo, :empStatus, :birthday, :gender, :civilStatus,
+        :statusClass, :dateHired, :dateEmployed, :itemNo, :empStatus, :lifecycleState, :currentOrganizationId,
+        :birthday, :gender, :civilStatus,
         :email, :cellphoneNo, :photoUrl, :scheduleAmIn, :scheduleAmOut, :schedulePmIn, :schedulePmOut,
         :dtrSignatory, :dtrNoterId, :isDtrNoter, :regular, :profileJson
       )`,
       { id, ...data, employeeNo },
     );
 
-    const username = await generateEmployeeUsername(connection, data);
-    const temporaryPassword = generateTemporaryPassword();
-    const passwordHash = hashPassword(temporaryPassword);
-    const accountName = formatEmployeeName(data);
-    const [accountResult] = await connection.execute(
-      `INSERT INTO users (username, password_hash, name, role, employee_id, must_change_password)
-       VALUES (:username, :passwordHash, :name, 'Employee', :employeeId, 1)`,
-      { username, passwordHash, name: accountName, employeeId: id },
-    );
-    await recordPasswordHistory(accountResult.insertId, passwordHash, connection);
+    let account = null;
+    let accountResult = null;
+    if (createAccount) {
+      const username = await generateEmployeeUsername(connection, data);
+      const temporaryPassword = generateTemporaryPassword();
+      const passwordHash = hashPassword(temporaryPassword);
+      const accountName = formatEmployeeName(data);
+      [accountResult] = await connection.execute(
+        `INSERT INTO users (username, password_hash, name, role, employee_id, must_change_password, is_active)
+         VALUES (:username, :passwordHash, :name, 'Employee', :employeeId, 1, :isActive)`,
+        {
+          username,
+          passwordHash,
+          name: accountName,
+          employeeId: id,
+          isActive: accountActive ? 1 : 0,
+        },
+      );
+      await recordPasswordHistory(accountResult.insertId, passwordHash, connection);
+      account = { username, temporaryPassword, active: accountActive };
+    }
+
+    let appointmentDraftId = null;
+    let engagementId = null;
+    if (body.appointment && body.engagement)
+      throw httpError(400, "Choose either a Plantilla appointment or a non-Plantilla engagement");
+    if (body.appointment) {
+      const appointment = body.appointment;
+      const targetPlantillaItemId = String(appointment.targetPlantillaItemId || "").trim();
+      const effectiveDate = String(appointment.effectiveDate || "").trim();
+      if (!targetPlantillaItemId) throw httpError(400, "Target Plantilla item is required");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate))
+        throw httpError(400, "Appointment effective date is required");
+      const [[target]] = await connection.execute(
+        `SELECT pi.*,p.title position_title,COALESCE(sec.name,divi.name,off.name,s.name) organization_name
+           FROM plantilla_items pi JOIN positions p ON p.id=pi.position_id
+           LEFT JOIN hr_reference_values sec ON sec.id=pi.section_ref_id
+           LEFT JOIN hr_reference_values divi ON divi.id=pi.division_ref_id
+           LEFT JOIN hr_reference_values off ON off.id=pi.office_ref_id
+           LEFT JOIN hr_reference_values s ON s.id=pi.sector_ref_id
+          WHERE pi.id=:id FOR UPDATE`,
+        { id: targetPlantillaItemId },
+      );
+      if (!target || target.item_status !== "Active")
+        throw httpError(409, "Target Plantilla item is not active");
+      const [[occupied]] = await connection.execute(
+        "SELECT id FROM plantilla_occupancies WHERE plantilla_item_id=:id AND status='Active' FOR UPDATE",
+        { id: targetPlantillaItemId },
+      );
+      if (occupied) throw httpError(409, "Target Plantilla item is already occupied");
+      const [[pendingMovement]] = await connection.execute(
+        `SELECT id,control_number,status FROM personnel_movements
+          WHERE target_plantilla_item_id=:id
+            AND status IN ('Draft','Submitted','Reviewed','Approved','Scheduled')
+          LIMIT 1`,
+        { id: targetPlantillaItemId },
+      );
+      if (pendingMovement)
+        throw httpError(
+          409,
+          `Target Plantilla item already has pending movement ${pendingMovement.control_number} (${pendingMovement.status})`,
+        );
+      appointmentDraftId = crypto.randomUUID();
+      const controlNumber =
+        String(appointment.controlNumber || "")
+          .trim()
+          .toUpperCase()
+          .slice(0, 80) ||
+        `PA-${new Date().getFullYear()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+      const sourceSnapshot = {
+        employee: {
+          id,
+          employeeNo,
+          department: "",
+          position: "",
+          itemNo: "",
+          empStatus: data.empStatus,
+          lifecycleState: data.lifecycleState,
+          currentOrganizationId: null,
+        },
+        occupancy: null,
+      };
+      const supportingDocuments = Array.isArray(appointment.supportingDocuments)
+        ? appointment.supportingDocuments.slice(0, 20)
+        : [];
+      await connection.execute(
+        `INSERT INTO personnel_movements
+          (id,control_number,employee_id,action_type,effective_date,authority_number,authority_date,
+           target_plantilla_item_id,target_position_id,target_salary_grade_id,target_department,remarks,
+           supporting_documents,source_snapshot_json,prepared_by)
+         VALUES (:id,:controlNumber,:employeeId,'Original Appointment',:effectiveDate,:authorityNumber,
+          :authorityDate,:targetPlantillaItemId,:targetPositionId,:targetSalaryGradeId,:targetDepartment,
+          :remarks,:supportingDocuments,:sourceSnapshot,:userId)`,
+        {
+          id: appointmentDraftId,
+          controlNumber,
+          employeeId: id,
+          effectiveDate,
+          authorityNumber: String(appointment.authorityNumber || "").trim() || null,
+          authorityDate: appointment.authorityDate || null,
+          targetPlantillaItemId,
+          targetPositionId: target.position_id,
+          targetSalaryGradeId: target.salary_grade_id,
+          targetDepartment: target.organization_name || null,
+          remarks: String(appointment.remarks || "").trim() || null,
+          supportingDocuments: JSON.stringify(supportingDocuments),
+          sourceSnapshot: JSON.stringify(sourceSnapshot),
+          userId: user.id,
+        },
+      );
+      await connection.execute(
+        `INSERT INTO personnel_movement_events
+          (id,movement_id,event_type,from_status,to_status,actor_id,remarks,snapshot_json)
+         VALUES (:id,:movementId,'Created from vacancy',NULL,'Draft',:userId,:remarks,:snapshot)`,
+        {
+          id: crypto.randomUUID(),
+          movementId: appointmentDraftId,
+          userId: user.id,
+          remarks: String(appointment.remarks || "").trim() || null,
+          snapshot: JSON.stringify({ source: sourceSnapshot, targetItemId: targetPlantillaItemId }),
+        },
+      );
+    }
+    if (body.engagement) {
+      const engagement = body.engagement;
+      const allowedTypes = new Set(["JO", "COS", "Casual", "Contractual", "Other"]);
+      const engagementType = String(engagement.engagementType || "").trim();
+      if (!allowedTypes.has(engagementType)) throw httpError(400, "Select a valid engagement type");
+      const organizationId = Number(engagement.organizationId);
+      const [[organization]] = await connection.execute(
+        `SELECT id,name,is_active FROM hr_reference_values
+          WHERE id=:organizationId AND category IN ('sectors','offices','divisions','sections')`,
+        { organizationId },
+      );
+      if (!organization || !organization.is_active)
+        throw httpError(400, "Select an active organization");
+      const designation = String(engagement.designation || "").trim();
+      const dateFrom = String(engagement.dateFrom || "").trim();
+      const dateTo = String(engagement.dateTo || "").trim();
+      if (!designation) throw httpError(400, "Designation is required");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo))
+        throw httpError(400, "Engagement start and end dates are required");
+      if (dateTo < dateFrom)
+        throw httpError(400, "Engagement end date cannot be before its start date");
+      const currentDate = new Date().toISOString().slice(0, 10);
+      const engagementStatus =
+        dateFrom > currentDate ? "Scheduled" : dateTo < currentDate ? "Expired" : "Active";
+      const rate =
+        engagement.rate === "" || engagement.rate == null ? null : Number(engagement.rate);
+      if (rate !== null && (!Number.isFinite(rate) || rate < 0))
+        throw httpError(400, "Engagement rate must be non-negative");
+      engagementId = crypto.randomUUID();
+      await connection.execute(
+        `INSERT INTO non_plantilla_engagements
+          (id,employee_id,engagement_type,org_unit_ref_id,designation,contract_number,date_from,date_to,
+           rate,funding_source,supervisor,remarks,status,created_by)
+         VALUES (:id,:employeeId,:engagementType,:organizationId,:designation,:contractNumber,:dateFrom,
+          :dateTo,:rate,:fundingSource,:supervisor,:remarks,:status,:userId)`,
+        {
+          id: engagementId,
+          employeeId: id,
+          engagementType,
+          organizationId,
+          designation,
+          contractNumber: String(engagement.contractNumber || "").trim() || null,
+          dateFrom,
+          dateTo,
+          rate,
+          fundingSource: String(engagement.fundingSource || "").trim() || null,
+          supervisor: String(engagement.supervisor || "").trim() || null,
+          remarks: String(engagement.remarks || "").trim() || null,
+          status: engagementStatus,
+          userId: user.id,
+        },
+      );
+      if (engagementStatus === "Active") {
+        await connection.execute(
+          `UPDATE employees SET department=:department,position=:position,status=:employmentType,
+            emp_status='Active',lifecycle_state='Active',current_org_unit_ref_id=:organizationId WHERE id=:employeeId`,
+          {
+            employeeId: id,
+            department: organization.name,
+            position: designation,
+            employmentType: engagementType === "Casual" ? "Casual" : "JO/COS",
+            organizationId,
+          },
+        );
+      }
+    }
 
     await connection.commit();
     committed = true;
     await logAudit(user.id, "employees.create", { employeeId: id, employeeNo }, req);
-    await logAudit(
-      user.id,
-      "users.create_employee_account",
-      { userId: accountResult.insertId, username, employeeId: id },
-      req,
-    );
+    if (accountResult && account) {
+      await logAudit(
+        user.id,
+        "users.create_employee_account",
+        {
+          userId: accountResult.insertId,
+          username: account.username,
+          employeeId: id,
+          active: accountActive,
+        },
+        req,
+      );
+    }
+    if (appointmentDraftId) {
+      await logAudit(
+        user.id,
+        "movement.create_from_vacancy",
+        { id: appointmentDraftId, employeeId: id },
+        req,
+      );
+    }
+    if (engagementId) {
+      await logAudit(
+        user.id,
+        "engagement.create_with_person",
+        { id: engagementId, employeeId: id },
+        req,
+      );
+    }
     return json(res, 201, {
       employee: await readEmployeeById(id),
-      account: { username, temporaryPassword },
+      ...(account ? { account } : {}),
+      ...(appointmentDraftId ? { appointmentDraftId } : {}),
+      ...(engagementId ? { engagementId } : {}),
     });
   } catch (error) {
     if (connection && !committed) await connection.rollback();
     if (error?.statusCode) return json(res, error.statusCode, { error: error.message });
     if (error?.code === "ER_DUP_ENTRY") {
+      if (String(error.message || "").includes("uniq_personnel_movement_control")) {
+        return json(res, 409, { error: "Movement control number already exists" });
+      }
       if (String(error.message || "").includes("users")) {
         return json(res, 409, { error: "Generated employee account already exists" });
       }
@@ -8590,7 +8872,10 @@ async function handleGetEmployee(req, res, id) {
     sections[key] = rows.map(sectionRow);
   }
 
-  return json(res, 200, { employee, sections });
+  const currentAssignment = assignmentHandlers
+    ? await assignmentHandlers.currentAssignment(id)
+    : { substantive: null, temporary: null };
+  return json(res, 200, { employee, sections, currentAssignment });
 }
 
 async function buildEmployeePdsPayload(id, user) {
@@ -8839,6 +9124,8 @@ async function handleUpdateEmployee(req, res, id) {
         date_employed = :dateEmployed,
         item_no = :itemNo,
         emp_status = :empStatus,
+        lifecycle_state = :lifecycleState,
+        current_org_unit_ref_id = :currentOrganizationId,
         birthday = :birthday,
         gender = :gender,
         civil_status = :civilStatus,
@@ -9858,26 +10145,19 @@ async function handleUpdateAgency(req, res) {
 async function handleCreateDepartment(req, res) {
   const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
-  const body = await readBody(req);
-  const name = String(body.name || "").trim();
-  if (!name) return json(res, 400, { error: "Department name is required" });
-  try {
-    const [result] = await pool.execute(`INSERT INTO departments (name) VALUES (:name)`, { name });
-    await logAudit(user.id, "config.department_create", { name }, req);
-    return json(res, 201, { department: { id: result.insertId, name } });
-  } catch (error) {
-    if (error?.code === "ER_DUP_ENTRY")
-      return json(res, 409, { error: "Department already exists" });
-    throw error;
-  }
+  return json(res, 409, {
+    error:
+      "Legacy departments are read-only. Create and maintain offices, divisions, and sections in the Organizational Structure reference library.",
+  });
 }
 
 async function handleDeleteDepartment(req, res, id) {
   const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
-  await pool.execute(`DELETE FROM departments WHERE id = :id`, { id });
-  await logAudit(user.id, "config.department_delete", { id }, req);
-  return json(res, 200, { ok: true });
+  return json(res, 409, {
+    error:
+      "Legacy departments cannot be deleted during reconciliation. Keep the value as migration context and use official organizational references for new assignments.",
+  });
 }
 
 async function handleCreatePosition(req, res) {
@@ -10837,6 +11117,9 @@ async function handleCreateBackup(req, res) {
     "plantilla_item_history",
     "personnel_movements",
     "personnel_movement_events",
+    "non_plantilla_engagements",
+    "temporary_assignments",
+    "plantilla_reconciliations",
     "service_record_entries",
     ...Object.values(EMPLOYEE_SECTION_TABLES).map((config) => config.table),
     "leave_types",
@@ -10933,6 +11216,7 @@ let movementHandlers;
 let plantillaHandlers;
 let serviceRecordHandlers;
 let reportHandlers;
+let assignmentHandlers;
 
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -11032,6 +11316,10 @@ async function route(req, res) {
   );
   const plantillaItemMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)$/);
   const plantillaHistoryMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)\/history$/);
+  const engagementMatch = url.pathname.match(/^\/api\/engagements\/([A-Za-z0-9-]+)$/);
+  const engagementActionMatch = url.pathname.match(
+    /^\/api\/engagements\/([A-Za-z0-9-]+)\/(renew|terminate)$/,
+  );
 
   if (isAdmsIclock) return handleAdmsIclock(req, res, url);
 
@@ -11039,6 +11327,8 @@ async function route(req, res) {
     return json(res, 200, { ok: true, database: DB_NAME });
   }
   if (req.method === "GET" && url.pathname === "/api/dashboard") return handleDashboard(req, res);
+  if (req.method === "GET" && url.pathname === "/api/assignments/summary")
+    return assignmentHandlers.summary(req, res);
   if (req.method === "GET" && url.pathname === "/api/reports/personnel-plantilla")
     return reportHandlers.personnelPlantilla(req, res);
   if (req.method === "POST" && reportExportMatch)
@@ -11288,6 +11578,22 @@ async function route(req, res) {
     return plantillaHandlers.remove(req, res, plantillaItemMatch[1]);
   if (req.method === "GET" && plantillaHistoryMatch)
     return plantillaHandlers.history(req, res, plantillaHistoryMatch[1]);
+  if (req.method === "GET" && url.pathname === "/api/plantilla/reconciliation")
+    return assignmentHandlers.reconciliationList(req, res, url);
+  if (req.method === "POST" && url.pathname === "/api/plantilla/reconciliation")
+    return assignmentHandlers.reconcile(req, res);
+  if (req.method === "POST" && url.pathname === "/api/plantilla/reconciliation/bulk")
+    return assignmentHandlers.reconcileBulk(req, res);
+  if (req.method === "GET" && url.pathname === "/api/engagements")
+    return assignmentHandlers.listEngagements(req, res, url);
+  if (req.method === "POST" && url.pathname === "/api/engagements")
+    return assignmentHandlers.createEngagement(req, res);
+  if (req.method === "PATCH" && engagementMatch)
+    return assignmentHandlers.updateEngagement(req, res, engagementMatch[1]);
+  if (req.method === "POST" && engagementActionMatch && engagementActionMatch[2] === "renew")
+    return assignmentHandlers.renewEngagement(req, res, engagementActionMatch[1]);
+  if (req.method === "POST" && engagementActionMatch && engagementActionMatch[2] === "terminate")
+    return assignmentHandlers.terminateEngagement(req, res, engagementActionMatch[1]);
 
   if (req.method === "GET" && url.pathname === "/api/settings/references")
     return handleListReferenceValues(req, res);
@@ -11365,10 +11671,34 @@ plantillaHandlers = createPlantillaHandlers({
   json,
   logAudit,
 });
+assignmentHandlers = createAssignmentHandlers({
+  pool,
+  requireRead: requireAssignmentRead,
+  requireReconciliation: requireReconciliationWrite,
+  requireEngagement: requireEngagementWrite,
+  readBody,
+  json,
+  logAudit,
+});
 await cleanupPreviewFiles().catch(() => {});
 await cleanupNotifications().catch(() => {});
 setInterval(() => cleanupPreviewFiles().catch(() => {}), 10 * 60 * 1000).unref();
 setInterval(() => cleanupNotifications().catch(() => {}), 24 * 60 * 60 * 1000).unref();
+assignmentHandlers
+  .processDue()
+  .catch((error) => console.error("Assignment processor failed", error));
+movementHandlers.processDue().catch((error) => console.error("Movement processor failed", error));
+setInterval(
+  () => {
+    assignmentHandlers
+      .processDue()
+      .catch((error) => console.error("Assignment processor failed", error));
+    movementHandlers
+      .processDue()
+      .catch((error) => console.error("Movement processor failed", error));
+  },
+  5 * 60 * 1000,
+).unref();
 
 const server = http.createServer(async (req, res) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);

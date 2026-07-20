@@ -820,8 +820,8 @@ function EmployeeReferencesPage() {
 
         <TabsContent value="departments" className="mt-4">
           <SimpleReferenceSection
-            title="Departments"
-            description="Official department names used across employee records and reports."
+            title="Legacy Departments"
+            description="Read-only migration labels. Maintain the official hierarchy under sectors, offices, divisions, and sections."
             itemLabel="department"
             addPlaceholder="New department name"
             searchPlaceholder="Search departments..."
@@ -833,7 +833,7 @@ function EmployeeReferencesPage() {
               onDelete: () => requestDeleteDepartment(department),
             }))}
             totalCount={depts.length}
-            canManage={canManage}
+            canManage={false}
             onValueChange={setNewDept}
             onQueryChange={setDeptQuery}
             onAdd={addDepartment}

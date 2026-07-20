@@ -32,6 +32,15 @@ export type PlantillaItem = {
     movementType: string;
     appointmentNumber: string;
   };
+  pendingMovement: null | {
+    id: string;
+    controlNumber: string;
+    status: "Draft" | "Submitted" | "Reviewed" | "Approved" | "Scheduled";
+    employeeId: string;
+    employeeNo: string;
+    employeeName: string;
+    effectiveDate: string;
+  };
   createdAt: string;
   updatedAt: string;
 };

@@ -5,6 +5,7 @@ import {
   ArrowRightLeft,
   Archive,
   BriefcaseBusiness,
+  ClipboardCheck,
   ChevronRight,
   History,
   Plus,
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { canWriteHrRecords, useAuth } from "@/lib/auth";
 import { type SettingsOptions } from "@/lib/employees-api";
@@ -39,6 +41,11 @@ import {
   type PlantillaPayload,
 } from "@/lib/plantilla-api";
 import type { ReferenceCategory, ReferenceRow } from "@/lib/reference-libraries";
+import {
+  confirmReconciliationBulk,
+  listReconciliation,
+  type ReconciliationRecord,
+} from "@/lib/assignments-api";
 
 export const Route = createFileRoute("/plantilla")({ component: PlantillaPage });
 const fieldClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
@@ -80,6 +87,16 @@ function PlantillaPage() {
       Array<{ id: number; action: string; changedBy: string; createdAt: string }>
     >([]),
     [historyItem, setHistoryItem] = useState<PlantillaItem | null>(null);
+  const [reconciliationOpen, setReconciliationOpen] = useState(false);
+  const [reconciliationRows, setReconciliationRows] = useState<ReconciliationRecord[]>([]);
+  const [reconciliationSummary, setReconciliationSummary] = useState<Record<string, number>>({});
+  const [reconciliationQuery, setReconciliationQuery] = useState("");
+  const [reconciliationFilter, setReconciliationFilter] = useState("all");
+  const [selectedMatches, setSelectedMatches] = useState<Record<string, string>>({});
+  const [reconciliationForm, setReconciliationForm] = useState({
+    effectiveFrom: "",
+    remarks: "",
+  });
   const load = useCallback(async () => {
     try {
       const x = await listPlantilla(q, status, occupancy);
@@ -202,6 +219,15 @@ function PlantillaPage() {
       return;
     }
     navigate({
+      to: "/employees",
+      search: {
+        onboard: "plantilla",
+        targetPlantillaItemId: item.id,
+      },
+    });
+  };
+  const prepareExistingPerson = (item: PlantillaItem) =>
+    navigate({
       to: "/movements",
       search: {
         prepare: "1",
@@ -209,6 +235,42 @@ function PlantillaPage() {
         targetPlantillaItemId: item.id,
       },
     });
+  const loadReconciliation = useCallback(async () => {
+    try {
+      const result = await listReconciliation(reconciliationQuery, reconciliationFilter);
+      setReconciliationRows(result.records);
+      setReconciliationSummary(result.summary);
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  }, [reconciliationFilter, reconciliationQuery]);
+  useEffect(() => {
+    if (!reconciliationOpen) return;
+    const timer = setTimeout(loadReconciliation, 200);
+    return () => clearTimeout(timer);
+  }, [loadReconciliation, reconciliationOpen]);
+  const confirmSelectedMatches = async () => {
+    const matches = Object.entries(selectedMatches).map(([employeeId, plantillaItemId]) => ({
+      employeeId,
+      plantillaItemId,
+    }));
+    if (!matches.length) return toast.error("Select at least one suggested Plantilla match.");
+    if (!reconciliationForm.effectiveFrom || !reconciliationForm.remarks.trim()) {
+      return toast.error("Effective-from date and migration remarks are required.");
+    }
+    setBusy(true);
+    try {
+      const result = await confirmReconciliationBulk({ ...reconciliationForm, matches });
+      const failed = result.results.filter((row) => !row.ok);
+      toast.success(`${result.results.length - failed.length} historical occupancies confirmed.`);
+      if (failed.length) toast.error(`${failed.length} matches need individual review.`);
+      setSelectedMatches({});
+      await Promise.all([loadReconciliation(), load()]);
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <AppShell title="Plantilla & PSIPOP" subtitle="Authorized positions, occupancy, and vacancies">
@@ -305,10 +367,16 @@ function PlantillaPage() {
           <option value="vacant">Vacant</option>
         </select>
         {canManage && (
-          <Button onClick={() => openEdit()} className="bg-blue-600 text-white hover:bg-blue-700">
-            <Plus className="mr-2 h-4 w-4" />
-            New item
-          </Button>
+          <>
+            <Button variant="outline" onClick={() => setReconciliationOpen(true)}>
+              <ClipboardCheck className="mr-2 h-4 w-4" />
+              Reconcile employees
+            </Button>
+            <Button onClick={() => openEdit()} className="bg-blue-600 text-white hover:bg-blue-700">
+              <Plus className="mr-2 h-4 w-4" />
+              New item
+            </Button>
+          </>
         )}
       </div>
       <div className="mobile-record-list mt-4 md:hidden">
@@ -355,27 +423,49 @@ function PlantillaPage() {
                 </span>
               </div>
               <div className="border-l border-border/70 pl-3">
-                <span className="text-xs text-muted-foreground">Occupancy</span>
+                <span className="text-xs text-muted-foreground">
+                  {i.occupant ? "Occupancy" : i.pendingMovement ? "Pending movement" : "Occupancy"}
+                </span>
                 <span
                   className={cn(
                     "block truncate text-sm font-semibold",
-                    i.occupant ? "text-foreground" : "text-amber-700",
+                    i.occupant
+                      ? "text-foreground"
+                      : i.pendingMovement
+                        ? "text-blue-700"
+                        : "text-amber-700",
                   )}
                 >
-                  {i.occupant ? i.occupant.employeeName : "Vacant"}
+                  {i.occupant
+                    ? i.occupant.employeeName
+                    : i.pendingMovement
+                      ? i.pendingMovement.employeeName
+                      : "Vacant"}
                 </span>
+                {i.pendingMovement && !i.occupant && (
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {i.pendingMovement.controlNumber} - {i.pendingMovement.status}
+                  </span>
+                )}
               </div>
             </div>
             <div className="flex flex-wrap justify-end gap-1">
-              {canManage && i.itemStatus === "Active" && (
-                <Button size="sm" variant="outline" onClick={() => prepareMovement(i)}>
-                  {i.occupant ? (
-                    <ArrowRightLeft className="mr-1.5 h-4 w-4" />
-                  ) : (
-                    <UserPlus className="mr-1.5 h-4 w-4" />
+              {canManage && i.itemStatus === "Active" && !i.pendingMovement && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => prepareMovement(i)}>
+                    {i.occupant ? (
+                      <ArrowRightLeft className="mr-1.5 h-4 w-4" />
+                    ) : (
+                      <UserPlus className="mr-1.5 h-4 w-4" />
+                    )}
+                    {i.occupant ? "Move employee" : "New person"}
+                  </Button>
+                  {!i.occupant && (
+                    <Button size="sm" variant="outline" onClick={() => prepareExistingPerson(i)}>
+                      Existing person
+                    </Button>
                   )}
-                  {i.occupant ? "Move employee" : "Fill vacancy"}
-                </Button>
+                </>
               )}
               <Button size="icon" variant="ghost" title="History" onClick={() => showHistory(i)}>
                 <History className="h-4 w-4" />
@@ -451,6 +541,15 @@ function PlantillaPage() {
                 <td className="p-3">
                   {i.occupant ? (
                     <span className="font-medium">{i.occupant.employeeName}</span>
+                  ) : i.pendingMovement ? (
+                    <div>
+                      <span className="font-medium text-blue-700">
+                        {i.pendingMovement.employeeName}
+                      </span>
+                      <div className="text-xs text-muted-foreground">
+                        Pending: {i.pendingMovement.controlNumber} - {i.pendingMovement.status}
+                      </div>
+                    </div>
                   ) : (
                     <span className="text-amber-700">Vacant</span>
                   )}
@@ -458,15 +557,26 @@ function PlantillaPage() {
                 <td className="p-3">{i.itemStatus}</td>
                 <td className="p-3">
                   <div className="flex flex-wrap gap-1">
-                    {canManage && i.itemStatus === "Active" && (
-                      <Button size="sm" variant="outline" onClick={() => prepareMovement(i)}>
-                        {i.occupant ? (
-                          <ArrowRightLeft className="mr-1.5 h-4 w-4" />
-                        ) : (
-                          <UserPlus className="mr-1.5 h-4 w-4" />
+                    {canManage && i.itemStatus === "Active" && !i.pendingMovement && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => prepareMovement(i)}>
+                          {i.occupant ? (
+                            <ArrowRightLeft className="mr-1.5 h-4 w-4" />
+                          ) : (
+                            <UserPlus className="mr-1.5 h-4 w-4" />
+                          )}
+                          {i.occupant ? "Move employee" : "New person"}
+                        </Button>
+                        {!i.occupant && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => prepareExistingPerson(i)}
+                          >
+                            Existing person
+                          </Button>
                         )}
-                        {i.occupant ? "Move employee" : "Fill vacancy"}
-                      </Button>
+                      </>
                     )}
                     <Button
                       size="icon"
@@ -643,6 +753,165 @@ function PlantillaPage() {
             ))}
             {!history.length && <p className="text-sm text-muted-foreground">No history yet.</p>}
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={reconciliationOpen} onOpenChange={setReconciliationOpen}>
+        <DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Legacy Plantilla reconciliation</DialogTitle>
+          </DialogHeader>
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+            Review the approved PSIPOP first. Matching only proposes links; occupancy history is
+            created only after HR supplies an effectivity date and migration remarks.
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {Object.entries(reconciliationSummary).map(([label, value]) => (
+              <span className="rounded-full border bg-muted/40 px-2.5 py-1" key={label}>
+                {label}: <strong>{value}</strong>
+              </span>
+            ))}
+          </div>
+          <div className="grid gap-2 md:grid-cols-[1fr_16rem]">
+            <Input
+              value={reconciliationQuery}
+              onChange={(event) => setReconciliationQuery(event.target.value)}
+              placeholder="Search employee, item number, position, or office"
+            />
+            <select
+              className={fieldClass}
+              value={reconciliationFilter}
+              onChange={(event) => setReconciliationFilter(event.target.value)}
+            >
+              <option value="all">All classifications</option>
+              {Object.keys(reconciliationSummary).map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="max-h-[45vh] overflow-auto rounded-lg border">
+            <table className="w-full min-w-[900px] text-sm">
+              <thead className="sticky top-0 bg-muted text-left">
+                <tr>
+                  <th className="w-10 p-3">Select</th>
+                  <th className="p-3">Employee</th>
+                  <th className="p-3">Legacy record</th>
+                  <th className="p-3">Classification</th>
+                  <th className="p-3">Suggested Plantilla</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reconciliationRows.map((row) => {
+                  const selectable =
+                    Boolean(row.matchedItemId) &&
+                    ![
+                      "Already occupied item",
+                      "Duplicate item number",
+                      "Non-Plantilla/JO/COS record",
+                      "Linked",
+                    ].includes(row.classification);
+                  return (
+                    <tr className="border-t align-top" key={row.employeeId}>
+                      <td className="p-3">
+                        <input
+                          type="checkbox"
+                          disabled={!selectable}
+                          checked={Boolean(selectedMatches[row.employeeId])}
+                          onChange={(event) =>
+                            setSelectedMatches((current) => {
+                              const next = { ...current };
+                              if (event.target.checked && row.matchedItemId)
+                                next[row.employeeId] = row.matchedItemId;
+                              else delete next[row.employeeId];
+                              return next;
+                            })
+                          }
+                        />
+                      </td>
+                      <td className="p-3">
+                        <div className="font-medium">{row.employeeName}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {row.employeeNo} · {row.employmentType}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <div>
+                          {row.legacyItemNumber || "No item number"} ·{" "}
+                          {row.legacyPosition || "No position"}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {row.legacyOrganization || "No office"}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <span className="rounded-full border px-2 py-1 text-xs font-medium">
+                          {row.classification}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        {row.matchedItemId ? (
+                          <>
+                            <div className="font-medium">
+                              {row.matchedItemNumber} · {row.matchedPosition}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {row.matchedOrganization || "No organization"}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">No unique match</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!reconciliationRows.length && (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                      No reconciliation records found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[15rem_1fr]">
+            <div>
+              <Label>Historical occupancy effective from</Label>
+              <Input
+                type="date"
+                value={reconciliationForm.effectiveFrom}
+                onChange={(event) =>
+                  setReconciliationForm((current) => ({
+                    ...current,
+                    effectiveFrom: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <Label>Migration remarks</Label>
+              <Textarea
+                value={reconciliationForm.remarks}
+                onChange={(event) =>
+                  setReconciliationForm((current) => ({ ...current, remarks: event.target.value }))
+                }
+                placeholder="Official PSIPOP source, verification details, and reason for confirmation"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReconciliationOpen(false)}>
+              Close
+            </Button>
+            <Button
+              disabled={busy || !Object.keys(selectedMatches).length}
+              onClick={confirmSelectedMatches}
+            >
+              Confirm selected matches
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </AppShell>

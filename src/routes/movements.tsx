@@ -52,6 +52,7 @@ import {
   type MovementForm,
 } from "@/lib/movements-api";
 import { listPlantilla, type PlantillaItem } from "@/lib/plantilla-api";
+import type { ReferenceCategory, ReferenceRow } from "@/lib/reference-libraries";
 
 type MovementEvent = {
   id: string;
@@ -81,15 +82,9 @@ export const Route = createFileRoute("/movements")({
   component: MovementsPage,
 });
 const selectClass = "h-9 w-full rounded-md border bg-background px-3 text-sm";
-const ITEM_ACTIONS = new Set([
-  "Original Appointment",
-  "Promotion",
-  "Transfer",
-  "Reassignment",
-  "Job Rotation",
-  "Reclassification",
-]);
+const ITEM_ACTIONS = new Set(["Original Appointment", "Promotion", "Transfer"]);
 const PROFILE_ACTIONS = new Set(["Detail", "Designation"]);
+const TEMPORARY_ACTIONS = new Set(["Detail", "Designation", "Reassignment", "Job Rotation"]);
 const SEPARATIONS = new Set(["Resignation", "Retirement", "Termination", "Death"]);
 const BASE_QUEUE_STATUSES = [
   "all",
@@ -97,11 +92,15 @@ const BASE_QUEUE_STATUSES = [
   "Submitted",
   "Reviewed",
   "Approved",
+  "Scheduled",
   "Posted",
   "Rejected",
 ];
 const DERIVED_QUEUE_STATUSES = new Set(["needs-action", "preparation", "ready-post"]);
 const today = () => new Date().toISOString().slice(0, 10);
+const canPostMovement = (movement: Movement) =>
+  movement.status === "Approved" ||
+  (movement.status === "Scheduled" && movement.effectiveDate <= today());
 function MovementsPage() {
   const navigate = useNavigate({ from: "/movements" });
   const prepareSearch = useSearch({ from: "/movements" });
@@ -124,6 +123,7 @@ function MovementsPage() {
   }, [canApprove, canPrepare]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]),
     [items, setItems] = useState<PlantillaItem[]>([]),
+    [organizationUnits, setOrganizationUnits] = useState<ReferenceRow[]>([]),
     [settings, setSettings] = useState<SettingsOptions>({
       departments: [],
       positions: [],
@@ -164,11 +164,20 @@ function MovementsPage() {
       api<SettingsOptions>("/api/settings"),
       listPlantilla("", "Active", "all"),
       loadAllEmployees(),
+      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references"),
     ])
-      .then(([s, p, e]) => {
+      .then(([s, p, e, references]) => {
         setSettings(s);
         setItems(p.items);
         setEmployees(e);
+        setOrganizationUnits(
+          [
+            ...references.libraries.sectors,
+            ...references.libraries.offices,
+            ...references.libraries.divisions,
+            ...references.libraries.sections,
+          ].filter((row) => row.isActive),
+        );
       })
       .catch((e) => toast.error(e.message));
   }, []);
@@ -310,7 +319,7 @@ function MovementsPage() {
       return movements.filter((m) => m.status === "Draft" || m.status === "Rejected");
     }
     if (status === "ready-post") {
-      return movements.filter((m) => m.status === "Approved");
+      return movements.filter((m) => m.status === "Approved" || m.status === "Scheduled");
     }
     return movements;
   }, [movements, status]);
@@ -342,17 +351,19 @@ function MovementsPage() {
           Submit
         </Button>
       )}
-      {canPost && m.status === "Approved" && (
+      {canPost && canPostMovement(m) && (
         <>
           <Button size="sm" variant="outline" onClick={() => openDecision(m, "post")}>
             <CheckCircle2 className="mr-1.5 h-4 w-4" />
             Post
           </Button>
-          <Button size="sm" variant={variant} onClick={() => openDecision(m, "return")}>
-            <Undo2 className="mr-1.5 h-4 w-4" />
-            Return
-          </Button>
         </>
+      )}
+      {canPost && (m.status === "Approved" || m.status === "Scheduled") && (
+        <Button size="sm" variant={variant} onClick={() => openDecision(m, "return")}>
+          <Undo2 className="mr-1.5 h-4 w-4" />
+          Return
+        </Button>
       )}
       {canPost && m.status === "Posted" && (
         <Button size="sm" variant={variant} onClick={() => openDecision(m, "reverse")}>
@@ -399,9 +410,9 @@ function MovementsPage() {
           trend="up"
         />
         <StatCard
-          title="Approved"
-          value={summary["Approved"] || 0}
-          subtext="Ready to post"
+          title="Ready"
+          value={(summary["Approved"] || 0) + (summary["Scheduled"] || 0)}
+          subtext="Approved/scheduled"
           subtextColor="text-muted-foreground"
           icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
           iconBg="bg-emerald-50 dark:bg-emerald-500/15"
@@ -582,6 +593,7 @@ function MovementsPage() {
         employees={employees}
         items={items}
         settings={settings}
+        organizationUnits={organizationUnits}
         busy={busy}
         close={() => setEdit(undefined)}
         save={save}
@@ -603,7 +615,9 @@ function MovementsPage() {
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             {decision?.action === "post"
-              ? "Posting atomically updates the employee and Plantilla occupancy. Confirm that the approved action is ready for effectivity."
+              ? decision.movement.status === "Scheduled"
+                ? "Posting now activates the scheduled movement because its effective date is due. This updates the employee and Plantilla occupancy."
+                : "Posting atomically updates the employee and Plantilla occupancy. If the effective date is in the future, the movement will be scheduled for automatic posting."
               : decision?.action === "reverse"
                 ? "Reversal restores the recorded before-state and is blocked if a later movement exists."
                 : decision?.action === "reviewApprove"
@@ -768,8 +782,20 @@ function MovementDetailDialog({
                     <DetailValue label="Reviewed by" value={movement.reviewedBy || "-"} />
                     <DetailValue label="Approved by" value={movement.approvedBy || "-"} />
                     <DetailValue label="Posted by" value={movement.postedBy || "-"} />
+                    <DetailValue
+                      label="Scheduled at"
+                      value={
+                        movement.scheduledAt ? formatDisplayDateTime(movement.scheduledAt) : "-"
+                      }
+                    />
                   </div>
                 </section>
+                {movement.activationError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                    <div className="font-semibold">Scheduled activation needs attention</div>
+                    <div className="mt-1">{movement.activationError}</div>
+                  </div>
+                )}
 
                 <section className="rounded-lg border p-4">
                   <h3 className="mb-3 text-sm font-semibold">Action history</h3>
@@ -830,8 +856,13 @@ function MovementDetailDialog({
                     <Button onClick={() => onDecision(movement, "approve")}>Approve</Button>
                   </>
                 )}
-                {canPost && movement.status === "Approved" && (
+                {canPost && canPostMovement(movement) && (
                   <Button onClick={() => onDecision(movement, "post")}>Post</Button>
+                )}
+                {canPost && (movement.status === "Approved" || movement.status === "Scheduled") && (
+                  <Button variant="outline" onClick={() => onDecision(movement, "return")}>
+                    Return to Draft
+                  </Button>
                 )}
                 {canPost && movement.status === "Posted" && (
                   <Button variant="outline" onClick={() => onDecision(movement, "reverse")}>
@@ -901,6 +932,7 @@ function MovementDialog({
   employees,
   items,
   settings,
+  organizationUnits,
   busy,
   close,
   save,
@@ -912,13 +944,14 @@ function MovementDialog({
   employees: EmployeeRecord[];
   items: PlantillaItem[];
   settings: SettingsOptions;
+  organizationUnits: ReferenceRow[];
   busy: boolean;
   close: () => void;
   save: () => void;
 }) {
   const needsItem = ITEM_ACTIONS.has(form.actionType),
-    needsPosition = PROFILE_ACTIONS.has(form.actionType),
-    needsGrade = form.actionType === "Step Increment",
+    needsPosition = PROFILE_ACTIONS.has(form.actionType) || form.actionType === "Reclassification",
+    needsGrade = ["Step Increment", "Reclassification"].includes(form.actionType),
     separation = SEPARATIONS.has(form.actionType);
   const selectedEmployee = employees.find((employee) => employee.id === form.employeeId);
   const selectedItem = items.find((item) => item.id === form.targetPlantillaItemId);
@@ -997,8 +1030,8 @@ function MovementDialog({
               onChange={(e) => setForm({ ...form, effectiveDate: e.target.value })}
             />
           </Field>
-          {(PROFILE_ACTIONS.has(form.actionType) || form.actionType === "Renewal") && (
-            <Field label="End date (optional)">
+          {(TEMPORARY_ACTIONS.has(form.actionType) || form.actionType === "Renewal") && (
+            <Field label={form.actionType === "Reassignment" ? "End date (optional)" : "End date"}>
               <Input
                 type="date"
                 value={form.endDate}
@@ -1048,13 +1081,20 @@ function MovementDialog({
               ])}
             />
           )}{" "}
-          {(needsItem || needsPosition) && (
-            <Field label="Target department (optional override)">
-              <Input
-                value={form.targetDepartment}
-                onChange={(e) => setForm({ ...form, targetDepartment: e.target.value })}
-              />
-            </Field>
+          {TEMPORARY_ACTIONS.has(form.actionType) && (
+            <SelectField
+              label="Target organizational assignment"
+              value={form.targetDepartment}
+              set={(value) => setForm({ ...form, targetDepartment: value })}
+              rows={organizationUnits.map((row) => [row.name, `${row.name} (${row.category})`])}
+            />
+          )}
+          {form.actionType === "Reclassification" && (
+            <div className="sm:col-span-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              This effective-dated staffing action changes the classification and authorized salary
+              of the employee&apos;s current Plantilla item while preserving its former values in
+              history.
+            </div>
           )}
           <div className="sm:col-span-2">
             <Field label="Supporting documents (one per line: Name | reference/location)">
@@ -1234,7 +1274,7 @@ function Status({ value }: { value: string }) {
       ? "bg-emerald-100 text-emerald-800"
       : value === "Rejected" || value === "Reversed"
         ? "bg-red-100 text-red-800"
-        : value === "Approved"
+        : value === "Approved" || value === "Scheduled"
           ? "bg-blue-100 text-blue-800"
           : "bg-amber-100 text-amber-800";
   return <span className={`rounded-full px-2 py-1 text-xs font-medium ${tone}`}>{value}</span>;

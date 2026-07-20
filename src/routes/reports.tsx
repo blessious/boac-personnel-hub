@@ -132,14 +132,14 @@ function ReportsPage() {
               <MetricCard
                 title="Total Employees"
                 value={formatNumber(report.employeeSummary.total)}
-                detail={`${formatNumber(report.employeeSummary.active || 0)} active records`}
+                detail={`${formatNumber(report.employeeSummary.active || 0)} active assignments`}
                 icon={Users}
                 tone="blue"
               />
               <MetricCard
-                title="Regular/Permanent"
+                title="Filled Plantilla"
                 value={formatNumber(report.employeeSummary.regular || 0)}
-                detail={`${formatNumber(report.employeeSummary.nonPlantilla || 0)} JO/COS/contract`}
+                detail={`${formatNumber(report.employeeSummary.nonPlantilla || 0)} active non-Plantilla engagements`}
                 icon={PieChart}
                 tone="green"
               />

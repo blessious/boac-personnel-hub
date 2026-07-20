@@ -41,11 +41,13 @@ async function buildPersonnelPlantillaReport(pool) {
   const [[employeeTotals]] = await pool.query(`
     SELECT
       COUNT(*) AS total,
-      SUM(emp_status = 'Active') AS active,
-      SUM(emp_status <> 'Active') AS inactive,
-      SUM(status = 'Permanent' OR status = 'Regular') AS regular,
-      SUM(status LIKE '%Job Order%' OR status LIKE '%COS%' OR status LIKE '%Contract%') AS nonPlantilla
-    FROM employees
+      SUM(po.employee_id IS NOT NULL OR ne.employee_id IS NOT NULL) AS active,
+      SUM(po.employee_id IS NULL AND ne.employee_id IS NULL) AS inactive,
+      SUM(po.employee_id IS NOT NULL) AS regular,
+      SUM(ne.employee_id IS NOT NULL) AS nonPlantilla
+    FROM employees e
+    LEFT JOIN (SELECT DISTINCT employee_id FROM plantilla_occupancies WHERE status='Active') po ON po.employee_id=e.id
+    LEFT JOIN (SELECT DISTINCT employee_id FROM non_plantilla_engagements WHERE status='Active') ne ON ne.employee_id=e.id
   `);
 
   const [byDepartment] = await pool.query(`

@@ -45,6 +45,19 @@ export async function initializePlantillaSchema(pool, employeeIdDefinition) {
 const selectSql = `SELECT pi.*,p.title position_title,sg.ordinance,sg.grade,sg.step,sg.amount salary_amount,
  s.name sector_name,o.name office_name,d.name division_name,se.name section_name,pt.name plantilla_type_name,b.name budget_code_name,
  po.id occupancy_id,po.employee_id,po.date_from occupancy_date_from,po.movement_type,po.appointment_number,
+ pm.id pending_movement_id,pm.control_number pending_control_number,pm.status pending_status,
+ pm.employee_id pending_employee_id,pm.effective_date pending_effective_date,
+ pe.employee_no pending_employee_no,
+ TRIM(CONCAT_WS(' ',
+  NULLIF(TRIM(pe.firstname), ''),
+  CASE
+    WHEN CHAR_LENGTH(TRIM(COALESCE(pe.middlename, ''))) = 1
+      THEN CONCAT(UPPER(TRIM(pe.middlename)), '.')
+    ELSE NULLIF(TRIM(pe.middlename), '')
+  END,
+  NULLIF(TRIM(pe.lastname), ''),
+  NULLIF(TRIM(pe.name_ext), '')
+ )) pending_employee_name,
  e.employee_no,TRIM(CONCAT_WS(' ',
   NULLIF(TRIM(e.firstname), ''),
   CASE
@@ -59,7 +72,16 @@ const selectSql = `SELECT pi.*,p.title position_title,sg.ordinance,sg.grade,sg.s
  LEFT JOIN hr_reference_values s ON s.id=pi.sector_ref_id LEFT JOIN hr_reference_values o ON o.id=pi.office_ref_id
  LEFT JOIN hr_reference_values d ON d.id=pi.division_ref_id LEFT JOIN hr_reference_values se ON se.id=pi.section_ref_id
  LEFT JOIN hr_reference_values pt ON pt.id=pi.plantilla_type_ref_id LEFT JOIN hr_reference_values b ON b.id=pi.budget_code_ref_id
- LEFT JOIN plantilla_occupancies po ON po.plantilla_item_id=pi.id AND po.status='Active' LEFT JOIN employees e ON e.id=po.employee_id`;
+ LEFT JOIN plantilla_occupancies po ON po.plantilla_item_id=pi.id AND po.status='Active' LEFT JOIN employees e ON e.id=po.employee_id
+ LEFT JOIN personnel_movements pm ON pm.id=(
+   SELECT m2.id
+   FROM personnel_movements m2
+   WHERE m2.target_plantilla_item_id=pi.id
+     AND m2.status IN ('Draft','Submitted','Reviewed','Approved','Scheduled')
+   ORDER BY m2.created_at,m2.id
+   LIMIT 1
+ )
+ LEFT JOIN employees pe ON pe.id=pm.employee_id`;
 const day = (v) => (v ? new Date(v).toISOString().slice(0, 10) : null);
 const directAssignmentActions = new Set([
   "Original Appointment",
@@ -161,6 +183,18 @@ const map = (r) => ({
         appointmentNumber: r.appointment_number || "",
       }
     : null,
+  pendingMovement:
+    !r.occupancy_id && r.pending_movement_id
+      ? {
+          id: r.pending_movement_id,
+          controlNumber: r.pending_control_number,
+          status: r.pending_status,
+          employeeId: r.pending_employee_id,
+          employeeNo: r.pending_employee_no,
+          employeeName: r.pending_employee_name,
+          effectiveDate: day(r.pending_effective_date),
+        }
+      : null,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -380,6 +414,28 @@ export function createPlantillaHandlers({
     if (!old) return json(res, 404, { error: "Plantilla item not found" });
     try {
       const x = await payload(await readBody(req), old);
+      if (old.occupant) {
+        const protectedChanges = [
+          [old.itemNumber, x.itemNumber, "item number"],
+          [old.positionId, x.positionId, "position"],
+          [old.salaryGradeId, x.salaryGradeId, "salary grade"],
+          [old.sectorId, x.sectorId, "sector"],
+          [old.officeId, x.officeId, "office"],
+          [old.divisionId, x.divisionId, "division"],
+          [old.sectionId, x.sectionId, "section"],
+          [old.plantillaTypeId, x.plantillaTypeId, "Plantilla classification"],
+          [old.budgetCodeId, x.budgetCodeId, "budget code"],
+          [old.authorizedSalary, x.authorizedSalary, "authorized salary"],
+          [old.effectiveFrom, x.effectiveFrom, "effectivity"],
+          [old.effectiveTo, x.effectiveTo, "effectivity"],
+        ]
+          .filter(([before, after]) => String(before ?? "") !== String(after ?? ""))
+          .map(([, , label]) => label);
+        if (protectedChanges.length)
+          throw Error(
+            `This occupied item cannot change ${[...new Set(protectedChanges)].join(", ")} through ordinary editing. Use an effective-dated staffing or personnel action.`,
+          );
+      }
       await pool.execute(
         `UPDATE plantilla_items SET item_number=:itemNumber,position_id=:positionId,salary_grade_id=:salaryGradeId,sector_ref_id=:sectorId,office_ref_id=:officeId,division_ref_id=:divisionId,section_ref_id=:sectionId,plantilla_type_ref_id=:plantillaTypeId,budget_code_ref_id=:budgetCodeId,authorized_salary=:authorizedSalary,item_status=:itemStatus,effective_from=:effectiveFrom,effective_to=:effectiveTo,notes=:notes,updated_by=:userId WHERE id=:id`,
         { id, ...x, userId: u.id },

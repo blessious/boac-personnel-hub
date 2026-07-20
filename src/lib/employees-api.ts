@@ -1,6 +1,12 @@
 import { api } from "@/lib/api";
 
-export const EMPLOYMENT_STATUSES = ["Permanent", "Regular", "Casual", "JO/COS"] as const;
+export const EMPLOYMENT_STATUSES = [
+  "Unassigned",
+  "Permanent",
+  "Regular",
+  "Casual",
+  "JO/COS",
+] as const;
 export const EMPLOYEE_LEVELS = ["First Level", "Second Level", "Third Level", "Executive"] as const;
 export const GENDERS = ["Male", "Female"] as const;
 export const CIVIL_STATUSES = ["Single", "Married", "Widowed", "Separated"] as const;
@@ -27,6 +33,8 @@ export type EmployeeRecord = {
   dateEmployed: string;
   itemNo: string;
   empStatus: "Active" | "Inactive";
+  lifecycleState: "Personal Record" | "Pre-Employment" | "Active" | "Inactive";
+  currentOrganizationId: number | null;
   birthday: string;
   gender: Gender | "";
   civilStatus: CivilStatus | "";
@@ -79,11 +87,43 @@ export type EmployeeListResponse = {
 export type EmployeeDetailResponse = {
   employee: EmployeeRecord;
   sections: Record<string, SectionRow[]>;
+  currentAssignment: CurrentAssignment;
+};
+
+export type CurrentAssignment = {
+  substantive: null | {
+    kind: "Plantilla" | "Non-Plantilla";
+    id: string;
+    plantillaItemId?: string;
+    itemNumber?: string;
+    engagementType?: string;
+    position: string;
+    organizationId: number | null;
+    organization: string;
+    organizationPath: string[];
+    salaryGrade?: null | { ordinance: string; grade: number; step: number; amount: number };
+    dateFrom: string;
+    dateTo?: string;
+    appointmentType?: string;
+    authorityNumber: string;
+    rate?: number | null;
+    fundingSource?: string;
+  };
+  temporary: null | {
+    id: string;
+    type: string;
+    position: string;
+    organizationId: number | null;
+    organization: string;
+    dateFrom: string;
+    dateTo: string;
+  };
 };
 
 export type EmployeeAccountCredentials = {
   username: string;
   temporaryPassword: string;
+  active?: boolean;
 };
 
 export type SectionRow = {
@@ -97,6 +137,15 @@ export type DashboardResponse = {
   totalEmployees: number;
   regularEmployees: number;
   jobOrderEmployees: number;
+  assignmentTotals: {
+    authorizedPlantilla: number;
+    filledPlantilla: number;
+    vacantPlantilla: number;
+    activeNonPlantilla: number;
+    scheduledAppointments: number;
+    expiringEngagements: number;
+    awaitingAssignment: number;
+  };
   byDivision: Array<{ department: string; filled: number; unfilled: number; total: number }>;
   bySexLevel: Array<{
     department: string;
@@ -178,8 +227,39 @@ export function generateEmployeeWesDocx(id: string) {
   );
 }
 
-export function createEmployee(employee: Partial<EmployeeRecord>) {
-  return api<{ employee: EmployeeRecord; account?: EmployeeAccountCredentials }>("/api/employees", {
+export type CreateEmployeeInput = Partial<EmployeeRecord> & {
+  createAccount?: boolean;
+  accountActive?: boolean;
+  appointment?: {
+    controlNumber?: string;
+    targetPlantillaItemId: string;
+    effectiveDate: string;
+    authorityNumber: string;
+    authorityDate: string;
+    remarks: string;
+    supportingDocuments: Array<{ name: string; reference: string }>;
+  };
+  engagement?: {
+    engagementType: "JO" | "COS" | "Casual" | "Contractual" | "Other";
+    organizationId: string;
+    designation: string;
+    contractNumber: string;
+    dateFrom: string;
+    dateTo: string;
+    rate?: string;
+    fundingSource?: string;
+    supervisor?: string;
+    remarks?: string;
+  };
+};
+
+export function createEmployee(employee: CreateEmployeeInput) {
+  return api<{
+    employee: EmployeeRecord;
+    account?: EmployeeAccountCredentials;
+    appointmentDraftId?: string;
+    engagementId?: string;
+  }>("/api/employees", {
     method: "POST",
     body: JSON.stringify(employee),
   });
