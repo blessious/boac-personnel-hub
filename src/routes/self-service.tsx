@@ -1155,6 +1155,7 @@ const WES_FIELDS = [
   { key: "company", label: "Company / Office" },
   { key: "status", label: "Status" },
   { key: "salary", label: "Salary" },
+  { key: "salaryGradeStep", label: "Salary / Job / Pay Grade & Step" },
   { key: "govEmp", label: "Government Service" },
 ] as const;
 

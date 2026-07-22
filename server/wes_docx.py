@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 from copy import deepcopy
 from datetime import datetime
@@ -74,7 +75,7 @@ def date_text(value, present=False):
         return "Present"
     parsed = parse_date(raw)
     if parsed:
-        return parsed.strftime("%d %B %Y")
+        return f"{parsed.day} {parsed.strftime('%B %Y')}"
     return raw
 
 
@@ -82,7 +83,7 @@ def duration(item):
     date_from = date_text(first(item.get("dateFrom"), item.get("from")))
     date_to = date_text(first(item.get("dateTo"), item.get("to")), present=True)
     if date_from and date_to:
-        return f"{date_from} - {date_to}"
+        return f"{date_from} – {date_to}"
     return date_from or date_to or "N/A"
 
 
@@ -115,6 +116,16 @@ def clear_cell(cell):
     tc.append(OxmlElement("w:p"))
 
 
+def replace_cell_paragraphs(cell, paragraph_elements):
+    tc = cell._tc
+    tc_pr = tc.tcPr
+    for child in list(tc):
+        if child is not tc_pr:
+            tc.remove(child)
+    for paragraph_element in paragraph_elements:
+        tc.append(deepcopy(paragraph_element))
+
+
 def apply_run_font(run):
     run.font.name = FONT_NAME
     run.font.size = FONT_SIZE
@@ -123,19 +134,29 @@ def apply_run_font(run):
     run._element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:hAnsi"), FONT_NAME)
 
 
-def apply_paragraph_font(paragraph):
+def set_paragraph_text(paragraph, value):
+    """Replace text while retaining the template paragraph and run formatting."""
+    source_run_properties = None
     for run in paragraph.runs:
-        apply_run_font(run)
+        if run._r.rPr is not None:
+            source_run_properties = deepcopy(run._r.rPr)
+            break
 
+    paragraph_properties = paragraph._p.pPr
+    for child in list(paragraph._p):
+        if child is not paragraph_properties:
+            paragraph._p.remove(child)
 
-def apply_document_font(document):
-    for paragraph in document.paragraphs:
-        apply_paragraph_font(paragraph)
-    for table in document.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    apply_paragraph_font(paragraph)
+    if value:
+        run_element = OxmlElement("w:r")
+        if source_run_properties is not None:
+            run_element.append(source_run_properties)
+        text_element = OxmlElement("w:t")
+        if value[:1].isspace() or value[-1:].isspace() or "  " in value:
+            text_element.set(qn("xml:space"), "preserve")
+        text_element.text = value
+        run_element.append(text_element)
+        paragraph._p.append(run_element)
 
 
 def add_line(cell, label, value="", bold_label=True):
@@ -151,32 +172,63 @@ def add_line(cell, label, value="", bold_label=True):
     return paragraph
 
 
-def add_multiline(cell, text_value):
-    values = [line.strip() for line in text(text_value).splitlines() if line.strip()]
-    if not values:
-        add_line(cell, "", "N/A", bold_label=False)
-        return
-    for value in values:
-        add_line(cell, "", value, bold_label=False)
+def content_lines(value):
+    values = []
+    for raw_line in text(value).splitlines():
+        line = raw_line.strip()
+        line = re.sub(r"^(?:[•●◦▪\-–—]|o(?=\s)|\d+[.)])\s*", "", line, flags=re.IGNORECASE)
+        if line:
+            values.append(line)
+    return values or ["N/A"]
 
 
-def fill_work_row(cell, item):
-    clear_cell(cell)
-    add_line(cell, "Duration:  ", duration(item))
-    add_line(cell, "Position:  ", first(item.get("position"), item.get("designation")))
-    add_line(cell, "Name of Office/Unit:  ", text(item.get("officeUnit")))
-    add_line(cell, "Immediate Supervisor:  ", text(item.get("immediateSupervisor")))
-    add_line(
-        cell,
-        "Name of Agency/Organization and Location:  ",
-        first(item.get("agencyOrganizationLocation"), item.get("company")),
+def fill_work_row(cell, item, source_cell):
+    """Build a record exclusively from paragraph archetypes in the WES template."""
+    source = source_cell.paragraphs
+    if len(source) < 16:
+        raise RuntimeError("Work Experience Sheet template record layout is incomplete")
+
+    paragraph_elements = [
+        source[0]._p,
+        source[1]._p,
+        source[2]._p,
+        source[3]._p,
+        source[4]._p,
+        source[5]._p,
+        source[6]._p,
+        source[7]._p,
+    ]
+    paragraph_elements.extend(source[9]._p for _ in content_lines(item.get("accomplishments")))
+    paragraph_elements.extend([source[11]._p, source[12]._p, source[13]._p])
+    paragraph_elements.extend(source[14]._p for _ in content_lines(item.get("actualDuties")))
+    paragraph_elements.append(source[15]._p)
+    replace_cell_paragraphs(cell, paragraph_elements)
+
+    paragraphs = cell.paragraphs
+    set_paragraph_text(paragraphs[1], f"Duration:  {duration(item)}")
+    set_paragraph_text(
+        paragraphs[2], f"Position:  {first(item.get('position'), item.get('designation')) or 'N/A'}"
     )
-    cell.add_paragraph()
-    add_line(cell, "List of Accomplishments and Contributions (if any)")
-    add_multiline(cell, item.get("accomplishments"))
-    cell.add_paragraph()
-    add_line(cell, "Summary of Actual Duties")
-    add_multiline(cell, item.get("actualDuties"))
+    set_paragraph_text(paragraphs[3], f"Name of Office/Unit: {text(item.get('officeUnit')) or 'N/A'}")
+    set_paragraph_text(
+        paragraphs[4], f"Immediate Supervisor: {text(item.get('immediateSupervisor')) or 'N/A'}"
+    )
+    set_paragraph_text(
+        paragraphs[5],
+        " Name of Agency/Organization and Location: "
+        + (first(item.get("agencyOrganizationLocation"), item.get("company")) or "N/A"),
+    )
+
+    accomplishments = content_lines(item.get("accomplishments"))
+    first_accomplishment = 8
+    for offset, value in enumerate(accomplishments):
+        set_paragraph_text(paragraphs[first_accomplishment + offset], value)
+
+    summary_heading = first_accomplishment + len(accomplishments) + 1
+    duties = content_lines(item.get("actualDuties"))
+    first_duty = summary_heading + 2
+    for offset, value in enumerate(duties):
+        set_paragraph_text(paragraphs[first_duty + offset], value)
 
 
 def clone_row(table, source_row_element):
@@ -195,7 +247,9 @@ def fill_docx(payload, output_path, template_path):
         raise RuntimeError("Work Experience Sheet template does not contain a table")
 
     table = document.tables[0]
-    template_row_element = deepcopy(table.rows[3]._tr if len(table.rows) > 3 else table.rows[-1]._tr)
+    template_row = table.rows[2] if len(table.rows) > 2 else table.rows[-1]
+    template_row_element = deepcopy(template_row._tr)
+    template_cell = template_row.cells[0]
     while len(table.rows) > 2:
         table._tbl.remove(table.rows[-1]._tr)
 
@@ -206,17 +260,17 @@ def fill_docx(payload, output_path, template_path):
     else:
         for item in rows:
             row = clone_row(table, template_row_element)
-            fill_work_row(row.cells[0], item)
+            fill_work_row(row.cells[0], item, template_cell)
 
-    for paragraph in document.paragraphs:
+    for index, paragraph in enumerate(document.paragraphs):
         if "Signature over Printed Name" in paragraph.text:
-            previous = paragraph.insert_paragraph_before()
-            previous.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = previous.add_run(full_name(employee) or "Employee/Applicant")
+            previous = document.paragraphs[index - 1] if index > 0 else paragraph.insert_paragraph_before()
+            set_paragraph_text(previous, full_name(employee) or "Employee/Applicant")
+            previous.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            run = previous.runs[0]
             run.bold = True
             apply_run_font(run)
 
-    apply_document_font(document)
     document.save(output_path)
     return len(rows)
 

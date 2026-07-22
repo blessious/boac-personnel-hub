@@ -1,11 +1,22 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Download, Pencil, Plus, Save, Search, Trash2, Upload } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Download,
+  Pencil,
+  Plus,
+  Save,
+  Search,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -181,6 +192,7 @@ const SECTION_FIELDS: Record<string, FieldConfig[]> = {
     { key: "company", label: "Company / Office" },
     { key: "status", label: "Status" },
     { key: "salary", label: "Salary" },
+    { key: "salaryGradeStep", label: "Salary / Job / Pay Grade & Step" },
     { key: "govEmp", label: "Government Service", type: "select", options: ["YES", "NO"] },
   ],
   organization: [
@@ -1183,6 +1195,16 @@ function WorkExperienceRecords({
   onDelete: (row: SectionRow) => void;
 }) {
   const sortedRows = [...rows].sort((a, b) => workDateTime(b) - workDateTime(a));
+  const [expandedRows, setExpandedRows] = useState<Set<string | number>>(() => new Set());
+
+  const setRowExpanded = (rowId: string | number, open: boolean) => {
+    setExpandedRows((current) => {
+      const next = new Set(current);
+      if (open) next.add(rowId);
+      else next.delete(rowId);
+      return next;
+    });
+  };
 
   if (rows.length === 0) {
     return (
@@ -1194,55 +1216,92 @@ function WorkExperienceRecords({
 
   return (
     <div className="space-y-3">
-      {sortedRows.map((row) => (
-        <article key={row.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground">
-                {plainValue(formatDuration(row.payload))}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {plainValue(row.payload.position)}
-              </p>
-            </div>
-            {canEdit && (
-              <div className="flex shrink-0 gap-2">
-                <Button variant="outline" size="sm" onClick={() => onEdit(row)}>
-                  <Pencil className="mr-1.5 h-4 w-4" />
-                  Edit
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onDelete(row)}
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="mr-1.5 h-4 w-4" />
-                  Delete
-                </Button>
+      {sortedRows.map((row) => {
+        const isExpanded = expandedRows.has(row.id);
+        return (
+          <Collapsible
+            key={row.id}
+            asChild
+            open={isExpanded}
+            onOpenChange={(open) => setRowExpanded(row.id, open)}
+          >
+            <article className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div
+                className={cn(
+                  "flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between",
+                  isExpanded && "border-b border-border pb-4",
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">
+                    {plainValue(formatDuration(row.payload))}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {plainValue(row.payload.position)}
+                  </p>
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                    {plainValue(row.payload.officeUnit || row.payload.agencyOrganizationLocation)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <CollapsibleTrigger asChild>
+                    <Button variant="outline" size="sm" aria-label="Toggle work experience details">
+                      Details
+                      <ChevronDown
+                        className={cn(
+                          "ml-1.5 h-4 w-4 transition-transform",
+                          isExpanded && "rotate-180",
+                        )}
+                      />
+                    </Button>
+                  </CollapsibleTrigger>
+                  {canEdit && (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => onEdit(row)}>
+                        <Pencil className="mr-1.5 h-4 w-4" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onDelete(row)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="mr-1.5 h-4 w-4" />
+                        Delete
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
-            <WesDetail label="Duration" value={formatDuration(row.payload)} />
-            <WesDetail label="Position" value={row.payload.position} />
-            <WesDetail label="Name of Office / Unit" value={row.payload.officeUnit} />
-            <WesDetail label="Immediate Supervisor" value={row.payload.immediateSupervisor} />
-            <WesDetail
-              label="Name of Agency / Organization and Location"
-              value={row.payload.agencyOrganizationLocation || row.payload.company}
-              wide
-            />
-            <WesDetail
-              label="List of Accomplishments and Contributions (if any)"
-              value={row.payload.accomplishments}
-              wide
-            />
-            <WesDetail label="Summary of Actual Duties" value={row.payload.actualDuties} wide />
-          </div>
-        </article>
-      ))}
+              <CollapsibleContent>
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <WesDetail label="Duration" value={formatDuration(row.payload)} />
+                  <WesDetail label="Position" value={row.payload.position} />
+                  <WesDetail label="Name of Office / Unit" value={row.payload.officeUnit} />
+                  <WesDetail label="Immediate Supervisor" value={row.payload.immediateSupervisor} />
+                  <WesDetail
+                    label="Name of Agency / Organization and Location"
+                    value={row.payload.agencyOrganizationLocation || row.payload.company}
+                    wide
+                  />
+                  <WesDetail
+                    label="List of Accomplishments and Contributions (if any)"
+                    value={row.payload.accomplishments}
+                    wide
+                  />
+                  <WesDetail
+                    label="Summary of Actual Duties"
+                    value={row.payload.actualDuties}
+                    wide
+                  />
+                </div>
+              </CollapsibleContent>
+            </article>
+          </Collapsible>
+        );
+      })}
     </div>
   );
 }

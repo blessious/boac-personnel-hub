@@ -65,7 +65,7 @@ const LEAVE_FORM6_EXCEL_SCRIPT = path.join(process.cwd(), "server", "leave_form6
 const PDS_TEMPLATE_XLSX = path.join(
   process.cwd(),
   "Personal Data Sheet",
-  "Personal Data Sheet.xlsx",
+  "CS Form No. 212 Revised 2026 PDS.xlsx",
 );
 const PDS_EXCEL_SCRIPT = path.join(process.cwd(), "server", "pds_excel.py");
 const WES_TEMPLATE_DOCX = path.join(process.cwd(), "WES", "Work Experience Sheet.docx");

@@ -30,6 +30,20 @@ PDS_CHECKBOXES = {
 
 PDS_CHECKBOX_IDS = set(PDS_CHECKBOXES.values())
 
+PDS_CHECKBOX_CTRL_PROPS = {
+    "_x0000_s1045": "xl/ctrlProps/ctrlProp2.xml",
+    "_x0000_s1046": "xl/ctrlProps/ctrlProp3.xml",
+    "_x0000_s1049": "xl/ctrlProps/ctrlProp4.xml",
+    "_x0000_s1050": "xl/ctrlProps/ctrlProp5.xml",
+    "_x0000_s1058": "xl/ctrlProps/ctrlProp6.xml",
+    "_x0000_s1059": "xl/ctrlProps/ctrlProp7.xml",
+    "_x0000_s1060": "xl/ctrlProps/ctrlProp8.xml",
+    "_x0000_s1061": "xl/ctrlProps/ctrlProp9.xml",
+    "_x0000_s1062": "xl/ctrlProps/ctrlProp10.xml",
+    "_x0000_s1063": "xl/ctrlProps/ctrlProp11.xml",
+    "_x0000_s1064": "xl/ctrlProps/ctrlProp12.xml",
+}
+
 SHEET_NS = {
     "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
@@ -283,8 +297,8 @@ def fill_sheet(payload, output_path, template_path):
             ("F", "rating"),
             ("G", lambda item: date_text(item.get("date"))),
             ("I", "place"),
-            ("J", "license"),
-            ("K", lambda item: date_text(first(item.get("licenseValidity"), item.get("dateRelease")))),
+            ("L", "license"),
+            ("M", lambda item: date_text(first(item.get("licenseValidity"), item.get("dateRelease")))),
         ],
     )
     fill_rows(
@@ -297,8 +311,10 @@ def fill_sheet(payload, output_path, template_path):
             ("C", lambda item: date_text(item.get("dateTo"))),
             ("D", "position"),
             ("G", "company"),
-            ("J", "status"),
-            ("K", "govEmp"),
+            ("J", "salary"),
+            ("K", "salaryGradeStep"),
+            ("L", "status"),
+            ("M", "govEmp"),
         ],
     )
     clear_cells(c2, ["D47", "I47"])
@@ -377,6 +393,7 @@ def selected_checkbox_ids(employee):
 
 
 def write_xlsx(template_path, output_path, sheet_cells, selected_ids):
+    selected_ctrl_props = {PDS_CHECKBOX_CTRL_PROPS[shape_id] for shape_id in selected_ids}
     with zipfile.ZipFile(template_path, "r") as source:
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as target:
             for item in source.infolist():
@@ -385,13 +402,14 @@ def write_xlsx(template_path, output_path, sheet_cells, selected_ids):
                     data = patch_sheet(data, sheet_cells[item.filename])
                 elif item.filename == "xl/drawings/vmlDrawing1.vml":
                     data = patch_vml(data.decode("utf-8", errors="ignore"), selected_ids).encode("utf-8")
+                elif item.filename in PDS_CHECKBOX_CTRL_PROPS.values():
+                    data = patch_ctrl_prop(data, item.filename in selected_ctrl_props)
                 target.writestr(item, data)
 
 
 def patch_sheet(sheet_xml, cells):
     register_sheet_namespaces(sheet_xml)
     root = ET.fromstring(sheet_xml)
-    root.set("xmlns:x14", SHEET_NS["x14"])
     sheet_data = root.find("main:sheetData", SHEET_NS)
     if sheet_data is None:
         return sheet_xml
@@ -400,7 +418,26 @@ def patch_sheet(sheet_xml, cells):
             set_cell_inline_string(sheet_data, ref, value)
         else:
             clear_cell(sheet_data, ref)
-    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    patched_xml = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    return restore_namespace_declarations(sheet_xml, patched_xml)
+
+
+def restore_namespace_declarations(source_xml, patched_xml):
+    source_text = source_xml.decode("utf-8", errors="ignore")
+    patched_text = patched_xml.decode("utf-8")
+    root_start = patched_text.find("<worksheet")
+    root_end = patched_text.find(">", root_start)
+    if root_start < 0 or root_end < 0:
+        return patched_xml
+
+    root_tag = patched_text[root_start:root_end]
+    missing = []
+    for prefix, uri in re.findall(r'xmlns:([A-Za-z0-9]+)="([^"]+)"', source_text):
+        if f"xmlns:{prefix}=" not in root_tag:
+            missing.append(f' xmlns:{prefix}="{uri}"')
+    if not missing:
+        return patched_xml
+    return (patched_text[:root_end] + "".join(missing) + patched_text[root_end:]).encode("utf-8")
 
 
 def register_sheet_namespaces(sheet_xml):
@@ -502,10 +539,15 @@ def column_index(ref):
 
 def patch_vml(vml, selected_ids):
     def replace_shape(match):
-        shape = re.sub(r"\s*<x:Checked>1\s*</x:Checked>", "", match.group(0))
+        shape = re.sub(r"\s*<x:Checked>[^<]*</x:Checked>", "", match.group(0))
         shape_id = match.group("id")
         if shape_id in selected_ids:
-            shape = shape.replace("</x:ClientData>", "   <x:Checked>1</x:Checked>\n  </x:ClientData>")
+            shape = re.sub(
+                r"(<x:TextVAlign>[^<]*</x:TextVAlign>)",
+                r"\1\n   <x:Checked>1</x:Checked>",
+                shape,
+                count=1,
+            )
         return shape
 
     pattern = r'<v:shape\b[^>]*id="(?P<id>[^"]+)"[\s\S]*?</v:shape>'
@@ -514,6 +556,19 @@ def patch_vml(vml, selected_ids):
         lambda match: replace_shape(match) if match.group("id") in PDS_CHECKBOX_IDS else match.group(0),
         vml,
     )
+
+
+def patch_ctrl_prop(ctrl_prop_xml, selected):
+    ctrl_prop = ctrl_prop_xml.decode("utf-8", errors="ignore")
+    ctrl_prop = re.sub(r'\s+checked="[^"]*"', "", ctrl_prop)
+    if selected:
+        ctrl_prop = re.sub(
+            r'(\sobjectType="CheckBox")',
+            r'\1 checked="Checked"',
+            ctrl_prop,
+            count=1,
+        )
+    return ctrl_prop.encode("utf-8")
 
 
 def main():
