@@ -107,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let alive = true;
-    api<{ user: User }>("/api/auth/me")
+    api<{ user: User | null }>("/api/auth/me")
       .then(({ user }) => {
         if (alive) setUser(user);
       })

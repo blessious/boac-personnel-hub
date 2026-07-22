@@ -55,7 +55,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { canWriteHrRecords, useAuth } from "@/lib/auth";
-import { api } from "@/lib/api";
+import { api, isAbortError } from "@/lib/api";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import { cn, formatDisplayDate } from "@/lib/utils";
 
@@ -275,7 +275,7 @@ function EmployeeReferencesPage() {
     referenceTabOptions.find((tab) => tab.value === activeReferenceTab)?.label ||
     "Employee References";
 
-  const loadReferences = async () => {
+  const loadReferences = async (signal?: AbortSignal) => {
     setLoading(true);
     try {
       const [data, references] = await Promise.all([
@@ -284,9 +284,12 @@ function EmployeeReferencesPage() {
           positions: PositionRow[];
           salaryGrades: SalaryGradeRow[];
           salaryGradeTables?: SalaryGradeTableRow[];
-        }>("/api/settings"),
-        api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references"),
+        }>("/api/settings", { signal }),
+        api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references", {
+          signal,
+        }),
       ]);
+      if (signal?.aborted) return;
       setDepts(data.departments);
       setPos(data.positions);
       setSalaryGrades(data.salaryGrades);
@@ -328,14 +331,16 @@ function EmployeeReferencesPage() {
       }));
       setReferenceLibraries(references.libraries);
     } catch (error) {
-      toast.error((error as Error).message);
+      if (!isAbortError(error)) toast.error((error as Error).message);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadReferences();
+    const controller = new AbortController();
+    loadReferences(controller.signal);
+    return () => controller.abort();
   }, []);
   useRealtimeRefresh(loadReferences, ["settings"]);
   useEffect(() => {

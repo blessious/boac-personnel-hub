@@ -11360,7 +11360,7 @@ async function route(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/auth/me") {
     const user = await getSessionUser(req);
-    return user ? json(res, 200, { user }) : json(res, 401, { error: "Not authenticated" });
+    return json(res, 200, { user });
   }
 
   if (req.method === "GET" && url.pathname === "/api/notifications")

@@ -39,7 +39,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { api } from "@/lib/api";
+import { api, isAbortError } from "@/lib/api";
 import { canWriteHrRecords, useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord, type SettingsOptions } from "@/lib/employees-api";
 import {
@@ -136,19 +136,28 @@ function MovementsPage() {
     [decisionRemarks, setDecisionRemarks] = useState(""),
     [events, setEvents] = useState<MovementEvent[]>([]),
     [detailMovement, setDetailMovement] = useState<Movement | null>(null);
-  const load = useCallback(async () => {
-    try {
-      const x = await listMovements(q, apiStatus, actionFilter);
-      setMovements(x.movements);
-      setSummary(x.summary);
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }, [q, apiStatus, actionFilter]);
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const x = await listMovements(q, apiStatus, actionFilter, { signal });
+        if (signal?.aborted) return;
+        setMovements(x.movements);
+        setSummary(x.summary);
+      } catch (e) {
+        if (!isAbortError(e)) toast.error((e as Error).message);
+      }
+    },
+    [q, apiStatus, actionFilter],
+  );
   useEffect(() => {
-    const timer = setTimeout(load, 200);
-    return () => clearTimeout(timer);
-  }, [load]);
+    if (!user) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => load(controller.signal), 200);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [load, user]);
   useEffect(() => {
     if (didSetApproverQueue || !canApprove || canPrepare) return;
     setStatus("needs-action");
@@ -160,13 +169,18 @@ function MovementsPage() {
     setDidSetHrQueue(true);
   }, [canPrepare, didSetHrQueue]);
   useEffect(() => {
+    if (!user) return;
+    const controller = new AbortController();
     Promise.all([
-      api<SettingsOptions>("/api/settings"),
-      listPlantilla("", "Active", "all"),
-      loadAllEmployees(),
-      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references"),
+      api<SettingsOptions>("/api/settings", { signal: controller.signal }),
+      listPlantilla("", "Active", "all", { signal: controller.signal }),
+      loadAllEmployees(controller.signal),
+      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references", {
+        signal: controller.signal,
+      }),
     ])
       .then(([s, p, e, references]) => {
+        if (controller.signal.aborted) return;
         setSettings(s);
         setItems(p.items);
         setEmployees(e);
@@ -179,8 +193,12 @@ function MovementsPage() {
           ].filter((row) => row.isActive),
         );
       })
-      .catch((e) => toast.error(e.message));
-  }, []);
+      .catch((e) => {
+        if (!isAbortError(e)) toast.error(e.message);
+      });
+
+    return () => controller.abort();
+  }, [user]);
   const openForm = useCallback((m?: Movement, prefill: Partial<MovementForm> = {}) => {
     setEdit(m || null);
     setForm(
@@ -1291,13 +1309,13 @@ function dateRange(movement: Movement) {
     ? `${formatDisplayDate(movement.effectiveDate)} to ${formatDisplayDate(movement.endDate)}`
     : formatDisplayDate(movement.effectiveDate);
 }
-async function loadAllEmployees() {
-  const first = await listEmployees({ pageSize: 100 });
+async function loadAllEmployees(signal?: AbortSignal) {
+  const first = await listEmployees({ pageSize: 100 }, { signal });
   const pages = Math.ceil(first.total / first.pageSize);
   if (pages <= 1) return first.employees;
   const rest = await Promise.all(
     Array.from({ length: pages - 1 }, (_, i) =>
-      listEmployees({ page: i + 2, pageSize: first.pageSize }),
+      listEmployees({ page: i + 2, pageSize: first.pageSize }, { signal }),
     ),
   );
   return [first, ...rest].flatMap((x) => x.employees);

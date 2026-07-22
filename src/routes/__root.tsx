@@ -19,6 +19,7 @@ import { useEffect } from "react";
 import { RealtimeProvider } from "@/lib/realtime";
 
 import appCss from "../styles.css?url";
+import appIcon from "../assets/branding/STRH-logo.png";
 
 function NotFoundComponent() {
   return (
@@ -62,6 +63,7 @@ export const Route = createRootRoute({
     ],
     links: [
       { rel: "stylesheet", href: appCss },
+      { rel: "icon", type: "image/png", href: appIcon },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "" },
       {

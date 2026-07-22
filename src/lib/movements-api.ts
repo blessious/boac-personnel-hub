@@ -113,9 +113,15 @@ const payload = (f: MovementForm) => ({
       return { name: name.trim(), reference: rest.join("|").trim() };
     }),
 });
-export const listMovements = (q = "", status = "all", actionType = "all") =>
+export const listMovements = (
+  q = "",
+  status = "all",
+  actionType = "all",
+  options: RequestInit = {},
+) =>
   api<{ movements: Movement[]; summary: Record<string, number>; actionTypes: string[] }>(
     `/api/movements?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}&actionType=${encodeURIComponent(actionType)}`,
+    options,
   );
 export const saveMovement = (form: MovementForm, id?: string) =>
   api<{ movement: Movement }>(id ? `/api/movements/${id}` : "/api/movements", {

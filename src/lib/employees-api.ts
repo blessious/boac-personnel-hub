@@ -188,15 +188,18 @@ export type SettingsOptions = {
   }>;
 };
 
-export function listEmployees(params: {
-  q?: string;
-  department?: string;
-  status?: string;
-  empStatus?: string;
-  gender?: string;
-  page?: number;
-  pageSize?: number;
-}) {
+export function listEmployees(
+  params: {
+    q?: string;
+    department?: string;
+    status?: string;
+    empStatus?: string;
+    gender?: string;
+    page?: number;
+    pageSize?: number;
+  },
+  options: RequestInit = {},
+) {
   const query = new URLSearchParams();
   if (params.q) query.set("q", params.q);
   if (params.department && params.department !== "all") query.set("department", params.department);
@@ -205,7 +208,7 @@ export function listEmployees(params: {
   if (params.gender && params.gender !== "all") query.set("gender", params.gender);
   if (params.page) query.set("page", String(params.page));
   if (params.pageSize) query.set("pageSize", String(params.pageSize));
-  return api<EmployeeListResponse>(`/api/employees?${query.toString()}`);
+  return api<EmployeeListResponse>(`/api/employees?${query.toString()}`, options);
 }
 
 export function getEmployee(id: string) {

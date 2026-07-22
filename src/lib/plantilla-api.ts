@@ -76,7 +76,12 @@ export const emptyPlantilla: PlantillaPayload = {
   effectiveTo: "",
   notes: "",
 };
-export const listPlantilla = (q = "", status = "all", occupancy = "all") =>
+export const listPlantilla = (
+  q = "",
+  status = "all",
+  occupancy = "all",
+  options: RequestInit = {},
+) =>
   api<{
     items: PlantillaItem[];
     summary: {
@@ -86,7 +91,7 @@ export const listPlantilla = (q = "", status = "all", occupancy = "all") =>
       occupied: number;
       vacant: number;
     };
-  }>(`/api/plantilla?q=${encodeURIComponent(q)}&status=${status}&occupancy=${occupancy}`);
+  }>(`/api/plantilla?q=${encodeURIComponent(q)}&status=${status}&occupancy=${occupancy}`, options);
 export const savePlantilla = (value: PlantillaPayload, id?: string) =>
   api<{ item: PlantillaItem }>(id ? `/api/plantilla/${id}` : "/api/plantilla", {
     method: id ? "PATCH" : "POST",

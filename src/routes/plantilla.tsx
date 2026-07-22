@@ -29,7 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { api } from "@/lib/api";
+import { api, isAbortError } from "@/lib/api";
 import { canWriteHrRecords, useAuth } from "@/lib/auth";
 import { type SettingsOptions } from "@/lib/employees-api";
 import {
@@ -97,30 +97,46 @@ function PlantillaPage() {
     effectiveFrom: "",
     remarks: "",
   });
-  const load = useCallback(async () => {
-    try {
-      const x = await listPlantilla(q, status, occupancy);
-      setItems(x.items);
-      setSummary(x.summary);
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }, [q, status, occupancy]);
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const x = await listPlantilla(q, status, occupancy, { signal });
+        if (signal?.aborted) return;
+        setItems(x.items);
+        setSummary(x.summary);
+      } catch (e) {
+        if (!isAbortError(e)) toast.error((e as Error).message);
+      }
+    },
+    [q, status, occupancy],
+  );
   useEffect(() => {
+    const controller = new AbortController();
     Promise.all([
-      api<SettingsOptions>("/api/settings"),
-      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references"),
+      api<SettingsOptions>("/api/settings", { signal: controller.signal }),
+      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references", {
+        signal: controller.signal,
+      }),
     ])
       .then(([s, r]) => {
         setSettings(s);
         setRefs(r.libraries);
       })
-      .catch((e) => toast.error(e.message));
+      .catch((e) => {
+        if (!isAbortError(e)) toast.error(e.message);
+      });
+
+    return () => controller.abort();
   }, []);
   useEffect(() => {
-    const t = setTimeout(load, 200);
-    return () => clearTimeout(t);
-  }, [load]);
+    if (!user) return;
+    const controller = new AbortController();
+    const t = setTimeout(() => load(controller.signal), 200);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [load, user]);
   const active = (c: ReferenceCategory) => refs[c]?.filter((x) => x.isActive) || [];
   const offices = useMemo(
     () =>
