@@ -52,24 +52,6 @@ const positiveId = (value, label, required = false) => {
   return id;
 };
 
-async function getColumnDefinition(pool, table, column, fallback) {
-  const [rows] = await pool.execute(
-    `SELECT COLUMN_TYPE, CHARACTER_SET_NAME, COLLATION_NAME, IS_NULLABLE
-       FROM information_schema.columns
-      WHERE table_schema=DATABASE() AND table_name=:table AND column_name=:column
-      LIMIT 1`,
-    { table, column },
-  );
-  const info = rows[0];
-  if (!info) return fallback;
-  const columnType = String(info.COLUMN_TYPE || "").trim();
-  if (!columnType) return fallback;
-  const charset = info.CHARACTER_SET_NAME ? ` CHARACTER SET ${info.CHARACTER_SET_NAME}` : "";
-  const collation = info.COLLATION_NAME ? ` COLLATE ${info.COLLATION_NAME}` : "";
-  const nullable = info.IS_NULLABLE === "YES" ? " NULL" : " NOT NULL";
-  return `${columnType}${charset}${collation}${nullable}`;
-}
-
 export async function initializeMovementSchema(pool, employeeIdDefinition) {
   await pool.query(`CREATE TABLE IF NOT EXISTS personnel_movements (
     id CHAR(36) NOT NULL PRIMARY KEY,
@@ -138,16 +120,9 @@ export async function initializeMovementSchema(pool, employeeIdDefinition) {
   };
   await ensureColumn("scheduled_at", "DATETIME NULL AFTER approved_at");
   await ensureColumn("activation_error", "TEXT NULL AFTER reversal_reason");
-
-  const movementIdDefinition = await getColumnDefinition(
-    pool,
-    "personnel_movements",
-    "id",
-    "CHAR(36) NOT NULL",
-  );
   await pool.query(`CREATE TABLE IF NOT EXISTS personnel_movement_events (
     id CHAR(36) NOT NULL PRIMARY KEY,
-    movement_id ${movementIdDefinition},
+    movement_id CHAR(36) NOT NULL,
     event_type VARCHAR(40) NOT NULL,
     from_status VARCHAR(20) NULL,
     to_status VARCHAR(20) NOT NULL,

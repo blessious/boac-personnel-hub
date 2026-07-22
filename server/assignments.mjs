@@ -43,24 +43,6 @@ async function ensureIndex(pool, table, index, columns) {
     await pool.query(`ALTER TABLE \`${table}\` ADD INDEX \`${index}\` (${columns})`);
 }
 
-async function getColumnDefinition(pool, table, column, fallback) {
-  const [rows] = await pool.execute(
-    `SELECT COLUMN_TYPE, CHARACTER_SET_NAME, COLLATION_NAME, IS_NULLABLE
-       FROM information_schema.columns
-      WHERE table_schema=DATABASE() AND table_name=:table AND column_name=:column
-      LIMIT 1`,
-    { table, column },
-  );
-  const info = rows[0];
-  if (!info) return fallback;
-  const columnType = String(info.COLUMN_TYPE || "").trim();
-  if (!columnType) return fallback;
-  const charset = info.CHARACTER_SET_NAME ? ` CHARACTER SET ${info.CHARACTER_SET_NAME}` : "";
-  const collation = info.COLLATION_NAME ? ` COLLATE ${info.COLLATION_NAME}` : "";
-  const nullable = info.IS_NULLABLE === "YES" ? " NULL" : " NOT NULL";
-  return `${columnType}${charset}${collation}${nullable}`;
-}
-
 export async function initializeAssignmentSchema(pool, employeeIdDefinition) {
   await ensureColumn(
     pool,
@@ -114,16 +96,10 @@ export async function initializeAssignmentSchema(pool, employeeIdDefinition) {
     FOREIGN KEY (ended_by) REFERENCES users(id) ON DELETE SET NULL
   ) ENGINE=InnoDB`);
 
-  const movementIdDefinition = await getColumnDefinition(
-    pool,
-    "personnel_movements",
-    "id",
-    "CHAR(36) NOT NULL",
-  );
   await pool.query(`CREATE TABLE IF NOT EXISTS temporary_assignments (
     id CHAR(36) NOT NULL PRIMARY KEY,
     employee_id ${employeeIdDefinition},
-    movement_id ${movementIdDefinition},
+    movement_id CHAR(36) NOT NULL,
     assignment_type ENUM('Detail','Designation','Reassignment','Job Rotation') NOT NULL,
     org_unit_ref_id INT UNSIGNED NULL,
     position_id INT UNSIGNED NULL,
