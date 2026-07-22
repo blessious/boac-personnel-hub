@@ -11,7 +11,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "artifacts" / "STRH_HRIS_Initial_Testing_User_Manual.docx"
-LOGO = ROOT / "STRH-logo.png"
+LOGO = ROOT / "src" / "assets" / "branding" / "STRH-logo.png"
 
 BLUE = "2E74B5"
 DARK_BLUE = "1F4D78"

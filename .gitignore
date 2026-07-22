@@ -21,6 +21,12 @@ dist-ssr
 server/.env
 server/.env.local
 
+# Runtime-generated server files
+server/exports/
+server/backups/
+server/__pycache__/
+server/prisma/generated/client/*.tmp*
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
@@ -35,3 +41,4 @@ server/.env.local
 *.njsproj
 *.sln
 *.sw?
+~$*
