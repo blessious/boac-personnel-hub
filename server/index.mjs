@@ -1,6 +1,7 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import net from "node:net";
+import os from "node:os";
 import { spawn } from "node:child_process";
 import { URL } from "node:url";
 import { createReadStream, readFileSync } from "node:fs";
@@ -49,7 +50,7 @@ const SESSION_HOURS = 8;
 const MAX_FAILED_LOGIN_ATTEMPTS = 3;
 const PASSWORD_HISTORY_LIMIT = 5;
 const BACKUP_DIR = path.join(process.cwd(), "server", "backups");
-const EXPORT_DIR = path.join(process.cwd(), "server", "exports");
+const EXPORT_DIR = process.env.HRIS_RUNTIME_DIR || path.join(os.tmpdir(), "hris-runtime");
 const PREVIEW_DIR = path.join(EXPORT_DIR, "previews");
 const TEMPLATE_DIR = path.join(process.cwd(), "server", "templates");
 const DTR_TEMPLATE_XLSX = path.join(TEMPLATE_DIR, "format.xlsx");
@@ -81,7 +82,7 @@ const ADMS_PORT = Number(process.env.HRIS_ADMS_PORT || 6000);
 const LIBREOFFICE_EXE =
   process.env.HRIS_LIBREOFFICE_EXE || "C:\\Program Files\\LibreOffice\\program\\soffice.com";
 const LIBREOFFICE_PROFILE_DIR = path.join(EXPORT_DIR, "lo-profile");
-const PREVIEW_FILE_MAX_AGE_MS = 30 * 60 * 1000;
+const PREVIEW_FILE_MAX_AGE_MS = 5 * 60 * 1000;
 const PYTHON_CANDIDATES = [
   process.env.HRIS_PYTHON_EXE,
   process.env.PYTHON_EXE,
@@ -1587,35 +1588,46 @@ async function handleRealtimeEvents(req, res) {
   });
 }
 
-function sendFile(res, filePath, fileName) {
+function sendFile(res, filePath, fileName, { deleteAfterSend = false } = {}) {
   const extension = path.extname(fileName).toLowerCase();
   const contentType =
     extension === ".xlsx"
       ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       : extension === ".pdf"
         ? "application/pdf"
-        : "application/octet-stream";
+        : extension === ".docx"
+          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          : "application/octet-stream";
   res.writeHead(200, {
     "Content-Type": contentType,
     "Content-Disposition": `attachment; filename="${fileName}"`,
     "Cache-Control": "no-store",
   });
-  createReadStream(filePath).pipe(res);
+  const stream = createReadStream(filePath);
+  const cleanup = () => {
+    if (deleteAfterSend) fs.rm(filePath, { force: true }).catch(() => {});
+  };
+  stream.on("error", () => {
+    cleanup();
+    if (!res.headersSent) json(res, 500, { error: "Failed to read file" });
+  });
+  res.on("close", cleanup);
+  stream.pipe(res);
 }
 
-function sendInlinePdfAndDelete(res, filePath, fileName, deleteAfterMs = 5000) {
+function sendInlinePdfAndDelete(res, filePath, fileName) {
   res.writeHead(200, {
     "Content-Type": "application/pdf",
     "Content-Disposition": `inline; filename="${fileName}"`,
     "Cache-Control": "no-store",
   });
   const stream = createReadStream(filePath);
-  stream.on("end", () => {
-    setTimeout(() => fs.rm(filePath, { force: true }).catch(() => {}), deleteAfterMs);
-  });
+  const cleanup = () => fs.rm(filePath, { force: true }).catch(() => {});
   stream.on("error", () => {
+    cleanup();
     if (!res.headersSent) json(res, 500, { error: "Failed to read DTR PDF" });
   });
+  res.on("close", cleanup);
   stream.pipe(res);
 }
 
@@ -1626,7 +1638,9 @@ async function cleanupPreviewFiles(maxAgeMs = PREVIEW_FILE_MAX_AGE_MS) {
   await Promise.all(
     files
       .filter((file) => file.isFile())
-      .filter((file) => [".pdf", ".json"].includes(path.extname(file.name).toLowerCase()))
+      .filter((file) =>
+        [".pdf", ".json", ".xlsx", ".docx"].includes(path.extname(file.name).toLowerCase()),
+      )
       .map(async (file) => {
         const filePath = path.join(PREVIEW_DIR, file.name);
         const stats = await fs.stat(filePath).catch(() => null);
@@ -7379,7 +7393,7 @@ async function handleDownloadDtrExcel(req, res, fileName) {
   } catch {
     return json(res, 404, { error: "DTR Excel file not found" });
   }
-  return sendFile(res, resolved, decoded);
+  return sendFile(res, resolved, decoded, { deleteAfterSend: true });
 }
 
 async function handleGenerateDtrPdf(req, res) {
@@ -8977,7 +8991,7 @@ async function handleDownloadEmployeePdsExcel(req, res, fileName) {
     return json(res, 404, { error: "Personal Data Sheet file not found" });
   }
   await logAudit(user.id, "employees.pds_excel_download", { fileName: decoded }, req);
-  return sendFile(res, resolved, decoded);
+  return sendFile(res, resolved, decoded, { deleteAfterSend: true });
 }
 
 function wesFileName(employee) {
@@ -9060,7 +9074,7 @@ async function handleDownloadEmployeeWesDocx(req, res, fileName) {
     return json(res, 404, { error: "Work Experience Sheet file not found" });
   }
   await logAudit(user.id, "employees.wes_docx_download", { fileName: decoded }, req);
-  return sendFile(res, resolved, decoded);
+  return sendFile(res, resolved, decoded, { deleteAfterSend: true });
 }
 
 async function handleUpdateEmployee(req, res, id) {
@@ -9995,6 +10009,7 @@ async function handleGenerateLeaveForm6Pdf(req, res, id) {
   try {
     const { fileName, outputPath } = await generateLeaveForm6ExcelFile(id, user, req);
     const pdfPath = await convertSpreadsheetToPdf(outputPath);
+    await fs.rm(outputPath, { force: true }).catch(() => {});
     const pdfFileName = fileName.replace(/\.xlsx$/i, ".pdf");
     await logAudit(user.id, "leave.form6_pdf_generate", { id, fileName: pdfFileName }, req);
     return json(res, 200, {
@@ -10024,7 +10039,7 @@ async function handleDownloadLeaveForm6Excel(req, res, fileName) {
     return json(res, 404, { error: "Leave form file not found" });
   }
   await logAudit(user.id, "leave.form6_excel_download", { fileName: decoded }, req);
-  return sendFile(res, resolved, decoded);
+  return sendFile(res, resolved, decoded, { deleteAfterSend: true });
 }
 
 async function handlePreviewLeaveForm6Pdf(req, res, fileName) {
@@ -11682,7 +11697,7 @@ assignmentHandlers = createAssignmentHandlers({
 });
 await cleanupPreviewFiles().catch(() => {});
 await cleanupNotifications().catch(() => {});
-setInterval(() => cleanupPreviewFiles().catch(() => {}), 10 * 60 * 1000).unref();
+setInterval(() => cleanupPreviewFiles().catch(() => {}), 5 * 60 * 1000).unref();
 setInterval(() => cleanupNotifications().catch(() => {}), 24 * 60 * 60 * 1000).unref();
 assignmentHandlers
   .processDue()

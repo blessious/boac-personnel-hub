@@ -355,7 +355,7 @@ export function createReportHandlers({
       return json(res, 404, { error: "Report file not found" });
     }
     await logAudit(user.id, "reports.personnel_plantilla_download", { fileName: decoded }, req);
-    return sendFile(res, resolved, decoded);
+    return sendFile(res, resolved, decoded, { deleteAfterSend: true });
   };
 
   return handlers;

@@ -483,7 +483,7 @@ export function createServiceRecordHandlers({
       return json(res, 404, { error: "Service-record file not found" });
     }
     await logAudit(u.id, "service_record.download", { fileName: decoded }, req);
-    return sendFile(res, resolved, decoded);
+    return sendFile(res, resolved, decoded, { deleteAfterSend: true });
   };
   return handlers;
 }

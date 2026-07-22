@@ -157,8 +157,6 @@ if errorlevel 1 (
 echo.
 echo [INFO] Preparing local folders...
 if not exist "server\backups" mkdir "server\backups"
-if not exist "server\exports" mkdir "server\exports"
-if not exist "server\exports\previews" mkdir "server\exports\previews"
 
 echo.
 echo [INFO] Preparing local server environment...
