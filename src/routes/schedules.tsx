@@ -445,7 +445,7 @@ function SchedulesPage() {
               variant="outline"
               onClick={load}
               disabled={loading}
-              className="h-11 w-full rounded-xl bg-white font-semibold shadow-sm sm:h-10 sm:w-auto sm:rounded-md"
+              className="h-11 w-full rounded-xl bg-white font-semibold shadow-sm hover:bg-muted/60 dark:bg-card dark:text-foreground dark:hover:bg-muted/40 sm:h-10 sm:w-auto sm:rounded-md"
             >
               <RefreshCw className={cn("mr-1.5 h-4 w-4", loading && "animate-spin")} />
               Refresh

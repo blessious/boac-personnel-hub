@@ -2,9 +2,9 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ClipboardCheck, Clock, FilePlus2, Search, XCircle } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { WorkflowStatusBadge } from "@/components/ui/status-badge";
 import { useAuth } from "@/lib/auth";
 import { getEmployeeLeave } from "@/lib/leave-api";
 import { listDtrCorrectionRequests } from "@/lib/attendance-api";
@@ -20,14 +20,6 @@ import { useRealtimeRefresh } from "@/lib/realtime";
 export const Route = createFileRoute("/requests")({
   component: RequestsPage,
 });
-
-const STATUS_COLOR: Record<RequestStatus, string> = {
-  Pending: "bg-amber-100 text-amber-700 border-amber-200",
-  Approved: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  Disapproved: "bg-rose-100 text-rose-700 border-rose-200",
-  Cancelled: "bg-muted text-muted-foreground border-border",
-  Reversed: "bg-violet-100 text-violet-700 border-violet-200",
-};
 
 function RequestsPage() {
   const { user } = useAuth();
@@ -196,9 +188,7 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
                 <h3 className="mobile-record-card__title">{application.title}</h3>
                 <p className="mobile-record-card__meta">{application.kind}</p>
               </div>
-              <Badge variant="outline" className={STATUS_COLOR[application.status]}>
-                {application.status}
-              </Badge>
+              <WorkflowStatusBadge status={application.status} />
             </div>
             <div className="mobile-record-card__grid">
               <div className="mobile-record-card__field">
@@ -258,9 +248,7 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
                 </td>
                 <td className="px-4 py-3 font-medium">{application.metricValue}</td>
                 <td className="px-4 py-3">
-                  <Badge variant="outline" className={STATUS_COLOR[application.status]}>
-                    {application.status}
-                  </Badge>
+                  <WorkflowStatusBadge status={application.status} />
                 </td>
                 <td className="max-w-[260px] px-4 py-3 text-muted-foreground">
                   {application.remarks || application.details || "-"}

@@ -776,7 +776,7 @@ function PlantillaPage() {
           <DialogHeader>
             <DialogTitle>Legacy Plantilla reconciliation</DialogTitle>
           </DialogHeader>
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-100">
             Review the approved PSIPOP first. Matching only proposes links; occupancy history is
             created only after HR supplies an effectivity date and migration remarks.
           </div>

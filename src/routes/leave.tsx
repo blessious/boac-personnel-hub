@@ -19,6 +19,7 @@ import { GenerationLoader } from "@/components/GenerationLoader";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { WorkflowStatusBadge } from "@/components/ui/status-badge";
 import {
   Dialog,
   DialogContent,
@@ -60,13 +61,6 @@ import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
 export const Route = createFileRoute("/leave")({
   component: LeavePage,
 });
-
-const STATUS_COLOR: Record<LeaveStatus, string> = {
-  Pending: "bg-amber-100 text-amber-700 border-amber-200",
-  Approved: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  Disapproved: "bg-rose-100 text-rose-700 border-rose-200",
-  Cancelled: "bg-muted text-muted-foreground border-border",
-};
 
 function LeavePage() {
   const { can } = useAuth();
@@ -428,9 +422,7 @@ function LeavePage() {
                         {application.department}
                       </p>
                     </div>
-                    <Badge variant="outline" className={STATUS_COLOR[application.status]}>
-                      {application.status}
-                    </Badge>
+                    <WorkflowStatusBadge status={application.status} />
                   </div>
 
                   <div className="mt-3 grid grid-cols-[2.5rem_1.15fr_1.15fr_0.55fr_1fr] items-center gap-2 border-t border-border/70 pt-3">
@@ -595,9 +587,7 @@ function LeavePage() {
                         {application.reason || "-"}
                       </td>
                       <td className="px-4 py-3">
-                        <Badge variant="outline" className={STATUS_COLOR[application.status]}>
-                          {application.status}
-                        </Badge>
+                        <WorkflowStatusBadge status={application.status} />
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex gap-1">

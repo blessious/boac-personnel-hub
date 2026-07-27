@@ -900,7 +900,7 @@ function EmployeeReferencesPage() {
                       className={cn(
                         "min-h-20 w-full rounded-md border px-3 py-2.5 text-left transition-colors",
                         selected
-                          ? "border-[#2563eb] bg-[#eff6ff] ring-1 ring-[#2563eb]/25"
+                          ? "border-[#2563eb] bg-[#eff6ff] text-blue-950 ring-1 ring-[#2563eb]/25 dark:border-blue-400/70 dark:bg-blue-500/15 dark:text-blue-50"
                           : "border-border bg-background hover:bg-muted/40",
                       )}
                     >
@@ -913,7 +913,7 @@ function EmployeeReferencesPage() {
                           </div>
                         </div>
                         {table.isActive ? (
-                          <Badge className="shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+                          <Badge className="shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/20">
                             Active
                           </Badge>
                         ) : readiness?.complete ? (
@@ -946,7 +946,7 @@ function EmployeeReferencesPage() {
                         {selectedOrdinance || "Select a salary table"}
                       </h2>
                       {selectedSalaryTable?.isActive ? (
-                        <Badge className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+                        <Badge className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/20">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           Active
                         </Badge>
@@ -1073,7 +1073,7 @@ function EmployeeReferencesPage() {
                 )}
 
                 {selectedOrdinance && selectedSalaryReadiness.missingRows.length > 0 && (
-                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200">
                     Open rows:{" "}
                     {selectedSalaryReadiness.missingRows
                       .slice(0, 8)
@@ -1084,7 +1084,7 @@ function EmployeeReferencesPage() {
                 )}
 
                 {activationSummary && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200">
                     <ClipboardCheck className="h-4 w-4" />
                     Activated {activationSummary.ordinance} effective{" "}
                     {formatDisplayDate(activationSummary.effectivityDate)}:{" "}
@@ -1118,7 +1118,9 @@ function EmployeeReferencesPage() {
                                 key={step}
                                 className={cn(
                                   "group min-w-36 px-3 py-2.5 align-top",
-                                  row ? "bg-background" : "bg-amber-50/60",
+                                  row
+                                    ? "bg-background"
+                                    : "bg-amber-50/60 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200",
                                 )}
                               >
                                 {row ? (

@@ -37,6 +37,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { WorkflowStatusBadge } from "@/components/ui/status-badge";
 import {
   Dialog,
   DialogContent,
@@ -202,7 +203,7 @@ export function EmployeeDashboardHome() {
                     {employee.photoUrl ? (
                       <AvatarImage src={employee.photoUrl} alt={formatFullName(employee)} />
                     ) : null}
-                    <AvatarFallback className="bg-sky-50 text-2xl font-semibold text-sky-700">
+                    <AvatarFallback className="bg-blue-100 text-2xl font-semibold text-blue-700 dark:bg-blue-500/20 dark:text-blue-100">
                       {getInitials(employee)}
                     </AvatarFallback>
                   </Avatar>
@@ -210,7 +211,7 @@ export function EmployeeDashboardHome() {
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                  <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-100">
                     <UserRound className="h-3.5 w-3.5" />
                     Employee Dashboard
                   </div>
@@ -224,14 +225,14 @@ export function EmployeeDashboardHome() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Badge
                       variant="outline"
-                      className="gap-1.5 rounded-full border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"
+                      className="gap-1.5 rounded-full border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200"
                     >
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                       {todayStatus}
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="rounded-full border-amber-200 bg-amber-50 px-3 py-1 text-amber-700"
+                      className="rounded-full border-amber-200 bg-amber-50 px-3 py-1 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
                     >
                       {pendingRequests} pending request{pendingRequests === 1 ? "" : "s"}
                     </Badge>
@@ -243,7 +244,7 @@ export function EmployeeDashboardHome() {
                 <Button
                   variant="outline"
                   onClick={openProfile}
-                  className="h-12 w-full rounded-xl bg-white font-semibold shadow-sm"
+                  className="h-12 w-full rounded-xl bg-white font-semibold shadow-sm hover:bg-muted/60 dark:bg-card dark:text-foreground dark:hover:bg-muted/40"
                 >
                   <UserRound className="mr-2 h-4 w-4 text-blue-600" />
                   My Profile
@@ -271,7 +272,7 @@ export function EmployeeDashboardHome() {
                 `PM Out: ${formatDtrTime(todayDtr?.pmOut)}`,
               ]}
               icon={<Clock className="h-5 w-5 text-blue-600" />}
-              iconBg="bg-blue-50"
+              iconBg="bg-blue-50 dark:bg-blue-500/15"
               chartColor="stroke-blue-500"
               trend="up"
             />
@@ -280,7 +281,7 @@ export function EmployeeDashboardHome() {
               value={dtrSummary.total}
               subtext={attendanceSummaryText || "No attendance entries"}
               icon={<CalendarCheck className="h-5 w-5 text-emerald-600" />}
-              iconBg="bg-emerald-50"
+              iconBg="bg-emerald-50 dark:bg-emerald-500/15"
               chartColor="stroke-emerald-500"
               trend="up"
             />
@@ -289,7 +290,7 @@ export function EmployeeDashboardHome() {
               value={dtrSummary.lateMinutes}
               subtext="Month-to-date total"
               icon={<CalendarClock className="h-5 w-5 text-amber-600" />}
-              iconBg="bg-amber-50"
+              iconBg="bg-amber-50 dark:bg-amber-500/15"
               chartColor="stroke-amber-500"
               trend="down"
             />
@@ -302,7 +303,7 @@ export function EmployeeDashboardHome() {
                   : "No active leave balances"
               }
               icon={<ClipboardCheck className="h-5 w-5 text-rose-600" />}
-              iconBg="bg-rose-50"
+              iconBg="bg-rose-50 dark:bg-rose-500/15"
               chartColor="stroke-rose-500"
               trend="up"
             />
@@ -343,7 +344,7 @@ export function EmployeeDashboardHome() {
               <Button
                 variant="outline"
                 onClick={openRequests}
-                className="mt-3 h-11 w-full rounded-xl bg-white font-semibold shadow-sm"
+                className="mt-3 h-11 w-full rounded-xl bg-white font-semibold shadow-sm hover:bg-muted/60 dark:bg-card dark:text-foreground dark:hover:bg-muted/40"
               >
                 View All Requests
               </Button>
@@ -936,7 +937,7 @@ function ProfileHeader({
             <div className="relative h-28 w-28">
               <Avatar className="h-28 w-28 border border-border bg-muted shadow-sm ring-4 ring-background">
                 {employee.photoUrl ? <AvatarImage src={employee.photoUrl} alt={fullName} /> : null}
-                <AvatarFallback className="bg-sky-50 text-2xl font-semibold text-sky-700">
+                <AvatarFallback className="bg-blue-100 text-2xl font-semibold text-blue-700 dark:bg-blue-500/20 dark:text-blue-100">
                   {initials}
                 </AvatarFallback>
               </Avatar>
@@ -948,7 +949,7 @@ function ProfileHeader({
             <div className="flex flex-wrap items-center gap-2">
               <Badge
                 variant="outline"
-                className="gap-1.5 border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700"
+                className="gap-1.5 border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200"
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 {employee.empStatus || "Active"}
@@ -1388,7 +1389,7 @@ function CleanStat({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700">
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-100">
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">
@@ -1416,7 +1417,7 @@ function DashboardActionRow({
       onClick={onClick}
       className="group flex w-full items-center gap-3 border-b border-border bg-background px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-muted/30"
     >
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-100">
         <Icon className="h-4 w-4" />
       </div>
       <span className="min-w-0 flex-1">
@@ -1454,7 +1455,7 @@ function DashboardMetricCard({
           <p className="text-xs font-semibold leading-4 text-muted-foreground">{title}</p>
           <h2 className="mt-2 truncate text-2xl font-bold leading-none text-foreground">{value}</h2>
         </div>
-        <div className={cn("rounded-xl p-2.5 ring-1 ring-black/5", iconBg)}>{icon}</div>
+        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
       </div>
       <div className="relative z-10 mt-3 flex items-center text-[11px]">
         <span className="mr-2 h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -1506,7 +1507,7 @@ function CleanPanel({
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center gap-2">
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-600">
+        <div className="grid h-9 w-9 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-100">
           <Icon className="h-4 w-4" />
         </div>
         <h3 className="text-base font-semibold text-foreground">{title}</h3>
@@ -1540,7 +1541,7 @@ function DetailItem({
         wide && "sm:grid-cols-[2rem_minmax(0,1fr)]",
       )}
     >
-      <div className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600">
+      <div className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-100">
         {Icon ? <Icon className="h-4 w-4" /> : <IdCard className="h-4 w-4" />}
       </div>
       <div className="grid min-w-0 gap-1 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)] sm:items-center sm:gap-4">
@@ -1584,15 +1585,26 @@ function RadioChoice({ value, label }: { value: string; label: string }) {
 
 function LeaveTypeGuidance({ leaveType, className }: { leaveType: LeaveType; className?: string }) {
   return (
-    <div className={cn("rounded-lg border border-blue-100 bg-blue-50/60 p-3", className)}>
+    <div
+      className={cn(
+        "rounded-lg border border-blue-100 bg-blue-50/60 p-3 dark:border-blue-500/30 dark:bg-blue-500/15",
+        className,
+      )}
+    >
       <div className="flex flex-wrap gap-2">
         {leaveType.maxDays ? (
-          <Badge variant="outline" className="border-blue-200 bg-white text-blue-700">
+          <Badge
+            variant="outline"
+            className="border-blue-200 bg-white text-blue-700 dark:border-blue-500/40 dark:bg-card dark:text-blue-100"
+          >
             Up to {formatNumber(leaveType.maxDays)} days
           </Badge>
         ) : null}
         {leaveType.advanceNoticeDays ? (
-          <Badge variant="outline" className="border-blue-200 bg-white text-blue-700">
+          <Badge
+            variant="outline"
+            className="border-blue-200 bg-white text-blue-700 dark:border-blue-500/40 dark:bg-card dark:text-blue-100"
+          >
             File {leaveType.advanceNoticeDays} days ahead
           </Badge>
         ) : null}
@@ -1724,21 +1736,11 @@ function RequestList({ applications }: { applications: LeaveApplication[] }) {
               {formatNumber(item.daysRequested)} day(s)
             </p>
           </div>
-          <StatusBadge status={item.status} />
+          <WorkflowStatusBadge status={item.status} />
         </div>
       ))}
     </div>
   );
-}
-
-function StatusBadge({ status }: { status: LeaveApplication["status"] }) {
-  const className =
-    status === "Approved"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : status === "Pending"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-slate-200 bg-slate-50 text-slate-700";
-  return <Badge className={className}>{status}</Badge>;
 }
 
 function EmptyProfile({

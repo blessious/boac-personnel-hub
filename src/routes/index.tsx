@@ -29,6 +29,7 @@ function Dashboard() {
   const canReadDashboardStats = hasPermission("employees.read");
   const [loading, setLoading] = useState(canReadDashboardStats);
   const [error, setError] = useState("");
+  const [now, setNow] = useState(() => new Date());
   const quickLinks = [
     ...(hasPermission("admin.users") ||
     hasPermission("admin.audit") ||
@@ -123,6 +124,11 @@ function Dashboard() {
   useEffect(load, [canReadDashboardStats]);
   useRealtimeRefresh(load, ["employees", "leave", "attendance"]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   if (!canReadDashboardStats && hasPermission("self_service.access")) {
     return <EmployeeDashboardHome />;
   }
@@ -160,7 +166,12 @@ function Dashboard() {
 
   const divisions = [...(data?.byDivision ?? [])].sort((a, b) => b.total - a.total).slice(0, 4);
   const firstName = getFirstName(user?.employeeName || user?.name || user?.username);
-  const currentDate = formatDisplayDate(new Date());
+  const currentDate = formatDisplayDate(now);
+  const currentTime = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(now);
 
   return (
     <AppShell title="" subtitle="">
@@ -175,13 +186,11 @@ function Dashboard() {
           <div>
             <div className="mb-1 text-sm font-medium text-blue-600">Good morning, {firstName}</div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Overview of the workforce and HR operations.
-            </p>
           </div>
           <div className="mt-4 sm:mt-0">
-            <div className="flex items-center space-x-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground/80 shadow-sm">
-              <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center gap-3 text-sm font-medium tabular-nums text-muted-foreground">
+              <span>{currentTime}</span>
+              <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
               <span>{currentDate}</span>
             </div>
           </div>
@@ -195,7 +204,7 @@ function Dashboard() {
               subtext="Current records"
               subtextColor="text-muted-foreground"
               icon={<Users className="h-5 w-5 text-blue-600" />}
-              iconBg="bg-blue-50"
+              iconBg="bg-blue-50 dark:bg-blue-500/15"
               chartColor="stroke-blue-500"
               trend="up"
             />
@@ -208,7 +217,7 @@ function Dashboard() {
               subtextColor="text-muted-foreground"
               subtextDot="bg-emerald-500"
               icon={<Briefcase className="h-5 w-5 text-emerald-600" />}
-              iconBg="bg-emerald-50"
+              iconBg="bg-emerald-50 dark:bg-emerald-500/15"
               chartColor="stroke-emerald-500"
               trend="up"
             />
@@ -221,7 +230,7 @@ function Dashboard() {
               subtextColor="text-muted-foreground"
               subtextDot="bg-amber-500"
               icon={<UserCheck className="h-5 w-5 text-amber-600" />}
-              iconBg="bg-amber-50"
+              iconBg="bg-amber-50 dark:bg-amber-500/15"
               chartColor="stroke-amber-500"
               trend="down"
             />
@@ -234,7 +243,7 @@ function Dashboard() {
               subtextColor="text-muted-foreground"
               subtextDot="bg-blue-500"
               icon={<UserCheck className="h-5 w-5 text-blue-600" />}
-              iconBg="bg-blue-50"
+              iconBg="bg-blue-50 dark:bg-blue-500/15"
               chartColor="stroke-blue-500"
               trend="up"
             />
@@ -493,11 +502,22 @@ function StaffingMetric({
     <div
       className={cn(
         "rounded-lg border p-3",
-        attention && value > 0 ? "border-amber-200 bg-amber-50" : "bg-muted/30",
+        attention && value > 0
+          ? "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-100"
+          : "bg-muted/30",
       )}
     >
       <div className="text-xl font-bold">{value}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div
+        className={cn(
+          "text-xs",
+          attention && value > 0
+            ? "text-amber-900/80 dark:text-amber-200/85"
+            : "text-muted-foreground",
+        )}
+      >
+        {label}
+      </div>
     </div>
   );
 }

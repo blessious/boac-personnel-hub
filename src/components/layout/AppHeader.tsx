@@ -1,8 +1,6 @@
 import {
   Bell,
   ClipboardList,
-  Moon,
-  Sun,
   Upload,
   X,
   LogOut,
@@ -31,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
@@ -45,8 +44,7 @@ import { groupNavItems, navForPermissions } from "@/components/layout/navigation
 
 export function AppHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   const { user, logout, updateProfile, hasPermission } = useAuth();
-  const { theme, toggleTheme, agency } = useSettings();
-  const dark = theme === "dark";
+  const { agency } = useSettings();
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
 
@@ -227,13 +225,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
         </div>
         <div className="flex min-w-0 items-center gap-2">
           <div className="mr-0 flex items-center rounded-full border border-border/40 bg-muted/30 p-1 md:mr-2">
-            <button
-              onClick={toggleTheme}
-              className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-all duration-200 hover:bg-background hover:shadow-sm md:h-8 md:w-8"
-              aria-label="Toggle dark mode"
-            >
-              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
+            <ThemeToggle className="h-9 w-9 border-0 bg-transparent shadow-none md:h-8 md:w-8" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button

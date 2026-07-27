@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { api } from "@/lib/api";
 
 export interface AgencySettings {
@@ -10,6 +11,7 @@ export interface AgencySettings {
 }
 
 export type Theme = "light" | "dark";
+type ThemeToggleOrigin = { x: number; y: number };
 
 interface SettingsContextType {
   agency: AgencySettings;
@@ -18,7 +20,7 @@ interface SettingsContextType {
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
   theme: Theme;
-  toggleTheme: () => void;
+  toggleTheme: (origin?: ThemeToggleOrigin) => void;
   title: string;
   setTitle: (t: string) => void;
   subtitle: string;
@@ -124,8 +126,51 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [agency.iconUrl]);
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+  const toggleTheme = (origin?: ThemeToggleOrigin) => {
+    const nextTheme = theme === "light" ? "dark" : "light";
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const transitionDocument = document as Document & {
+      startViewTransition?: (callback: () => void) => { ready: Promise<void> };
+    };
+
+    if (!transitionDocument.startViewTransition || reducedMotion) {
+      if (!reducedMotion) {
+        document.documentElement.classList.add("theme-transitioning");
+        window.setTimeout(
+          () => document.documentElement.classList.remove("theme-transitioning"),
+          460,
+        );
+      }
+      setTheme(nextTheme);
+      return;
+    }
+
+    const x = origin?.x ?? window.innerWidth - 32;
+    const y = origin?.y ?? 32;
+    const radius = Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y),
+    );
+    const transition = transitionDocument.startViewTransition(() => {
+      document.documentElement.classList.toggle("dark", nextTheme === "dark");
+      localStorage.setItem("pmis_theme", nextTheme);
+      flushSync(() => setTheme(nextTheme));
+    });
+
+    transition.ready
+      .then(() => {
+        document.documentElement.animate(
+          {
+            clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`],
+          },
+          {
+            duration: 520,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            pseudoElement: "::view-transition-new(root)",
+          } as KeyframeAnimationOptions,
+        );
+      })
+      .catch(() => undefined);
   };
 
   const [title, setTitle] = useState("");

@@ -16,6 +16,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { WorkflowStatusBadge } from "@/components/ui/status-badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
@@ -60,7 +61,6 @@ import {
   getEmployeeLeave,
   type EmployeeLeaveResponse,
   type LeaveBalance,
-  type LeaveStatus,
 } from "@/lib/leave-api";
 import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
 
@@ -118,13 +118,6 @@ type FieldConfig = {
 };
 
 const MAX_201_FILE_BYTES = 8 * 1024 * 1024;
-
-const LEAVE_STATUS_COLOR: Record<LeaveStatus, string> = {
-  Pending: "border-amber-200 bg-amber-50 text-amber-700",
-  Approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  Disapproved: "border-red-200 bg-red-50 text-red-700",
-  Cancelled: "border-slate-200 bg-slate-50 text-slate-600",
-};
 
 const SECTION_FIELDS: Record<string, FieldConfig[]> = {
   family: [
@@ -1736,9 +1729,7 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
                         {formatLeaveNumber(application.daysRequested)}
                       </td>
                       <td className="px-3 py-2.5">
-                        <Badge variant="outline" className={LEAVE_STATUS_COLOR[application.status]}>
-                          {application.status}
-                        </Badge>
+                        <WorkflowStatusBadge status={application.status} />
                       </td>
                     </tr>
                   ))

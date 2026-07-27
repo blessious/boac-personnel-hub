@@ -79,8 +79,14 @@ export const Route = createRootRoute({
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{if(localStorage.getItem("pmis_theme")==="dark")document.documentElement.classList.add("dark")}catch(e){}',
+          }}
+        />
         <HeadContent />
       </head>
       <body>

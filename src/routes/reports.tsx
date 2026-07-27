@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
+import { WorkflowStatusBadge } from "@/components/ui/status-badge";
 import {
   exportPersonnelPlantillaReport,
   getPersonnelPlantillaReport,
@@ -451,16 +452,7 @@ function PlantillaPreview({ rows }: { rows: PlantillaItemReportRow[] }) {
               </td>
               <td className="px-4 py-3">{valueOrDash(row.itemStatus)}</td>
               <td className="px-4 py-3">
-                <span
-                  className={cn(
-                    "rounded-md px-2 py-1 text-xs font-medium",
-                    row.occupancyStatus === "Vacant"
-                      ? "bg-amber-50 text-amber-700"
-                      : "bg-emerald-50 text-emerald-700",
-                  )}
-                >
-                  {valueOrDash(row.occupancyStatus)}
-                </span>
+                <WorkflowStatusBadge status={valueOrDash(row.occupancyStatus)} />
               </td>
               <td className="px-4 py-3 text-muted-foreground">{valueOrDash(row.occupantName)}</td>
             </tr>

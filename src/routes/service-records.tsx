@@ -260,7 +260,7 @@ function ServiceRecordsPage() {
               />
             </div>
             {query.trim() && (
-              <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-border bg-white p-1 shadow-sm">
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-border bg-white p-1 shadow-sm dark:bg-card">
                 {filteredEmployees.slice(0, 8).map((e) => (
                   <button
                     key={e.id}
@@ -268,7 +268,12 @@ function ServiceRecordsPage() {
                       setEmployeeId(e.id);
                       setQuery("");
                     }}
-                    className={`w-full rounded-lg px-3 py-2 text-left text-sm ${employeeId === e.id ? "bg-blue-50 text-blue-700" : "hover:bg-muted"}`}
+                    className={cn(
+                      "w-full rounded-lg px-3 py-2 text-left text-sm",
+                      employeeId === e.id
+                        ? "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-100"
+                        : "hover:bg-muted",
+                    )}
                   >
                     <span className="block font-semibold">{formatEmployeeName(e)}</span>
                     <span className="block truncate text-xs text-muted-foreground">
@@ -390,12 +395,12 @@ function ServiceRecordsPage() {
               <div className="mobile-record-list mt-3 md:hidden">
                 {records.map((r) => (
                   <article
-                    className="rounded-xl border border-border bg-white p-3 shadow-sm"
+                    className="rounded-xl border border-border bg-white p-3 shadow-sm dark:bg-card"
                     key={r.id}
                   >
                     <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3">
                       <div className="relative flex justify-center">
-                        <span className="mt-1 h-4 w-4 rounded-full border-2 border-blue-600 bg-white" />
+                        <span className="mt-1 h-4 w-4 rounded-full border-2 border-blue-600 bg-white dark:bg-card" />
                         <span className="absolute top-6 h-[calc(100%-1rem)] border-l border-dashed border-border" />
                       </div>
                       <div className="min-w-0">
@@ -767,12 +772,22 @@ function AvatarInitials({
   return (
     <div
       className={cn(
-        "grid shrink-0 place-items-center rounded-full font-bold",
+        "grid shrink-0 place-items-center overflow-hidden rounded-full font-bold",
         size === "lg" ? "h-14 w-14 text-lg" : "h-9 w-9 text-xs",
-        selected ? "bg-white/20 text-white" : "bg-blue-100 text-blue-700",
+        selected
+          ? "bg-white/20 text-white ring-1 ring-white/30"
+          : "bg-blue-100 text-blue-700 ring-1 ring-blue-200 dark:bg-blue-500/20 dark:text-blue-100 dark:ring-blue-400/30",
       )}
     >
-      {initials}
+      {employee?.photoUrl ? (
+        <img
+          src={employee.photoUrl}
+          alt={formatEmployeeName(employee)}
+          className="h-full w-full rounded-full object-cover"
+        />
+      ) : (
+        initials
+      )}
     </div>
   );
 }

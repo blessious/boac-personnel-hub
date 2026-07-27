@@ -53,6 +53,7 @@
 }
 
 :root {
+  color-scheme: light;
   --radius: 0.75rem;
 
   /* Page surfaces */
@@ -113,6 +114,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.18 0.02 260);
   --foreground: oklch(0.97 0.005 250);
   --card: oklch(0.22 0.025 260);
@@ -144,6 +146,30 @@
   --sidebar-accent-foreground: oklch(0.97 0.005 250);
   --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.55 0.18 255);
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition-property:
+    background-color, border-color, color, fill, stroke, box-shadow, opacity !important;
+  transition-duration: 420ms !important;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
 
 @layer base {
@@ -762,6 +788,158 @@
     background: color-mix(in oklab, var(--color-muted) 72%, transparent);
   }
 
+  .dark .bg-white {
+    border-color: color-mix(in oklab, var(--color-border) 82%, transparent);
+    background-color: var(--color-card);
+    color: var(--color-card-foreground);
+  }
+
+  .dark .bg-blue-50,
+  .dark .bg-blue-100,
+  .dark .bg-blue-50\/40,
+  .dark .bg-blue-50\/45,
+  .dark .bg-blue-50\/50,
+  .dark .bg-blue-50\/60,
+  .dark .bg-blue-50\/80,
+  .dark .bg-\[\#eff6ff\] {
+    border-color: rgb(59 130 246 / 35%);
+    background-color: rgb(59 130 246 / 15%);
+    color: rgb(219 234 254);
+  }
+
+  .dark .bg-emerald-50,
+  .dark .bg-emerald-100 {
+    border-color: rgb(16 185 129 / 35%);
+    background-color: rgb(16 185 129 / 15%);
+    color: rgb(209 250 229);
+  }
+
+  .dark .bg-amber-50,
+  .dark .bg-amber-100,
+  .dark .bg-amber-50\/60,
+  .dark .bg-orange-50,
+  .dark .bg-orange-100 {
+    border-color: rgb(245 158 11 / 38%);
+    background-color: rgb(245 158 11 / 16%);
+    color: rgb(254 243 199);
+  }
+
+  .dark .bg-purple-50,
+  .dark .bg-purple-100,
+  .dark .bg-fuchsia-50,
+  .dark .bg-fuchsia-100,
+  .dark .bg-indigo-50,
+  .dark .bg-indigo-100,
+  .dark .bg-violet-50,
+  .dark .bg-violet-100 {
+    border-color: rgb(168 85 247 / 35%);
+    background-color: rgb(168 85 247 / 15%);
+    color: rgb(243 232 255);
+  }
+
+  .dark .bg-rose-50,
+  .dark .bg-rose-100,
+  .dark .bg-red-50,
+  .dark .bg-red-100 {
+    border-color: rgb(244 63 94 / 35%);
+    background-color: rgb(244 63 94 / 15%);
+    color: rgb(255 228 230);
+  }
+
+  .dark .bg-slate-50,
+  .dark .bg-slate-100 {
+    border-color: rgb(148 163 184 / 30%);
+    background-color: rgb(148 163 184 / 14%);
+    color: rgb(226 232 240);
+  }
+
+  .dark .bg-teal-50,
+  .dark .bg-teal-100 {
+    border-color: rgb(20 184 166 / 35%);
+    background-color: rgb(20 184 166 / 15%);
+    color: rgb(204 251 241);
+  }
+
+  .dark .text-blue-600,
+  .dark .text-blue-700,
+  .dark .text-blue-800,
+  .dark .text-blue-900,
+  .dark .text-blue-950 {
+    color: rgb(191 219 254);
+  }
+
+  .dark .text-emerald-600,
+  .dark .text-emerald-700,
+  .dark .text-emerald-800,
+  .dark .text-emerald-900,
+  .dark .text-emerald-950 {
+    color: rgb(167 243 208);
+  }
+
+  .dark .text-amber-600,
+  .dark .text-amber-700,
+  .dark .text-amber-800,
+  .dark .text-amber-900,
+  .dark .text-amber-950,
+  .dark .text-orange-700,
+  .dark .text-orange-800,
+  .dark .text-orange-900,
+  .dark .text-orange-950 {
+    color: rgb(253 230 138);
+  }
+
+  .dark .text-purple-600,
+  .dark .text-purple-700,
+  .dark .text-purple-800,
+  .dark .text-purple-900,
+  .dark .text-purple-950,
+  .dark .text-fuchsia-600,
+  .dark .text-fuchsia-700,
+  .dark .text-fuchsia-800,
+  .dark .text-fuchsia-900,
+  .dark .text-fuchsia-950,
+  .dark .text-indigo-600,
+  .dark .text-indigo-700,
+  .dark .text-indigo-800,
+  .dark .text-indigo-900,
+  .dark .text-indigo-950,
+  .dark .text-violet-600,
+  .dark .text-violet-700,
+  .dark .text-violet-800,
+  .dark .text-violet-900,
+  .dark .text-violet-950 {
+    color: rgb(233 213 255);
+  }
+
+  .dark .text-rose-600,
+  .dark .text-rose-700,
+  .dark .text-rose-800,
+  .dark .text-rose-900,
+  .dark .text-rose-950,
+  .dark .text-red-600,
+  .dark .text-red-700,
+  .dark .text-red-800,
+  .dark .text-red-900,
+  .dark .text-red-950 {
+    color: rgb(254 205 211);
+  }
+
+  .dark .text-slate-600,
+  .dark .text-slate-700,
+  .dark .text-slate-800,
+  .dark .text-slate-900,
+  .dark .text-slate-950 {
+    color: rgb(203 213 225);
+  }
+
+  .dark .text-teal-600,
+  .dark .text-teal-700,
+  .dark .text-teal-800,
+  .dark .text-teal-900,
+  .dark .text-teal-950 {
+    color: rgb(153 246 228);
+  }
+
   .dark .mobile-app-content [role="tablist"] {
     border-color: color-mix(in oklab, var(--color-border) 82%, transparent);
     background: color-mix(in oklab, var(--color-muted) 78%, transparent);
@@ -810,6 +988,18 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html.theme-transitioning,
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after {
+    transition-duration: 1ms !important;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 1ms !important;
+  }
+
   .mobile-bottom-nav__item,
   .mobile-bottom-nav__highlight,
   .mobile-bottom-nav__icon,
@@ -940,14 +1130,30 @@
   animation: dash-card-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.dash-card-stagger:nth-child(1) { animation-delay: 0.08s; }
-.dash-card-stagger:nth-child(2) { animation-delay: 0.14s; }
-.dash-card-stagger:nth-child(3) { animation-delay: 0.20s; }
-.dash-card-stagger:nth-child(4) { animation-delay: 0.26s; }
-.dash-card-stagger:nth-child(5) { animation-delay: 0.32s; }
-.dash-card-stagger:nth-child(6) { animation-delay: 0.38s; }
-.dash-card-stagger:nth-child(7) { animation-delay: 0.44s; }
-.dash-card-stagger:nth-child(8) { animation-delay: 0.50s; }
+.dash-card-stagger:nth-child(1) {
+  animation-delay: 0.08s;
+}
+.dash-card-stagger:nth-child(2) {
+  animation-delay: 0.14s;
+}
+.dash-card-stagger:nth-child(3) {
+  animation-delay: 0.2s;
+}
+.dash-card-stagger:nth-child(4) {
+  animation-delay: 0.26s;
+}
+.dash-card-stagger:nth-child(5) {
+  animation-delay: 0.32s;
+}
+.dash-card-stagger:nth-child(6) {
+  animation-delay: 0.38s;
+}
+.dash-card-stagger:nth-child(7) {
+  animation-delay: 0.44s;
+}
+.dash-card-stagger:nth-child(8) {
+  animation-delay: 0.5s;
+}
 
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {

@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
-import { Badge } from "@/components/ui/badge";
+import { EmploymentTypeBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -84,17 +84,6 @@ export const Route = createFileRoute("/employees")({
   }),
   component: EmployeesPage,
 });
-
-const EMP_TYPE_COLOR: Record<string, string> = {
-  Permanent:
-    "text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-200 dark:border-emerald-500/30 dark:bg-emerald-500/15",
-  Regular:
-    "text-blue-700 border-blue-200 bg-blue-50 dark:text-blue-200 dark:border-blue-500/30 dark:bg-blue-500/15",
-  Casual:
-    "text-purple-700 border-purple-200 bg-purple-50 dark:text-purple-200 dark:border-purple-500/30 dark:bg-purple-500/15",
-  "JO/COS":
-    "text-amber-700 border-amber-200 bg-amber-50 dark:text-amber-200 dark:border-amber-500/30 dark:bg-amber-500/15",
-};
 
 const EMPTY_FORM: Partial<EmployeeRecord> = {
   employeeId: "",
@@ -782,16 +771,7 @@ function EmployeesPage() {
                             {employee.department || "-"}
                           </td>
                           <td className="px-5 py-4">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-[10px] uppercase font-semibold",
-                                EMP_TYPE_COLOR[employee.status] ??
-                                  "text-foreground/80 bg-muted/50 border-border",
-                              )}
-                            >
-                              {employee.status}
-                            </Badge>
+                            <EmploymentTypeBadge status={employee.status} />
                           </td>
                           <td
                             className="px-5 py-4 text-right"
@@ -904,16 +884,7 @@ function EmployeesPage() {
                         </div>
                         <div className="flex items-center justify-between gap-3">
                           <span>Type</span>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[10px] uppercase font-semibold",
-                              EMP_TYPE_COLOR[employee.status] ??
-                                "text-foreground/80 bg-muted/50 border-border",
-                            )}
-                          >
-                            {employee.status}
-                          </Badge>
+                          <EmploymentTypeBadge status={employee.status} />
                         </div>
                       </div>
                       <div className="mt-3 flex items-center justify-end gap-2">

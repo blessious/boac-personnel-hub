@@ -781,9 +781,9 @@ function AdminPage() {
         <AdminSummaryCard label="Backups" value={backups.length} icon={Database} />
       </div>
 
-      <div className="flex items-center gap-3 rounded-xl bg-amber-50 border border-amber-200 p-4 mb-4">
-        <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
-        <p className="text-sm text-amber-800 font-medium">
+      <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/40 dark:bg-amber-500/15">
+        <AlertCircle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-200" />
+        <p className="text-sm font-medium text-amber-800 dark:text-amber-100">
           System Administration is restricted to administrators. HR maintains records, Approvers
           decide workflows, Viewers are read-only, and every privileged action is logged.
         </p>
@@ -908,7 +908,7 @@ function AdminPage() {
                           variant="outline"
                           className={
                             item.isActive
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200"
                               : "bg-muted text-muted-foreground border-border"
                           }
                         >
@@ -917,7 +917,7 @@ function AdminPage() {
                         {item.mustChangePassword && (
                           <Badge
                             variant="outline"
-                            className="bg-amber-50 text-amber-700 border-amber-200"
+                            className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
                           >
                             Temp Password
                           </Badge>
@@ -925,7 +925,7 @@ function AdminPage() {
                         {item.lockedAt && (
                           <Badge
                             variant="outline"
-                            className="bg-rose-50 text-rose-700 border-rose-200"
+                            className="border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-200"
                           >
                             Locked
                           </Badge>
@@ -1475,7 +1475,7 @@ function AdminPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-100">
               Temporary passwords are shown only now. Print or copy before closing, then give each
               employee only their own credentials.
             </div>
@@ -1667,10 +1667,14 @@ function UserDialog({
             </div>
           )}
           {temporaryPassword && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <div className="text-xs font-semibold text-amber-800">Temporary Password</div>
-              <div className="mt-1 font-mono text-sm text-amber-900">{temporaryPassword}</div>
-              <p className="mt-1 text-xs text-amber-800">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/40 dark:bg-amber-500/15">
+              <div className="text-xs font-semibold text-amber-800 dark:text-amber-100">
+                Temporary Password
+              </div>
+              <div className="mt-1 font-mono text-sm text-amber-900 dark:text-amber-50">
+                {temporaryPassword}
+              </div>
+              <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
                 Give this to the user. They must change it on first access.
               </p>
             </div>
@@ -1708,7 +1712,7 @@ function AdminSummaryCard({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700">
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-100">
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">
