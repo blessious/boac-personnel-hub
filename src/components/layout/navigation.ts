@@ -75,7 +75,7 @@ export const APP_NAV: AppNavItem[] = [
     label: "Employee References",
     shortLabel: "References",
     icon: Library,
-    permission: "employees.read",
+    permission: "settings.manage",
   },
   {
     to: "/attendance",
@@ -241,13 +241,12 @@ export function navForPermissions(permissions: PermissionKey[] | undefined) {
   const allowed = new Set(permissions || []);
   return APP_NAV.filter((item) => {
     if (item.to === "/admin") {
-      return [
-        "admin.users",
-        "admin.audit",
-        "admin.errors",
-        "admin.backups",
-        "role_permissions.manage",
-      ].some((permission) => allowed.has(permission));
+      return ["admin.users", "admin.audit", "admin.errors", "role_permissions.manage"].some(
+        (permission) => allowed.has(permission),
+      );
+    }
+    if (item.to === "/attendance") {
+      return allowed.has("attendance.read") || allowed.has("self_service.access");
     }
     return allowed.has(item.permission);
   });

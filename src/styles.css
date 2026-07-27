@@ -196,6 +196,133 @@ html.theme-transitioning *::after {
 }
 
 @layer utilities {
+  .notice-info {
+    border-color: color-mix(in oklab, oklch(0.65 0.16 255) 35%, transparent);
+    background-color: color-mix(in oklab, oklch(0.95 0.03 255) 85%, transparent);
+    color: oklch(0.28 0.11 255);
+  }
+  .notice-warning {
+    border-color: color-mix(in oklab, oklch(0.78 0.16 75) 40%, transparent);
+    background-color: color-mix(in oklab, oklch(0.95 0.08 85) 78%, transparent);
+    color: oklch(0.34 0.08 75);
+  }
+  .notice-success {
+    border-color: color-mix(in oklab, oklch(0.68 0.16 152) 35%, transparent);
+    background-color: color-mix(in oklab, oklch(0.94 0.04 152) 82%, transparent);
+    color: oklch(0.32 0.1 152);
+  }
+  .notice-danger {
+    border-color: color-mix(in oklab, oklch(0.65 0.2 25) 35%, transparent);
+    background-color: color-mix(in oklab, oklch(0.94 0.04 25) 82%, transparent);
+    color: oklch(0.38 0.14 25);
+  }
+
+  .dark .notice-info {
+    border-color: color-mix(in oklab, oklch(0.7 0.14 255) 42%, transparent);
+    background-color: color-mix(in oklab, oklch(0.7 0.14 255) 16%, transparent);
+    color: oklch(0.9 0.04 255);
+  }
+  .dark .notice-warning {
+    border-color: color-mix(in oklab, oklch(0.82 0.16 75) 42%, transparent);
+    background-color: color-mix(in oklab, oklch(0.82 0.16 75) 16%, transparent);
+    color: oklch(0.92 0.07 85);
+  }
+  .dark .notice-success {
+    border-color: color-mix(in oklab, oklch(0.76 0.15 152) 42%, transparent);
+    background-color: color-mix(in oklab, oklch(0.76 0.15 152) 16%, transparent);
+    color: oklch(0.9 0.07 152);
+  }
+  .dark .notice-danger {
+    border-color: color-mix(in oklab, oklch(0.72 0.19 25) 42%, transparent);
+    background-color: color-mix(in oklab, oklch(0.72 0.19 25) 16%, transparent);
+    color: oklch(0.9 0.06 25);
+  }
+
+  .dark .bg-white {
+    background-color: var(--color-card);
+  }
+  .dark .bg-slate-50,
+  .dark .bg-gray-50 {
+    background-color: color-mix(in oklab, var(--color-muted) 70%, transparent);
+  }
+  .dark .bg-blue-50,
+  .dark .bg-blue-50\/60,
+  .dark .bg-blue-100 {
+    background-color: color-mix(in oklab, oklch(0.7 0.14 255) 16%, transparent);
+  }
+  .dark .bg-amber-50,
+  .dark .bg-amber-50\/60,
+  .dark .bg-amber-100,
+  .dark .bg-yellow-50 {
+    background-color: color-mix(in oklab, oklch(0.82 0.16 75) 16%, transparent);
+  }
+  .dark .bg-emerald-50,
+  .dark .bg-emerald-100,
+  .dark .bg-green-50 {
+    background-color: color-mix(in oklab, oklch(0.76 0.15 152) 16%, transparent);
+  }
+  .dark .bg-rose-50,
+  .dark .bg-rose-100,
+  .dark .bg-red-50,
+  .dark .bg-red-100 {
+    background-color: color-mix(in oklab, oklch(0.72 0.19 25) 16%, transparent);
+  }
+  .dark .border-blue-100,
+  .dark .border-blue-200 {
+    border-color: color-mix(in oklab, oklch(0.7 0.14 255) 42%, transparent);
+  }
+  .dark .border-amber-200,
+  .dark .border-yellow-200 {
+    border-color: color-mix(in oklab, oklch(0.82 0.16 75) 42%, transparent);
+  }
+  .dark .border-emerald-200,
+  .dark .border-green-200 {
+    border-color: color-mix(in oklab, oklch(0.76 0.15 152) 42%, transparent);
+  }
+  .dark .border-rose-200,
+  .dark .border-red-200 {
+    border-color: color-mix(in oklab, oklch(0.72 0.19 25) 42%, transparent);
+  }
+  .dark .border-slate-200,
+  .dark .border-gray-200 {
+    border-color: var(--color-border);
+  }
+  .dark .text-blue-700,
+  .dark .text-blue-800,
+  .dark .text-blue-900,
+  .dark .text-blue-950 {
+    color: oklch(0.9 0.04 255);
+  }
+  .dark .text-amber-700,
+  .dark .text-amber-800,
+  .dark .text-amber-900,
+  .dark .text-amber-950,
+  .dark .text-yellow-700,
+  .dark .text-yellow-800,
+  .dark .text-yellow-900 {
+    color: oklch(0.92 0.07 85);
+  }
+  .dark .text-emerald-600,
+  .dark .text-emerald-700,
+  .dark .text-emerald-800,
+  .dark .text-green-700 {
+    color: oklch(0.9 0.07 152);
+  }
+  .dark .text-rose-600,
+  .dark .text-rose-700,
+  .dark .text-rose-800,
+  .dark .text-red-600,
+  .dark .text-red-700,
+  .dark .text-red-800 {
+    color: oklch(0.9 0.06 25);
+  }
+  .dark .text-slate-600,
+  .dark .text-slate-700,
+  .dark .text-gray-600,
+  .dark .text-gray-700 {
+    color: var(--color-muted-foreground);
+  }
+
   .scrollbar-thin {
     scrollbar-width: thin;
   }

@@ -14,22 +14,47 @@ import { initializeServiceRecordSchema, createServiceRecordHandlers } from "./se
 import { createReportHandlers } from "./reports.mjs";
 import { initializeAssignmentSchema, createAssignmentHandlers } from "./assignments.mjs";
 
+const SERVER_DIR = path.join(process.cwd(), "server");
+const SERVER_ENV_LOCAL_PATH = path.join(SERVER_DIR, ".env.local");
+
+function parseEnvText(text) {
+  const values = {};
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const index = trimmed.indexOf("=");
+    if (index < 1) continue;
+    const key = trimmed.slice(0, index).trim();
+    let value = trimmed.slice(index + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      const quote = value[0];
+      value = value.slice(1, -1);
+      if (quote === '"') {
+        value = value.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+      }
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+function formatEnvValue(value) {
+  const text = String(value ?? "");
+  if (/^[A-Za-z0-9_@./:-]*$/.test(text)) return text;
+  return `"${text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
 function loadServerEnv() {
   const candidates = [".env.local", ".env", ".env.defaults"];
   for (const fileName of candidates) {
     try {
-      const envPath = path.join(process.cwd(), "server", fileName);
+      const envPath = path.join(SERVER_DIR, fileName);
       const text = readFileSync(envPath, "utf8");
-      for (const line of text.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#")) continue;
-        const index = trimmed.indexOf("=");
-        if (index < 1) continue;
-        const key = trimmed.slice(0, index).trim();
-        const value = trimmed
-          .slice(index + 1)
-          .trim()
-          .replace(/^["']|["']$/g, "");
+      const values = parseEnvText(text);
+      for (const [key, value] of Object.entries(values)) {
         if (!(key in process.env)) process.env[key] = value;
       }
     } catch {
@@ -45,11 +70,11 @@ const DB_HOST = process.env.HRIS_DB_HOST || "localhost";
 const DB_USER = process.env.HRIS_DB_USER || "root";
 const DB_PASSWORD = process.env.HRIS_DB_PASSWORD || "";
 const DB_NAME = process.env.HRIS_DB_NAME || "hris_db";
+const DB_PORT = Number(process.env.HRIS_DB_PORT || 3306);
 const SESSION_COOKIE = "hris_session";
 const SESSION_HOURS = 8;
 const MAX_FAILED_LOGIN_ATTEMPTS = 3;
 const PASSWORD_HISTORY_LIMIT = 5;
-const BACKUP_DIR = path.join(process.cwd(), "server", "backups");
 const EXPORT_DIR = process.env.HRIS_RUNTIME_DIR || path.join(os.tmpdir(), "hris-runtime");
 const PREVIEW_DIR = path.join(EXPORT_DIR, "previews");
 const TEMPLATE_DIR = path.join(process.cwd(), "server", "templates");
@@ -79,8 +104,28 @@ const PERSONNEL_PLANTILLA_REPORT_SCRIPT = path.join(
 );
 const BIOMETRIC_FETCH_SCRIPT = path.join(process.cwd(), "server", "fetch_biometric.py");
 const ADMS_PORT = Number(process.env.HRIS_ADMS_PORT || 6000);
-const LIBREOFFICE_EXE =
-  process.env.HRIS_LIBREOFFICE_EXE || "C:\\Program Files\\LibreOffice\\program\\soffice.com";
+const CLIENT_PORT = Number(process.env.HRIS_CLIENT_PORT || 47100);
+const ALLOWED_MUTATION_ORIGINS = new Set(
+  String(process.env.HRIS_ALLOWED_ORIGINS || process.env.HRIS_CLIENT_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
+const LOCAL_MUTATION_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+for (const addresses of Object.values(os.networkInterfaces())) {
+  for (const address of addresses || []) {
+    if (!address.internal && address.address) LOCAL_MUTATION_HOSTS.add(address.address.toLowerCase());
+  }
+}
+const LIBREOFFICE_CANDIDATES = [
+  process.env.HRIS_LIBREOFFICE_EXE,
+  "C:\\Program Files\\LibreOffice\\program\\soffice.com",
+  "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+  "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.com",
+  "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
+  "soffice.com",
+  "soffice",
+].filter(Boolean);
 const LIBREOFFICE_PROFILE_DIR = path.join(EXPORT_DIR, "lo-profile");
 const PREVIEW_FILE_MAX_AGE_MS = 5 * 60 * 1000;
 const PYTHON_CANDIDATES = [
@@ -249,12 +294,6 @@ const PERMISSIONS = [
     group: "Plantilla",
   },
   {
-    key: "plantilla.reconcile",
-    label: "Reconcile plantilla",
-    description: "Confirm legacy employee-to-item matches and create audited occupancy history.",
-    group: "Plantilla",
-  },
-  {
     key: "engagements.manage",
     label: "Manage non-Plantilla engagements",
     description:
@@ -311,12 +350,6 @@ const PERMISSIONS = [
     group: "System Administration",
   },
   {
-    key: "admin.backups",
-    label: "Backups",
-    description: "Create, view, and download system backups.",
-    group: "System Administration",
-  },
-  {
     key: "settings.manage",
     label: "Settings",
     description: "Manage agency branding, references, departments, positions, and salary grades.",
@@ -353,20 +386,12 @@ const LOCKED_SUPER_ADMIN_PERMISSIONS = new Set([
   "admin.users",
   "admin.audit",
   "admin.errors",
-  "admin.backups",
   "settings.manage",
   "role_permissions.manage",
 ]);
 const DEFAULT_ROLE_PERMISSIONS = {
   "Super Admin": PERMISSIONS.map((permission) => permission.key),
-  Admin: [
-    "dashboard.view",
-    "admin.users",
-    "admin.audit",
-    "admin.errors",
-    "admin.backups",
-    "settings.manage",
-  ],
+  Admin: ["dashboard.view", "admin.users", "admin.audit", "admin.errors", "settings.manage"],
   HR: [
     "dashboard.view",
     "employees.read",
@@ -377,7 +402,6 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "leave.write",
     "plantilla.read",
     "plantilla.write",
-    "plantilla.reconcile",
     "engagements.manage",
     "movements.read",
     "movements.write",
@@ -1320,6 +1344,102 @@ const EMPLOYEE_SECTION_TABLES = {
   ipcr: { table: "employee_ipcr_records" },
 };
 
+const EMPLOYEE_SECTION_FIELDS = {
+  family: [
+    "spouseLastname",
+    "spouseFirstname",
+    "spouseMiddlename",
+    "spouseOccupation",
+    "spouseEmployer",
+    "spouseBusinessTel",
+    "spouseBusinessAddress",
+    "fatherLastname",
+    "fatherFirstname",
+    "fatherMiddlename",
+    "motherLastname",
+    "motherFirstname",
+    "motherMiddlename",
+  ],
+  children: ["lastname", "firstname", "middlename", "gender", "birthday"],
+  education: ["level", "school", "degree", "yearFrom", "yearTo", "yearGraduated", "scholarship"],
+  civilService: ["type", "place", "date", "rating", "license", "dateRelease", "licenseValidity"],
+  work: [
+    "dateFrom",
+    "dateTo",
+    "position",
+    "officeUnit",
+    "immediateSupervisor",
+    "agencyOrganizationLocation",
+    "accomplishments",
+    "actualDuties",
+    "company",
+    "status",
+    "salary",
+    "salaryGradeStep",
+    "govEmp",
+  ],
+  organization: ["name", "position", "address", "yearFrom", "yearTo", "hours"],
+  training: ["name", "conductedBy", "yearFrom", "yearTo", "hours", "file"],
+  salary: [
+    "date",
+    "description",
+    "ordinance",
+    "grade",
+    "step",
+    "amount",
+    "previousAmount",
+    "tax",
+    "gross",
+    "type",
+    "pera",
+    "rata",
+    "cata",
+  ],
+  service: [
+    "from",
+    "to",
+    "status",
+    "salary",
+    "designation",
+    "department",
+    "assignment",
+    "branch",
+    "leave",
+    "sepDate",
+    "sepCause",
+  ],
+  ipcr: ["month", "from", "to", "grades", "remarks", "file"],
+};
+const EMPLOYEE_SECTION_DATE_FIELDS = new Set([
+  "birthday",
+  "date",
+  "dateRelease",
+  "licenseValidity",
+  "dateFrom",
+  "dateTo",
+  "from",
+  "to",
+  "sepDate",
+]);
+const EMPLOYEE_SECTION_NUMBER_FIELDS = new Set([
+  "hours",
+  "grade",
+  "step",
+  "amount",
+  "previousAmount",
+  "gross",
+  "pera",
+  "rata",
+  "cata",
+]);
+const EMPLOYEE_SECTION_FILE_FIELDS = new Set(["file"]);
+const MAX_SECTION_TEXT_LENGTH = 5000;
+const MAX_SECTION_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_PROFILE_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_BRANDING_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_LOGO_IMAGE_DIMENSIONS = { width: 2048, height: 2048 };
+const MAX_ICON_IMAGE_DIMENSIONS = { width: 1024, height: 1024 };
+
 const EMPLOYEE_PROFILE_FIELDS = [
   "citizenship",
   "placeOfBirth",
@@ -1349,8 +1469,112 @@ const EMPLOYEE_PROFILE_FIELDS = [
   "cardSerialNo",
 ];
 
+// Employee self-service may maintain personal/contact details and submit work
+// history for HR review. Employment assignments, attendance controls, payroll
+// identifiers, and other 201 sections remain HR-managed.
+const EMPLOYEE_SELF_SERVICE_BASE_FIELDS = new Set([
+  "firstname",
+  "middlename",
+  "lastname",
+  "nameExt",
+  "birthday",
+  "gender",
+  "civilStatus",
+  "email",
+  "cellphoneNo",
+  "photoUrl",
+]);
+const EMPLOYEE_SELF_SERVICE_PROFILE_FIELDS = new Set([
+  "citizenship",
+  "placeOfBirth",
+  "height",
+  "heightUnit",
+  "weight",
+  "weightUnit",
+  "bloodType",
+  "sss",
+  "gsis",
+  "pagibig",
+  "tin",
+  "philhealth",
+  "ctcNo",
+  "ctcPlaceIssued",
+  "ctcDateIssued",
+  "residentialAddress",
+  "residentialZipcode",
+  "residentialTelNo",
+  "permanentAddress",
+  "permanentZipcode",
+  "permanentTelNo",
+]);
+const EMPLOYEE_SELF_SERVICE_SECTIONS = new Set(["work"]);
+const EMPLOYEE_SELF_SERVICE_WORK_FIELDS = new Set([
+  "dateFrom",
+  "dateTo",
+  "position",
+  "officeUnit",
+  "immediateSupervisor",
+  "agencyOrganizationLocation",
+  "accomplishments",
+  "actualDuties",
+  "company",
+  "status",
+  "salary",
+  "salaryGradeStep",
+  "govEmp",
+]);
+
 let pool;
 const biometricSyncLogs = [];
+const DOCUMENT_EXPORT_TTL_MS = 15 * 60 * 1000;
+
+async function registerDocumentExport(fileName, employeeId, userId, exportType) {
+  const expiresAt = new Date(Date.now() + DOCUMENT_EXPORT_TTL_MS);
+  await pool.execute(
+    `INSERT INTO document_export_jobs
+      (id, file_name, export_type, employee_id, created_by, expires_at)
+     VALUES (:id, :fileName, :exportType, :employeeId, :userId, :expiresAt)`,
+    {
+      id: crypto.randomUUID(),
+      fileName,
+      exportType,
+      employeeId: employeeId || null,
+      userId,
+      expiresAt,
+    },
+  );
+}
+
+async function authorizeDocumentExport(user, fileName) {
+  const [[record]] = await pool.execute(
+    `SELECT employee_id, created_by
+       FROM document_export_jobs
+      WHERE file_name=:fileName AND expires_at > NOW() AND downloaded_at IS NULL
+      LIMIT 1`,
+    { fileName },
+  );
+  if (!record) return false;
+  const allowed =
+    Number(record.created_by) === Number(user.id) ||
+    user.employeeId === record.employeeId ||
+    (await hasPermission(user, "employees.read"));
+  if (!allowed) return false;
+  const [result] = await pool.execute(
+    `UPDATE document_export_jobs
+        SET downloaded_at=NOW(), download_count=download_count+1
+      WHERE file_name=:fileName AND expires_at > NOW() AND downloaded_at IS NULL`,
+    { fileName },
+  );
+  return result.affectedRows === 1;
+}
+
+async function cleanupDocumentExportJobs() {
+  await pool.execute(
+    `DELETE FROM document_export_jobs
+      WHERE (downloaded_at IS NOT NULL AND downloaded_at < DATE_SUB(NOW(), INTERVAL 1 DAY))
+         OR expires_at < DATE_SUB(NOW(), INTERVAL 1 DAY)`,
+  );
+}
 const realtimeClients = new Map();
 let realtimeSequence = 0;
 const biometricRefreshQueue = new Map();
@@ -1649,6 +1873,147 @@ async function cleanupPreviewFiles(maxAgeMs = PREVIEW_FILE_MAX_AGE_MS) {
   );
 }
 
+async function readServerEnvLocal() {
+  try {
+    const text = await fs.readFile(SERVER_ENV_LOCAL_PATH, "utf8");
+    return { text, values: parseEnvText(text) };
+  } catch (error) {
+    if (error?.code === "ENOENT") return { text: "", values: {} };
+    throw error;
+  }
+}
+
+function currentDatabaseConfig() {
+  return {
+    host: process.env.HRIS_DB_HOST || DB_HOST,
+    port: Number(process.env.HRIS_DB_PORT || DB_PORT || 3306),
+    user: process.env.HRIS_DB_USER || DB_USER,
+    password: process.env.HRIS_DB_PASSWORD ?? DB_PASSWORD,
+    database: process.env.HRIS_DB_NAME || DB_NAME,
+  };
+}
+
+function publicDatabaseConfig(config = currentDatabaseConfig(), sourceValues = {}) {
+  return {
+    host: config.host,
+    port: Number(config.port || 3306),
+    user: config.user,
+    database: config.database,
+    passwordSet: Boolean(config.password),
+    source: Object.keys(sourceValues).some((key) => key.startsWith("HRIS_DB_"))
+      ? "server/.env.local"
+      : "process/defaults",
+    restartRequired: false,
+  };
+}
+
+function normalizeDatabaseConfig(body, existingPassword) {
+  const host = String(body.host || "").trim();
+  const user = String(body.user || "").trim();
+  const database = String(body.database || "").trim();
+  const port = Number(body.port || 3306);
+  const password =
+    body.password === undefined || body.password === null
+      ? String(existingPassword || "")
+      : String(body.password);
+
+  if (!host) throw new Error("Database host is required");
+  if (!user) throw new Error("Database user is required");
+  if (!database) throw new Error("Database name is required");
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("Database port must be between 1 and 65535");
+  }
+  for (const [label, value] of [
+    ["Database host", host],
+    ["Database user", user],
+    ["Database name", database],
+    ["Database password", password],
+  ]) {
+    if (String(value).includes("\n") || String(value).includes("\r")) {
+      throw new Error(`${label} cannot contain line breaks`);
+    }
+  }
+  if (!/^[A-Za-z0-9_$-]+$/.test(database)) {
+    throw new Error(
+      "Database name can contain only letters, numbers, underscore, dollar, and dash",
+    );
+  }
+  return { host, port, user, password, database };
+}
+
+async function testDatabaseConfig(config, { createDatabase = false } = {}) {
+  let connection;
+  try {
+    connection = await mysql.createConnection({
+      host: config.host,
+      port: config.port,
+      user: config.user,
+      password: config.password,
+      multipleStatements: true,
+      connectTimeout: 8000,
+    });
+    if (createDatabase) {
+      await connection.query(
+        `CREATE DATABASE IF NOT EXISTS \`${config.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+      );
+    }
+    const [schemas] = await connection.execute(
+      `SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ? LIMIT 1`,
+      [config.database],
+    );
+    if (!schemas.length) {
+      return {
+        ok: false,
+        error: `Connected to MySQL, but database "${config.database}" does not exist`,
+      };
+    }
+    await connection.changeUser({ database: config.database });
+    await connection.query("SELECT 1");
+    return { ok: true };
+  } finally {
+    if (connection) await connection.end().catch(() => {});
+  }
+}
+
+async function writeDatabaseConfig(config) {
+  const env = await readServerEnvLocal();
+  const keys = new Set([
+    "HRIS_DB_HOST",
+    "HRIS_DB_PORT",
+    "HRIS_DB_USER",
+    "HRIS_DB_PASSWORD",
+    "HRIS_DB_NAME",
+  ]);
+  const values = {
+    HRIS_DB_HOST: config.host,
+    HRIS_DB_PORT: String(config.port),
+    HRIS_DB_USER: config.user,
+    HRIS_DB_PASSWORD: config.password,
+    HRIS_DB_NAME: config.database,
+  };
+  const lines = env.text ? env.text.split(/\r?\n/) : [];
+  const output = [];
+  const seen = new Set();
+
+  for (const line of lines) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    if (!match || !keys.has(match[1])) {
+      output.push(line);
+      continue;
+    }
+    output.push(`${match[1]}=${formatEnvValue(values[match[1]])}`);
+    seen.add(match[1]);
+  }
+
+  if (output.length && output[output.length - 1].trim() !== "") output.push("");
+  for (const key of keys) {
+    if (!seen.has(key)) output.push(`${key}=${formatEnvValue(values[key])}`);
+  }
+
+  await fs.mkdir(SERVER_DIR, { recursive: true });
+  await fs.writeFile(SERVER_ENV_LOCAL_PATH, `${output.join("\n").replace(/\n+$/g, "")}\n`, "utf8");
+}
+
 function sendCsv(res, fileName, csv) {
   res.writeHead(200, {
     "Content-Type": "text/csv; charset=utf-8",
@@ -1658,12 +2023,12 @@ function sendCsv(res, fileName, csv) {
   res.end(csv);
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 15 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let raw = "";
     req.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 15 * 1024 * 1024) {
+      if (Number.isFinite(maxBytes) && raw.length > maxBytes) {
         req.destroy();
         reject(new Error("Request body too large"));
       }
@@ -1715,6 +2080,47 @@ function sessionCookie(token, expiresAt) {
 
 function clearSessionCookie() {
   return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+}
+
+function normalizeOriginHost(hostname) {
+  const normalized = String(hostname || "").toLowerCase();
+  return LOCAL_MUTATION_HOSTS.has(normalized) ? "local-machine" : normalized;
+}
+
+function urlPort(url) {
+  if (url.port) return Number(url.port);
+  return url.protocol === "https:" ? 443 : 80;
+}
+
+function validateMutationOrigin(req, res) {
+  const origin = String(req.headers.origin || "").trim();
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "")
+    .split(",")[0]
+    .trim();
+  if (!origin || !host || origin === "null") {
+    json(res, 403, { error: "A same-origin request is required" });
+    return false;
+  }
+  try {
+    const parsed = new URL(origin);
+    const hostUrl = new URL(`${parsed.protocol}//${host}`);
+    const sameOrigin = parsed.host === host;
+    const sameAppDevProxy =
+      normalizeOriginHost(parsed.hostname) === normalizeOriginHost(hostUrl.hostname) &&
+      urlPort(parsed) === CLIENT_PORT &&
+      urlPort(hostUrl) === PORT;
+    if (
+      !["http:", "https:"].includes(parsed.protocol) ||
+      (!sameOrigin && !sameAppDevProxy && !ALLOWED_MUTATION_ORIGINS.has(parsed.origin))
+    ) {
+      json(res, 403, { error: "Cross-site mutation blocked" });
+      return false;
+    }
+  } catch {
+    json(res, 403, { error: "Invalid request origin" });
+    return false;
+  }
+  return true;
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
@@ -1870,6 +2276,12 @@ function formatEmployeeName(employee, fallback = "Employee") {
   return name || fallback;
 }
 
+function isNonPlantillaEmploymentStatus(status) {
+  return ["JO", "COS", "JO/COS", "Job Order", "Contract of Service", "Contractual"].includes(
+    String(status || "").trim(),
+  );
+}
+
 function employeeRow(row) {
   const profile = parseJson(row.profile_json, {});
   return {
@@ -1904,9 +2316,10 @@ function employeeRow(row) {
     dtrSignatory: row.dtr_signatory || "",
     dtrNoterId: row.dtr_noter_id ? String(row.dtr_noter_id) : "",
     isDtrNoter: Boolean(row.is_dtr_noter),
+    isHidden: Boolean(row.is_hidden),
     regular:
       row.regular === null || row.regular === undefined
-        ? row.status !== "Job Order"
+        ? !isNonPlantillaEmploymentStatus(row.status)
         : Boolean(row.regular),
     citizenship: profile.citizenship || "",
     placeOfBirth: profile.placeOfBirth || "",
@@ -1935,6 +2348,90 @@ function employeeRow(row) {
     bankAccountId: profile.bankAccountId || "",
     cardSerialNo: profile.cardSerialNo || "",
   };
+}
+
+function readImageDimensions(buffer, mime) {
+  if (mime === "image/png" && buffer.length >= 24) {
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+  if (mime === "image/gif" && buffer.length >= 10) {
+    return { width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) };
+  }
+  if (mime === "image/jpeg") {
+    let offset = 2;
+    while (offset + 9 < buffer.length) {
+      if (buffer[offset] !== 0xff) break;
+      const marker = buffer[offset + 1];
+      const length = buffer.readUInt16BE(offset + 2);
+      if (length < 2) break;
+      if (
+        [
+          0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
+        ].includes(marker)
+      ) {
+        return { width: buffer.readUInt16BE(offset + 7), height: buffer.readUInt16BE(offset + 5) };
+      }
+      offset += 2 + length;
+    }
+  }
+  if (mime === "image/webp" && buffer.length >= 30) {
+    const chunk = buffer.subarray(12, 16).toString("ascii");
+    if (chunk === "VP8X") {
+      return {
+        width: 1 + buffer.readUIntLE(24, 3),
+        height: 1 + buffer.readUIntLE(27, 3),
+      };
+    }
+    if (chunk === "VP8 " && buffer.length >= 30) {
+      return {
+        width: buffer.readUInt16LE(26) & 0x3fff,
+        height: buffer.readUInt16LE(28) & 0x3fff,
+      };
+    }
+    if (chunk === "VP8L" && buffer.length >= 25) {
+      const bits = buffer.readUInt32LE(21);
+      return { width: 1 + (bits & 0x3fff), height: 1 + ((bits >> 14) & 0x3fff) };
+    }
+  }
+  return null;
+}
+
+function validateImageDataUrl(value, label, maxBytes, dimensions) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const match = raw.match(/^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+/=\s]+)$/i);
+  if (!match) {
+    throw new Error(`${label} must be a PNG, JPEG, WebP, or GIF image`);
+  }
+  const mime = match[1].toLowerCase().replace("image/jpg", "image/jpeg");
+  const base64 = match[2].replace(/\s/g, "");
+  let buffer;
+  try {
+    buffer = Buffer.from(base64, "base64");
+  } catch {
+    throw new Error(`${label} image data is invalid`);
+  }
+  if (!buffer.length) {
+    throw new Error(`${label} image data is invalid`);
+  }
+  if (maxBytes && buffer.length > maxBytes) {
+    throw new Error(`${label} must be ${Math.round(maxBytes / 1024 / 1024)} MB or smaller`);
+  }
+  const signatures = {
+    "image/png": buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+    "image/jpeg": buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[buffer.length - 2] === 0xff && buffer[buffer.length - 1] === 0xd9,
+    "image/gif": buffer.subarray(0, 6).toString("ascii") === "GIF87a" || buffer.subarray(0, 6).toString("ascii") === "GIF89a",
+    "image/webp": buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP",
+  };
+  if (!signatures[mime]) throw new Error(`${label} content does not match its image type`);
+  if (dimensions) {
+    const size = readImageDimensions(buffer, mime);
+    if (!size) throw new Error(`${label} dimensions could not be verified`);
+    if (size.width > dimensions.width || size.height > dimensions.height) {
+      throw new Error(`${label} must be ${dimensions.width}x${dimensions.height}px or smaller`);
+    }
+  }
+  return `data:${mime};base64,${base64}`;
 }
 
 function employeeDbPayload(body, existing = {}) {
@@ -1980,7 +2477,10 @@ function employeeDbPayload(body, existing = {}) {
     civilStatus: String(body.civilStatus ?? existing.civilStatus ?? "").trim(),
     email: String(body.email ?? existing.email ?? "").trim(),
     cellphoneNo: String(body.cellphoneNo ?? existing.cellphoneNo ?? "").trim(),
-    photoUrl: body.photoUrl ? String(body.photoUrl) : existing.photoUrl || "",
+    photoUrl:
+      body.photoUrl !== undefined
+        ? validateImageDataUrl(body.photoUrl, "Employee photo", MAX_PROFILE_IMAGE_BYTES)
+        : existing.photoUrl || "",
     scheduleAmIn: normalizeTimeInput(
       body.scheduleAmIn ?? body.schedule_am_in ?? existing.scheduleAmIn ?? "08:00",
     ),
@@ -2000,7 +2500,7 @@ function employeeDbPayload(body, existing = {}) {
     isDtrNoter: Boolean(body.isDtrNoter ?? body.is_dtr_noter ?? existing.isDtrNoter ?? false),
     regular:
       body.regular === undefined && existing.regular === undefined
-        ? status !== "Job Order"
+        ? !isNonPlantillaEmploymentStatus(status)
         : Boolean(body.regular ?? existing.regular),
     profileJson: JSON.stringify(profile),
   };
@@ -2153,6 +2653,14 @@ function leaveApplicationRow(row) {
         : Number(row.approved_days_other),
     approvedDaysOtherText: row.approved_days_other_text || "",
     finalDisapprovalReason: row.final_disapproval_reason || "",
+    approvedCreditChargeDays:
+      row.approved_credit_charge_days === null || row.approved_credit_charge_days === undefined
+        ? null
+        : Number(row.approved_credit_charge_days),
+    chargedLeaveTypeId:
+      row.charged_leave_type_id === null || row.charged_leave_type_id === undefined
+        ? null
+        : Number(row.charged_leave_type_id),
     status: row.status,
     approverName: row.approver_name || "",
     decisionRemarks: row.decision_remarks || "",
@@ -2714,10 +3222,11 @@ async function changeLeaveBalance(
   column,
   balanceDelta = amount,
   ledger = null,
+  db = pool,
 ) {
   if (!["earned", "used", "adjusted"].includes(column)) throw new Error("Invalid balance column");
   await ensureLeaveBalance(employeeId, leaveTypeId);
-  await pool.execute(
+  await db.execute(
     `UPDATE leave_balances
      SET ${column} = ${column} + :amount,
          balance = balance + :balanceDelta
@@ -2725,13 +3234,13 @@ async function changeLeaveBalance(
     { employeeId, leaveTypeId, amount, balanceDelta },
   );
   if (ledger) {
-    const [[balance]] = await pool.execute(
+    const [[balance]] = await db.execute(
       `SELECT balance FROM leave_balances
        WHERE employee_id = :employeeId AND leave_type_id = :leaveTypeId
        LIMIT 1`,
       { employeeId, leaveTypeId },
     );
-    await pool.execute(
+    await db.execute(
       `INSERT INTO leave_credit_ledger (
          id, employee_id, leave_type_id, entry_type, column_changed, amount, balance_delta,
          balance_after, source_type, source_id, description, created_by
@@ -2800,14 +3309,132 @@ async function requireEmployeeWrite(req, res) {
   return user;
 }
 
-async function canWriteEmployeeRecord(user, employeeId) {
-  return (await hasPermission(user, "employees.write")) || user.employeeId === employeeId;
+async function canManageEmployeeRecord(user) {
+  return hasPermission(user, "employees.write");
+}
+
+function selfServiceEmployeePayload(body, existing, data, existingData) {
+  const allowedData = new Set(EMPLOYEE_SELF_SERVICE_BASE_FIELDS);
+  const safe = { ...data };
+  for (const field of Object.keys(data)) {
+    if (!allowedData.has(field) && field !== "profileJson") safe[field] = existingData[field];
+  }
+
+  const profile = Object.fromEntries(
+    EMPLOYEE_PROFILE_FIELDS.map((field) => [field, String(existing[field] ?? "").trim()]),
+  );
+  for (const field of EMPLOYEE_SELF_SERVICE_PROFILE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) {
+      profile[field] = String(body[field] ?? "").trim();
+    }
+  }
+  safe.profileJson = JSON.stringify(profile);
+  return safe;
+}
+
+function selfServiceSectionPayload(payload, existingPayload = {}) {
+  const unknown = Object.keys(payload).filter((key) => !EMPLOYEE_SELF_SERVICE_WORK_FIELDS.has(key));
+  if (unknown.length) {
+    throw new Error(`Self-service work records contain unsupported fields: ${unknown.join(", ")}`);
+  }
+  return { ...existingPayload, ...payload };
+}
+
+function validateSectionPayload(section, payload, existingPayload = {}) {
+  const allowedFields = EMPLOYEE_SECTION_FIELDS[section];
+  if (!allowedFields) throw new Error("Section not found");
+  const allowed = new Set(allowedFields);
+  const normalized = {};
+  const source = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+  const allowedKeys = new Set(allowedFields.flatMap((field) => [field, `${field}Data`, `${field}Type`, `${field}Size`]));
+  const unknown = Object.keys(source).filter((key) => !allowedKeys.has(key));
+  if (unknown.length) throw new Error(`Unsupported ${section} field: ${unknown[0]}`);
+
+  for (const field of allowedFields) {
+    const value = Object.prototype.hasOwnProperty.call(source, field)
+      ? source[field]
+      : existingPayload[field] ?? "";
+    if (EMPLOYEE_SECTION_FILE_FIELDS.has(field)) {
+      const fileName = String(value || "").trim();
+      const fileData = Object.prototype.hasOwnProperty.call(source, `${field}Data`)
+        ? String(source[`${field}Data`] || "").trim()
+        : String(existingPayload[`${field}Data`] || "").trim();
+      const fileType = Object.prototype.hasOwnProperty.call(source, `${field}Type`)
+        ? String(source[`${field}Type`] || "").trim()
+        : String(existingPayload[`${field}Type`] || "").trim();
+      const fileSize = Object.prototype.hasOwnProperty.call(source, `${field}Size`)
+        ? Number(source[`${field}Size`] || 0)
+        : Number(existingPayload[`${field}Size`] || 0);
+      if (fileData) {
+        const match = fileData.match(/^data:([A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+);base64,([A-Za-z0-9+/=\s]+)$/);
+        if (!match) throw new Error(`${field} attachment data is invalid`);
+        const byteLength = Buffer.from(match[2].replace(/\s/g, ""), "base64").length;
+        if (byteLength > MAX_SECTION_FILE_BYTES) throw new Error(`${field} attachment must be 8 MB or smaller`);
+        normalized[`${field}Data`] = fileData;
+        normalized[`${field}Type`] = fileType || match[1];
+        normalized[`${field}Size`] = String(fileSize || byteLength);
+      }
+      normalized[field] = fileName.slice(0, 255);
+      continue;
+    }
+    if (EMPLOYEE_SECTION_NUMBER_FIELDS.has(field)) {
+      if (value === "" || value === null || value === undefined) {
+        normalized[field] = "";
+        continue;
+      }
+      const numberValue = Number(value);
+      if (!Number.isFinite(numberValue)) throw new Error(`${field} must be a valid number`);
+      normalized[field] = numberValue;
+      continue;
+    }
+    const textValue = String(value ?? "").trim();
+    if (EMPLOYEE_SECTION_DATE_FIELDS.has(field) && textValue && !/^\d{4}-\d{2}-\d{2}$/.test(textValue)) {
+      throw new Error(`${field} must be a valid date`);
+    }
+    if (textValue.length > MAX_SECTION_TEXT_LENGTH) {
+      throw new Error(`${field} must be ${MAX_SECTION_TEXT_LENGTH} characters or fewer`);
+    }
+    normalized[field] = textValue;
+  }
+  return normalized;
+}
+
+async function activeAssignmentOwnership(employeeId) {
+  const [[plantilla]] = await pool.execute(
+    `SELECT id FROM plantilla_occupancies WHERE employee_id = :employeeId AND status = 'Active' LIMIT 1`,
+    { employeeId },
+  );
+  const [[engagement]] = await pool.execute(
+    `SELECT id FROM non_plantilla_engagements WHERE employee_id = :employeeId AND status = 'Active' LIMIT 1`,
+    { employeeId },
+  );
+  if (plantilla) return { kind: "Plantilla", id: plantilla.id };
+  if (engagement) return { kind: "Non-Plantilla engagement", id: engagement.id };
+  return null;
+}
+
+function assignmentOwnedFieldChanges(existing, data) {
+  const fields = [
+    ["department", "department"],
+    ["position", "position"],
+    ["itemNo", "item number"],
+    ["status", "employment type"],
+    ["empStatus", "employee active status"],
+    ["lifecycleState", "lifecycle state"],
+    ["currentOrganizationId", "organization"],
+  ];
+  return fields
+    .filter(([field]) => String(data[field] ?? "") !== String(existing[field] ?? ""))
+    .map(([, label]) => label);
 }
 
 async function requireAttendanceRead(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
-  if (!(await hasPermission(user, "attendance.read"))) {
+  if (
+    !(await hasPermission(user, "attendance.read")) &&
+    !(await hasPermission(user, "self_service.access"))
+  ) {
     json(res, 403, { error: "Attendance access required" });
     return null;
   }
@@ -2824,8 +3451,17 @@ async function requireAttendanceWrite(req, res) {
   return user;
 }
 
+async function canReadAllAttendance(user) {
+  if (await hasPermission(user, "attendance.write")) return true;
+  if (!(await hasPermission(user, "attendance.read"))) return false;
+  if (await hasPermission(user, "employees.read")) return true;
+  return !(await hasPermission(user, "self_service.access"));
+}
+
 async function canReadEmployeeAttendance(user, employeeId) {
-  return (await hasPermission(user, "attendance.read")) || user.employeeId === employeeId;
+  if (!employeeId) return false;
+  if (await canReadAllAttendance(user)) return true;
+  return (await hasPermission(user, "self_service.access")) && user.employeeId === employeeId;
 }
 
 async function requireReportView(req, res) {
@@ -2848,15 +3484,6 @@ async function requirePlantillaWrite(req, res) {
 
 async function requireAssignmentRead(req, res) {
   return requirePermission(req, res, "employees.read", "Employee assignment access required");
-}
-
-async function requireReconciliationWrite(req, res) {
-  return requirePermission(
-    req,
-    res,
-    "plantilla.reconcile",
-    "Plantilla reconciliation access required",
-  );
 }
 
 async function requireEngagementWrite(req, res) {
@@ -2933,6 +3560,7 @@ async function generateEmployeeUsername(db, employee) {
 async function initializeDatabase() {
   const connection = await mysql.createConnection({
     host: DB_HOST,
+    port: DB_PORT,
     user: DB_USER,
     password: DB_PASSWORD,
     multipleStatements: true,
@@ -2945,6 +3573,7 @@ async function initializeDatabase() {
 
   pool = mysql.createPool({
     host: DB_HOST,
+    port: DB_PORT,
     user: DB_USER,
     password: DB_PASSWORD,
     database: DB_NAME,
@@ -3309,6 +3938,8 @@ async function initializeDatabase() {
       approved_days_other DECIMAL(8,3) NULL,
       approved_days_other_text TEXT NULL,
       final_disapproval_reason TEXT NULL,
+      approved_credit_charge_days DECIMAL(8,3) NULL,
+      charged_leave_type_id INT UNSIGNED NULL,
       status ENUM('Pending', 'Approved', 'Disapproved', 'Cancelled') NOT NULL DEFAULT 'Pending',
       approver_id INT UNSIGNED NULL,
       decision_remarks TEXT NULL,
@@ -3350,6 +3981,8 @@ async function initializeDatabase() {
   await ensureColumn("leave_applications", "approved_days_other", "DECIMAL(8,3) NULL");
   await ensureColumn("leave_applications", "approved_days_other_text", "TEXT NULL");
   await ensureColumn("leave_applications", "final_disapproval_reason", "TEXT NULL");
+  await ensureColumn("leave_applications", "approved_credit_charge_days", "DECIMAL(8,3) NULL");
+  await ensureColumn("leave_applications", "charged_leave_type_id", "INT UNSIGNED NULL");
   await ensureForeignKey(
     "leave_applications",
     "fk_leave_applications_recommended_by",
@@ -3698,10 +4331,98 @@ async function initializeDatabase() {
       CONSTRAINT fk_dtr_export_jobs_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
+  await ensureIndex(
+    "dtr_export_jobs",
+    "idx_dtr_export_jobs_file_name",
+    "INDEX idx_dtr_export_jobs_file_name (file_name)",
+  );
+
+  await ensureDocumentExportJobsTable();
 
   await seedConfigTables();
 
   await bootstrapAdministrator();
+}
+
+async function applyVersionedMigrations() {
+  const connection = await mysql.createConnection({
+    host: DB_HOST,
+    port: DB_PORT,
+    user: DB_USER,
+    password: DB_PASSWORD,
+    database: DB_NAME,
+    multipleStatements: true,
+    namedPlaceholders: true,
+  });
+  try {
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version VARCHAR(255) NOT NULL PRIMARY KEY,
+        applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB;
+    `);
+    const [appliedRows] = await connection.query("SELECT version FROM schema_migrations");
+    const applied = new Set(appliedRows.map((row) => row.version));
+    const migrationDir = path.join(process.cwd(), "server", "migrations");
+    const files = (await fs.readdir(migrationDir)).filter((file) => file.endsWith(".sql")).sort();
+    if (applied.size === 0) {
+      const [[existingSchema]] = await connection.query(
+        `SELECT COUNT(*) AS total FROM information_schema.tables
+          WHERE table_schema=:schema AND table_name='users'`,
+        { schema: DB_NAME },
+      );
+      if (Number(existingSchema.total || 0) > 0) {
+        for (const file of files) {
+          await connection.execute(
+            "INSERT IGNORE INTO schema_migrations(version) VALUES(:version)",
+            {
+              version: file,
+            },
+          );
+        }
+        return;
+      }
+    }
+    for (const file of files) {
+      if (applied.has(file)) continue;
+      const sql = await fs.readFile(path.join(migrationDir, file), "utf8");
+      await connection.beginTransaction();
+      try {
+        await connection.query(sql);
+        await connection.execute("INSERT INTO schema_migrations(version) VALUES(:version)", {
+          version: file,
+        });
+        await connection.commit();
+      } catch (error) {
+        await connection.rollback();
+        throw new Error(`Migration ${file} failed: ${error.message}`);
+      }
+    }
+  } finally {
+    await connection.end();
+  }
+}
+
+async function ensureDocumentExportJobsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS document_export_jobs (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      file_name VARCHAR(255) NOT NULL UNIQUE,
+      export_type VARCHAR(40) NOT NULL,
+      employee_id CHAR(36) NULL,
+      created_by INT UNSIGNED NULL,
+      expires_at DATETIME NOT NULL,
+      downloaded_at DATETIME NULL,
+      download_count TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_document_export_jobs_expiry (expires_at),
+      INDEX idx_document_export_jobs_employee (employee_id),
+      CONSTRAINT fk_document_export_jobs_employee
+        FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      CONSTRAINT fk_document_export_jobs_created_by
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;
+  `);
 }
 
 async function ensureColumn(table, column, definition) {
@@ -3749,21 +4470,10 @@ async function bootstrapAdministrator() {
     .toLowerCase();
   let password = String(process.env.HRIS_BOOTSTRAP_ADMIN_PASSWORD || "");
   const name = String(process.env.HRIS_BOOTSTRAP_ADMIN_NAME || "System Administrator").trim();
-  const generatedDevPassword =
-    !username &&
-    !password &&
-    process.env.NODE_ENV !== "production" &&
-    process.env.HRIS_DEV_AUTO_BOOTSTRAP !== "0";
-
-  if (generatedDevPassword) {
-    username = "admin";
-    password = crypto.randomBytes(12).toString("base64url");
-  }
 
   if (!username || !password) {
-    throw new Error(
-      "No system users exist. Set HRIS_BOOTSTRAP_ADMIN_USERNAME and HRIS_BOOTSTRAP_ADMIN_PASSWORD to create the first administrator.",
-    );
+    console.log("No system users exist. Open the login page to create the first Super Admin.");
+    return;
   }
   if (!/^[a-z0-9._-]{3,50}$/.test(username)) {
     throw new Error("HRIS_BOOTSTRAP_ADMIN_USERNAME is invalid.");
@@ -3776,21 +4486,10 @@ async function bootstrapAdministrator() {
   const passwordHash = hashPassword(password);
   const [result] = await pool.execute(
     `INSERT INTO users (username, password_hash, name, role, must_change_password)
-     VALUES (:username, :passwordHash, :name, 'Admin', 1)`,
+     VALUES (:username, :passwordHash, :name, 'Super Admin', 1)`,
     { username, passwordHash, name },
   );
   await recordPasswordHistory(result.insertId, passwordHash);
-
-  if (generatedDevPassword) {
-    console.log("");
-    console.log("============================================================");
-    console.log("  HRIS first-run development admin created");
-    console.log(`  Username: ${username}`);
-    console.log(`  Temporary password: ${password}`);
-    console.log("  Change this password after signing in.");
-    console.log("============================================================");
-    console.log("");
-  }
 }
 
 async function recordPasswordHistory(userId, passwordHash, db = pool) {
@@ -3845,22 +4544,28 @@ async function seedConfigTables() {
     DEFAULT_AGENCY,
   );
 
-  for (const [index, name] of DEFAULT_DEPARTMENTS.entries()) {
-    await pool.execute(
-      `INSERT INTO departments (name, sort_order)
-       VALUES (:name, :sortOrder)
-       ON DUPLICATE KEY UPDATE name = name`,
-      { name, sortOrder: index + 1 },
-    );
+  const [[departmentCount]] = await pool.query(`SELECT COUNT(*) AS count FROM departments`);
+  if (Number(departmentCount.count || 0) === 0) {
+    for (const [index, name] of DEFAULT_DEPARTMENTS.entries()) {
+      await pool.execute(
+        `INSERT INTO departments (name, sort_order)
+         VALUES (:name, :sortOrder)
+         ON DUPLICATE KEY UPDATE name = name`,
+        { name, sortOrder: index + 1 },
+      );
+    }
   }
 
-  for (const [index, title] of DEFAULT_POSITIONS.entries()) {
-    await pool.execute(
-      `INSERT INTO positions (title, sort_order)
-       VALUES (:title, :sortOrder)
-       ON DUPLICATE KEY UPDATE title = title`,
-      { title, sortOrder: index + 1 },
-    );
+  const [[positionCount]] = await pool.query(`SELECT COUNT(*) AS count FROM positions`);
+  if (Number(positionCount.count || 0) === 0) {
+    for (const [index, title] of DEFAULT_POSITIONS.entries()) {
+      await pool.execute(
+        `INSERT INTO positions (title, sort_order)
+         VALUES (:title, :sortOrder)
+         ON DUPLICATE KEY UPDATE title = title`,
+        { title, sortOrder: index + 1 },
+      );
+    }
   }
 
   const [salaryRows] = await pool.query(`SELECT COUNT(*) AS count FROM salary_grades`);
@@ -4104,6 +4809,75 @@ async function handleLogin(req, res) {
   );
 }
 
+async function handleBootstrapStatus(req, res) {
+  const [[{ count }]] = await pool.query(`SELECT COUNT(*) AS count FROM users`);
+  return json(res, 200, { setupRequired: Number(count || 0) === 0 });
+}
+
+async function handleBootstrapSuperAdmin(req, res) {
+  const [[{ count }]] = await pool.query(`SELECT COUNT(*) AS count FROM users`);
+  if (Number(count || 0) > 0) {
+    return json(res, 409, { error: "Initial setup is already complete" });
+  }
+
+  const body = await readBody(req);
+  const username = String(body.username || "")
+    .trim()
+    .toLowerCase();
+  const password = String(body.password || "");
+  const confirmPassword = String(body.confirmPassword || "");
+  const name = String(body.name || "System Administrator").trim();
+
+  if (!/^[a-z0-9._-]{3,50}$/.test(username)) {
+    return json(res, 400, {
+      error: "Username must be 3-50 characters using letters, numbers, dot, dash, or underscore",
+    });
+  }
+  if (!name || name.length > 150) {
+    return json(res, 400, { error: "Full name is required and must be 150 characters or fewer" });
+  }
+  if (password !== confirmPassword) {
+    return json(res, 400, { error: "Passwords do not match" });
+  }
+  const passwordErrors = validatePassword(password);
+  if (passwordErrors.length) {
+    return json(res, 400, { error: `Password must contain ${passwordErrors.join(", ")}.` });
+  }
+
+  const passwordHash = hashPassword(password);
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[current]] = await connection.query(`SELECT COUNT(*) AS count FROM users FOR UPDATE`);
+    if (Number(current.count || 0) > 0) {
+      await connection.rollback();
+      return json(res, 409, { error: "Initial setup is already complete" });
+    }
+    const [result] = await connection.execute(
+      `INSERT INTO users (username, password_hash, name, role, must_change_password)
+       VALUES (:username, :passwordHash, :name, 'Super Admin', 0)`,
+      { username, passwordHash, name },
+    );
+    await recordPasswordHistory(result.insertId, passwordHash, connection);
+    await connection.commit();
+    rolePermissionCache = null;
+    await logAudit(result.insertId, "auth.bootstrap_super_admin", { username }, req);
+    return json(res, 201, { ok: true, username });
+  } catch (error) {
+    try {
+      await connection.rollback();
+    } catch {
+      // Ignore rollback errors from an already-finished transaction.
+    }
+    if (error?.code === "ER_DUP_ENTRY") {
+      return json(res, 409, { error: "Username already exists" });
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function handleLogout(req, res) {
   const user = await getSessionUser(req);
   const token = parseCookies(req)[SESSION_COOKIE];
@@ -4120,7 +4894,15 @@ async function handleProfileUpdate(req, res) {
 
   const body = await readBody(req);
   const name = String(body.name || "").trim();
-  const photoUrl = body.photoUrl ? String(body.photoUrl) : null;
+  let photoUrl;
+  try {
+    photoUrl =
+      body.photoUrl !== undefined
+        ? validateImageDataUrl(body.photoUrl, "Profile photo", MAX_PROFILE_IMAGE_BYTES) || null
+        : user.photoUrl || null;
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
 
   if (!name) return json(res, 400, { error: "Name is required" });
   if (name.length > 150) return json(res, 400, { error: "Name is too long" });
@@ -4304,23 +5086,47 @@ async function handleUpdateUser(req, res, id) {
   if (Number(id) === admin.id && isActive === 0)
     return json(res, 400, { error: "You cannot deactivate your own account" });
 
-  const [existingRows] = await pool.execute(
-    `SELECT role, is_active FROM users WHERE id = :id LIMIT 1`,
-    { id },
-  );
-  const existing = existingRows[0];
-  if (!existing) return json(res, 404, { error: "User not found" });
-  if (
-    admin.role !== "Super Admin" &&
-    (existing.role === "Super Admin" || (role === "Super Admin" && (await hasActiveSuperAdmin(id))))
-  ) {
-    return json(res, 403, { error: "Only a Super Admin can manage Super Admin accounts" });
-  }
+  const connection = await pool.getConnection();
+  let existing;
+  try {
+    await connection.beginTransaction();
+    const [existingRows] = await connection.execute(
+      `SELECT role, is_active FROM users WHERE id = :id LIMIT 1 FOR UPDATE`,
+      { id },
+    );
+    existing = existingRows[0];
+    if (!existing) {
+      await connection.rollback();
+      return json(res, 404, { error: "User not found" });
+    }
+    if (
+      admin.role !== "Super Admin" &&
+      (existing.role === "Super Admin" || role === "Super Admin")
+    ) {
+      await connection.rollback();
+      return json(res, 403, { error: "Only a Super Admin can manage Super Admin accounts" });
+    }
+    if (existing.role === "Super Admin" && (role !== "Super Admin" || isActive === 0)) {
+      const [activeSuperAdmins] = await connection.execute(
+        `SELECT id FROM users WHERE role='Super Admin' AND is_active=1 FOR UPDATE`,
+      );
+      if (activeSuperAdmins.length <= 1) {
+        await connection.rollback();
+        return json(res, 409, { error: "At least one active Super Admin must remain" });
+      }
+    }
 
-  await pool.execute(
-    `UPDATE users SET name = :name, role = :role, employee_id = :employeeId, is_active = :isActive WHERE id = :id`,
-    { id, name, role, employeeId, isActive },
-  );
+    await connection.execute(
+      `UPDATE users SET name = :name, role = :role, employee_id = :employeeId, is_active = :isActive WHERE id = :id`,
+      { id, name, role, employeeId, isActive },
+    );
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback().catch(() => {});
+    throw error;
+  } finally {
+    connection.release();
+  }
   const accessChanged = existing.role !== role || Boolean(existing.is_active) !== Boolean(isActive);
   if (accessChanged) await pool.execute(`DELETE FROM sessions WHERE user_id = :id`, { id });
   await logAudit(
@@ -4349,14 +5155,42 @@ async function handleDeleteUser(req, res, id) {
   if (Number(id) === admin.id)
     return json(res, 400, { error: "You cannot delete your own account" });
 
-  const [[existing]] = await pool.execute(`SELECT role FROM users WHERE id = :id LIMIT 1`, { id });
-  if (!existing) return json(res, 404, { error: "User not found" });
-  if (existing.role === "Super Admin" && admin.role !== "Super Admin") {
-    return json(res, 403, { error: "Only a Super Admin can delete Super Admin accounts" });
-  }
+  const connection = await pool.getConnection();
+  let existing;
+  try {
+    await connection.beginTransaction();
+    const [[row]] = await connection.execute(
+      `SELECT role, is_active FROM users WHERE id = :id LIMIT 1 FOR UPDATE`,
+      { id },
+    );
+    existing = row;
+    if (!existing) {
+      await connection.rollback();
+      return json(res, 404, { error: "User not found" });
+    }
+    if (existing.role === "Super Admin" && admin.role !== "Super Admin") {
+      await connection.rollback();
+      return json(res, 403, { error: "Only a Super Admin can delete Super Admin accounts" });
+    }
+    if (existing.role === "Super Admin" && existing.is_active) {
+      const [activeSuperAdmins] = await connection.execute(
+        `SELECT id FROM users WHERE role='Super Admin' AND is_active=1 FOR UPDATE`,
+      );
+      if (activeSuperAdmins.length <= 1) {
+        await connection.rollback();
+        return json(res, 409, { error: "At least one active Super Admin must remain" });
+      }
+    }
 
-  const [result] = await pool.execute(`DELETE FROM users WHERE id = :id`, { id });
-  if (result.affectedRows === 0) return json(res, 404, { error: "User not found" });
+    const [result] = await connection.execute(`DELETE FROM users WHERE id = :id`, { id });
+    await connection.commit();
+    if (result.affectedRows === 0) return json(res, 404, { error: "User not found" });
+  } catch (error) {
+    await connection.rollback().catch(() => {});
+    throw error;
+  } finally {
+    connection.release();
+  }
   await logAudit(admin.id, "users.delete", { userId: id }, req);
   return json(res, 200, { ok: true });
 }
@@ -4424,8 +5258,8 @@ async function handleListRolePermissions(req, res) {
 async function handleUpdateRolePermissions(req, res) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (user.role !== "Super Admin" || !(await hasPermission(user, "role_permissions.manage"))) {
-    return json(res, 403, { error: "Only a Super Admin can change role permissions" });
+  if (!(await hasPermission(user, "role_permissions.manage"))) {
+    return json(res, 403, { error: "Role permission management required" });
   }
 
   const body = await readBody(req);
@@ -4490,21 +5324,25 @@ async function handleDashboard(req, res) {
   if (!(await hasPermission(user, "dashboard.view"))) {
     return json(res, 403, { error: "Dashboard access required" });
   }
+  if (!(await hasPermission(user, "employees.read"))) {
+    return json(res, 403, { error: "Employee analytics access required" });
+  }
 
   const [[totals]] = await pool.query(`
     SELECT
       COUNT(*) AS totalEmployees,
       SUM(status = 'Permanent' OR status = 'Regular') AS regularEmployees,
-      SUM(status LIKE '%Job Order%' OR status LIKE '%COS%' OR status LIKE '%Contract%') AS jobOrderEmployees
+      SUM(status IN ('JO','COS','JO/COS','Job Order','Contract of Service','Contractual')) AS jobOrderEmployees
     FROM employees
+    WHERE is_hidden = 0
   `);
   const [[assignmentTotals]] = await pool.query(`
     SELECT
       (SELECT COUNT(*) FROM plantilla_items WHERE item_status = 'Active') AS authorizedPlantilla,
-      (SELECT COUNT(*) FROM plantilla_occupancies WHERE status = 'Active') AS filledPlantilla,
-      (SELECT COUNT(DISTINCT employee_id) FROM non_plantilla_engagements WHERE status = 'Active') AS activeNonPlantilla,
-      (SELECT COUNT(*) FROM personnel_movements WHERE status = 'Scheduled') AS scheduledAppointments,
-      (SELECT COUNT(*) FROM non_plantilla_engagements WHERE status = 'Active' AND date_to BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)) AS expiringEngagements,
+      (SELECT COUNT(*) FROM plantilla_occupancies po JOIN employees e ON e.id=po.employee_id AND e.is_hidden=0 WHERE po.status = 'Active') AS filledPlantilla,
+      (SELECT COUNT(DISTINCT ne.employee_id) FROM non_plantilla_engagements ne JOIN employees e ON e.id=ne.employee_id AND e.is_hidden=0 WHERE ne.status = 'Active') AS activeNonPlantilla,
+      (SELECT COUNT(*) FROM personnel_movements pm JOIN employees e ON e.id=pm.employee_id AND e.is_hidden=0 WHERE pm.status = 'Scheduled') AS scheduledAppointments,
+      (SELECT COUNT(*) FROM non_plantilla_engagements ne JOIN employees e ON e.id=ne.employee_id AND e.is_hidden=0 WHERE ne.status = 'Active' AND ne.date_to BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)) AS expiringEngagements,
       (SELECT COUNT(*) FROM employees e WHERE e.is_hidden = 0 AND NOT EXISTS (SELECT 1 FROM plantilla_occupancies po WHERE po.employee_id=e.id AND po.status='Active') AND NOT EXISTS (SELECT 1 FROM non_plantilla_engagements ne WHERE ne.employee_id=e.id AND ne.status='Active')) AS awaitingAssignment
   `);
 
@@ -4514,6 +5352,7 @@ async function handleDashboard(req, res) {
            SUM(emp_status <> 'Active') AS unfilled,
            COUNT(*) AS total
     FROM employees
+    WHERE is_hidden = 0
     GROUP BY department
     ORDER BY department ASC
   `);
@@ -4527,6 +5366,7 @@ async function handleDashboard(req, res) {
            SUM(LOWER(TRIM(gender)) = 'female') AS female,
            COUNT(*) AS total
     FROM employees
+    WHERE is_hidden = 0
     GROUP BY COALESCE(NULLIF(TRIM(department), ''), 'Unspecified')
     ORDER BY department ASC
   `);
@@ -4537,6 +5377,7 @@ async function handleDashboard(req, res) {
            SUM(emp_status <> 'Active') AS unfilled,
            COUNT(*) AS total
     FROM employees
+    WHERE is_hidden = 0
     GROUP BY department, position
     ORDER BY department ASC, position ASC
   `);
@@ -4547,6 +5388,7 @@ async function handleDashboard(req, res) {
            SUM(emp_status <> 'Active') AS inactive,
            COUNT(*) AS total
     FROM employees
+    WHERE is_hidden = 0
     GROUP BY status
     ORDER BY total DESC, status ASC
   `);
@@ -4562,7 +5404,7 @@ async function handleDashboard(req, res) {
       END AS ageGroup,
       COUNT(*) AS total
     FROM employees
-    WHERE birthday IS NOT NULL
+    WHERE is_hidden = 0 AND birthday IS NOT NULL
     GROUP BY ageGroup
     ORDER BY FIELD(ageGroup, 'Under 30', '30-39', '40-49', '50-59', '60+')
   `);
@@ -4571,7 +5413,7 @@ async function handleDashboard(req, res) {
     SELECT YEAR(COALESCE(date_hired, date_employed)) AS year,
            COUNT(*) AS hired
     FROM employees
-    WHERE COALESCE(date_hired, date_employed) IS NOT NULL
+    WHERE is_hidden = 0 AND COALESCE(date_hired, date_employed) IS NOT NULL
     GROUP BY year
     ORDER BY year DESC
     LIMIT 10
@@ -4654,10 +5496,12 @@ async function handleListEmployees(req, res, url) {
   const status = String(url.searchParams.get("status") || "").trim();
   const empStatus = String(url.searchParams.get("empStatus") || "").trim();
   const gender = String(url.searchParams.get("gender") || "").trim();
+  const archiveScope = String(url.searchParams.get("archive") || "active").trim();
   const page = Math.max(1, Number(url.searchParams.get("page") || 1));
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get("pageSize") || 10)));
   const offset = (page - 1) * pageSize;
-  const where = [`is_hidden = 0`];
+  const where =
+    archiveScope === "archived" ? [`is_hidden = 1`] : archiveScope === "all" ? [] : [`is_hidden = 0`];
   const params = {};
 
   if (q) {
@@ -5316,14 +6160,19 @@ async function handleListDtrEntries(req, res, url) {
   const recordSearch = String(url.searchParams.get("recordSearch") || "").trim();
   const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
   const pageSize = Math.min(200, Math.max(10, Number(url.searchParams.get("pageSize")) || 50));
+  const canReadAll = await canReadAllAttendance(user);
 
-  if (user.role === "Employee") {
-    if (!user.employeeId)
-      return json(res, 400, { error: "No employee record linked to this user" });
-    employeeId = user.employeeId;
-  }
   if (employeeId && !(await canReadEmployeeAttendance(user, employeeId))) {
     return json(res, 403, { error: "You can only view your own DTR" });
+  }
+  if (!employeeId && !canReadAll) {
+    if (await hasPermission(user, "self_service.access")) {
+      if (!user.employeeId)
+        return json(res, 400, { error: "No employee record linked to this user" });
+      employeeId = user.employeeId;
+    } else {
+      return json(res, 403, { error: "Attendance access required" });
+    }
   }
 
   const pageResult = await readAttendancePage({
@@ -7260,7 +8109,9 @@ async function prepareDtrExport(req, res) {
   if (!user) return null;
   const body = await readBody(req);
   let employeeId = String(body.employeeId || "").trim();
-  if (user.role === "Employee") employeeId = user.employeeId || "";
+  if ((await hasPermission(user, "self_service.access")) && !(await canReadAllAttendance(user))) {
+    employeeId = user.employeeId || "";
+  }
   if (!employeeId) {
     json(res, 400, { error: "Employee is required" });
     return null;
@@ -7334,18 +8185,29 @@ async function prepareDtrExport(req, res) {
   return { user, employeeId, employee, rows, bounds, payload };
 }
 
+async function authorizeDtrExportJob(user, fileName, expectedScope) {
+  const [[job]] = await pool.execute(
+    `SELECT id, scope, employee_id, file_name, created_by, created_at
+     FROM dtr_export_jobs
+     WHERE BINARY file_name = BINARY :fileName
+       AND created_at >= DATE_SUB(NOW(), INTERVAL 2 HOUR)
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    { fileName },
+  );
+  if (!job || job.scope !== expectedScope) return false;
+  if (job.scope === "Mass") return hasPermission(user, "attendance.write");
+  if (Number(job.created_by || 0) === Number(user.id || 0)) return true;
+  return canReadEmployeeAttendance(user, job.employee_id || "");
+}
+
 async function handleGenerateDtrExcel(req, res) {
   const exportData = await prepareDtrExport(req, res);
   if (!exportData) return;
-  const { user, employeeId, employee, rows, bounds, payload } = exportData;
+  const { user, employeeId, rows, bounds, payload } = exportData;
 
   await fs.mkdir(PREVIEW_DIR, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const safeName = `${employee.lastname || "employee"}-${employee.firstname || ""}`.replace(
-    /[^A-Za-z0-9_-]+/g,
-    "-",
-  );
-  const fileName = `dtr-${safeName}-${stamp}.xlsx`;
+  const fileName = `dtr-${crypto.randomUUID()}.xlsx`;
   const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
   const outputPath = path.join(PREVIEW_DIR, fileName);
   await fs.writeFile(inputPath, JSON.stringify(payload), "utf8");
@@ -7381,8 +8243,11 @@ async function handleDownloadDtrExcel(req, res, fileName) {
   const user = await requireAttendanceRead(req, res);
   if (!user) return;
   const decoded = decodeURIComponent(fileName);
-  if (!/^dtr-[A-Za-z0-9_.-]+\.xlsx$/.test(decoded)) {
+  if (!/^dtr-[0-9a-f-]{36}\.xlsx$/i.test(decoded)) {
     return json(res, 400, { error: "Invalid DTR Excel file name" });
+  }
+  if (!(await authorizeDtrExportJob(user, decoded, "Single"))) {
+    return json(res, 403, { error: "DTR Excel link is not available to this user" });
   }
   const resolved = path.resolve(PREVIEW_DIR, decoded);
   if (!resolved.startsWith(path.resolve(PREVIEW_DIR))) {
@@ -7399,16 +8264,11 @@ async function handleDownloadDtrExcel(req, res, fileName) {
 async function handleGenerateDtrPdf(req, res) {
   const exportData = await prepareDtrExport(req, res);
   if (!exportData) return;
-  const { user, employeeId, employee, rows, bounds, payload } = exportData;
+  const { user, employeeId, rows, bounds, payload } = exportData;
 
   await cleanupPreviewFiles().catch(() => {});
   await fs.mkdir(PREVIEW_DIR, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const safeName = `${employee.lastname || "employee"}-${employee.firstname || ""}`.replace(
-    /[^A-Za-z0-9_-]+/g,
-    "-",
-  );
-  const fileName = `dtr-${safeName}-${stamp}.pdf`;
+  const fileName = `dtr-${crypto.randomUUID()}.pdf`;
   const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
   const outputPath = path.join(PREVIEW_DIR, fileName);
   const workbookPath = outputPath.replace(/\.pdf$/i, ".xlsx");
@@ -7490,9 +8350,7 @@ async function handleGenerateMassDtrPdf(req, res) {
 
   await cleanupPreviewFiles().catch(() => {});
   await fs.mkdir(PREVIEW_DIR, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const safeOffice = office.replace(/[^A-Za-z0-9_-]+/g, "-");
-  const fileName = `mass-dtr-${safeOffice}-${stamp}.pdf`;
+  const fileName = `mass-dtr-${crypto.randomUUID()}.pdf`;
   const outputPath = path.join(PREVIEW_DIR, fileName);
   const individualPaths = [];
   let rowCount = 0;
@@ -7605,8 +8463,11 @@ async function handlePreviewMassDtrPdf(req, res, fileName) {
   const user = await requireAttendanceRead(req, res);
   if (!user) return;
   const decoded = decodeURIComponent(fileName);
-  if (!/^mass-dtr-[A-Za-z0-9_.-]+\.pdf$/.test(decoded)) {
+  if (!/^mass-dtr-[0-9a-f-]{36}\.pdf$/i.test(decoded)) {
     return json(res, 400, { error: "Invalid mass DTR PDF file name" });
+  }
+  if (!(await authorizeDtrExportJob(user, decoded, "Mass"))) {
+    return json(res, 403, { error: "Mass DTR PDF link is not available to this user" });
   }
   const resolved = path.resolve(PREVIEW_DIR, decoded);
   if (!resolved.startsWith(path.resolve(PREVIEW_DIR))) {
@@ -7623,8 +8484,11 @@ async function handlePreviewDtrPdf(req, res, fileName) {
   const user = await requireAttendanceRead(req, res);
   if (!user) return;
   const decoded = decodeURIComponent(fileName);
-  if (!/^dtr-[A-Za-z0-9_.-]+\.pdf$/.test(decoded)) {
+  if (!/^dtr-[0-9a-f-]{36}\.pdf$/i.test(decoded)) {
     return json(res, 400, { error: "Invalid DTR PDF file name" });
+  }
+  if (!(await authorizeDtrExportJob(user, decoded, "Single"))) {
+    return json(res, 403, { error: "DTR PDF link is not available to this user" });
   }
   const resolved = path.resolve(PREVIEW_DIR, decoded);
   if (!resolved.startsWith(path.resolve(PREVIEW_DIR))) {
@@ -7736,12 +8600,14 @@ async function readDtrCorrectionRequests({
 async function handleListDtrCorrectionRequests(req, res, url) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!(await hasPermission(user, "approvals.manage")) && user.role !== "Employee") {
+  const canApproveCorrections = await hasPermission(user, "approvals.manage");
+  const canSelfServiceAttendance = await hasPermission(user, "self_service.access");
+  if (!canApproveCorrections && !canSelfServiceAttendance) {
     return json(res, 403, { error: "DTR correction request access required" });
   }
   const requestedEmployeeId = String(url.searchParams.get("employeeId") || "").trim();
-  const employeeId = user.role === "Employee" ? user.employeeId || "" : requestedEmployeeId;
-  if (user.role === "Employee" && !employeeId) {
+  const employeeId = canApproveCorrections ? requestedEmployeeId : user.employeeId || "";
+  if (!canApproveCorrections && !employeeId) {
     return json(res, 400, { error: "No employee record linked to this account" });
   }
   const status = String(url.searchParams.get("status") || "").trim();
@@ -7769,7 +8635,7 @@ async function handleListDtrCorrectionRequests(req, res, url) {
 async function handleCreateDtrCorrectionRequest(req, res) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (user.role !== "Employee") {
+  if (!(await hasPermission(user, "self_service.access"))) {
     return json(res, 403, { error: "DTR correction request access required" });
   }
   const body = await readBody(req);
@@ -8097,7 +8963,10 @@ async function handleCancelDtrCorrectionRequest(req, res, id) {
   if (!request) return json(res, 404, { error: "DTR request not found" });
   if (request.status !== "Pending")
     return json(res, 409, { error: "Only pending requests can be cancelled" });
-  if (!(await hasPermission(user, "attendance.write")) && user.employeeId !== request.employee_id) {
+  const canCancelAny = await hasPermission(user, "attendance.write");
+  const canCancelOwn =
+    (await hasPermission(user, "self_service.access")) && user.employeeId === request.employee_id;
+  if (!canCancelAny && !canCancelOwn) {
     return json(res, 403, { error: "You can only cancel your own request" });
   }
   await pool.execute(`UPDATE dtr_correction_requests SET status = 'Cancelled' WHERE id = :id`, {
@@ -8804,7 +9673,7 @@ async function handleCreateEmployee(req, res) {
             employeeId: id,
             department: organization.name,
             position: designation,
-            employmentType: engagementType === "Casual" ? "Casual" : "JO/COS",
+            employmentType: engagementType,
             organizationId,
           },
         );
@@ -8876,6 +9745,9 @@ async function handleGetEmployee(req, res, id) {
 
   const employee = await readEmployeeById(id);
   if (!employee) return json(res, 404, { error: "Employee not found" });
+  if (employee.isHidden && !(await hasPermission(user, "employees.read"))) {
+    return json(res, 404, { error: "Employee not found" });
+  }
 
   const sections = {};
   for (const [key, config] of Object.entries(EMPLOYEE_SECTION_TABLES)) {
@@ -8944,28 +9816,33 @@ function pdsFileName(employee) {
 async function generateEmployeePdsExcelFile(id, user, req) {
   const payload = await buildEmployeePdsPayload(id, user);
   await fs.mkdir(PREVIEW_DIR, { recursive: true });
-  const fileName = pdsFileName(payload.employee);
+  const fileName = `pds-${crypto.randomUUID()}.xlsx`;
   const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
   const outputPath = path.join(PREVIEW_DIR, fileName);
 
   await fs.writeFile(inputPath, JSON.stringify(payload), "utf8");
+  let scriptOutput = "";
   try {
-    await runPython([PDS_EXCEL_SCRIPT, inputPath, outputPath, PDS_TEMPLATE_XLSX]);
+    scriptOutput = await runPython([PDS_EXCEL_SCRIPT, inputPath, outputPath, PDS_TEMPLATE_XLSX]);
   } finally {
     await fs.rm(inputPath, { force: true }).catch(() => {});
   }
 
-  await logAudit(user.id, "employees.pds_excel_generate", { employeeId: id, fileName }, req);
-  return { fileName, outputPath, payload };
+  const result = parseJson(scriptOutput, {});
+  const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+  await registerDocumentExport(fileName, id, user.id, "pds_excel");
+  await logAudit(user.id, "employees.pds_excel_generate", { employeeId: id, fileName, warnings }, req);
+  return { fileName, outputPath, payload, warnings };
 }
 
 async function handleGenerateEmployeePdsExcel(req, res, id) {
   const user = await requireUser(req, res);
   if (!user) return;
   try {
-    const { fileName } = await generateEmployeePdsExcelFile(id, user, req);
+    const { fileName, warnings } = await generateEmployeePdsExcelFile(id, user, req);
     return json(res, 200, {
       fileName,
+      warnings,
       downloadUrl: `/api/employees/pds/excel/${encodeURIComponent(fileName)}`,
     });
   } catch (error) {
@@ -8978,7 +9855,7 @@ async function handleDownloadEmployeePdsExcel(req, res, fileName) {
   const user = await requireUser(req, res);
   if (!user) return;
   const decoded = decodeURIComponent(fileName);
-  if (!/^[^<>:"/\\|?*\u0000-\u001F]+ - PDS\.xlsx$/i.test(decoded)) {
+  if (!/^pds-[0-9a-f-]{36}\.xlsx$/i.test(decoded)) {
     return json(res, 400, { error: "Invalid Personal Data Sheet file name" });
   }
   const resolved = path.resolve(PREVIEW_DIR, decoded);
@@ -8989,6 +9866,9 @@ async function handleDownloadEmployeePdsExcel(req, res, fileName) {
     await fs.access(resolved);
   } catch {
     return json(res, 404, { error: "Personal Data Sheet file not found" });
+  }
+  if (!(await authorizeDocumentExport(user, decoded))) {
+    return json(res, 403, { error: "This export is not available to your account or has expired" });
   }
   await logAudit(user.id, "employees.pds_excel_download", { fileName: decoded }, req);
   return sendFile(res, resolved, decoded, { deleteAfterSend: true });
@@ -9018,7 +9898,7 @@ async function generateEmployeeWesDocxFile(id, user, req) {
 
   const payload = await buildEmployeePdsPayload(id, user);
   await fs.mkdir(PREVIEW_DIR, { recursive: true });
-  const fileName = wesFileName(payload.employee);
+  const fileName = `wes-${crypto.randomUUID()}.docx`;
   const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
   const outputPath = path.join(PREVIEW_DIR, fileName);
 
@@ -9032,6 +9912,7 @@ async function generateEmployeeWesDocxFile(id, user, req) {
 
   const result = parseJson(scriptOutput, {});
   const rowCount = Number(result.rowCount || 0);
+  await registerDocumentExport(fileName, id, user.id, "wes_docx");
   await logAudit(
     user.id,
     "employees.wes_docx_generate",
@@ -9061,7 +9942,7 @@ async function handleDownloadEmployeeWesDocx(req, res, fileName) {
   const user = await requireUser(req, res);
   if (!user) return;
   const decoded = decodeURIComponent(fileName);
-  if (!/^[^<>:"/\\|?*\u0000-\u001F]+ - Work Experience Sheet\.docx$/i.test(decoded)) {
+  if (!/^wes-[0-9a-f-]{36}\.docx$/i.test(decoded)) {
     return json(res, 400, { error: "Invalid Work Experience Sheet file name" });
   }
   const resolved = path.resolve(PREVIEW_DIR, decoded);
@@ -9073,6 +9954,9 @@ async function handleDownloadEmployeeWesDocx(req, res, fileName) {
   } catch {
     return json(res, 404, { error: "Work Experience Sheet file not found" });
   }
+  if (!(await authorizeDocumentExport(user, decoded))) {
+    return json(res, 403, { error: "This export is not available to your account or has expired" });
+  }
   await logAudit(user.id, "employees.wes_docx_download", { fileName: decoded }, req);
   return sendFile(res, resolved, decoded, { deleteAfterSend: true });
 }
@@ -9080,7 +9964,10 @@ async function handleDownloadEmployeeWesDocx(req, res, fileName) {
 async function handleUpdateEmployee(req, res, id) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!(await canWriteEmployeeRecord(user, id))) {
+  const canManage = await canManageEmployeeRecord(user);
+  const isSelfService =
+    !canManage && user.employeeId === id && (await hasPermission(user, "self_service.access"));
+  if (!canManage && !isSelfService) {
     return json(res, 403, { error: "You can only update your own employee record" });
   }
 
@@ -9093,28 +9980,18 @@ async function handleUpdateEmployee(req, res, id) {
   } catch (error) {
     return json(res, 400, { error: error.message });
   }
-  const [[activeOccupancy]] = await pool.execute(
-    `SELECT po.id
-     FROM plantilla_occupancies po
-     WHERE po.employee_id = :id AND po.status = 'Active'
-     LIMIT 1`,
-    { id },
-  );
-  if (activeOccupancy) {
-    const plantillaOwnedFields = [
-      ["department", "department"],
-      ["position", "position"],
-      ["itemNo", "item number"],
-      ["empStatus", "employee active status"],
-    ];
-    const changed = plantillaOwnedFields
-      .filter(([field]) => String(data[field] || "") !== String(existing[field] || ""))
-      .map(([, label]) => label);
+  if (isSelfService) {
+    const existingData = employeeDbPayload(existing, existing);
+    data = selfServiceEmployeePayload(body, existing, data, existingData);
+  }
+  const assignmentOwner = await activeAssignmentOwnership(id);
+  if (assignmentOwner) {
+    const changed = assignmentOwnedFieldChanges(existing, data);
     if (changed.length) {
       return json(res, 409, {
-        error: `This employee has an active Plantilla occupancy. Change ${changed.join(
+        error: `This employee has an active ${assignmentOwner.kind}. Change ${changed.join(
           ", ",
-        )} through Employee Movements instead.`,
+        )} through assignment or movement workflows instead.`,
       });
     }
   }
@@ -9183,29 +10060,60 @@ async function handleDeleteEmployee(req, res, id) {
   const user = await requireEmployeeWrite(req, res);
   if (!user) return;
 
-  const [[employee]] = await pool.execute(`SELECT id FROM employees WHERE id = :id LIMIT 1`, {
+  const [[employee]] = await pool.execute(`SELECT id, is_hidden FROM employees WHERE id = :id LIMIT 1`, {
     id,
   });
   if (!employee) return json(res, 404, { error: "Employee not found" });
+  if (employee.is_hidden) return json(res, 200, { ok: true });
 
   await pool.execute(`UPDATE employees SET is_hidden = 1 WHERE id = :id`, { id });
-  await logAudit(user.id, "employees.hide", { employeeId: id }, req);
+  await logAudit(user.id, "employees.archive", { employeeId: id }, req);
+  return json(res, 200, { ok: true });
+}
+
+async function handleRestoreEmployee(req, res, id) {
+  const user = await requireEmployeeWrite(req, res);
+  if (!user) return;
+
+  const [[employee]] = await pool.execute(`SELECT id, is_hidden FROM employees WHERE id = :id LIMIT 1`, {
+    id,
+  });
+  if (!employee) return json(res, 404, { error: "Employee not found" });
+  if (!employee.is_hidden) return json(res, 200, { ok: true });
+
+  await pool.execute(`UPDATE employees SET is_hidden = 0 WHERE id = :id`, { id });
+  await logAudit(user.id, "employees.restore", { employeeId: id }, req);
   return json(res, 200, { ok: true });
 }
 
 async function handleCreateSectionRow(req, res, employeeId, section) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!(await canWriteEmployeeRecord(user, employeeId))) {
+  const canManage = await canManageEmployeeRecord(user);
+  const isSelfService =
+    !canManage && user.employeeId === employeeId && (await hasPermission(user, "self_service.access"));
+  if (!canManage && !isSelfService) {
     return json(res, 403, { error: "You can only update your own 201 records" });
   }
   const config = validateSection(section);
   if (!config) return json(res, 404, { error: "Section not found" });
+  if (isSelfService && !EMPLOYEE_SELF_SERVICE_SECTIONS.has(section)) {
+    return json(res, 403, { error: "This 201 section is managed by HR" });
+  }
   const employee = await readEmployeeById(employeeId);
   if (!employee) return json(res, 404, { error: "Employee not found" });
 
   const body = await readBody(req);
   const payload = body.payload && typeof body.payload === "object" ? body.payload : {};
+  let safePayload;
+  try {
+    safePayload = validateSectionPayload(
+      section,
+      isSelfService ? selfServiceSectionPayload(payload) : payload,
+    );
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
   const id = crypto.randomUUID();
 
   if (config.single) {
@@ -9214,15 +10122,15 @@ async function handleCreateSectionRow(req, res, employeeId, section) {
       { employeeId },
     );
     if (existing)
-      return handleUpdateSectionRow(req, res, employeeId, section, existing.id, payload);
+      return handleUpdateSectionRow(req, res, employeeId, section, existing.id, safePayload);
   }
 
   await pool.execute(
     `INSERT INTO \`${config.table}\` (id, employee_id, payload) VALUES (:id, :employeeId, :payload)`,
-    { id, employeeId, payload: JSON.stringify(payload) },
+    { id, employeeId, payload: JSON.stringify(safePayload) },
   );
   const sanitizedPayload = Object.fromEntries(
-    Object.entries(payload).map(([key, value]) => [key, sanitizeAuditValue(key, value)]),
+    Object.entries(safePayload).map(([key, value]) => [key, sanitizeAuditValue(key, value)]),
   );
   await logAudit(
     user.id,
@@ -9247,11 +10155,17 @@ async function handleCreateSectionRow(req, res, employeeId, section) {
 async function handleUpdateSectionRow(req, res, employeeId, section, rowId, suppliedPayload) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!(await canWriteEmployeeRecord(user, employeeId))) {
+  const canManage = await canManageEmployeeRecord(user);
+  const isSelfService =
+    !canManage && user.employeeId === employeeId && (await hasPermission(user, "self_service.access"));
+  if (!canManage && !isSelfService) {
     return json(res, 403, { error: "You can only update your own 201 records" });
   }
   const config = validateSection(section);
   if (!config) return json(res, 404, { error: "Section not found" });
+  if (isSelfService && !EMPLOYEE_SELF_SERVICE_SECTIONS.has(section)) {
+    return json(res, 403, { error: "This 201 section is managed by HR" });
+  }
   const body = suppliedPayload ? { payload: suppliedPayload } : await readBody(req);
   const payload = body.payload && typeof body.payload === "object" ? body.payload : {};
   const [[existing]] = await pool.execute(
@@ -9260,11 +10174,21 @@ async function handleUpdateSectionRow(req, res, employeeId, section, rowId, supp
   );
   if (!existing) return json(res, 404, { error: "Record not found" });
   const beforePayload = parseJson(existing.payload, {});
-  const changes = auditDiff(beforePayload, payload);
+  let safePayload = payload;
+  try {
+    safePayload = validateSectionPayload(
+      section,
+      isSelfService ? selfServiceSectionPayload(payload, beforePayload) : payload,
+      beforePayload,
+    );
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+  const changes = auditDiff(beforePayload, safePayload);
 
   const [result] = await pool.execute(
     `UPDATE \`${config.table}\` SET payload = :payload WHERE id = :rowId AND employee_id = :employeeId`,
-    { rowId, employeeId, payload: JSON.stringify(payload) },
+    { rowId, employeeId, payload: JSON.stringify(safePayload) },
   );
   if (result.affectedRows === 0) return json(res, 404, { error: "Record not found" });
   await logAudit(
@@ -9290,11 +10214,17 @@ async function handleUpdateSectionRow(req, res, employeeId, section, rowId, supp
 async function handleDeleteSectionRow(req, res, employeeId, section, rowId) {
   const user = await requireUser(req, res);
   if (!user) return;
-  if (!(await canWriteEmployeeRecord(user, employeeId))) {
+  const canManage = await canManageEmployeeRecord(user);
+  const isSelfService =
+    !canManage && user.employeeId === employeeId && (await hasPermission(user, "self_service.access"));
+  if (!canManage && !isSelfService) {
     return json(res, 403, { error: "You can only update your own 201 records" });
   }
   const config = validateSection(section);
   if (!config) return json(res, 404, { error: "Section not found" });
+  if (isSelfService && !EMPLOYEE_SELF_SERVICE_SECTIONS.has(section)) {
+    return json(res, 403, { error: "This 201 section is managed by HR" });
+  }
   const [[existing]] = await pool.execute(
     `SELECT id, payload FROM \`${config.table}\` WHERE id = :rowId AND employee_id = :employeeId LIMIT 1`,
     { rowId, employeeId },
@@ -9586,6 +10516,48 @@ async function handleListLeaveApplications(req, res, url) {
   });
 }
 
+function countWeekdaysInclusive(dateFrom, dateTo) {
+  const start = new Date(`${dateFrom}T00:00:00Z`);
+  const end = new Date(`${dateTo}T00:00:00Z`);
+  let count = 0;
+  for (const day = new Date(start); day <= end; day.setUTCDate(day.getUTCDate() + 1)) {
+    const weekday = day.getUTCDay();
+    if (weekday !== 0 && weekday !== 6) count += 1;
+  }
+  return count;
+}
+
+function addUtcDays(dateString, days) {
+  const date = new Date(`${dateString}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function todayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function resolveChargedLeaveType(leaveType) {
+  if (!Number(leaveType.is_credit_based || 0)) return null;
+  const creditGroup = String(leaveType.credit_group || leaveType.code || "").trim();
+  if (creditGroup === "VL" || creditGroup === "SL") {
+    const [[groupType]] = await pool.execute(
+      `SELECT id FROM leave_types WHERE code = :code AND is_active = 1 LIMIT 1`,
+      { code: creditGroup },
+    );
+    return Number(groupType?.id || leaveType.id);
+  }
+  return Number(leaveType.id);
+}
+
+function approvedLeaveCreditChargeDays(application, leaveType, approvedDaysWithPay) {
+  if (!Number(leaveType.is_credit_based || 0)) return 0;
+  if (approvedDaysWithPay !== null && approvedDaysWithPay !== undefined) {
+    return Number(approvedDaysWithPay || 0);
+  }
+  return Number(application.days_requested || 0);
+}
+
 async function handleCreateLeaveApplication(req, res) {
   const user = await requireUser(req, res);
   if (!user) return;
@@ -9594,7 +10566,6 @@ async function handleCreateLeaveApplication(req, res) {
   const leaveTypeId = Number(body.leaveTypeId);
   const dateFrom = String(body.dateFrom || "").trim();
   const dateTo = String(body.dateTo || "").trim();
-  const daysRequested = Number(body.daysRequested);
   const reason = String(body.reason || "").trim();
   const salarySnapshot = normalizeOptionalNumber(body.salarySnapshot);
   const detailLocationType = normalizeChoice(body.detailLocationType, [
@@ -9632,12 +10603,10 @@ async function handleCreateLeaveApplication(req, res) {
     !employeeId ||
     !Number.isInteger(leaveTypeId) ||
     !dateFrom ||
-    !dateTo ||
-    !Number.isFinite(daysRequested) ||
-    daysRequested <= 0
+    !dateTo
   ) {
     return json(res, 400, {
-      error: "Employee, leave type, dates, and days requested are required",
+      error: "Employee, leave type, and leave dates are required",
     });
   }
   if (!(await hasPermission(user, "leave.write")) && user.employeeId !== employeeId) {
@@ -9645,12 +10614,34 @@ async function handleCreateLeaveApplication(req, res) {
   }
   const employee = await readEmployeeById(employeeId);
   if (!employee) return json(res, 404, { error: "Employee not found" });
+  const parsedFrom = new Date(`${dateFrom}T00:00:00Z`);
+  const parsedTo = new Date(`${dateTo}T00:00:00Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(dateTo) ||
+    Number.isNaN(parsedFrom.getTime()) ||
+    Number.isNaN(parsedTo.getTime()) ||
+    dateTo < dateFrom
+  ) {
+    return json(res, 400, {
+      error: "Leave dates must be valid and the end date cannot precede the start date",
+    });
+  }
+  const daysRequested = countWeekdaysInclusive(dateFrom, dateTo);
+  if (daysRequested <= 0)
+    return json(res, 400, { error: "Leave dates must include at least one working day" });
   const [[leaveType]] = await pool.execute(`SELECT * FROM leave_types WHERE id = :leaveTypeId`, {
     leaveTypeId,
   });
   if (!leaveType) return json(res, 404, { error: "Leave type not found" });
 
   const leaveCode = String(leaveType.code || "");
+  const advanceNoticeDays = Number(leaveType.advance_notice_days || 0);
+  if (advanceNoticeDays > 0 && dateFrom < addUtcDays(todayDateString(), advanceNoticeDays)) {
+    return json(res, 400, {
+      error: `${leaveType.name} must be filed at least ${advanceNoticeDays} day(s) before the start date`,
+    });
+  }
   const requiresLocation = ["VL", "SPL"].includes(leaveCode);
   if (requiresLocation && !["Philippines", "Abroad"].includes(detailLocationType)) {
     return json(res, 400, { error: "Please indicate whether the leave is local or abroad" });
@@ -9685,6 +10676,29 @@ async function handleCreateLeaveApplication(req, res) {
     return json(res, 400, {
       error: `${leaveType.name} can be filed for up to ${Number(leaveType.max_days)} days`,
     });
+  }
+  const [[overlap]] = await pool.execute(
+    `SELECT id FROM leave_applications
+      WHERE employee_id=:employeeId AND status IN ('Pending','Approved')
+        AND date_from <= :dateTo AND date_to >= :dateFrom
+      LIMIT 1`,
+    { employeeId, dateFrom, dateTo },
+  );
+  if (overlap)
+    return json(res, 409, { error: "The employee already has an overlapping leave application" });
+
+  const chargedLeaveTypeId = await resolveChargedLeaveType(leaveType);
+  if (chargedLeaveTypeId && daysRequested > 0) {
+    await ensureLeaveBalance(employeeId, chargedLeaveTypeId);
+    const [[balance]] = await pool.execute(
+      `SELECT balance FROM leave_balances
+       WHERE employee_id = :employeeId AND leave_type_id = :leaveTypeId
+       LIMIT 1`,
+      { employeeId, leaveTypeId: chargedLeaveTypeId },
+    );
+    if (Number(balance?.balance || 0) < daysRequested) {
+      return json(res, 409, { error: "Insufficient leave balance for this request" });
+    }
   }
 
   const id = crypto.randomUUID();
@@ -9724,6 +10738,9 @@ async function handleCreateLeaveApplication(req, res) {
     },
   );
   await ensureLeaveBalance(employeeId, leaveTypeId);
+  if (chargedLeaveTypeId && chargedLeaveTypeId !== leaveTypeId) {
+    await ensureLeaveBalance(employeeId, chargedLeaveTypeId);
+  }
   await logAudit(user.id, "leave.application_create", { id, employeeId, leaveTypeId }, req);
   const application = await readLeaveApplication(id);
   await notifyRoles({
@@ -9753,66 +10770,156 @@ async function handleDecideLeaveApplication(req, res, id) {
   if (!["Approved", "Disapproved", "Cancelled"].includes(status)) {
     return json(res, 400, { error: "Decision must be Approved, Disapproved, or Cancelled" });
   }
-  const [[existing]] = await pool.execute(`SELECT * FROM leave_applications WHERE id = :id`, {
-    id,
-  });
-  if (!existing) return json(res, 404, { error: "Leave application not found" });
-  if (existing.status === "Approved" && status !== "Approved") {
-    await changeLeaveBalance(
-      existing.employee_id,
-      existing.leave_type_id,
-      -Number(existing.days_requested),
-      "used",
-      Number(existing.days_requested),
+  const approvedTotal = [approvedDaysWithPay, approvedDaysWithoutPay, approvedDaysOther]
+    .filter((value) => value !== null)
+    .reduce((total, value) => total + Number(value || 0), 0);
+  if (
+    [approvedDaysWithPay, approvedDaysWithoutPay, approvedDaysOther].some(
+      (value) => value !== null && value < 0,
+    )
+  ) {
+    return json(res, 400, { error: "Approved leave days cannot be negative" });
+  }
+
+  const connection = await pool.getConnection();
+  let existing;
+  try {
+    await connection.beginTransaction();
+    const [[row]] = await connection.execute(
+      `SELECT la.*, lt.is_credit_based, lt.credit_group, lt.code AS leave_code
+       FROM leave_applications la
+       INNER JOIN leave_types lt ON lt.id = la.leave_type_id
+       WHERE la.id = :id
+       FOR UPDATE`,
+      { id },
+    );
+    existing = row;
+    if (!existing) {
+      await connection.rollback();
+      return json(res, 404, { error: "Leave application not found" });
+    }
+    if (status === "Approved" && approvedTotal > Number(existing.days_requested)) {
+      await connection.rollback();
+      return json(res, 400, { error: "Approved leave days cannot exceed the requested days" });
+    }
+
+    const chargedLeaveTypeId = await resolveChargedLeaveType({
+      id: existing.leave_type_id,
+      code: existing.leave_code,
+      is_credit_based: existing.is_credit_based,
+      credit_group: existing.credit_group,
+    });
+    const nextChargeDays =
+      status === "Approved"
+        ? approvedLeaveCreditChargeDays(existing, existing, approvedDaysWithPay)
+        : 0;
+    const previousChargeDays = Number(
+      existing.approved_credit_charge_days ?? existing.days_requested ?? 0,
+    );
+    const previousChargedTypeId = Number(existing.charged_leave_type_id || existing.leave_type_id);
+
+    if (status === "Approved" && chargedLeaveTypeId && nextChargeDays > 0) {
+      const [[balance]] = await connection.execute(
+        `SELECT lb.balance FROM leave_balances lb
+          WHERE lb.employee_id=:employeeId AND lb.leave_type_id=:leaveTypeId
+          FOR UPDATE`,
+        { employeeId: existing.employee_id, leaveTypeId: chargedLeaveTypeId },
+      );
+      const availableBalance =
+        Number(balance?.balance || 0) +
+        (existing.status === "Approved" && previousChargedTypeId === chargedLeaveTypeId
+          ? previousChargeDays
+          : 0);
+      if (availableBalance < nextChargeDays) {
+        await connection.rollback();
+        return json(res, 409, { error: "Insufficient leave balance for this approval" });
+      }
+      const [[overlap]] = await connection.execute(
+        `SELECT id FROM leave_applications
+          WHERE employee_id=:employeeId AND id<>:id AND status='Approved'
+            AND date_from <= :dateTo AND date_to >= :dateFrom LIMIT 1`,
+        {
+          employeeId: existing.employee_id,
+          id,
+          dateFrom: existing.date_from,
+          dateTo: existing.date_to,
+        },
+      );
+      if (overlap) {
+        await connection.rollback();
+        return json(res, 409, { error: "Another approved leave overlaps this application" });
+      }
+    }
+
+    if (existing.status === "Approved" && previousChargeDays > 0) {
+      await changeLeaveBalance(
+        existing.employee_id,
+        previousChargedTypeId,
+        -previousChargeDays,
+        "used",
+        previousChargeDays,
+        {
+          entryType: "ApprovalReversal",
+          sourceType: "leave_application",
+          sourceId: id,
+          description: `Reversed approved leave before status changed to ${status}`,
+          createdBy: user.id,
+        },
+        connection,
+      );
+    }
+    if (status === "Approved" && chargedLeaveTypeId && nextChargeDays > 0) {
+      await changeLeaveBalance(
+        existing.employee_id,
+        chargedLeaveTypeId,
+        nextChargeDays,
+        "used",
+        -nextChargeDays,
+        {
+          entryType: "LeaveApproval",
+          sourceType: "leave_application",
+          sourceId: id,
+          description: "Approved leave application",
+          createdBy: user.id,
+        },
+        connection,
+      );
+    }
+    await connection.execute(
+      `UPDATE leave_applications
+       SET status = :status,
+           approver_id = :approverId,
+           decision_remarks = :remarks,
+           approved_days_with_pay = :approvedDaysWithPay,
+           approved_days_without_pay = :approvedDaysWithoutPay,
+           approved_days_other = :approvedDaysOther,
+           approved_days_other_text = :approvedDaysOtherText,
+           final_disapproval_reason = :finalDisapprovalReason,
+           approved_credit_charge_days = :approvedCreditChargeDays,
+           charged_leave_type_id = :chargedLeaveTypeId,
+           decided_at = NOW()
+       WHERE id = :id`,
       {
-        entryType: "ApprovalReversal",
-        sourceType: "leave_application",
-        sourceId: id,
-        description: `Reversed approved leave because status changed to ${status}`,
-        createdBy: user.id,
+        id,
+        status,
+        approverId: user.id,
+        remarks,
+        approvedDaysWithPay,
+        approvedDaysWithoutPay,
+        approvedDaysOther,
+        approvedDaysOtherText,
+        finalDisapprovalReason,
+        approvedCreditChargeDays: status === "Approved" ? nextChargeDays : null,
+        chargedLeaveTypeId: status === "Approved" ? chargedLeaveTypeId : null,
       },
     );
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
   }
-  if (existing.status !== "Approved" && status === "Approved") {
-    await changeLeaveBalance(
-      existing.employee_id,
-      existing.leave_type_id,
-      Number(existing.days_requested),
-      "used",
-      -Number(existing.days_requested),
-      {
-        entryType: "LeaveApproval",
-        sourceType: "leave_application",
-        sourceId: id,
-        description: "Approved leave application",
-        createdBy: user.id,
-      },
-    );
-  }
-  await pool.execute(
-    `UPDATE leave_applications
-     SET status = :status,
-         approver_id = :approverId,
-         decision_remarks = :remarks,
-         approved_days_with_pay = :approvedDaysWithPay,
-         approved_days_without_pay = :approvedDaysWithoutPay,
-         approved_days_other = :approvedDaysOther,
-         approved_days_other_text = :approvedDaysOtherText,
-         final_disapproval_reason = :finalDisapprovalReason,
-         decided_at = NOW()
-     WHERE id = :id`,
-    {
-      id,
-      status,
-      approverId: user.id,
-      remarks,
-      approvedDaysWithPay,
-      approvedDaysWithoutPay,
-      approvedDaysOther,
-      approvedDaysOtherText,
-      finalDisapprovalReason,
-    },
-  );
   await logAudit(user.id, "leave.application_decide", { id, status }, req);
   const application = await readLeaveApplication(id);
   if (application) {
@@ -9838,12 +10945,19 @@ async function handleDeleteLeaveApplication(req, res, id) {
   });
   if (!existing) return json(res, 404, { error: "Leave application not found" });
   if (existing.status === "Approved") {
+    const chargeDays =
+      existing.approved_credit_charge_days === null ||
+      existing.approved_credit_charge_days === undefined
+        ? Number(existing.days_requested || 0)
+        : Number(existing.approved_credit_charge_days || 0);
+    const chargedLeaveTypeId = Number(existing.charged_leave_type_id || existing.leave_type_id);
+    if (chargeDays > 0) {
     await changeLeaveBalance(
       existing.employee_id,
-      existing.leave_type_id,
-      -Number(existing.days_requested),
+      chargedLeaveTypeId,
+      -chargeDays,
       "used",
-      Number(existing.days_requested),
+      chargeDays,
       {
         entryType: "DeleteReversal",
         sourceType: "leave_application",
@@ -9852,10 +10966,41 @@ async function handleDeleteLeaveApplication(req, res, id) {
         createdBy: user.id,
       },
     );
+    }
   }
   await pool.execute(`DELETE FROM leave_applications WHERE id = :id`, { id });
   await logAudit(user.id, "leave.application_delete", { id }, req);
   return json(res, 200, { ok: true });
+}
+
+async function handleCancelLeaveApplication(req, res, id) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  const [[existing]] = await pool.execute(
+    `SELECT id, employee_id, status FROM leave_applications WHERE id = :id LIMIT 1`,
+    { id },
+  );
+  if (!existing) return json(res, 404, { error: "Leave application not found" });
+  if (existing.status !== "Pending") {
+    return json(res, 409, { error: "Only pending leave applications can be withdrawn" });
+  }
+  const canCancelAny = await hasPermission(user, "leave.write");
+  const canCancelOwn =
+    (await hasPermission(user, "self_service.access")) && user.employeeId === existing.employee_id;
+  if (!canCancelAny && !canCancelOwn) {
+    return json(res, 403, { error: "You can only withdraw your own pending leave request" });
+  }
+  await pool.execute(
+    `UPDATE leave_applications
+     SET status = 'Cancelled',
+         decision_remarks = :remarks,
+         decided_at = NOW()
+     WHERE id = :id AND status = 'Pending'`,
+    { id, remarks: "Request withdrawn by employee" },
+  );
+  await logAudit(user.id, "leave.application_cancel", { id, employeeId: existing.employee_id }, req);
+  const application = await readLeaveApplication(id);
+  return json(res, 200, { application });
 }
 
 async function handleGenerateLeaveForm6Excel(req, res, id) {
@@ -9929,12 +11074,7 @@ async function buildLeaveForm6Payload(id, user) {
 async function generateLeaveForm6ExcelFile(id, user, req) {
   const payload = await buildLeaveForm6Payload(id, user);
   await fs.mkdir(PREVIEW_DIR, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const safeName = `${payload.application.employeeName || "employee"}`.replace(
-    /[^A-Za-z0-9_-]+/g,
-    "-",
-  );
-  const fileName = `leave-form6-${safeName}-${stamp}.xlsx`;
+  const fileName = `leave-form6-${crypto.randomUUID()}.xlsx`;
   const inputPath = path.join(PREVIEW_DIR, `${fileName}.json`);
   const outputPath = path.join(PREVIEW_DIR, fileName);
 
@@ -9945,15 +11085,26 @@ async function generateLeaveForm6ExcelFile(id, user, req) {
     await fs.rm(inputPath, { force: true }).catch(() => {});
   }
 
+  await registerDocumentExport(
+    fileName,
+    payload.application.employeeId,
+    user.id,
+    "leave_form6_excel",
+  );
   await logAudit(user.id, "leave.form6_excel_generate", { id, fileName }, req);
   return { fileName, outputPath, payload };
 }
 
 async function convertSpreadsheetToPdf(inputPath) {
-  await fs.access(LIBREOFFICE_EXE);
+  const libreOfficeExe = await resolveLibreOfficeExe();
+  if (!libreOfficeExe) {
+    throw new Error(
+      "LibreOffice was not found. Install LibreOffice or set HRIS_LIBREOFFICE_EXE in server/.env.local to enable PDF exports.",
+    );
+  }
   await fs.mkdir(LIBREOFFICE_PROFILE_DIR, { recursive: true });
   const profileUri = `file:///${LIBREOFFICE_PROFILE_DIR.replace(/\\/g, "/")}`;
-  await runProcess(LIBREOFFICE_EXE, [
+  await runProcess(libreOfficeExe, [
     "--headless",
     "--nologo",
     "--nofirststartwizard",
@@ -9968,6 +11119,62 @@ async function convertSpreadsheetToPdf(inputPath) {
   const pdfPath = inputPath.replace(/\.xlsx$/i, ".pdf");
   await fs.access(pdfPath);
   return pdfPath;
+}
+
+async function resolveLibreOfficeExe() {
+  for (const candidate of LIBREOFFICE_CANDIDATES) {
+    if (!candidate) continue;
+    if (candidate.includes("\\") || candidate.includes("/")) {
+      try {
+        await fs.access(candidate);
+        return candidate;
+      } catch {
+        continue;
+      }
+    }
+    try {
+      await runProcess(candidate, ["--version"], 5000);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+async function exportDependencyStatus() {
+  const checks = await Promise.all([
+    fs.access(PDS_TEMPLATE_XLSX).then(
+      () => ({ ok: true }),
+      (error) => ({ ok: false, error: error.message }),
+    ),
+    fs.access(WES_TEMPLATE_DOCX).then(
+      () => ({ ok: true }),
+      (error) => ({ ok: false, error: error.message }),
+    ),
+    fs.access(DTR_TEMPLATE_XLSX).then(
+      () => ({ ok: true }),
+      (error) => ({ ok: false, error: error.message }),
+    ),
+    fs.access(LEAVE_FORM6_TEMPLATE_XLSX).then(
+      () => ({ ok: true }),
+      (error) => ({ ok: false, error: error.message }),
+    ),
+  ]);
+  const libreOfficeExe = await resolveLibreOfficeExe();
+  return {
+    libreOffice: {
+      ok: Boolean(libreOfficeExe),
+      executable: libreOfficeExe || "",
+      configured: process.env.HRIS_LIBREOFFICE_EXE || "",
+    },
+    templates: {
+      pds: checks[0],
+      wes: checks[1],
+      dtr: checks[2],
+      leaveForm6: checks[3],
+    },
+  };
 }
 
 async function runProcess(executable, args, timeoutMs = 60000) {
@@ -10011,6 +11218,12 @@ async function handleGenerateLeaveForm6Pdf(req, res, id) {
     const pdfPath = await convertSpreadsheetToPdf(outputPath);
     await fs.rm(outputPath, { force: true }).catch(() => {});
     const pdfFileName = fileName.replace(/\.xlsx$/i, ".pdf");
+    await registerDocumentExport(
+      pdfFileName,
+      (await readLeaveApplication(id))?.employeeId,
+      user.id,
+      "leave_form6_pdf",
+    );
     await logAudit(user.id, "leave.form6_pdf_generate", { id, fileName: pdfFileName }, req);
     return json(res, 200, {
       fileName: pdfFileName,
@@ -10026,7 +11239,7 @@ async function handleDownloadLeaveForm6Excel(req, res, fileName) {
   const user = await requireUser(req, res);
   if (!user) return;
   const decoded = decodeURIComponent(fileName);
-  if (!/^leave-form6-[A-Za-z0-9_.-]+\.xlsx$/.test(decoded)) {
+  if (!/^leave-form6-[0-9a-f-]{36}\.xlsx$/.test(decoded)) {
     return json(res, 400, { error: "Invalid leave form file name" });
   }
   const resolved = path.resolve(PREVIEW_DIR, decoded);
@@ -10038,6 +11251,11 @@ async function handleDownloadLeaveForm6Excel(req, res, fileName) {
   } catch {
     return json(res, 404, { error: "Leave form file not found" });
   }
+  if (!(await authorizeDocumentExport(user, decoded))) {
+    return json(res, 403, {
+      error: "This leave export is not available to your account or has expired",
+    });
+  }
   await logAudit(user.id, "leave.form6_excel_download", { fileName: decoded }, req);
   return sendFile(res, resolved, decoded, { deleteAfterSend: true });
 }
@@ -10046,7 +11264,7 @@ async function handlePreviewLeaveForm6Pdf(req, res, fileName) {
   const user = await requireUser(req, res);
   if (!user) return;
   const decoded = decodeURIComponent(fileName);
-  if (!/^leave-form6-[A-Za-z0-9_.-]+\.pdf$/.test(decoded)) {
+  if (!/^leave-form6-[0-9a-f-]{36}\.pdf$/.test(decoded)) {
     return json(res, 400, { error: "Invalid leave form PDF file name" });
   }
   const resolved = path.resolve(PREVIEW_DIR, decoded);
@@ -10057,6 +11275,11 @@ async function handlePreviewLeaveForm6Pdf(req, res, fileName) {
     await fs.access(resolved);
   } catch {
     return json(res, 404, { error: "Leave form PDF not found" });
+  }
+  if (!(await authorizeDocumentExport(user, decoded))) {
+    return json(res, 403, {
+      error: "This leave export is not available to your account or has expired",
+    });
   }
   await logAudit(user.id, "leave.form6_pdf_preview", { fileName: decoded }, req);
   return sendInlinePdfAndDelete(res, resolved, decoded);
@@ -10139,14 +11362,43 @@ async function handleUpdateAgency(req, res) {
   const admin = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!admin) return;
 
-  const body = await readBody(req);
-  const agency = {
-    name: String(body.name || "").trim(),
-    tagline: String(body.tagline || "").trim(),
-    logoUrl: body.logoUrl ? String(body.logoUrl) : "",
-    iconUrl: body.iconUrl ? String(body.iconUrl) : "",
-    bannerUrl: body.bannerUrl ? String(body.bannerUrl) : "",
-  };
+  const body = await readBody(req, Infinity);
+  let agency;
+  try {
+    agency = {
+      name: String(body.name || "").trim(),
+      tagline: String(body.tagline || "").trim(),
+      logoUrl:
+        body.logoUrl !== undefined
+          ? validateImageDataUrl(
+              body.logoUrl,
+              "Agency logo",
+              MAX_BRANDING_IMAGE_BYTES,
+              MAX_LOGO_IMAGE_DIMENSIONS,
+            )
+          : "",
+      iconUrl:
+        body.iconUrl !== undefined
+          ? validateImageDataUrl(
+              body.iconUrl,
+              "System icon",
+              MAX_PROFILE_IMAGE_BYTES,
+              MAX_ICON_IMAGE_DIMENSIONS,
+            )
+          : "",
+      bannerUrl:
+        body.bannerUrl !== undefined
+          ? validateImageDataUrl(
+              body.bannerUrl,
+              "Cover photo",
+              null,
+              null,
+            )
+          : "",
+    };
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
 
   if (!agency.name) return json(res, 400, { error: "Agency name is required" });
   await pool.execute(
@@ -10155,6 +11407,90 @@ async function handleUpdateAgency(req, res) {
   );
   await logAudit(admin.id, "config.agency_update", null, req);
   return json(res, 200, { agency });
+}
+
+async function handleGetDatabaseConfig(req, res) {
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
+  if (!user) return;
+  const env = await readServerEnvLocal();
+  return json(res, 200, {
+    database: publicDatabaseConfig(currentDatabaseConfig(), env.values),
+  });
+}
+
+async function handleTestDatabaseConfig(req, res) {
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
+  if (!user) return;
+
+  const env = await readServerEnvLocal();
+  let config;
+  try {
+    config = normalizeDatabaseConfig(
+      await readBody(req),
+      env.values.HRIS_DB_PASSWORD ?? DB_PASSWORD,
+    );
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+
+  try {
+    const result = await testDatabaseConfig(config);
+    if (!result.ok) return json(res, 422, result);
+    return json(res, 200, { ok: true });
+  } catch (error) {
+    return json(res, 422, {
+      ok: false,
+      error: error?.message || "Unable to connect to the database",
+      code: error?.code || "",
+    });
+  }
+}
+
+async function handleUpdateDatabaseConfig(req, res) {
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
+  if (!user) return;
+
+  const env = await readServerEnvLocal();
+  let config;
+  try {
+    config = normalizeDatabaseConfig(
+      await readBody(req),
+      env.values.HRIS_DB_PASSWORD ?? DB_PASSWORD,
+    );
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+
+  try {
+    const result = await testDatabaseConfig(config, { createDatabase: true });
+    if (!result.ok) return json(res, 422, result);
+  } catch (error) {
+    return json(res, 422, {
+      ok: false,
+      error: error?.message || "Unable to connect to the database",
+      code: error?.code || "",
+    });
+  }
+
+  await writeDatabaseConfig(config);
+  await logAudit(
+    user.id,
+    "config.database_update",
+    {
+      host: config.host,
+      port: config.port,
+      user: config.user,
+      database: config.database,
+      passwordChanged: config.password !== (env.values.HRIS_DB_PASSWORD ?? DB_PASSWORD),
+    },
+    req,
+  );
+  return json(res, 200, {
+    database: {
+      ...publicDatabaseConfig(config, { HRIS_DB_HOST: config.host }),
+      restartRequired: true,
+    },
+  });
 }
 
 async function handleCreateDepartment(req, res) {
@@ -10171,7 +11507,7 @@ async function handleDeleteDepartment(req, res, id) {
   if (!user) return;
   return json(res, 409, {
     error:
-      "Legacy departments cannot be deleted during reconciliation. Keep the value as migration context and use official organizational references for new assignments.",
+      "Legacy departments are read-only. Use official organizational references for new assignments.",
   });
 }
 
@@ -11004,14 +12340,50 @@ async function handleDeleteReferenceValue(req, res, category, id) {
 async function handleListAuditLogs(req, res) {
   const admin = await requirePermission(req, res, "admin.audit", "Audit log access required");
   if (!admin) return;
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
+  const pageSize = Math.min(200, Math.max(10, Number(url.searchParams.get("pageSize")) || 50));
+  const offset = (page - 1) * pageSize;
+  const q = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+  const action = String(url.searchParams.get("action") || "").trim().slice(0, 100);
+  const from = normalizeDate(url.searchParams.get("from"));
+  const to = normalizeDate(url.searchParams.get("to"));
+  const where = [];
+  const params = { limit: pageSize, offset };
+  if (q) {
+    where.push(`(al.action LIKE :q OR u.username LIKE :q OR u.name LIKE :q)`);
+    params.q = `%${q}%`;
+  }
+  if (action) {
+    where.push(`al.action LIKE :action`);
+    params.action = `%${action}%`;
+  }
+  if (from) {
+    where.push(`al.created_at >= :from`);
+    params.from = `${from} 00:00:00`;
+  }
+  if (to) {
+    where.push(`al.created_at <= :to`);
+    params.to = `${to} 23:59:59`;
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-  const [rows] = await pool.query(
+  const [[countRow]] = await pool.execute(
+    `SELECT COUNT(*) AS total
+     FROM audit_logs al
+     LEFT JOIN users u ON u.id = al.user_id
+     ${whereSql}`,
+    params,
+  );
+  const [rows] = await pool.execute(
     `SELECT al.id, al.action, al.details, al.ip_address, al.created_at,
             u.username, u.name, u.role
      FROM audit_logs al
      LEFT JOIN users u ON u.id = al.user_id
+     ${whereSql}
      ORDER BY al.created_at DESC, al.id DESC
-     LIMIT 200`,
+     LIMIT :limit OFFSET :offset`,
+    params,
   );
 
   const logs = rows.map((row) => ({
@@ -11023,22 +12395,99 @@ async function handleListAuditLogs(req, res) {
     user: row.username ? { username: row.username, name: row.name, role: row.role } : null,
   }));
 
-  return json(res, 200, { logs });
+  return json(res, 200, {
+    logs,
+    pagination: {
+      total: Number(countRow.total || 0),
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(Number(countRow.total || 0) / pageSize)),
+    },
+  });
 }
 
 async function handleListErrorLogs(req, res) {
   const admin = await requirePermission(req, res, "admin.errors", "Error log access required");
   if (!admin) return;
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
+  const pageSize = Math.min(200, Math.max(10, Number(url.searchParams.get("pageSize")) || 50));
+  const offset = (page - 1) * pageSize;
+  const importPage = Math.max(1, Number(url.searchParams.get("importPage")) || 1);
+  const importPageSize = Math.min(
+    200,
+    Math.max(10, Number(url.searchParams.get("importPageSize")) || pageSize),
+  );
+  const importOffset = (importPage - 1) * importPageSize;
+  const q = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+  const from = normalizeDate(url.searchParams.get("from"));
+  const to = normalizeDate(url.searchParams.get("to"));
+  const importLevel = String(url.searchParams.get("importLevel") || "").trim();
+  const errorWhere = [];
+  const errorParams = { limit: pageSize, offset };
+  if (q) {
+    errorWhere.push(
+      `(el.path LIKE :q OR el.message LIKE :q OR u.username LIKE :q OR u.name LIKE :q)`,
+    );
+    errorParams.q = `%${q}%`;
+  }
+  if (from) {
+    errorWhere.push(`el.created_at >= :from`);
+    errorParams.from = `${from} 00:00:00`;
+  }
+  if (to) {
+    errorWhere.push(`el.created_at <= :to`);
+    errorParams.to = `${to} 23:59:59`;
+  }
+  const errorWhereSql = errorWhere.length ? `WHERE ${errorWhere.join(" AND ")}` : "";
 
-  const [rows] = await pool.query(
+  const [[errorCountRow]] = await pool.execute(
+    `SELECT COUNT(*) AS total
+     FROM error_logs el
+     LEFT JOIN users u ON u.id = el.user_id
+     ${errorWhereSql}`,
+    errorParams,
+  );
+  const [rows] = await pool.execute(
     `SELECT el.id, el.method, el.path, el.message, el.stack, el.ip_address, el.user_agent,
             el.created_at, u.username, u.name, u.role
      FROM error_logs el
      LEFT JOIN users u ON u.id = el.user_id
+     ${errorWhereSql}
      ORDER BY el.created_at DESC, el.id DESC
-     LIMIT 200`,
+     LIMIT :limit OFFSET :offset`,
+    errorParams,
   );
-  const [importLogRows] = await pool.query(
+  const importWhere = [];
+  const importParams = { limit: importPageSize, offset: importOffset };
+  if (q) {
+    importWhere.push(
+      `(ail.message LIKE :q OR ail.employee_no LIKE :q OR ai.file_name LIKE :q OR u.username LIKE :q OR u.name LIKE :q)`,
+    );
+    importParams.q = `%${q}%`;
+  }
+  if (from) {
+    importWhere.push(`ail.created_at >= :from`);
+    importParams.from = `${from} 00:00:00`;
+  }
+  if (to) {
+    importWhere.push(`ail.created_at <= :to`);
+    importParams.to = `${to} 23:59:59`;
+  }
+  if (["Info", "Success", "Warning", "Error"].includes(importLevel)) {
+    importWhere.push(`ail.level = :importLevel`);
+    importParams.importLevel = importLevel;
+  }
+  const importWhereSql = importWhere.length ? `WHERE ${importWhere.join(" AND ")}` : "";
+  const [[importCountRow]] = await pool.execute(
+    `SELECT COUNT(*) AS total
+     FROM attendance_import_logs ail
+     LEFT JOIN attendance_imports ai ON BINARY ai.id = BINARY ail.import_id
+     LEFT JOIN users u ON u.id = ai.imported_by
+     ${importWhereSql}`,
+    importParams,
+  );
+  const [importLogRows] = await pool.execute(
     `SELECT ail.id, ail.import_id, ail.level, ail.source_row_number, ail.employee_no,
             ail.message, ail.details, ail.created_at,
             ai.source, ai.file_name, ai.period_from, ai.period_to, ai.row_count,
@@ -11046,11 +12495,19 @@ async function handleListErrorLogs(req, res) {
      FROM attendance_import_logs ail
      LEFT JOIN attendance_imports ai ON BINARY ai.id = BINARY ail.import_id
      LEFT JOIN users u ON u.id = ai.imported_by
+     ${importWhereSql}
      ORDER BY ail.created_at DESC, ail.id DESC
-     LIMIT 200`,
+     LIMIT :limit OFFSET :offset`,
+    importParams,
   );
 
   return json(res, 200, {
+    pagination: {
+      total: Number(errorCountRow.total || 0),
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(Number(errorCountRow.total || 0) / pageSize)),
+    },
     logs: rows.map((row) => ({
       id: row.id,
       method: row.method || "",
@@ -11062,6 +12519,12 @@ async function handleListErrorLogs(req, res) {
       createdAt: row.created_at,
       user: row.username ? { username: row.username, name: row.name, role: row.role } : null,
     })),
+    importPagination: {
+      total: Number(importCountRow.total || 0),
+      page: importPage,
+      pageSize: importPageSize,
+      totalPages: Math.max(1, Math.ceil(Number(importCountRow.total || 0) / importPageSize)),
+    },
     importLogs: importLogRows.map((row) => ({
       id: String(row.id),
       importId: row.import_id || "",
@@ -11084,119 +12547,6 @@ async function handleListErrorLogs(req, res) {
       user: row.username ? { username: row.username, name: row.name, role: row.role } : null,
     })),
   });
-}
-
-async function handleListBackups(req, res) {
-  const admin = await requirePermission(req, res, "admin.backups", "Backup access required");
-  if (!admin) return;
-
-  await fs.mkdir(BACKUP_DIR, { recursive: true });
-  const entries = await fs.readdir(BACKUP_DIR, { withFileTypes: true });
-  const backups = await Promise.all(
-    entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-      .map(async (entry) => {
-        const filePath = path.join(BACKUP_DIR, entry.name);
-        const stat = await fs.stat(filePath);
-        return {
-          fileName: entry.name,
-          size: stat.size,
-          createdAt: stat.birthtime,
-          modifiedAt: stat.mtime,
-        };
-      }),
-  );
-
-  backups.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
-  return json(res, 200, { backups });
-}
-
-async function handleCreateBackup(req, res) {
-  const admin = await requirePermission(req, res, "admin.backups", "Backup access required");
-  if (!admin) return;
-
-  await fs.mkdir(BACKUP_DIR, { recursive: true });
-  const tables = [
-    "users",
-    "role_permissions",
-    "audit_logs",
-    "error_logs",
-    "agency_settings",
-    "departments",
-    "positions",
-    "salary_grades",
-    "hr_reference_values",
-    "employees",
-    "plantilla_items",
-    "plantilla_occupancies",
-    "plantilla_item_history",
-    "personnel_movements",
-    "personnel_movement_events",
-    "non_plantilla_engagements",
-    "temporary_assignments",
-    "plantilla_reconciliations",
-    "service_record_entries",
-    ...Object.values(EMPLOYEE_SECTION_TABLES).map((config) => config.table),
-    "leave_types",
-    "leave_balances",
-    "leave_applications",
-    "leave_adjustments",
-    "leave_credit_ledger",
-  ];
-  const data = {};
-
-  for (const table of tables) {
-    const [rows] = await pool.query(`SELECT * FROM \`${table}\``);
-    data[table] = rows;
-  }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const fileName = `hris_db_backup_${stamp}.json`;
-  const backup = {
-    schema: DB_NAME,
-    createdAt: new Date().toISOString(),
-    createdBy: { id: admin.id, username: admin.username, name: admin.name },
-    tables,
-    data,
-  };
-
-  const filePath = path.join(BACKUP_DIR, fileName);
-  await fs.writeFile(filePath, JSON.stringify(backup, null, 2), "utf8");
-  const stat = await fs.stat(filePath);
-  await logAudit(admin.id, "backup.create", { fileName, size: stat.size }, req);
-
-  return json(res, 201, {
-    backup: {
-      fileName,
-      size: stat.size,
-      createdAt: stat.birthtime,
-      modifiedAt: stat.mtime,
-    },
-  });
-}
-
-async function handleDownloadBackup(req, res, fileName) {
-  const admin = await requirePermission(req, res, "admin.backups", "Backup access required");
-  if (!admin) return;
-  const decoded = decodeURIComponent(fileName);
-  if (!/^hris_db_backup_[A-Za-z0-9_.-]+\.json$/.test(decoded)) {
-    return json(res, 400, { error: "Invalid backup file name" });
-  }
-
-  const filePath = path.join(BACKUP_DIR, decoded);
-  const resolved = path.resolve(filePath);
-  if (!resolved.startsWith(path.resolve(BACKUP_DIR))) {
-    return json(res, 400, { error: "Invalid backup path" });
-  }
-
-  try {
-    await fs.access(resolved);
-  } catch {
-    return json(res, 404, { error: "Backup not found" });
-  }
-
-  await logAudit(admin.id, "backup.download", { fileName: decoded }, req);
-  return sendFile(res, resolved, decoded);
 }
 
 async function logServerError(req, error) {
@@ -11235,12 +12585,20 @@ let assignmentHandlers;
 
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
+  if (
+    !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
+    url.pathname !== "/iclock/cdata" &&
+    url.pathname !== "/iclock/getrequest" &&
+    !validateMutationOrigin(req, res)
+  ) {
+    return;
+  }
   if (req.method === "GET" && url.pathname === "/api/realtime/events")
     return handleRealtimeEvents(req, res);
   const userMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)$/);
   const resetPasswordMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/reset-password$/);
   const unlockUserMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/unlock$/);
-  const backupDownloadMatch = url.pathname.match(/^\/api\/admin\/backups\/([^/]+)\/download$/);
+  const employeeRestoreMatch = url.pathname.match(/^\/api\/employees\/([A-Za-z0-9-]+)\/restore$/);
   const employeeMatch = url.pathname.match(/^\/api\/employees\/([A-Za-z0-9-]+)$/);
   const employeePdsExcelGenerateMatch = url.pathname.match(
     /^\/api\/employees\/([A-Za-z0-9-]+)\/pds\/excel$/,
@@ -11264,6 +12622,9 @@ async function route(req, res) {
   );
   const leaveTypeMatch = url.pathname.match(/^\/api\/leave\/types\/(\d+)$/);
   const leaveApplicationMatch = url.pathname.match(/^\/api\/leave\/applications\/([A-Za-z0-9-]+)$/);
+  const leaveCancelMatch = url.pathname.match(
+    /^\/api\/leave\/applications\/([A-Za-z0-9-]+)\/cancel$/,
+  );
   const leaveDecisionMatch = url.pathname.match(
     /^\/api\/leave\/applications\/([A-Za-z0-9-]+)\/decision$/,
   );
@@ -11339,7 +12700,11 @@ async function route(req, res) {
   if (isAdmsIclock) return handleAdmsIclock(req, res, url);
 
   if (req.method === "GET" && url.pathname === "/api/health") {
-    return json(res, 200, { ok: true, database: DB_NAME });
+    return json(res, 200, {
+      ok: true,
+      database: DB_NAME,
+      exports: await exportDependencyStatus(),
+    });
   }
   if (req.method === "GET" && url.pathname === "/api/dashboard") return handleDashboard(req, res);
   if (req.method === "GET" && url.pathname === "/api/assignments/summary")
@@ -11352,6 +12717,10 @@ async function route(req, res) {
     return reportHandlers.file(req, res, reportFileMatch[1]);
 
   if (req.method === "POST" && url.pathname === "/api/auth/login") return handleLogin(req, res);
+  if (req.method === "GET" && url.pathname === "/api/auth/bootstrap-status")
+    return handleBootstrapStatus(req, res);
+  if (req.method === "POST" && url.pathname === "/api/auth/bootstrap-super-admin")
+    return handleBootstrapSuperAdmin(req, res);
   if (req.method === "GET" && url.pathname === "/api/public/agency")
     return handlePublicAgencySettings(req, res);
   if (req.method === "POST" && url.pathname === "/api/auth/logout") return handleLogout(req, res);
@@ -11389,12 +12758,6 @@ async function route(req, res) {
     return handleListAuditLogs(req, res);
   if (req.method === "GET" && url.pathname === "/api/admin/error-logs")
     return handleListErrorLogs(req, res);
-  if (req.method === "GET" && url.pathname === "/api/admin/backups")
-    return handleListBackups(req, res);
-  if (req.method === "POST" && url.pathname === "/api/admin/backups")
-    return handleCreateBackup(req, res);
-  if (req.method === "GET" && backupDownloadMatch)
-    return handleDownloadBackup(req, res, backupDownloadMatch[1]);
 
   if (req.method === "GET" && url.pathname === "/api/admin/employee-account-candidates")
     return handleListEmployeeAccountCandidates(req, res);
@@ -11419,6 +12782,8 @@ async function route(req, res) {
     return handleUpdateEmployee(req, res, employeeMatch[1]);
   if (req.method === "DELETE" && employeeMatch)
     return handleDeleteEmployee(req, res, employeeMatch[1]);
+  if (req.method === "POST" && employeeRestoreMatch)
+    return handleRestoreEmployee(req, res, employeeRestoreMatch[1]);
   if (req.method === "POST" && employeeSectionMatch)
     return handleCreateSectionRow(req, res, employeeSectionMatch[1], employeeSectionMatch[2]);
   if (req.method === "PATCH" && employeeSectionRowMatch) {
@@ -11456,6 +12821,8 @@ async function route(req, res) {
     return handleCreateLeaveApplication(req, res);
   if (req.method === "POST" && leaveDecisionMatch)
     return handleDecideLeaveApplication(req, res, leaveDecisionMatch[1]);
+  if (req.method === "POST" && leaveCancelMatch)
+    return handleCancelLeaveApplication(req, res, leaveCancelMatch[1]);
   if (req.method === "POST" && leaveForm6ExcelGenerateMatch)
     return handleGenerateLeaveForm6Excel(req, res, leaveForm6ExcelGenerateMatch[1]);
   if (req.method === "GET" && leaveForm6ExcelDownloadMatch)
@@ -11593,12 +12960,6 @@ async function route(req, res) {
     return plantillaHandlers.remove(req, res, plantillaItemMatch[1]);
   if (req.method === "GET" && plantillaHistoryMatch)
     return plantillaHandlers.history(req, res, plantillaHistoryMatch[1]);
-  if (req.method === "GET" && url.pathname === "/api/plantilla/reconciliation")
-    return assignmentHandlers.reconciliationList(req, res, url);
-  if (req.method === "POST" && url.pathname === "/api/plantilla/reconciliation")
-    return assignmentHandlers.reconcile(req, res);
-  if (req.method === "POST" && url.pathname === "/api/plantilla/reconciliation/bulk")
-    return assignmentHandlers.reconcileBulk(req, res);
   if (req.method === "GET" && url.pathname === "/api/engagements")
     return assignmentHandlers.listEngagements(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/engagements")
@@ -11621,6 +12982,12 @@ async function route(req, res) {
   if (req.method === "GET" && url.pathname === "/api/settings") return handleGetConfig(req, res);
   if (req.method === "PUT" && url.pathname === "/api/settings/agency")
     return handleUpdateAgency(req, res);
+  if (req.method === "GET" && url.pathname === "/api/settings/database")
+    return handleGetDatabaseConfig(req, res);
+  if (req.method === "POST" && url.pathname === "/api/settings/database/test")
+    return handleTestDatabaseConfig(req, res);
+  if (req.method === "PUT" && url.pathname === "/api/settings/database")
+    return handleUpdateDatabaseConfig(req, res);
   if (req.method === "POST" && url.pathname === "/api/settings/departments")
     return handleCreateDepartment(req, res);
   if (req.method === "DELETE" && departmentMatch)
@@ -11646,6 +13013,7 @@ async function route(req, res) {
 }
 
 await initializeDatabase();
+await applyVersionedMigrations();
 serviceRecordHandlers = createServiceRecordHandlers({
   pool,
   requireUser,
@@ -11677,6 +13045,7 @@ movementHandlers = createMovementHandlers({
   readBody,
   json,
   logAudit,
+  notifyRoles,
 });
 plantillaHandlers = createPlantillaHandlers({
   pool,
@@ -11689,15 +13058,16 @@ plantillaHandlers = createPlantillaHandlers({
 assignmentHandlers = createAssignmentHandlers({
   pool,
   requireRead: requireAssignmentRead,
-  requireReconciliation: requireReconciliationWrite,
   requireEngagement: requireEngagementWrite,
   readBody,
   json,
   logAudit,
 });
 await cleanupPreviewFiles().catch(() => {});
+await cleanupDocumentExportJobs().catch(() => {});
 await cleanupNotifications().catch(() => {});
 setInterval(() => cleanupPreviewFiles().catch(() => {}), 5 * 60 * 1000).unref();
+setInterval(() => cleanupDocumentExportJobs().catch(() => {}), 60 * 60 * 1000).unref();
 setInterval(() => cleanupNotifications().catch(() => {}), 24 * 60 * 60 * 1000).unref();
 assignmentHandlers
   .processDue()

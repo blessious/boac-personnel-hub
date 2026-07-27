@@ -1,26 +1,9 @@
 import { api } from "@/lib/api";
 
-export type ReconciliationRecord = {
-  employeeId: string;
-  employeeNo: string;
-  employeeName: string;
-  employmentType: string;
-  employeeStatus: string;
-  legacyItemNumber: string;
-  legacyPosition: string;
-  legacyOrganization: string;
-  classification: string;
-  matchedItemId: string | null;
-  matchedItemNumber: string;
-  matchedPosition: string;
-  matchedOrganization: string;
-};
-
 export type AssignmentSummary = {
   awaitingAssignment: number;
   scheduledMovements: number;
   expiringEngagements: number;
-  unmappedOrganizations: number;
 };
 
 export type NonPlantillaEngagement = {
@@ -59,37 +42,13 @@ export type EngagementPayload = {
   remarks: string;
 };
 
-export const getAssignmentSummary = () => api<AssignmentSummary>("/api/assignments/summary");
+export const getAssignmentSummary = (options: RequestInit = {}) =>
+  api<AssignmentSummary>("/api/assignments/summary", options);
 
-export const listReconciliation = (q = "", classification = "all") =>
-  api<{ records: ReconciliationRecord[]; summary: Record<string, number> }>(
-    `/api/plantilla/reconciliation?q=${encodeURIComponent(q)}&classification=${encodeURIComponent(classification)}`,
-  );
-
-export const confirmReconciliation = (payload: {
-  employeeId: string;
-  plantillaItemId: string;
-  effectiveFrom: string;
-  remarks: string;
-}) =>
-  api<{ result: Record<string, string> }>("/api/plantilla/reconciliation", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-
-export const confirmReconciliationBulk = (payload: {
-  effectiveFrom: string;
-  remarks: string;
-  matches: Array<{ employeeId: string; plantillaItemId: string }>;
-}) =>
-  api<{ results: Array<{ ok: boolean; employeeId: string; error?: string }> }>(
-    "/api/plantilla/reconciliation/bulk",
-    { method: "POST", body: JSON.stringify(payload) },
-  );
-
-export const listEngagements = (employeeId = "", status = "all") =>
+export const listEngagements = (employeeId = "", status = "all", options: RequestInit = {}) =>
   api<{ engagements: NonPlantillaEngagement[] }>(
     `/api/engagements?employeeId=${encodeURIComponent(employeeId)}&status=${encodeURIComponent(status)}`,
+    options,
   );
 
 export const createEngagement = (payload: EngagementPayload) =>

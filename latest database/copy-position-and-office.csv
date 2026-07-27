@@ -1,0 +1,503 @@
+id,name,position,office,registered,am_in,am_out,pm_in,pm_out,noter,signatory,regular,is_registered,is_noter,is_regular
+0,"Kristoffer Ola Olympia","Election Officer III","Commission on Elections",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Kristoffer Ola Olympia",1,0,0,1
+1,"RONALD MANGUERA",Supervisor,PNP,0,08:00:00,12:00:00,13:00:00,17:00:00,1,"RONALD MANGUERA",0,0,0,1
+2,"Maureen M. Mabiog","Administrative Assistant III","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Maureen M. Mabiog",1,0,0,1
+3,"Suzette L. Buñag","Admin Aide III","Operations of Market",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Suzette L. Buñag",1,0,0,1
+6,"Ma. Genoveva G. Loto","Administrative Officer IV","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Ma. Genoveva G. Loto",1,0,0,1
+10,"Leody Marie J. Mercado","Administrative Aide III","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Leody Marie J. Mercado",1,0,0,1
+12,"Rebecca Z. Malacas","Administrative Aide III","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rebecca Z. Malacas",1,0,0,1
+13,"Paul Gayson B. Marquez","Local Treasury Operation Officer II","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Paul Gayson B. Marquez",1,0,0,1
+15,"Rafael L. Bugarin","Sports and Game Inspector II","MO - Sports and Games Section",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Rafael L. Bugarin",1,0,0,1
+17,"Lydia M. Semilla","Admin Aide VI","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Lydia M. Semilla",1,0,0,1
+21,"Randy M. Malco","Administrative Aide III","MEO-Street Cleaning Services",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Randy M. Malco",1,0,0,1
+26,"Nolan B. Jandusay","Administrative Aide III","MEO-Street Cleaning Services",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Nolan B. Jandusay",1,0,0,1
+28,"Jane J. Labayna","Administrative Aide VI","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jane J. Labayna",1,0,0,1
+32,"Julio M. Miraflor","Administrative Aide III","Municipal Engineering Office",1,07:00:00,11:00:00,12:00:00,16:00:00,0,"Julio M. Miraflor",1,0,0,1
+33,"Ziedrick Rafael M. Salazar","SB Secretary","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Ziedrick Rafael M. Salazar",1,0,0,1
+35,"Donnalyn M. Buenaventura","Administrative Officer IV","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Donnalyn M. Buenaventura",1,0,0,1
+36,"Bernadette S. Chi","Administrative Aide III","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Bernadette S. Chi",1,0,0,1
+38,"Ramonchito L. Larga","MDRRMO III","Municipal Disaster Risk Reduction and Management Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Ramonchito L. Larga",1,0,0,1
+39,"Jacob M. Montevirgen","Information Technology Officer I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jacob M. Montevirgen",1,0,0,1
+40,"Arcel Sergia M. Nepomuceno","Assessment Clerk II","Municipal Assessor Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arcel Sergia M. Nepomuceno",1,0,0,1
+41,"Ria Lamac","Project Development Officer II","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Ria Lamac",1,0,0,1
+42,"Beverly R. Lazo","MDRRMO I","Municipal Disaster Risk Reduction and Management Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Beverly R. Lazo",1,0,0,1
+44,"Rogelio Onte Jr.","LDRRMO III","Municipal Disaster Risk Reduction and Management Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Rogelio Onte Jr.",1,0,0,1
+45,"Via Maria I. Malapote","Registration Officer II","Municipal Civil Registrar's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Via Maria I. Malapote",0,0,0,1
+46,"Pinky M. Jamilla","Administrative Aide IV","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Pinky M. Jamilla",1,0,0,1
+47,"Bernilo A. Martillano","Municipal Budget Officer","Budget Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Bernilo A. Martillano",1,0,0,1
+48,"Jazmin M. Mascarenas","Administrative Aide IV","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jazmin M. Mascarenas",1,0,0,1
+49,"Melody M. Malapote","Administrative Officer II","Budget Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Melody M. Malapote",1,0,0,1
+51,"Michaela Potenciana M. Ornedo","Municipal Accountant","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Michaela Potenciana M. Ornedo",1,0,0,1
+53,"Amando M. Mahaguay","Administrative Aide III","Municipal Engineering Office",1,04:00:00,12:00:00,13:00:00,22:00:00,0,"Amando M. Mahaguay",1,0,0,1
+54,"Elemar L. Olympia","Administrative Aide III","MEO-Street Lighting Services",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Elemar L. Olympia",1,0,0,1
+55,"Evangeline C. Calachan","Administrative Officer IV","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Evangeline C. Calachan",1,0,0,1
+56,"Bryan John","Administrative Aide III","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Bryan John",1,0,0,1
+60,"Augusto M. Buenaventura","Revenue Collection Clerk III","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Augusto M. Buenaventura",1,0,0,1
+62,"Ivy L. Onte","Administrative Officer I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ivy L. Onte",1,0,0,1
+63,"Robert L.  Gayutin","Municipal Treasurer","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Robert L.  Gayutin",1,0,0,1
+64,"Jay Ann D. Orilla","Midwife II","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jay Ann D. Orilla",1,0,0,1
+66,"Shyrel O. Matining","Administrative Officer I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Shyrel O. Matining",1,0,0,1
+67,"Gwyne Gerard Edgar M. Loto","Revenue Collection Clerk","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Gwyne Gerard Edgar M. Loto",1,0,0,1
+68,"Vember V. Refugio","Taxmapper I","Municipal Assessor Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Vember V. Refugio",1,0,0,1
+69,"Aurora M. Malelang","Local Treasury Operation Officer I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Aurora M. Malelang",1,0,0,1
+75,"Carmelo L. Misal","Revenue Collection  Clerk III","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Carmelo L. Misal",1,0,0,1
+76,"John Lester I. Malapote","Market Specialist I","Operations of Market",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Lester I. Malapote",1,0,0,1
+77,"Federico M. Naling","Administrative Officer I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Federico M. Naling",1,0,0,1
+78,"Dennis Jambalos","Administrative Officer III","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Dennis Jambalos",1,0,0,1
+79,"Luzviminda L. Martillano","Administrative Assistant II","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Luzviminda L. Martillano",1,0,0,1
+81,"Ricardo J. Nieva","Municipal Assessor","Municipal Assessor Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ricardo J. Nieva",1,0,0,1
+83,"Analiza M. Latombo","Local Assessment Operation Officer II","Municipal Assessor Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Analiza M. Latombo",1,0,0,1
+86,"Raul S. Eviota","Security Officer I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Raul S. Eviota",1,0,0,1
+90,"Gilda M. Calachan","Dentist II","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Gilda M. Calachan",1,0,0,1
+94,"Lizabeth L. Navarro","Medical Technologist II","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Lizabeth L. Navarro",1,0,0,1
+100,"Elsie M. Lacorte","Midwife III","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Elsie M. Lacorte",1,0,0,1
+101,"Loida L. Ditan","Midwife III","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Loida L. Ditan",1,0,0,1
+118,"Renante M. Laderas","Administrative Aide III","Municipal Engineering Office",1,06:00:00,10:00:00,13:00:00,17:00:00,0,"Renante M. Laderas",1,0,0,1
+120,"Tito O. Jabat","Administrative Aide III","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Tito O. Jabat",1,0,0,1
+124,"Ediemer L. Magalang","Administrative Aide IV","MEO-Garbage Collection Services",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ediemer L. Magalang",1,0,0,1
+126,"Rolan B. Malapad","Administrative Aide III","MEO-Garbage Collection Services",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rolan B. Malapad",1,0,0,1
+127,"Ronald A. Labatete","Administrative Aide III","MEO - Plaza, Parks and Monument Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ronald A. Labatete",1,0,0,1
+128,"Ramil J. Caampued","Administrative Aide III","MEO-Garbage Collection Services",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ramil J. Caampued",1,0,0,1
+134,"Rommel Marmol","Administrative Aide III","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rommel Marmol",1,0,0,1
+136,"Ricaredo M. Labog","Administrative Aide IV","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ricaredo M. Labog",1,0,0,1
+137,"Hazel Maureen L. Gonzales","Municipal Social Welfare and Development Officer","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Hazel Maureen L. Gonzales",1,0,0,1
+139,"Ederlinda V. Jasmin","Municipal Agricultural Officer","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Ederlinda V. Jasmin",1,0,0,1
+140,"Ervin M. Landoy","Agricultural Technologist","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ervin M. Landoy",1,0,0,1
+141,"Elma N. Idanan","Agricultural Technologist","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Elma N. Idanan",1,0,0,1
+142,"Rosemarie R. Rivadeniera","Agricultural Technologist","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rosemarie R. Rivadeniera",1,0,0,1
+143,"Jeniffer L. Nabos","Agricultural Technologist","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jeniffer L. Nabos",1,0,0,1
+146,"Ma. Rosa P. Sumo","License Officer I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ma. Rosa P. Sumo",1,0,0,1
+147,"Romeo M. Davalos","Draftsman I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Romeo M. Davalos",1,0,0,1
+151,"Neil L. Lubrin","Administrative Aide IV","MEO-Maint of Roads and Bridges",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Neil L. Lubrin",1,0,0,1
+152,"June M. Manuba","Administrative Aide V","MEO - Plaza, Parks and Monument Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"June M. Manuba",1,0,0,1
+157,"Roding L. Malangis","Administrative Aide III","MEO-Maint of Roads and Bridges",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Roding L. Malangis",1,0,0,1
+158,"Pedro Jr L. Mandia","Administrative Aide III","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Pedro Jr L. Mandia",1,0,0,1
+159,"Donato C. Marquez","Administrative Aide III","Municipal Engineering Office",1,06:00:00,11:00:00,14:00:00,17:00:00,0,"Donato C. Marquez",1,0,0,1
+160,"John Carlo R. Logatoc","Administrative Aide III","Operations of Market",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Carlo R. Logatoc",1,0,0,1
+161,"John Jovi P. Llagas","Administrative Aide III","Operations of Market",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Jovi P. Llagas",1,0,0,1
+162,"Maria Irma M. Jimena","Administrative Aide IV","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Maria Irma M. Jimena",1,0,0,1
+177,"Reynaldo J. Lasac","Administrative Aide VI","Operation of Waterwork System",1,07:02:00,12:00:00,13:00:00,16:00:00,0,"Reynaldo J. Lasac",0,0,0,1
+183,"Cristopher M. Lacena","Administrative Aide III","Operation of Waterwork System",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Cristopher M. Lacena",1,0,0,1
+185,"Ramil M. Loto","Meter Reader I","Municipal Engineering Office",1,07:00:00,12:00:00,13:00:00,16:00:00,0,"Ramil M. Loto",1,0,0,1
+186,"Luisito M. Navarro","Market Supervisor II","Operations of Market",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Luisito M. Navarro",1,0,0,1
+187,"Nilo S. Mantaring","Meat Inspector III",Slaughterhouse,1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Nilo S. Mantaring",1,0,0,1
+190,"Richard J. Buñag","Administrative Aide III","Operations of Market",1,07:00:00,11:00:00,13:00:00,17:00:00,0,"Richard J. Buñag",1,0,0,1
+194,"Benito O. Sarmiento","Admin Aide III","Operations of Market",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Benito O. Sarmiento",1,0,0,1
+196,"Antonio O. Villanueva","Admin Aide III",Slaughterhouse,1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Antonio O. Villanueva",1,0,0,1
+197,"Arvin Julius G. Orilla","Revenue Collection Clerk III","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arvin Julius G. Orilla",1,0,0,1
+198,"Rhealyn Y. Loto","Administrative Assistant II","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rhealyn Y. Loto",1,0,0,1
+199,"Bensil R. Nunez","Administrative Aide IV","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Bensil R. Nunez",1,0,0,1
+201,"Janet L. Aquillo","Administrative Aide IV","Budget Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Janet L. Aquillo",1,0,0,1
+202,"Mary Ann F. Mascarenas","Administrative Assistant II","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mary Ann F. Mascarenas",1,0,0,1
+204,"Clemente S. Sena","Administrative Aide III","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Clemente S. Sena",1,0,0,1
+207,"Gilbert M. Rañoso","Admin Aide IV","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Gilbert M. Rañoso",1,0,0,1
+219,"Marvin J. Livelo","Administrative Aide III","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Marvin J. Livelo",1,0,0,1
+226,"Al Paul Jhon M. Janda","Nurse II","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Al Paul Jhon M. Janda",1,0,0,1
+227,"Ronille Rejano","Project Development Officer II","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ronille Rejano",1,0,0,1
+228,"Lorena P. Loreto","Administrative Assistant II","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Lorena P. Loreto",1,0,0,1
+229,"Rudemil M.Lecaros","Local Revenue Collection Officer I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rudemil M.Lecaros",1,0,0,1
+230,"Arjie M. Hermosa","Administrative Aide III","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arjie M. Hermosa",1,0,0,1
+231,"Dave Daniel M. Larga","Municipal Civil Registrar","Municipal Civil Registrar's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Dave Daniel M. Larga",1,0,0,1
+233,"Edmil P. Adug","Admin Aide III","Operations of Market",1,07:00:00,11:00:00,13:00:00,17:00:00,0,"Edmil P. Adug",1,0,0,1
+234,"Jonathan E. Magturo","Local Assessment Operation Officer I","Municipal Assessor Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jonathan E. Magturo",1,0,0,1
+238,"Gil Francis C. Manguera","Librarian I","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Gil Francis C. Manguera",1,0,0,1
+240,"Karen C. Lamboloto","Midwife II","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Karen C. Lamboloto",1,0,0,1
+242,"Katherine Rose J. Manahan","Local Legislative Staff Officer I","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Katherine Rose J. Manahan",1,0,0,1
+243,"Joven S. Jinang","Social Welfare Assistant","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Joven S. Jinang",1,0,0,1
+251,"Edsel M. Marmol","Administrative Assistant II","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Edsel M. Marmol",1,0,0,1
+252,"Lee M. Aguilar","Municipal Engineer","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Lee M. Aguilar",1,0,0,1
+253,"Andro O. Nitoral","Administrative Assistant II","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Andro O. Nitoral",1,0,0,1
+256,"April J. Maralit","Midwife II","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"April J. Maralit",1,0,0,1
+257,"Cesara L. Togado","Nurse II","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Cesara L. Togado",1,0,0,1
+258,"Mary Liza M. Malilom","Midwife II","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mary Liza M. Malilom",1,0,0,1
+259,"Kristian Paolo Malvar","Assessment Clerk III","Municipal Assessor Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Kristian Paolo Malvar",1,0,0,1
+260,"Mary Jean L. Manalo","Senior Admin Asst III","Office Of The Mayor",0,08:00:00,12:00:00,13:00:00,17:00:00,1,"Mary Jean L. Manalo",1,0,0,1
+261,"Giselle Pearl A. Olympia","Nutrition Officer II","Municipal Nutrition Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Giselle Pearl A. Olympia",1,0,0,1
+264,"Jhon Elbert M. Garay","Zoning Officer I","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jhon Elbert M. Garay",1,0,0,1
+265,"Jezelle J. Delos Martirez","Administrative Assistant III","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jezelle J. Delos Martirez",1,0,0,1
+266,"Marjorie Anne V. Rojo","Administrative Assistant II","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Marjorie Anne V. Rojo",1,0,0,1
+269,"Joseph Manguera","Revenue Collection Clerk III","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Joseph Manguera",1,0,0,1
+270,"Alan L. Livelo","Administrative Aide IV","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Alan L. Livelo",1,0,0,1
+271,"Ronalyn J. De Chavez","Administrative Aide III","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ronalyn J. De Chavez",1,0,0,1
+272,"John Patrick M. Mangol","Administrative Assistant II","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Patrick M. Mangol",1,0,0,1
+276,"Charmaine Shayne Nodalo","Nurse II","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Charmaine Shayne Nodalo",1,0,0,1
+279,"Robert L. Linga","Admin Aide III","Operations of Market",1,07:00:00,11:00:00,13:00:00,17:00:00,0,"Robert L. Linga",1,0,0,1
+280,"Evangeline M. Ogayre","Market Inspector II","Operations of Market",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Evangeline M. Ogayre",1,0,0,1
+281,"Francisco E. Grullo","Administrative Aide III","Municipal Engineering Office",1,07:00:00,11:00:00,12:00:00,16:00:00,0,"Francisco E. Grullo",1,0,0,1
+282,"Katrina Anne T. Bustos","LDRRMO I","Municipal Disaster Risk Reduction and Management Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Katrina Anne T. Bustos",1,0,0,1
+283,"Catherine Dell J. Sadiwa - Cruz","Municipal Health Officer","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Dra. Catherine Dell J. Sadiwa - Cruz",1,0,0,1
+285,"Juliean M. Muhi","Rural Health Physician","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Juliean M. Muhi",1,0,0,1
+288,"Arneliza M. Marticio","Administrative Assistant II","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arneliza M. Marticio",1,0,0,1
+289,"Benilda M. Morong","Administrative Aide III","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Benilda M. Morong",1,0,0,1
+291,"Astrobal M. Bianes","Administrative Aide III","MEO-Maint of Roads and Bridges",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Astrobal M. Bianes",1,0,0,1
+292,"Jeremiah J. Mabiog","Administrative Aide III","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jeremiah J. Mabiog",1,0,0,1
+293,"Zyreen L. Eclavea","Admin Aide III","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Zyreen L. Eclavea",1,0,0,1
+294,"Cherie Lyn Jane N. Jinang","Administrative Assistant II","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Cherie Lyn Jane N. Jinang",1,0,0,1
+295,"Paulene N. Malangis","Administrative Assistant II","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Paulene N. Malangis",1,0,0,1
+296,"Jensky M. Cesista","Community Affairs Officer I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jensky M. Cesista",1,0,0,1
+297,"Graciella S. Plata","Administrative Assistant II","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Graciella S. Plata",1,0,0,1
+298,"Arvn Lazo","Admin Aide III","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arvn Lazo",1,0,0,1
+5007,"Ziedrick Rafael M. Salazar","SB Secretary","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Ziedrick Rafael M. Salazar",1,0,0,1
+5008,"Alvin N. Ricaflanca","SB Legislative Support Staff","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Alvin N. Ricaflanca",0,0,0,1
+5009,"Zyreen L. Eclavea","Administrative Aide III","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Zyreen L. Eclavea",0,0,0,1
+5011,"Queencess Monique M. Sosa","Administrative Aide IV","MO - Human Resource and Management Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Queencess Monique M. Sosa",0,0,0,1
+5015,"Ellane M. Jimenez","Administrative Aide I","MO - Business Printing and Licensing Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ellane M. Jimenez",0,0,0,1
+5017,"Anna Kaye Loise Ervas","Administrative Aide I","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Anna Kaye Loise Ervas",0,0,0,1
+5018,"Ellien Lyn  M. Mabunga","Administrative Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ellien Lyn  M. Mabunga",0,0,0,1
+5020,"Jeff M. Cariloria","Administrative Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jeff M. Cariloria",0,0,0,1
+5028,"Arleen M. Olympia","Administrative Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arleen M. Olympia",0,0,0,1
+5034,"Acemar Nacawili","Administrative Aide I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Acemar Nacawili",0,0,0,1
+5040,"Michelle Lecaros","Administrative Aide I","Municipal Civil Registrar's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Michelle Lecaros",0,0,0,1
+5041,"Orlando O. Landoy","Engineering Aide I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Orlando O. Landoy",0,0,0,1
+5046,"Arvin Julius G. Orilla","RCC III","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arvin Julius G. Orilla",1,0,0,1
+5047,"Jennifer M. Celis","Administrative Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jennifer M. Celis",0,0,0,1
+5048,"Edgar J. Adoyo","Administrative Aide III","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Edgar J. Adoyo",1,0,0,1
+5049,"Randy M. Malco","Administrative Aide III","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Randy M. Malco",1,0,0,1
+5050,"Nolan B. Jandusay","Administrative Aide III","Municipal Engineering Office",1,06:00:00,10:00:00,13:00:00,17:00:00,0,"Nolan B. Jandusay",1,0,0,1
+5063,"Jimson Ray S. Mangante","Traffic Aide","MPOC-Traffic Aide",1,07:00:00,11:00:00,13:30:00,18:00:00,0,"Jimson Ray S. Mangante",0,0,0,1
+5078,"Jerrom M. Malabayabas","Administrative Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jerrom M. Malabayabas",0,0,0,1
+5081,"Angelito J. Hirondo","Engineer II","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Angelito J. Hirondo",0,0,0,1
+5083,"Alexander H. Magante","Traffic Aide","MPOC-Traffic Aide",1,06:00:00,11:00:00,13:00:00,18:00:00,0,"Alexander H. Magante",0,0,0,1
+5094,"Alvin M. Mameng","Administrative Aide I","Municipal Assessor Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Alvin M. Mameng",0,0,0,1
+5096,"Ma. Jhovea Malitao","Administrative Aide I","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ma. Jhovea Malitao",0,0,0,1
+5102,"Cherie Lyn Jane N. Jinang","Admin Aide I","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Cherie Lyn Jane N. Jinang",0,0,0,1
+5104,"Michelle M. Jasmin","SB Legislative Support Staff","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Michelle M. Jasmin",0,0,0,1
+5114,"Daniel Jalimbawa","Administrative Aide III","Municipal Engineering Office",1,02:00:00,17:00:00,18:00:00,23:00:00,0,"Daniel Jalimbawa",1,0,0,1
+5115,"John Jovi P. Llagas","Administrative Aide III","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Jovi P. Llagas",0,0,0,1
+5120,"Allan Historillo","Administrative Aide I","Operation of Waterwork System",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Allan Historillo",0,0,0,1
+5121,"Leo Oracion","Administrative Aide I","Operation of Waterwork System",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Leo Oracion",0,0,0,1
+5122,"Sergio Liwanagan","Administrative Aide III",Slaughterhouse,1,02:00:00,17:00:00,21:00:00,22:00:00,0,"Sergio Liwanagan",0,0,0,1
+5123,"Emmerson A. Magtibay","Administrative Aide I","Commission on Elections",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Emmerson A. Magtibay",0,0,0,1
+5127,"Kenneth Luarca","Administrative Aide I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Kenneth Luarca",0,0,0,1
+5135,"Karol Pauline C. Manguera","Administrative Aide I","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Karol Pauline C. Manguera",0,0,0,1
+5141,"Dhianna Huelgas","Admin Aide IV","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Dhianna Huelgas",0,0,0,1
+5143,"Imee L. Chavez","Administrative Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Imee L. Chavez",0,0,0,1
+5144,"Marlie L. Jagong","Administrative Aide I","MO - Business Printing and Licensing Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Marlie L. Jagong",0,0,0,1
+5147,"Jaharrah M. Muñoz","Administrative Aide I","Municipal Civil Registrar's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jaharrah M. Muñoz",0,0,0,1
+5149,"Fernan J. Oliver","Admin Aide I","Department of the Interior and Local Government",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Fernan J. Oliver",0,0,0,1
+5152,"John Robert R. Macalood","Administrative Aide I","MEO - Plaza, Parks and Monument Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Robert R. Macalood",0,0,0,1
+5155,"Joey L. Larracas","Administrative Aide I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Joey L. Larracas",0,0,0,1
+5163,"Joyce S. Ulpo",MLGOO,"Department of the Interior and Local Government",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Joyce S. Ulpo",1,0,0,1
+5164,"Jerson M. Landoy","Administrative Aide I","MO - Sports and Games Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jerson M. Landoy",0,0,0,1
+5171,"Rod Edrian Camba","Administrative Aide I","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rod Edrian Camba",0,0,0,1
+5172,"Robert A. Lozano","Administrative Aide I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Robert A. Lozano",0,0,0,1
+5180,"Reymar M. Malitao","Traffic Aide","MPOC-Traffic Aide",1,06:00:00,11:00:00,13:00:00,18:00:00,0,"Reymar M. Malitao",0,0,0,1
+5199,"Jovelyn M. Landoy","SB Legislative Support Staff","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jovelyn M. Landoy",0,0,0,1
+5200,"Romdel Smyth M. Nepomuceno","SB Legislative Support Staff","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Romdel Smyth M. Nepomuceno",0,0,0,1
+5201,"Reymart M. Litrero","Admin Aide I","Department of the Interior and Local Government",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Reymart M. Litrero",0,0,0,1
+5203,"Kristian Clairol Linayao","Administrative Aide I","MO - Human Resource and Management Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Kristian Clairol Linayao",0,0,0,1
+5208,"Emer Mayo","Administrative Aide I","MEO - Plaza, Parks and Monument Section",1,07:00:00,12:00:00,13:00:00,16:00:00,0,"Emer Mayo",0,0,0,1
+5209,"Roel Marmol","Administrative Aide I","MEO - Plaza, Parks and Monument Section",1,06:00:00,10:00:00,13:00:00,17:00:00,0,"Roel Marmol",0,0,0,1
+5211,"Erwin Montenegro","Administrative Aide I","MEO - Plaza, Parks and Monument Section",1,07:00:00,12:00:00,13:00:00,16:00:00,0,"Erwin Montenegro",0,0,0,1
+5216,"Jazmine J. Maglacas","Sanitation Inspector I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jazmine J. Maglacas",1,0,0,1
+5218,"Rico M. Lacdang","Admin Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rico M. Lacdang",0,0,0,1
+5219,"Edwin M. Laylay","Administrative Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Edwin M. Laylay",0,0,0,1
+5223,"Lisette N. Malimata","Administrative Aide I","Municipal Civil Registrar's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Lisette N. Malimata",0,0,0,1
+5225,"Randy M. Marquez","Administrative Aide IV","Municipal Disaster Risk Reduction and Management Office",1,06:00:00,11:00:00,11:00:00,14:00:00,0,"Randy M. Marquez",0,0,0,1
+5230,"Noralyn M. Marticio","Administrative Aide I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Noralyn M. Marticio",0,0,0,1
+5232,"Jimmy L. Mascareñas","Administrative Aide I","Operations of Market",1,10:00:00,14:00:00,14:00:00,18:00:00,0,"Jimmy L. Mascareñas",0,0,0,1
+5235,"Dianne M. Mandac","Administrative Aide I","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Dianne M. Mandac",0,0,0,1
+5243,"Flor Angelie M. Malvar","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Flor Angelie M. Malvar",1,0,0,1
+5244,"Randy Layron","SB Legislative Support Staff","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Randy Layron",0,0,0,1
+5245,"Benilda M. Morong","Administrative Aide III","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Benilda M. Morong",1,0,0,1
+5246,"Roden Macunat","Admin Aide III","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Roden Macunat",0,0,0,1
+5247,"Graciella S. Plata","Administrative Assistant II","Municipal Civil Registrar's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Graciella S. Plata",1,0,0,1
+5249,"Michael Wynne B. Mabute","Administrative Aide I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Michael Wynne B. Mabute",0,0,0,1
+5250,"Jeremiah J. Mabiog","Administrative Aide III","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jeremiah J. Mabiog",1,0,0,1
+5252,"Zoraida M. Salazar","Administrative Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Zoraida M. Salazar",0,0,0,1
+5256,"Sherley O. Monroyo","Administrative Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Sherley O. Monroyo",0,0,0,1
+5257,"Delia M. Gabriela","Administrative Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Delia M. Gabriela",0,0,0,1
+5259,"Efren M. Marmol, Jr.","Administrative Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Efren M. Marmol, Jr.",0,0,0,1
+5260,"Beltran M. Magparangalan","Administrative Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Beltran M. Magparangalan",0,0,0,1
+5262,"Euniña Belle J. Dimagiba","Social Welfare Assistant","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Euniña Belle J. Dimagiba",1,0,0,1
+5266,"Ronalyn Loto","Admin Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ronalyn Loto",0,0,0,1
+5267,"Robeliza L. Narzoles","Administrative Aide I","Operations of Market",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Robeliza L. Narzoles",0,0,0,1
+5268,"Ellen C. Mabuti","Agricultural Technician","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ellen C. Mabuti",0,0,0,1
+5269,"Joan J. Miciano","Agricultural Technician","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Joan J. Miciano",0,0,0,1
+5270,"Dexter M. Valenzuela","Agricultural Technician","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Dexter M. Valenzuela",0,0,0,1
+5271,"Anthony M. Bianes","Administrative Aide I","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Anthony M. Bianes",0,0,0,1
+5273,"Edison M. Jasmin","Administrative Aide I","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Edison M. Jasmin",0,0,0,1
+5275,"Eddieson J. Dimagiba","Administrative Aide I","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Eddieson J. Dimagiba",0,0,0,1
+5276,"Melody M. Larga","Agricultural Technician","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Melody M. Larga",0,0,0,1
+5298,"Mario M. Laman","Administrative Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mario M. Laman",0,0,0,1
+5299,"Errol L. Nebreja","Administrative Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Errol L. Nebreja",0,0,0,1
+5302,"Rocky L. Sarad","Administrative Aide I","Municipal Assessor Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rocky L. Sarad",0,0,0,1
+5303,"Rhyan M. Mayangitan","Administrative Aide I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rhyan M. Mayangitan",0,0,0,1
+5305,"Alvin Jalac","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Alvin Jalac",0,0,0,1
+5306,"Camille D. Nabing","Administrative Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Camille D. Nabing",0,0,0,1
+5307,"Maria lrma M. Jimena","Administrative Aide IV","MO - Human Resource and Management Section",1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Maria lrma M. Jimena",1,0,0,1
+5308,"Edgar B. Lozada Jr.","Admin Aide I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Edgar B. Lozada Jr.",0,0,0,1
+5309,"Astrobal M. Bianes","Administrative Aide III","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Astrobal M. Bianes",1,0,0,1
+5311,"Delmar Santos","Admin Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Delmar Santos",0,0,0,1
+5314,"Arjay M. Montalban","Traffic Aide","MPOC-Traffic Aide",1,06:00:00,11:00:00,13:00:00,18:00:00,0,"Arjay M. Montalban",0,0,0,1
+5315,"Ian Glenn L. Lecaros","Traffic Aide","MPOC-Traffic Aide",1,06:00:00,11:00:00,13:00:00,18:00:00,0,"Ian Glenn L. Lecaros",0,0,0,1
+5317,"Mary Ann D. Mayacyac","Administrative Aide I",CAO,1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mary Ann D. Mayacyac",0,0,0,1
+5320,"Joren P. Lope","Administrative Aide I","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Joren P. Lope",0,0,0,1
+5321,"Rafael M. Mascareñas","Administrative Aide I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rafael M. Mascareñas",0,0,0,1
+5322,"Ermelo Gagasa","Administrative Aide I","Municipal Health Office",1,07:00:00,11:00:00,13:00:00,16:00:00,0,"Ermelo Gagasa",0,0,0,1
+5323,"Marlon M. Laderas","Administrative Aide III","Municipal Health Office",1,07:00:00,11:00:00,12:00:00,16:00:00,0,"Marlon M. Laderas",0,0,0,1
+5325,"Liezel Q. Lara","Administrative Aide I","MO - Nutrition Center",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Liezel Q. Lara",0,0,0,1
+5326,"John Carlo R. Logatoc","Administrative Aide III","Operations of Market",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Carlo R. Logatoc",0,0,0,1
+5329,"Jake Edmar M. Maas","Administrative Aide I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jake Edmar M. Maas",0,0,0,1
+5330,"Ella Mae L. Matining","Administrative Aide III","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ella Mae L. Matining",0,0,0,1
+5331,"John Allan M. Rabi","Administrative Aide III","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Allan M. Rabi",0,0,0,1
+5336,"John James DC. Nabing","Administrative Aide I","Municipal Disaster Risk Reduction and Management Office",1,10:00:00,14:00:00,14:00:00,18:00:00,0,"John James DC. Nabing",0,0,0,1
+5337,"Ma. Cynthia N. Jalimbawa","Administrative Aide I","Municipal Civil Registrar's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ma. Cynthia N. Jalimbawa",0,0,0,1
+5338,"Lily Ann M. Maigting","Administrative Aide I","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Lily Ann M. Maigting",0,0,0,1
+5339,"Elmer Majaba","Administrative Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Elmer Majaba",0,0,0,1
+5343,"Ernesty Tyron Montante","Admin Aide I","MEO - Plaza, Parks and Monument Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ernesty Tyron Montante",0,0,0,1
+5346,"John Edward J. Raya","Administrative Aide I","Operations of Market",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Edward J. Raya",0,0,0,1
+5347,"Ma. lsabel J. Calayo","Administrative Aide I","Municipal Civil Registrar's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ma. lsabel J. Calayo",0,0,0,1
+5351,"Liane Joy Z. Hizole","Administrative Assistant II","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Liane Joy Z. Hizole",0,0,0,1
+5354,"Aileen Majaba","Admin Aide VI","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Aileen Majaba",0,0,0,1
+5355,"Jhomel H. Moldogo","Administrative Aide I","Municipal Disaster Risk Reduction and Management Office",1,06:00:00,11:00:00,11:00:00,14:00:00,0,"Jhomel H. Moldogo",0,0,0,1
+5358,"Luisito L. Nabing","Administrative Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Luisito L. Nabing",0,0,0,1
+5360,"Joy M. Francisco","Administrative Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Joy M. Francisco",0,0,0,1
+5361,"Marshall A. Olympia, Jr.","Administrative Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Marshall A. Olympia, Jr.",0,0,0,1
+5362,"Erika Jane O. Senoc","Administrative Aide I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Erika Jane O. Senoc",0,0,0,1
+5364,"Martlo F. Madrigal","Administrative Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Martlo F. Madrigal",0,0,0,1
+5365,"John Kristian L. Derez","Administrative Aide I","Operations of Market",1,07:00:00,11:00:00,12:00:00,17:00:00,0,"John Kristian L. Derez",0,0,0,1
+5366,"John Michael P. Luz","Administrative Aide III","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Michael P. Luz",0,0,0,1
+5368,"Jade Lorence Rabi","Admin Aide I","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jade Lorence Rabi",0,0,0,1
+5369,"Carmelo C. Manguera Jr.","Administrative Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Carmelo C. Manguera Jr.",0,0,0,1
+5370,"Michelle M. Fabrigas","Administrative Aide I","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Michelle M. Fabrigas",0,0,0,1
+5372,"Ma. Liza O. Malagotnot","Administrative Aide I","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ma. Liza O. Malagotnot",0,0,0,1
+5373,"Arvin M. Jambalos","Administrative Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arvin M. Jambalos",0,0,0,1
+5374,"Pamela L. Flora","Administrative Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Pamela L. Flora",0,0,0,1
+5375,"Nickolson G. Gonzales","Administrative Aide I","MO - Sports and Games Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Nickolson G. Gonzales",0,0,0,1
+5376,"Lyka Jane Manrique","Administrative Aide I","MO - Nutrition Center",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Lyka Jane Manrique",0,0,0,1
+5378,"Elizabeth M. Hizole","Agricultural Technologist","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Elizabeth M. Hizole",0,0,0,1
+5391,"Ericson Marmol","Admin Aide I","MEO - Plaza, Parks and Monument Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ericson Marmol",0,0,0,1
+5392,"Jaymart P. Privado","Admin Aide I","SB Legislative (Capitol)",1,07:00:00,12:00:00,13:00:00,18:00:00,0,"Jaymart P. Privado",0,0,0,1
+5393,"Rhena L. Pantoja","Administrative Aide I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rhena L. Pantoja",0,0,0,1
+5394,"Frances Mae L. Olympia","Administrative Aide I","Commission on Elections",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Frances Mae L. Olympia",0,0,0,1
+5399,"Ramil Marquez","Administrative Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ramil Marquez",0,0,0,1
+5400,"Arjay S. Majaba","Engineer II","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arjay S. Majaba",0,0,0,1
+5401,"Nadine Mae Clarisse M. Jayag","Administrative Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Nadine Mae Clarisse M. Jayag",0,0,0,1
+5402,"Neil Cedrick O. Belda","Administrative Aide I","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Neil Cedrick O. Belda",0,0,0,1
+5403,"Joylina Palac","Administrative Aide I","Municipal Disaster Risk Reduction and Management Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Joylina Palac",0,0,0,1
+5404,"Melody O. Mabunga","Administrative Aide I","MO - Nutrition Center",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Melody O. Mabunga",0,0,0,1
+5405,"John Casimere L. Llave","Engineering Aide","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Casimere L. Llave",0,0,0,1
+5408,"Jhon Kennette M. Mantal","Administrative Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jhon Kennette M. Mantal",0,0,0,1
+5410,"Ellen Nicole L. Majaba","Administrative Aide I","Municipal Administrator's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ellen Nicole L. Majaba",0,0,0,1
+5413,"Ma. Monica Amor M. Magculang","Administrative Aide III","MO - Human Resource and Management Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ma. Monica Amor M. Magculang",0,0,0,1
+5414,"Menardo V. Olores","Administrative Aide I","Municipal Administrator's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Menardo V. Olores",0,0,0,1
+5415,"Edzyl L. Avestruz","Administrative Aide I","MO - Business Printing and Licensing Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Edzyl L. Avestruz",0,0,0,1
+5417,"Nataniel P. Monroyo","Administrative Aide I","Operation of Waterwork System",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Nataniel P. Monroyo",0,0,0,1
+5418,"Paulene N. Malangis","Administrative Assistant II","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Paulene N. Malangis",0,0,0,1
+5419,"Rose Anne B. Montenegro","Administrative Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rose Anne B. Montenegro",0,0,0,1
+5420,"Bryan L. Hizole","Administrative Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Bryan L. Hizole",0,0,0,1
+5426,"John Gerald L. Mazon","Admin Aide I","Commission on Elections",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Gerald L. Mazon",0,0,0,1
+5429,"Erika L. Mayores","Admin Aide I","SB Legislative (Capitol)",1,07:00:00,12:00:00,13:00:00,18:00:00,0,"Erika L. Mayores",0,0,0,1
+5430,"Mervien Kent F. Sapungan","Admin Aide I","Department of the Interior and Local Government",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mervien Kent F. Sapungan",0,0,0,1
+5433,"Ian Dave V. Real",NCBC,"MO - Business Printing and Licensing Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ian Dave V. Real",0,0,0,1
+5434,"Jerry Sosa","Admin Aide I","Operation of Waterwork System",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jerry Sosa",0,0,0,1
+5435,"Mark Limuel M. Mapacpac","Administrative Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mark Limuel M. Mapacpac",0,0,0,1
+5436,"Jensky M. Cesista","Community Affairs Officer",CAO,1,08:00:00,12:00:00,13:00:00,17:00:00,1,"Jensky M. Cesista",1,0,0,1
+5437,"Lowela D. Nabing","Admin Aide IV","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Lowela D. Nabing",0,0,0,1
+5440,"Wendell M. Mazon",Watchman,"Operations of Market",1,07:00:00,11:00:00,13:00:00,17:00:00,0,"Wendell M. Mazon",0,0,0,1
+5441,"Michael Manzo",Watchman,"Operations of Market",1,08:00:00,12:00:00,13:00:00,22:00:00,0,"Michael Manzo",0,0,0,1
+5442,"John Paulo J. Sto. Domingo",Watchman,"Operations of Market",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Paulo J. Sto. Domingo",0,0,0,1
+5443,"Ronilo Ladao","Admin Aide I","MEO - Plaza, Parks and Monument Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ronilo Ladao",0,0,0,1
+5444,"Alexis Mascareñas","Admin Aide I","Municipal Assessor Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Alexis Mascareñas",0,0,0,1
+5445,"Diorelyn Landoy","Admin Aide I","Department of the Interior and Local Government",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Diorelyn Landoy",0,0,0,1
+5446,"Ma. Deniel Celeste Jalos","Admin Aide I","Department of the Interior and Local Government",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ma. Deniel Celeste Jalos",0,0,0,1
+5448,"Mary Jean M. Mingi","Admin Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mary Jean M. Mingi",0,0,0,1
+5449,"Rhea F. Sore","Admin Aide I","Municipal Civil Registrar's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rhea F. Sore",0,0,0,1
+5451,"John Paulo Sadicon",Watchman,"Operations of Market",1,06:00:00,14:00:00,14:00:00,22:00:00,0,"John Paulo Sadicon",0,0,0,1
+5452,"Ken Genece H. Llanes","Admin Aide II","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ken Genece H. Llanes",0,0,0,1
+5453,"Krista L. Mendiola","Admin Adie II","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Krista L. Mendiola",0,0,0,1
+5458,"Paul Bryan M. Landig","Admin Aide I","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Paul Bryan M. Landig",0,0,0,1
+5459,"Wilmer Mogol","Admin Aide I","MPOC-Traffic Aide",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Wilmer Mogol",0,0,0,1
+5460,"Sarah Mae L. Lupig","Admin Aide I","MO - Sports and Games Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Sarah Mae L. Lupig",0,0,0,1
+5462,"John Paul Rosanto","Admin Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Paul Rosanto",0,0,0,1
+5465,"Danilo R. Linga","Admin Aide I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Danilo R. Linga",0,0,0,1
+5468,"Honeylet M. Malilom","Admin Aide I","MO - Human Resource and Management Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Honeylet M. Malilom",0,0,0,1
+5470,"Ricky Labog","Admin Aide I","MEO - Plaza, Parks and Monument Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ricky Labog",0,0,0,1
+5471,"Jay Ann L. Mancia","Administrative Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jay Ann L. Mancia",0,0,0,1
+5472,"Loraine B. Mabute","Admin Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Loraine B. Mabute",0,0,0,1
+5474,"Aidrian O. Mandac","Admin Aide I","MPOC-Traffic Aide",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Aidrian O. Mandac",0,0,0,1
+5476,"Mar L. Obedoza","Traffic Aide","MPOC-Traffic Aide",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mar L. Obedoza",0,0,0,1
+5477,"Anna Marie H. Opis","Administrative Aide III","MO - Human Resource and Management Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Anna Marie H. Opis",0,0,0,1
+5481,"Ricky Labog","Admin Aide I","MEO - Plaza, Parks and Monument Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ricky Labog",0,0,0,1
+5483,"John Carl J. Buñag","Traffic Aide","MPOC-Traffic Aide",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Carl J. Buñag",0,0,0,1
+5484,"Jeffrey R. Melaya","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jeffrey R. Melaya",0,0,0,1
+5489,"Ariane R. Musnit","Engineer II","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ariane R. Musnit",0,0,0,1
+5490,"Resty M. Marquez","Admin Aide IV","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Resty M. Marquez",0,0,0,1
+5491,"Blessious Joseph T. Landoy","Administrative Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Blessious Joseph T. Landoy",0,0,0,1
+5492,"Ezra Dexter N. Ramiro","Admin Aide I",Slaughterhouse,1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ezra Dexter N. Ramiro",0,0,0,1
+5493,"Judith M. Mascareñas","Admin Aide I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Judith M. Mascareñas",0,0,0,1
+5497,"Melanio V. Marticio Jr.","Admin Aide I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Melanio V. Marticio Jr.",0,0,0,1
+5498,"Rhenier L. Majaba","Admin Aide I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rhenier L. Majaba",0,0,0,1
+5499,"Jesiel N. Maring","Admin Aide I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jesiel N. Maring",0,0,0,1
+5501,"Apple Kay M. Rajah","Administrative Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Apple Kay M. Rajah",0,0,0,1
+5503,"Zyrix F. Marinduque","Admin Aide I","MPOC-Traffic Aide",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Zyrix F. Marinduque",0,0,0,1
+5504,"Karen J. Adling","Admin Aide VI","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Karen J. Adling",0,0,0,1
+5505,"Myla N. Madla","Admin Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Myla N. Madla",0,0,0,1
+5506,"Rommel Caingcoy","Watchman I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rommel Caingcoy",0,0,0,1
+5507,"Elcid Valentino","Administrative Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Elcid Valentino",0,0,0,1
+5508,"Marco Jerome Mendoza","Admin Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Marco Jerome Mendoza",0,0,0,1
+5510,"Bryan Livelo","Admin Aide I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Bryan Livelo",0,0,0,1
+5511,"Alberto L. Jamig","Admin Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Alberto L. Jamig",0,0,0,1
+5512,"Zaillen Anne M. Jasmin","Administrative Aide IV","Budget Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Zaillen Anne M. Jasmin",0,0,0,1
+5513,"Paul Vincent G. Lineses","Administrative Aide IV","Budget Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Paul Vincent G. Lineses",0,0,0,1
+5515,"John Steven M. Malapajo","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,10:00:00,14:00:00,14:00:00,18:00:00,0,"John Steven M. Malapajo",0,0,0,1
+5516,"Marlon A. Liwanagan","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,06:00:00,11:00:00,11:00:00,14:00:00,0,"Marlon A. Liwanagan",0,0,0,1
+5517,"Jayvee B. Morong","Administrative Aide IV","Municipal Disaster Risk Reduction and Management Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jayvee B. Morong",0,0,0,1
+5518,"Mark Kenneth M. Leaban","Administrative Aide IV","Municipal Disaster Risk Reduction and Management Office",1,14:00:00,18:00:00,06:00:00,10:00:00,0,"Mark Kenneth M. Leaban",0,0,0,1
+5520,"John Kevin Cabodte","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,06:00:00,11:00:00,11:00:00,14:00:00,0,"John Kevin Cabodte",0,0,0,1
+5522,"Joy Laman","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,14:00:00,18:00:00,18:00:00,22:00:00,0,"Joy Laman",0,0,0,1
+5523,"John Hermy Cruz","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,06:00:00,12:00:00,12:00:00,22:00:00,0,"John Hermy Cruz",0,0,0,1
+5524,"Janila Zyrene P. Ladao","Administrative Aide IV","Budget Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Janila Zyrene P. Ladao",0,0,0,1
+5527,"Mark Leonel Morales","Admin Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mark Leonel Morales",0,0,0,1
+5528,"Arlyn L. Mercado","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arlyn L. Mercado",0,0,0,1
+5529,"Jan Mary M. Tapia","Admin Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jan Mary M. Tapia",0,0,0,1
+5532,"Fai Lai De J. Raya","Admin Aide I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Fai Lai De J. Raya",0,0,0,1
+5533,"Airo Glenn O. Mandac","Admin Aide I","Department of the Interior and Local Government",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Airo Glenn O. Mandac",0,0,0,1
+5535,"Jogelyn S. Siena","Admin Aide I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jogelyn S. Siena",0,0,0,1
+5536,"John Kenneth F. Liguit","Admin Aide I","SB Legislative (Capitol)",1,07:00:00,12:00:00,13:00:00,18:00:00,0,"John Kenneth F. Liguit",0,0,0,1
+5537,"Jopit S. Lumagbas","Administrative Assistant II","Municipal Administrator's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jopit S. Lumagbas",0,0,0,1
+5538,"Ramil Joseph Moreno","Traffic Aide","MPOC-Traffic Aide",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ramil Joseph Moreno",0,0,0,1
+5539,"Roi Montes","Admin Aide IV","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Roi Montes",0,0,0,1
+5540,"Mayan M. Balolot","Executive Assistant I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mayan M. Balolot",0,0,0,1
+5541,"Jeanette R. Nueva","Administrative Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jeanette R. Nueva",0,0,0,1
+5544,"Patrick C. Mirambil","Admin Aide I","MPOC-Traffic Aide",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Patrick C. Mirambil",0,0,0,1
+5545,"Jhannette Frances N. Morales","Engineering Aide I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jhannette Frances N. Morales",0,0,0,1
+5547,"Rica Mae Laririt","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rica Mae Laririt",0,0,0,1
+5548,"Nicole S. Manahan","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Nicole S. Manahan",0,0,0,1
+5549,"Rose Anne H. Moreno","Admin Aide I","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rose Anne H. Moreno",0,0,0,1
+5550,"Mailah L. Janda","Admin Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mailah L. Janda",0,0,0,1
+5552,"Vincent Paolo Quimora","Admin Aide I","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Vincent Paolo Quimora",0,0,0,1
+5553,"Janine Mei M. Rey","Admin Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Janine Mei M. Rey",0,0,0,1
+5557,"Jasmin J. Narvaez","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jasmin J. Narvaez",0,0,0,1
+5559,"Alvin N. Mirones","Admin Aide I","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Alvin N. Mirones",0,0,0,1
+5560,"Camille Magyaya","Admin Aide I","Municipal Administrator's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Camille Magyaya",0,0,0,1
+5561,"Reagen M. Rioflorido","Administrative Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Reagen M. Rioflorido",0,0,0,1
+5562,"Jayson M. Hermosa","Admin Aide I","Municipal Administrator's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jayson M. Hermosa",0,0,0,1
+5564,"Gerald J. Jardiniano","Admin Aide I","MEO - Plaza, Parks and Monument Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Gerald J. Jardiniano",0,0,0,1
+5565,"John Paul Estoconing","Admin Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Paul Estoconing",0,0,0,1
+5566,"Marie Niel M. Jagong","Admin Aide I","MO - Nutrition Center",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Marie Niel M. Jagong",0,0,0,1
+5567,"Liv Ivy Lane V. Calub","Admin Aide I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Liv Ivy Lane V. Calub",0,0,0,1
+5569,"Mhay M. Manaog","Admin Aide I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mhay M. Manaog",0,0,0,1
+5570,"Nobel Joy M. Tumaliwan","Admin Aide I","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Nobel Joy M. Tumaliwan",0,0,0,1
+5571,"Ma. Ann M. Manay","Laboratory Aide II","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ma. Ann M. Manay",0,0,0,1
+5572,"John Pete Patrick G. Luzares","Admin Aide I","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Pete Patrick G. Luzares",0,0,0,1
+5575,"Erold L. Magalang","Administrative Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Erold L. Magalang",0,0,0,1
+5576,"Jorgen S. Siena","Administrative Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jorgen S. Siena",0,0,0,1
+5577,"Bonn Christopher Buenaventura","Admin Aide I","MO - Sports and Games Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Bonn Christopher Buenaventura",0,0,0,1
+5578,"Francis Hizole","Admin Aide I","MO - Sports and Games Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Francis Hizole",0,0,0,1
+5579,"Jaclyn J. Abetria","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jaclyn J. Abetria",0,0,0,1
+5580,"Joydileen Grace M. Nite","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Joydileen Grace M. Nite",0,0,0,1
+5581,"Niza M. Matimtim","Admin Aide I","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Niza M. Matimtim",0,0,0,1
+5584,"Orly Loto","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,14:00:00,22:00:00,13:00:00,17:00:00,0,"Orly Loto",0,0,0,1
+5589,"Cainan Orcino","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,10:00:00,14:00:00,14:00:00,18:00:00,0,"Cainan Orcino",0,0,0,1
+5590,"Shernan H. Macarang","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,10:00:00,14:00:00,14:00:00,18:00:00,0,"Shernan H. Macarang",0,0,0,1
+5591,"Lara Jessica C. Magdurulan","Admin Aide I","SB Legislative (Capitol)",1,00:07:00,12:00:00,13:00:00,18:00:00,0,"Lara Jessica C. Magdurulan",0,0,0,1
+5596,"Roy Francis Fajardo","Admin Aide I","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Roy Francis Fajardo",0,0,0,1
+5602,"Nelson M. Jasmin","Admin Aide I","MEO - Plaza, Parks and Monument Section",1,07:00:00,12:00:00,13:00:00,16:00:00,0,"Nelson M. Jasmin",0,0,0,1
+5603,"Rose Lyn Largo","Admin Aide I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rose Lyn Largo",0,0,0,1
+5604,"Norlan Matira","Admin Aide I",Slaughterhouse,1,02:00:00,17:00:00,21:00:00,23:00:00,0,"Norlan Matira",0,0,0,1
+5606,"Jose M. Manay III","Admin Aide I","MO - Human Resource and Management Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jose M. Manay III",0,0,0,1
+5607,"Angel R. Mabunga","Admin Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Angel R. Mabunga",0,0,0,1
+5608,"B Jay M. Maquimot","Admin Aide I","Commission on Elections",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"B Jay M. Maquimot",0,0,0,1
+5609,"Aljohn DC. Olmedo","Admin Aide I","Municipal Administrator's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Aljohn DC. Olmedo",0,0,0,1
+5610,"Lilia G. Majaba","Admin Aide I","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Lilia G. Majaba",0,0,0,1
+5612,"Rhealyn Y. Loto","Administrative Assistant II","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rhealyn Y. Loto",1,0,0,1
+5613,"Angeline P. Mercader","Admin Aide I","Department of the Interior and Local Government",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Angeline P. Mercader",0,0,0,1
+5615,"Paulo T. Abiera","Planning Officer II","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Paulo T. Abiera",0,0,0,1
+5616,"Omeirah T. Ilagan","Planning Officer II","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Omeirah T. Ilagan",0,0,0,1
+5617,"Yzah Grace Pengosro","Planning Officer II","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Yzah Grace Pengosro",0,0,0,1
+5618,"Arvin Selorio","Admin Aide I","MEO - Plaza, Parks and Monument Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arvin Selorio",0,0,0,1
+5620,"Enrique R. Olympia","Nurse I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Enrique R. Olympia",0,0,0,1
+5628,"Eduard J. Pelendiana","Admin Aide I","MO - Human Resource and Management Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Eduard J. Pelendiana",0,0,0,1
+5633,"Hilarion Historillo Jr","Administrative Aide I",PNP,1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Hilarion Historillo Jr",0,0,0,1
+5634,"Ryan L. Mandalihan","Traffic Aide","MPOC-Traffic Aide",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ryan L. Mandalihan",0,0,0,1
+5635,"John Duhvan C. Miraflor","Admin Aide I","Office Of The Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Duhvan C. Miraflor",0,0,0,1
+5637,"Sanrio James Tolin","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Sanrio James Tolin",0,0,0,1
+5638,"Leo Ben Lamonte","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Leo Ben Lamonte",0,0,0,1
+5639,"Maylene M. Moreno","Admin Aide I","Municipal Civil Registrar's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Maylene M. Moreno",0,0,0,1
+5641,"Junnel T. Mandia","Admin Aide I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Junnel T. Mandia",0,0,0,1
+5642,"Mary Carl Venice L. Mercene","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mary Carl Venice L. Mercene",0,0,0,1
+5643,"Cleo Angelika Monteagudo","Admin Aide I","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Cleo Angelika Monteagudo",0,0,0,1
+5644,"Michael L. Rey","Traffic Aide","MPOC-Traffic Aide",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Michael L. Rey",0,0,0,1
+5646,"Anne Kryshel M. Laman","Architect II","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Anne Kryshel M. Laman",0,0,0,1
+5648,"Mark Vincent R. Leaño","Admin Aide I","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mark Vincent R. Leaño",0,0,0,1
+5649,"Rexcel M. Largo","Admin Aide I","MO - Nutrition Center",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rexcel M. Largo",0,0,0,1
+5650,"Randell M. Lozano","Admin Aide I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Randell M. Lozano",0,0,0,1
+5651,"Jhon Lloyd Manguera","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,10:00:00,14:00:00,14:00:00,18:00:00,0,"Jhon Lloyd Manguera",0,0,0,1
+5652,"Micko Manalo","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,14:00:00,18:00:00,18:00:00,22:00:00,0,"Micko Manalo",0,0,0,1
+5653,"Herbert Narzoles","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,14:00:00,18:00:00,18:00:00,22:00:00,0,"Herbert Narzoles",0,0,0,1
+5654,"Brian J. Montiel","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Brian J. Montiel",0,0,0,1
+5655,"Tracy Anne G. Historillo","Admin Aide I","SB Secretariat Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Tracy Anne G. Historillo",0,0,0,1
+5656,"Cristel O. Lamboloto","Admin Aide I",CAO,1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Cristel O. Lamboloto",0,0,0,1
+5657,"Moises John F. Jogno","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Moises John F. Jogno",0,0,0,1
+5660,"Bayani M. Lopez Jr.","Engineer I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Bayani M. Lopez Jr.",0,0,0,1
+5661,"Rochelle M. Doliente","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rochelle M. Doliente",0,0,0,1
+5662,"Mardy Fernando P. Laylay","Admin Aide I","Municipal Assessor Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mardy Fernando P. Laylay",0,0,0,1
+5663,"Mary Joy M. Lope","Admin Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mary Joy M. Lope",0,0,0,1
+5664,"Vionelyn Z. Opis","Admin Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Vionelyn Z. Opis",0,0,0,1
+5665,"Jhon Keneth M. Caampued","Admin Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jhon Keneth M. Caampued",0,0,0,1
+5666,"Jean Althia M. Hizole","Admin Aide I","MO - Nutrition Center",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jean Althia M. Hizole",0,0,0,1
+5668,"Romnick M. Menor","Admin Aide I","MEO - Plaza, Parks and Monument Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Romnick M. Menor",0,0,0,1
+5669,"Dianne Ivy Monta","Admin Aide I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Dianne Ivy Monta",0,0,0,1
+5670,"Walter Buenaventura","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Walter Buenaventura",0,0,0,1
+5671,"Sharilou L. Luci","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Sharilou L. Luci",0,0,0,1
+5674,"Wendy M. Reaño","Engineer I","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Wendy M. Reaño",0,0,0,1
+5675,"Roblin L. Lara","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Roblin L. Lara",0,0,0,1
+5676,"Joan L. Labindao","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Joan L. Labindao",0,0,0,1
+5677,"Judy May Historillo","Admin Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Judy May Historillo",0,0,0,1
+5678,"Khelsea M. Moredo","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Khelsea M. Moredo",0,0,0,1
+5679,"Reynan M. Jalos","Admin Aide I","MPOC-Traffic Aide",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Reynan M. Jalos",0,0,0,1
+5680,"Joel M. Macabiog","Admin Aide I",Slaughterhouse,1,03:00:00,09:00:00,10:00:00,12:00:00,0,"Joel M. Macabiog",0,0,0,1
+5682,"John Patrick L. Mascareñas","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Patrick L. Mascareñas",0,0,0,1
+5683,"Jessabel J. Saguid","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jessabel J. Saguid",0,0,0,1
+5685,"Luiz Angelo G. Labog","Admin Aide I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Luiz Angelo G. Labog",0,0,0,1
+5689,"Megan M. Togado","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Megan M. Togado",0,0,0,1
+5690,"Jericho Pagulayan","Admin Aide I","Municipal Disaster Risk Reduction and Management Office",1,14:00:00,18:00:00,18:00:00,22:00:00,0,"Jericho Pagulayan",0,0,0,1
+5692,"Joycel M. Lara","Admin Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Joycel M. Lara",0,0,0,1
+5694,"Shean Lyster Matining","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Shean Lyster Matining",0,0,0,1
+5695,"Kenneth F. Landoy","Admin Aide III","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Kenneth F. Landoy",0,0,0,1
+5696,"Rafael Montenegro","Admin Aide I",Slaughterhouse,1,03:00:00,09:00:00,15:00:00,17:00:00,0,"Rafael Montenegro",0,0,0,1
+5697,"Crissel O. Lamboloto","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Crissel O. Lamboloto",0,0,0,1
+5698,"Leonard Victor Leynes","Admin Aide I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Leonard Victor Leynes",0,0,0,1
+5699,"Erwin Von C. Calachan III","Admin Aide I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Erwin Von C. Calachan III",0,0,0,1
+5700,"Jorge Benzon M. Miñas","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jorge Benzon M. Miñas",0,0,0,1
+5701,"Jerome M. Lubrin","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jerome M. Lubrin",0,0,0,1
+5702,"Bernice Alizza Marie M. Lazo","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Bernice Alizza Marie M. Lazo",0,0,0,1
+5704,"Rogiemar Janda","Admin Aide I","Office Of The Vice Mayor",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rogiemar Janda",0,0,0,1
+5705,"Lark Louie M. Rabi","Admin Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Lark Louie M. Rabi",0,0,0,1
+5706,"Suzanne M. Carreon","Admin Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Suzanne M. Carreon",0,0,0,1
+5707,"Glyza Marie D. Sapuco","Admin Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Glyza Marie D. Sapuco",0,0,0,1
+5708,"Neil Owen O. Pineda","Admin Aide I","Municipal Accounting Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Neil Owen O. Pineda",0,0,0,1
+5709,"Maria Judiel M. Sustento","Admin Aide I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Maria Judiel M. Sustento",0,0,0,1
+5710,"Maritoni Isabel L. Mirafuente","Admin Aide I","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Maritoni Isabel L. Mirafuente",0,0,0,1
+5711,"Kaye L. Malacas","Admin Aide I","MO - Municipal Information and Library Services Section",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Kaye L. Malacas",0,0,0,1
+5712,"Jenny Ross M. Revilla","Administrative Aide I","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jenny Ross M. Revilla",0,0,0,1
+5713,"John Kevin M. Nueva","Population and Development Service","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"John Kevin M. Nueva",0,0,0,1
+5714,"Bryan Osinsao","Admin Aide I","Municipal Agriculture Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Bryan Osinsao",0,0,0,1
+5715,"Arra M. Malitao","Engineering Aide","Municipal Engineering Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Arra M. Malitao",0,0,0,1
+5727,"Regine N. Sartillo","Admin Aide I","Municipal Social Welfare and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Regine N. Sartillo",0,0,0,1
+5728,"Marife Laman","Admin Aide I","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Marife Laman",0,0,0,1
+5729,"Robert Lope","Admin Aide I","Municipal Health Office (RHU II)",1,07:00:00,11:00:00,12:00:00,16:00:00,0,"Robert Lope",0,0,0,1
+5730,"Lorenzo Sarmiento","Admin Aide I","Operations of Market",1,07:00:00,11:00:00,13:00:00,17:00:00,0,"Lorenzo Sarmiento",0,0,0,1
+5731,"Florinel Marticio","NC TIDA","Municipal Treasurer Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Florinel Marticio",0,0,0,1
+5732,"Leo O. Mercado","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Leo O. Mercado",0,0,0,1
+5733,"Mary Joy S. Obaña","Admin Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mary Joy S. Obaña",0,0,0,1
+5734,"Kimberly L. Jinao","Admin Aide I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Kimberly L. Jinao",0,0,0,1
+5735,"Mae Veronica J. Duenas","Administrative Aide I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mae Veronica J. Duenas",0,0,0,1
+5736,"Juliah Ysabelle De Leon","Admin Aide I","Municipal Administrator's Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Juliah Ysabelle De Leon",0,0,0,1
+5739,"Realyn M. Lolong","Admin Aide I","Municipal Assessor Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Realyn M. Lolong",0,0,0,1
+5741,"Yvette An N. Hizole","Administrative Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Yvette An N. Hizole",0,0,0,1
+5742,"Reigee N. Jalimbawa","Administrative Aide I","Municipal Disaster Risk Reduction and Management Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Reigee N. Jalimbawa",0,0,0,1
+5743,"Rei Elvon M. Manaog","Admin Aide I","Municipal Planning and Development Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Rei Elvon M. Manaog",0,0,0,1
+5744,"Mary Joy J. Malapitan","Administrative Aide I","SB Legislative Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mary Joy J. Malapitan",0,0,0,1
+5747,"Sophia S. Miralles","Pharmacist II","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Sophia S. Miralles",0,0,0,1
+5748,"Ederlyn N. Abando","Nurse I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Ederlyn N. Abando",0,0,0,1
+5749,"Jenny Rose M. Lazarte","Midwife I","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jenny Rose M. Lazarte",0,0,0,1
+5750,"Andrea Kay M. Hizole","Nurse I","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Andrea Kay M. Hizole",0,0,0,1
+5751,"Edgardo G. Garcia Jr.","Midwife I","Municipal Health Office (RHU II)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Edgardo G. Garcia Jr.",0,0,0,1
+5752,"Camelia Ann L. Edrada","Med Tech I","Municipal Health Office",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Camelia Ann L. Edrada",0,0,0,1
+5753,"Dominic Jose S. Saet","Administrative Aide I","MO - Information and Communications Technology Sector",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Dominic Jose S. Saet",0,0,0,1
+5756,"Jhuan Paulo M. Hermosa","Administrative Aide I","SB Legislative Office (Liga)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Jhuan Paulo M. Hermosa",0,0,0,1
+5757,"Crisel T. Jamilla","Administrative Aide I","SB Legislative Office (Liga)",1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Crisel T. Jamilla",0,0,0,1
+6317,"Mary Ann D. Mayacyac","Admin Aide I",CAO,1,08:00:00,12:00:00,13:00:00,17:00:00,0,"Mary Ann D. Mayacyac",0,0,0,1

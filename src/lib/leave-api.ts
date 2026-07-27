@@ -67,6 +67,8 @@ export type LeaveApplication = {
   approvedDaysOther: number | null;
   approvedDaysOtherText: string;
   finalDisapprovalReason: string;
+  approvedCreditChargeDays: number | null;
+  chargedLeaveTypeId: number | null;
   status: LeaveStatus;
   approverName: string;
   decisionRemarks: string;
@@ -184,6 +186,12 @@ export function decideLeaveApplication(
 
 export function deleteLeaveApplication(id: string) {
   return api<{ ok: boolean }>(`/api/leave/applications/${id}`, { method: "DELETE" });
+}
+
+export function cancelLeaveApplication(id: string) {
+  return api<{ application: LeaveApplication }>(`/api/leave/applications/${id}/cancel`, {
+    method: "POST",
+  });
 }
 
 export function generateLeaveForm6Excel(id: string) {

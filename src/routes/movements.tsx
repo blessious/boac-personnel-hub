@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   ArrowRightLeft,
   CalendarDays,
   Check,
@@ -40,7 +41,7 @@ import {
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api, isAbortError } from "@/lib/api";
-import { canWriteHrRecords, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord, type SettingsOptions } from "@/lib/employees-api";
 import {
   emptyMovement,
@@ -77,6 +78,7 @@ export const Route = createFileRoute("/movements")({
       targetPlantillaItemId:
         typeof search.targetPlantillaItemId === "string" ? search.targetPlantillaItemId : undefined,
       actionType,
+      status: typeof search.status === "string" ? search.status : undefined,
     };
   },
   component: MovementsPage,
@@ -96,7 +98,12 @@ const BASE_QUEUE_STATUSES = [
   "Posted",
   "Rejected",
 ];
-const DERIVED_QUEUE_STATUSES = new Set(["needs-action", "preparation", "ready-post"]);
+const DERIVED_QUEUE_STATUSES = new Set([
+  "needs-action",
+  "preparation",
+  "ready-post",
+  "activation-failed",
+]);
 const today = () => new Date().toISOString().slice(0, 10);
 const canPostMovement = (movement: Movement) =>
   movement.status === "Approved" ||
@@ -104,17 +111,18 @@ const canPostMovement = (movement: Movement) =>
 function MovementsPage() {
   const navigate = useNavigate({ from: "/movements" });
   const prepareSearch = useSearch({ from: "/movements" });
-  const { user, can } = useAuth(),
-    canPrepare = canWriteHrRecords(user?.role),
+  const { user, can, hasPermission } = useAuth(),
+    canPrepare = hasPermission("movements.write"),
     canApprove = can("approve"),
     canPost = canPrepare;
   const [movements, setMovements] = useState<Movement[]>([]),
     [summary, setSummary] = useState<Record<string, number>>({}),
     [q, setQ] = useState(""),
-    [status, setStatus] = useState("all"),
+    [status, setStatus] = useState(prepareSearch.status || "all"),
     [actionFilter, setActionFilter] = useState("all"),
     [didSetApproverQueue, setDidSetApproverQueue] = useState(false),
-    [didSetHrQueue, setDidSetHrQueue] = useState(false);
+    [didSetHrQueue, setDidSetHrQueue] = useState(false),
+    [loadError, setLoadError] = useState("");
   const apiStatus = DERIVED_QUEUE_STATUSES.has(status) ? "all" : status;
   const queueStatuses = useMemo(() => {
     if (canPrepare) return ["preparation", "ready-post", ...BASE_QUEUE_STATUSES];
@@ -143,8 +151,13 @@ function MovementsPage() {
         if (signal?.aborted) return;
         setMovements(x.movements);
         setSummary(x.summary);
+        setLoadError("");
       } catch (e) {
-        if (!isAbortError(e)) toast.error((e as Error).message);
+        if (!isAbortError(e)) {
+          const message = (e as Error).message;
+          setLoadError(message);
+          toast.error(message);
+        }
       }
     },
     [q, apiStatus, actionFilter],
@@ -339,8 +352,15 @@ function MovementsPage() {
     if (status === "ready-post") {
       return movements.filter((m) => m.status === "Approved" || m.status === "Scheduled");
     }
+    if (status === "activation-failed") {
+      return movements.filter((m) => Boolean(m.activationError));
+    }
     return movements;
   }, [movements, status]);
+  const activationFailureCount = useMemo(
+    () => movements.filter((movement) => Boolean(movement.activationError)).length,
+    [movements],
+  );
   const queueLabel = (queueStatus: string) =>
     queueStatus === "needs-action"
       ? "Needs action"
@@ -348,9 +368,11 @@ function MovementsPage() {
         ? "Preparation"
         : queueStatus === "ready-post"
           ? "Ready to post"
-          : queueStatus === "all"
-            ? "All"
-            : queueStatus;
+          : queueStatus === "activation-failed"
+            ? "Activation failed"
+            : queueStatus === "all"
+              ? "All"
+              : queueStatus;
   const actionButtons = (m: Movement, variant: "ghost" | "outline") => (
     <>
       <Button size="sm" variant="outline" onClick={() => openDetails(m)}>
@@ -457,6 +479,16 @@ function MovementsPage() {
           chartColor="stroke-rose-500"
           trend="down"
         />
+        <StatCard
+          title="Failed"
+          value={activationFailureCount}
+          subtext="Scheduled activation"
+          subtextColor={activationFailureCount ? "text-red-600" : "text-muted-foreground"}
+          icon={<AlertTriangle className="h-5 w-5 text-red-600" />}
+          iconBg="bg-red-50 dark:bg-red-500/15"
+          chartColor="stroke-red-500"
+          trend="down"
+        />
       </div>
       <WorkflowStrip />
       <div className="mt-4 flex flex-wrap gap-2">
@@ -499,6 +531,17 @@ function MovementsPage() {
           </Button>
         )}
       </div>
+      {loadError && (
+        <div className="mt-4 flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="font-semibold">Unable to load personnel movements</div>
+            <div>{loadError}</div>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => load()}>
+            Retry
+          </Button>
+        </div>
+      )}
       <div className="mobile-record-list mt-4 md:hidden">
         {displayedMovements.map((m) => (
           <article className="rounded-xl border border-border bg-white p-3 shadow-sm" key={m.id}>
@@ -510,6 +553,12 @@ function MovementsPage() {
                 </div>
               </div>
               <Status value={m.status} />
+              {m.activationError && (
+                <div className="mt-1 flex items-center justify-end gap-1 text-xs font-medium text-red-600">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Failed
+                </div>
+              )}
             </div>
             <div className="mt-3 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-3">
               <div className="space-y-5">
@@ -587,6 +636,12 @@ function MovementsPage() {
                 </td>
                 <td className="p-3">
                   <Status value={m.status} />
+                  {m.activationError && (
+                    <div className="mt-1 flex items-center gap-1 text-xs font-medium text-red-600">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Activation failed
+                    </div>
+                  )}
                 </td>
                 <td className="p-3">
                   <div className="flex flex-wrap gap-1">{actionButtons(m, "ghost")}</div>
@@ -765,13 +820,13 @@ function MovementDetailDialog({
                 </div>
 
                 <section className="rounded-lg border p-4">
-                  <h3 className="mb-3 text-sm font-semibold">Remarks and supporting documents</h3>
+                  <h3 className="mb-3 text-sm font-semibold">Remarks and document references</h3>
                   <div className="space-y-3 text-sm">
                     <DetailValue label="Remarks" value={movement.remarks || "-"} />
                     <DetailValue label="Decision remarks" value={movement.decisionRemarks || "-"} />
                     <div>
                       <div className="text-xs font-medium uppercase text-muted-foreground">
-                        Supporting documents
+                        Document references
                       </div>
                       {movement.supportingDocuments.length ? (
                         <div className="mt-1 space-y-1">
@@ -785,7 +840,7 @@ function MovementDetailDialog({
                           ))}
                         </div>
                       ) : (
-                        <div className="mt-1 text-muted-foreground">No documents listed.</div>
+                        <div className="mt-1 text-muted-foreground">No references listed.</div>
                       )}
                     </div>
                   </div>
@@ -986,9 +1041,9 @@ function MovementDialog({
           <DialogTitle>{movement ? "Edit" : "Prepare"} personnel movement</DialogTitle>
         </DialogHeader>
         {contextTitle && (
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-950">
+          <div className="notice-info rounded-lg border px-3 py-2 text-sm">
             <div className="font-semibold">{contextTitle}</div>
-            <div className="mt-1 grid gap-1 text-blue-900 sm:grid-cols-2">
+            <div className="mt-1 grid gap-1 sm:grid-cols-2">
               {selectedEmployee && (
                 <div className="min-w-0">
                   <span className="font-medium">Employee: </span>
@@ -1108,14 +1163,14 @@ function MovementDialog({
             />
           )}
           {form.actionType === "Reclassification" && (
-            <div className="sm:col-span-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+            <div className="notice-info rounded-lg border p-3 text-sm sm:col-span-2">
               This effective-dated staffing action changes the classification and authorized salary
               of the employee&apos;s current Plantilla item while preserving its former values in
               history.
             </div>
           )}
           <div className="sm:col-span-2">
-            <Field label="Supporting documents (one per line: Name | reference/location)">
+            <Field label="Document references (one per line: Name | reference/location)">
               <Textarea
                 rows={3}
                 value={form.documentsText}
@@ -1243,8 +1298,14 @@ function SelectField({
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0">
+        <PopoverContent
+          align="start"
+          className="w-[--radix-popover-trigger-width] max-h-[min(22rem,calc(100dvh-8rem))] overflow-hidden p-0"
+          onWheelCapture={(event) => event.stopPropagation()}
+          onTouchMoveCapture={(event) => event.stopPropagation()}
+        >
           <Command
+            className="max-h-[min(22rem,calc(100dvh-8rem))]"
             filter={(candidateValue, search) => {
               const row = rows.find(([id]) => id === candidateValue);
               if (!row) return 0;
@@ -1252,7 +1313,7 @@ function SelectField({
             }}
           >
             <CommandInput placeholder={`Search ${label.toLowerCase()}...`} />
-            <CommandList>
+            <CommandList className="max-h-[min(18rem,calc(100dvh-12rem))] overscroll-contain scrollbar-thin">
               <CommandEmpty>No matches found.</CommandEmpty>
               <CommandGroup>
                 <CommandItem
@@ -1275,7 +1336,7 @@ function SelectField({
                     }}
                   >
                     <Check className={cn("h-4 w-4", value === id ? "opacity-100" : "opacity-0")} />
-                    <span className="truncate">{name}</span>
+                    <span className="min-w-0 truncate">{name}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>

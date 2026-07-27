@@ -48,6 +48,7 @@ async function buildPersonnelPlantillaReport(pool) {
     FROM employees e
     LEFT JOIN (SELECT DISTINCT employee_id FROM plantilla_occupancies WHERE status='Active') po ON po.employee_id=e.id
     LEFT JOIN (SELECT DISTINCT employee_id FROM non_plantilla_engagements WHERE status='Active') ne ON ne.employee_id=e.id
+    WHERE e.is_hidden = 0
   `);
 
   const [byDepartment] = await pool.query(`
@@ -56,6 +57,7 @@ async function buildPersonnelPlantillaReport(pool) {
            SUM(emp_status <> 'Active') AS inactive,
            COUNT(*) AS total
     FROM employees
+    WHERE is_hidden = 0
     GROUP BY COALESCE(NULLIF(TRIM(department), ''), 'Unspecified')
     ORDER BY total DESC, label ASC
     LIMIT 12
@@ -67,6 +69,7 @@ async function buildPersonnelPlantillaReport(pool) {
            SUM(emp_status <> 'Active') AS inactive,
            COUNT(*) AS total
     FROM employees
+    WHERE is_hidden = 0
     GROUP BY COALESCE(NULLIF(TRIM(status), ''), 'Unspecified')
     ORDER BY total DESC, label ASC
   `);
@@ -75,6 +78,7 @@ async function buildPersonnelPlantillaReport(pool) {
     SELECT COALESCE(NULLIF(TRIM(level), ''), 'Unspecified') AS label,
            COUNT(*) AS total
     FROM employees
+    WHERE is_hidden = 0
     GROUP BY COALESCE(NULLIF(TRIM(level), ''), 'Unspecified')
     ORDER BY total DESC, label ASC
   `);
@@ -83,6 +87,7 @@ async function buildPersonnelPlantillaReport(pool) {
     SELECT COALESCE(NULLIF(TRIM(gender), ''), 'Unspecified') AS label,
            COUNT(*) AS total
     FROM employees
+    WHERE is_hidden = 0
     GROUP BY COALESCE(NULLIF(TRIM(gender), ''), 'Unspecified')
     ORDER BY total DESC, label ASC
   `);
@@ -91,6 +96,7 @@ async function buildPersonnelPlantillaReport(pool) {
     SELECT COALESCE(NULLIF(TRIM(civil_status), ''), 'Unspecified') AS label,
            COUNT(*) AS total
     FROM employees
+    WHERE is_hidden = 0
     GROUP BY COALESCE(NULLIF(TRIM(civil_status), ''), 'Unspecified')
     ORDER BY total DESC, label ASC
   `);
@@ -107,6 +113,7 @@ async function buildPersonnelPlantillaReport(pool) {
       END AS label,
       COUNT(*) AS total
     FROM employees
+    WHERE is_hidden = 0
     GROUP BY label
     ORDER BY FIELD(label, 'Under 30', '30-39', '40-49', '50-59', '60+', 'Unspecified')
   `);
@@ -115,6 +122,7 @@ async function buildPersonnelPlantillaReport(pool) {
     SELECT COALESCE(NULLIF(TRIM(position), ''), 'Unspecified') AS label,
            COUNT(*) AS total
     FROM employees
+    WHERE is_hidden = 0
     GROUP BY COALESCE(NULLIF(TRIM(position), ''), 'Unspecified')
     ORDER BY total DESC, label ASC
     LIMIT 15
@@ -137,10 +145,11 @@ async function buildPersonnelPlantillaReport(pool) {
       SELECT COUNT(*) AS authorized,
              SUM(pi.item_status = 'Active') AS active,
              SUM(pi.item_status <> 'Active') AS inactive,
-             SUM(pi.item_status = 'Active' AND po.id IS NOT NULL) AS occupied,
-             SUM(pi.item_status = 'Active' AND po.id IS NULL) AS vacant
+             SUM(pi.item_status = 'Active' AND e.id IS NOT NULL) AS occupied,
+             SUM(pi.item_status = 'Active' AND e.id IS NULL) AS vacant
       FROM plantilla_items pi
       LEFT JOIN plantilla_occupancies po ON po.plantilla_item_id = pi.id AND po.status = 'Active'
+      LEFT JOIN employees e ON e.id = po.employee_id AND e.is_hidden = 0
     `);
     plantillaSummary = {
       authorized: number(summary.authorized),
@@ -156,11 +165,12 @@ async function buildPersonnelPlantillaReport(pool) {
     const [divisionRows] = await pool.query(`
       SELECT COALESCE(NULLIF(TRIM(d.name), ''), COALESCE(NULLIF(TRIM(pi.notes), ''), 'Unspecified')) AS label,
              SUM(pi.item_status = 'Active') AS active,
-             SUM(pi.item_status = 'Active' AND po.id IS NOT NULL) AS occupied,
-             SUM(pi.item_status = 'Active' AND po.id IS NULL) AS vacant,
+             SUM(pi.item_status = 'Active' AND e.id IS NOT NULL) AS occupied,
+             SUM(pi.item_status = 'Active' AND e.id IS NULL) AS vacant,
              COUNT(*) AS total
       FROM plantilla_items pi
       LEFT JOIN plantilla_occupancies po ON po.plantilla_item_id = pi.id AND po.status = 'Active'
+      LEFT JOIN employees e ON e.id = po.employee_id AND e.is_hidden = 0
       LEFT JOIN hr_reference_values d ON d.id = pi.division_ref_id
       GROUP BY COALESCE(NULLIF(TRIM(d.name), ''), COALESCE(NULLIF(TRIM(pi.notes), ''), 'Unspecified'))
       ORDER BY vacant DESC, total DESC, label ASC
@@ -177,11 +187,12 @@ async function buildPersonnelPlantillaReport(pool) {
     const [salaryRows] = await pool.query(`
       SELECT COALESCE(CAST(sg.grade AS CHAR), 'Unspecified') AS label,
              SUM(pi.item_status = 'Active') AS active,
-             SUM(pi.item_status = 'Active' AND po.id IS NOT NULL) AS occupied,
-             SUM(pi.item_status = 'Active' AND po.id IS NULL) AS vacant,
+             SUM(pi.item_status = 'Active' AND e.id IS NOT NULL) AS occupied,
+             SUM(pi.item_status = 'Active' AND e.id IS NULL) AS vacant,
              COUNT(*) AS total
       FROM plantilla_items pi
       LEFT JOIN plantilla_occupancies po ON po.plantilla_item_id = pi.id AND po.status = 'Active'
+      LEFT JOIN employees e ON e.id = po.employee_id AND e.is_hidden = 0
       LEFT JOIN salary_grades sg ON sg.id = pi.salary_grade_id
       GROUP BY COALESCE(CAST(sg.grade AS CHAR), 'Unspecified')
       ORDER BY CAST(label AS UNSIGNED), label
@@ -204,7 +215,7 @@ async function buildPersonnelPlantillaReport(pool) {
              COALESCE(se.name, '') AS section,
              COALESCE(pt.name, '') AS plantillaType,
              pi.item_status AS itemStatus,
-             CASE WHEN po.id IS NULL THEN 'Vacant' ELSE 'Occupied' END AS occupancyStatus,
+             CASE WHEN e.id IS NULL THEN 'Vacant' ELSE 'Occupied' END AS occupancyStatus,
              TRIM(CONCAT_WS(' ',
                NULLIF(TRIM(e.firstname), ''),
                CASE
@@ -223,9 +234,8 @@ async function buildPersonnelPlantillaReport(pool) {
       LEFT JOIN hr_reference_values se ON se.id = pi.section_ref_id
       LEFT JOIN hr_reference_values pt ON pt.id = pi.plantilla_type_ref_id
       LEFT JOIN plantilla_occupancies po ON po.plantilla_item_id = pi.id AND po.status = 'Active'
-      LEFT JOIN employees e ON e.id = po.employee_id
+      LEFT JOIN employees e ON e.id = po.employee_id AND e.is_hidden = 0
       ORDER BY pi.item_status, pi.item_number
-      LIMIT 500
     `);
     plantillaItems = items.map((item) => ({
       itemNumber: item.itemNumber || "",

@@ -43,6 +43,37 @@ function NotFoundComponent() {
   );
 }
 
+function AccessDeniedComponent() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
+      <div className="max-w-md text-center">
+        <h1 className="text-5xl font-bold text-foreground">403</h1>
+        <h2 className="mt-4 text-xl font-semibold text-foreground">Access denied</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Your account does not have permission to view this page.
+        </p>
+        <Link
+          to="/"
+          className="mt-6 inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+        >
+          Go to dashboard
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function RedirectingToLoginComponent() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
+      <div className="text-center" role="status" aria-live="polite">
+        <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm font-medium text-foreground">Redirecting to sign in…</p>
+      </div>
+    </div>
+  );
+}
+
 export const Route = createRootRoute({
   head: () => ({
     meta: [
@@ -99,7 +130,16 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 function RootComponent() {
   return (
@@ -121,6 +161,7 @@ function AppLayout() {
   const { user } = useAuth();
   const { title, subtitle } = useSettings();
   const deviceProfile = useDeviceProfile();
+  const requestedPath = location.href || location.pathname || "/";
   const isLoginPage = location.pathname === "/login";
   const isChangePasswordPage = location.pathname === "/change-password";
   const authorized =
@@ -131,7 +172,11 @@ function AppLayout() {
 
   useEffect(() => {
     if (!user && !isLoginPage) {
-      navigate({ to: "/login", search: { redirect: "/" }, replace: true });
+      navigate({
+        to: "/login",
+        search: { redirect: requestedPath },
+        replace: true,
+      });
       return;
     }
     if (user?.mustChangePassword && !isChangePasswordPage) {
@@ -143,16 +188,18 @@ function AppLayout() {
       !isLoginPage &&
       !canAccessPath(user.permissions || [], location.pathname, user.employeeId)
     ) {
-      navigate({ to: "/", replace: true });
+      // Keep the requested URL visible so the user gets a clear 403 state.
+      return;
     }
-  }, [user, isLoginPage, isChangePasswordPage, location.pathname, navigate]);
+  }, [user, isLoginPage, isChangePasswordPage, location.pathname, navigate, requestedPath]);
 
   useEffect(() => {
     document.body.dataset.device = deviceProfile.device;
     document.body.dataset.touch = String(deviceProfile.isTouch);
   }, [deviceProfile.device, deviceProfile.isTouch]);
 
-  if ((!user && !isLoginPage) || !authorized) return null;
+  if (!user && !isLoginPage) return <RedirectingToLoginComponent />;
+  if (!authorized) return <AccessDeniedComponent />;
 
   return (
     <>
@@ -184,22 +231,21 @@ function canAccessPath(permissions: PermissionKey[], pathname: string, employeeI
   if (pathname.startsWith("/my-profile")) return allowed.has("my_profile.access");
   if (pathname.startsWith("/requests")) return allowed.has("requests.access");
   if (pathname.startsWith("/admin")) {
-    return [
-      "admin.users",
-      "admin.audit",
-      "admin.errors",
-      "admin.backups",
-      "role_permissions.manage",
-    ].some((permission) => allowed.has(permission as PermissionKey));
+    return ["admin.users", "admin.audit", "admin.errors", "role_permissions.manage"].some(
+      (permission) => allowed.has(permission as PermissionKey),
+    );
   }
   if (pathname.startsWith("/settings")) return allowed.has("settings.manage");
   if (pathname.startsWith("/leave")) return allowed.has("leave.read");
-  if (pathname.startsWith("/attendance")) return allowed.has("attendance.read");
+  if (pathname.startsWith("/attendance")) {
+    return allowed.has("attendance.read") || allowed.has("self_service.access");
+  }
   if (pathname.startsWith("/schedules")) return allowed.has("attendance.write");
   if (pathname.startsWith("/plantilla")) return allowed.has("plantilla.read");
   if (pathname.startsWith("/movements")) return allowed.has("movements.read");
   if (pathname.startsWith("/service-records")) return allowed.has("service_records.read");
   if (pathname.startsWith("/reports")) return allowed.has("reports.view");
+  if (pathname.startsWith("/employees/references")) return allowed.has("settings.manage");
   if (pathname.startsWith("/employees/")) {
     return (
       allowed.has("employees.read") ||

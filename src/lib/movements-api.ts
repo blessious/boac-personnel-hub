@@ -14,7 +14,6 @@ export const MOVEMENT_TYPES = [
   "Retirement",
   "Termination",
   "Death",
-  "Other",
 ] as const;
 export type MovementStatus =
   | "Draft"

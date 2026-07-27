@@ -12,7 +12,7 @@ echo.
 where powershell >nul 2>nul
 if %errorlevel% neq 0 (
     echo [ERROR] PowerShell is not available.
-    pause
+    if not "%HRIS_NO_PAUSE%"=="1" pause
     exit /b 1
 )
 
@@ -26,5 +26,5 @@ if not "%STOP_EXIT%"=="0" (
     echo [INFO] Stop completed.
 )
 
-pause
+if not "%HRIS_NO_PAUSE%"=="1" pause
 exit /b %STOP_EXIT%

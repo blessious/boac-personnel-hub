@@ -71,6 +71,7 @@ import {
   type SectionRow,
 } from "@/lib/employees-api";
 import {
+  cancelLeaveApplication,
   getEmployeeLeave,
   type EmployeeLeaveResponse,
   type LeaveApplication,
@@ -449,6 +450,8 @@ function EmployeeServicesHome() {
   const [leaveTypesLoading, setLeaveTypesLoading] = useState(true);
   const [leaveTypesError, setLeaveTypesError] = useState("");
   const [loading, setLoading] = useState(Boolean(user?.employeeId));
+  const [leaveError, setLeaveError] = useState("");
+  const [withdrawingLeaveId, setWithdrawingLeaveId] = useState("");
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [submittingLeave, setSubmittingLeave] = useState(false);
   const [generatingPds, setGeneratingPds] = useState(false);
@@ -480,9 +483,12 @@ function EmployeeServicesHome() {
       return;
     }
     setLoading(true);
+    setLeaveError("");
     getEmployeeLeave(user.employeeId)
       .then(setLeave)
-      .catch(() => setLeave(null))
+      .catch((error) => {
+        setLeaveError(error instanceof Error ? error.message : "Unable to load leave history");
+      })
       .finally(() => setLoading(false));
   }, [user?.employeeId]);
 
@@ -500,9 +506,25 @@ function EmployeeServicesHome() {
 
   const reloadLeave = () => {
     if (!user?.employeeId) return;
+    setLeaveError("");
     getEmployeeLeave(user.employeeId)
       .then(setLeave)
-      .catch(() => setLeave(null));
+      .catch((error) => {
+        setLeaveError(error instanceof Error ? error.message : "Unable to load leave history");
+      });
+  };
+
+  const withdrawLeave = async (application: LeaveApplication) => {
+    try {
+      setWithdrawingLeaveId(application.id);
+      await cancelLeaveApplication(application.id);
+      toast.success("Leave request withdrawn");
+      reloadLeave();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to withdraw leave request");
+    } finally {
+      setWithdrawingLeaveId("");
+    }
   };
 
   const submitLeave = async () => {
@@ -701,8 +723,20 @@ function EmployeeServicesHome() {
         <CleanPanel title="Current Request Status" icon={Bell}>
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading request history...</p>
+          ) : leaveError ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">Unable to load request history</p>
+              <p className="mt-1 text-xs">{leaveError}</p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={reloadLeave}>
+                Retry
+              </Button>
+            </div>
           ) : (
-            <RequestList applications={leave?.applications.slice(0, 5) || []} />
+            <RequestList
+              applications={leave?.applications.slice(0, 5) || []}
+              onWithdraw={withdrawLeave}
+              busyId={withdrawingLeaveId}
+            />
           )}
         </CleanPanel>
       </div>
@@ -1713,7 +1747,15 @@ function ActionButton({
   );
 }
 
-function RequestList({ applications }: { applications: LeaveApplication[] }) {
+function RequestList({
+  applications,
+  onWithdraw,
+  busyId = "",
+}: {
+  applications: LeaveApplication[];
+  onWithdraw?: (application: LeaveApplication) => void;
+  busyId?: string;
+}) {
   if (!applications.length) {
     return (
       <p className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
@@ -1736,7 +1778,19 @@ function RequestList({ applications }: { applications: LeaveApplication[] }) {
               {formatNumber(item.daysRequested)} day(s)
             </p>
           </div>
-          <WorkflowStatusBadge status={item.status} />
+          <div className="flex items-center gap-2">
+            <WorkflowStatusBadge status={item.status} />
+            {item.status === "Pending" && onWithdraw ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busyId === item.id}
+                onClick={() => onWithdraw(item)}
+              >
+                Withdraw
+              </Button>
+            ) : null}
+          </div>
         </div>
       ))}
     </div>

@@ -122,26 +122,6 @@ export async function initializeAssignmentSchema(pool, employeeIdDefinition) {
     FOREIGN KEY (ended_by) REFERENCES users(id) ON DELETE SET NULL
   ) ENGINE=InnoDB`);
 
-  await pool.query(`CREATE TABLE IF NOT EXISTS plantilla_reconciliations (
-    id CHAR(36) NOT NULL PRIMARY KEY,
-    employee_id ${employeeIdDefinition},
-    plantilla_item_id CHAR(36) NOT NULL,
-    occupancy_id CHAR(36) NOT NULL,
-    effective_from DATE NOT NULL,
-    remarks TEXT NOT NULL,
-    classification_before VARCHAR(50) NOT NULL,
-    before_snapshot_json JSON NOT NULL,
-    after_snapshot_json JSON NOT NULL,
-    confirmed_by INT UNSIGNED NULL,
-    confirmed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_reconciled_employee (employee_id),
-    UNIQUE KEY uniq_reconciled_occupancy (occupancy_id),
-    INDEX idx_reconciliation_item (plantilla_item_id,confirmed_at),
-    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE RESTRICT,
-    FOREIGN KEY (plantilla_item_id) REFERENCES plantilla_items(id) ON DELETE RESTRICT,
-    FOREIGN KEY (occupancy_id) REFERENCES plantilla_occupancies(id) ON DELETE RESTRICT,
-    FOREIGN KEY (confirmed_by) REFERENCES users(id) ON DELETE SET NULL
-  ) ENGINE=InnoDB`);
 }
 
 const orgNameSql = "COALESCE(sec.name,divi.name,off.name,s.name)";
@@ -373,7 +353,6 @@ const mapEngagement = (row) => ({
 export function createAssignmentHandlers({
   pool,
   requireRead,
-  requireReconciliation,
   requireEngagement,
   readBody,
   json,
@@ -457,298 +436,12 @@ export function createAssignmentHandlers({
         LEFT JOIN non_plantilla_engagements ne ON ne.employee_id=e.id AND ne.status='Active'
         WHERE e.is_hidden=0 AND po.id IS NULL AND ne.id IS NULL) awaiting_assignment,
       (SELECT COUNT(*) FROM personnel_movements WHERE status='Scheduled') scheduled_movements,
-      (SELECT COUNT(*) FROM non_plantilla_engagements WHERE status='Active' AND date_to BETWEEN CURDATE() AND DATE_ADD(CURDATE(),INTERVAL 30 DAY)) expiring_engagements,
-      (SELECT COUNT(*) FROM employees e LEFT JOIN hr_reference_values ou ON BINARY ou.name=BINARY TRIM(e.department)
-        WHERE e.is_hidden=0 AND NULLIF(TRIM(e.department),'') IS NOT NULL AND ou.id IS NULL) unmapped_organizations`);
+      (SELECT COUNT(*) FROM non_plantilla_engagements WHERE status='Active' AND date_to BETWEEN CURDATE() AND DATE_ADD(CURDATE(),INTERVAL 30 DAY)) expiring_engagements`);
     return json(res, 200, {
       awaitingAssignment: Number(row.awaiting_assignment || 0),
       scheduledMovements: Number(row.scheduled_movements || 0),
       expiringEngagements: Number(row.expiring_engagements || 0),
-      unmappedOrganizations: Number(row.unmapped_organizations || 0),
     });
-  };
-
-  handlers.reconciliationList = async (req, res, url) => {
-    if (!(await requireRead(req, res))) return;
-    const q = String(url.searchParams.get("q") || "").trim();
-    const classification = String(url.searchParams.get("classification") || "all");
-    const params = { q: `%${q}%` };
-    const [rows] = await pool.execute(
-      `SELECT e.id,e.employee_no,e.firstname,e.middlename,e.lastname,e.name_ext,e.status,e.emp_status,
-              e.item_no,e.position,e.department,po.id occupancy_id,po.plantilla_item_id active_item_id,
-              pi.id matched_item_id,pi.item_number matched_item_number,p.title matched_position,
-              ${orgNameSql} matched_organization,
-              occupied.employee_id item_occupant_id,
-              (SELECT COUNT(*) FROM employees de WHERE de.is_hidden=0 AND NULLIF(TRIM(de.item_no),'')=NULLIF(TRIM(e.item_no),'')) duplicate_count,
-              (SELECT COUNT(*) FROM plantilla_items spi JOIN positions sp ON sp.id=spi.position_id
-                LEFT JOIN plantilla_occupancies spo ON spo.plantilla_item_id=spi.id AND spo.status='Active'
-                WHERE spi.item_status='Active' AND spo.id IS NULL AND BINARY sp.title=BINARY e.position) suggested_count,
-              (SELECT MIN(spi.id) FROM plantilla_items spi JOIN positions sp ON sp.id=spi.position_id
-                LEFT JOIN plantilla_occupancies spo ON spo.plantilla_item_id=spi.id AND spo.status='Active'
-                WHERE spi.item_status='Active' AND spo.id IS NULL AND BINARY sp.title=BINARY e.position) suggested_item_id
-       FROM employees e
-       LEFT JOIN plantilla_occupancies po ON po.employee_id=e.id AND po.status='Active'
-       LEFT JOIN plantilla_items pi ON BINARY pi.item_number=BINARY TRIM(e.item_no)
-       LEFT JOIN positions p ON p.id=pi.position_id
-       LEFT JOIN hr_reference_values s ON s.id=pi.sector_ref_id
-       LEFT JOIN hr_reference_values off ON off.id=pi.office_ref_id
-       LEFT JOIN hr_reference_values divi ON divi.id=pi.division_ref_id
-       LEFT JOIN hr_reference_values sec ON sec.id=pi.section_ref_id
-       LEFT JOIN plantilla_occupancies occupied ON occupied.plantilla_item_id=pi.id AND occupied.status='Active'
-       WHERE e.is_hidden=0 AND (:q='%%' OR e.employee_no LIKE :q OR e.firstname LIKE :q OR e.lastname LIKE :q OR e.item_no LIKE :q)
-       ORDER BY e.lastname,e.firstname,e.employee_no`,
-      params,
-    );
-    const mapped = rows.map((row) => {
-      let kind = "Exact match";
-      if (/job order|jo\/cos|contract/i.test(row.status || "")) kind = "Non-Plantilla/JO/COS";
-      else if (row.occupancy_id) kind = "Already linked";
-      else if (!String(row.item_no || "").trim())
-        kind = row.suggested_count === 1 ? "Suggested match" : "Missing item number";
-      else if (Number(row.duplicate_count) > 1) kind = "Duplicate item number";
-      else if (!row.matched_item_id)
-        kind = row.suggested_count === 1 ? "Suggested match" : "Missing Plantilla item";
-      else if (row.item_occupant_id && row.item_occupant_id !== row.id)
-        kind = "Already occupied item";
-      else if (String(row.position || "") !== String(row.matched_position || ""))
-        kind = "Position conflict";
-      else if (
-        row.matched_organization &&
-        String(row.department || "") !== String(row.matched_organization)
-      )
-        kind = "Office conflict";
-      return {
-        employeeId: row.id,
-        employeeNo: row.employee_no,
-        employeeName: [row.firstname, row.middlename, row.lastname, row.name_ext]
-          .filter(Boolean)
-          .join(" "),
-        employmentType: row.status || "",
-        employeeStatus: row.emp_status || "",
-        legacyItemNumber: row.item_no || "",
-        legacyPosition: row.position || "",
-        legacyOrganization: row.department || "",
-        classification: kind,
-        matchedItemId:
-          row.matched_item_id || (Number(row.suggested_count) === 1 ? row.suggested_item_id : null),
-        matchedItemNumber: row.matched_item_number || "",
-        matchedPosition: row.matched_position || "",
-        matchedOrganization: row.matched_organization || "",
-      };
-    });
-    const filtered =
-      classification === "all"
-        ? mapped
-        : mapped.filter((row) => row.classification === classification);
-    const counts = mapped.reduce((result, row) => {
-      result[row.classification] = (result[row.classification] || 0) + 1;
-      return result;
-    }, {});
-    return json(res, 200, { records: filtered, summary: counts });
-  };
-
-  const confirmOne = async ({ employeeId, plantillaItemId, effectiveFrom, remarks, userId }) => {
-    const connection = await pool.getConnection();
-    try {
-      await connection.beginTransaction();
-      const [[employee]] = await connection.execute(
-        `SELECT id,employee_no,department,position,item_no,emp_status,lifecycle_state
-           FROM employees WHERE id=:employeeId AND is_hidden=0 FOR UPDATE`,
-        { employeeId },
-      );
-      if (!employee) throw new Error("Employee not found");
-      if (/job order|jo\/cos|contract/i.test(employee.status || ""))
-        throw new Error("Non-Plantilla employees must use the engagement workflow");
-      const [[item]] = await connection.execute(
-        `SELECT pi.*,p.title position_title,sg.ordinance,sg.grade,sg.step,
-                ${orgNameSql} organization_name,${orgIdSql} org_unit_ref_id
-           FROM plantilla_items pi JOIN positions p ON p.id=pi.position_id
-           LEFT JOIN salary_grades sg ON sg.id=pi.salary_grade_id
-           LEFT JOIN hr_reference_values s ON s.id=pi.sector_ref_id
-           LEFT JOIN hr_reference_values off ON off.id=pi.office_ref_id
-           LEFT JOIN hr_reference_values divi ON divi.id=pi.division_ref_id
-           LEFT JOIN hr_reference_values sec ON sec.id=pi.section_ref_id
-          WHERE pi.id=:plantillaItemId FOR UPDATE`,
-        { plantillaItemId },
-      );
-      if (!item || item.item_status !== "Active")
-        throw new Error("Select an active Plantilla item");
-      const [[conflict]] = await connection.execute(
-        `SELECT id FROM plantilla_occupancies
-          WHERE status='Active' AND (employee_id=:employeeId OR plantilla_item_id=:plantillaItemId) FOR UPDATE`,
-        { employeeId, plantillaItemId },
-      );
-      if (conflict)
-        throw new Error("The employee or Plantilla item already has an active occupancy");
-      const occupancyId = crypto.randomUUID();
-      const reconciliationId = crypto.randomUUID();
-      const before = { employee: { ...employee }, occupancy: null };
-      await connection.execute(
-        `INSERT INTO plantilla_occupancies
-          (id,plantilla_item_id,employee_id,date_from,movement_type,remarks,created_by)
-         VALUES (:id,:plantillaItemId,:employeeId,:effectiveFrom,'Legacy Reconciliation',:remarks,:userId)`,
-        { id: occupancyId, plantillaItemId, employeeId, effectiveFrom, remarks, userId },
-      );
-      await connection.execute(
-        `UPDATE employees SET item_no=:itemNumber,position=:position,department=:department,
-          emp_status='Active',lifecycle_state='Active',current_org_unit_ref_id=:orgId WHERE id=:employeeId`,
-        {
-          employeeId,
-          itemNumber: item.item_number,
-          position: item.position_title,
-          department: item.organization_name || employee.department,
-          orgId: item.org_unit_ref_id || null,
-        },
-      );
-      const after = {
-        employee: {
-          ...before.employee,
-          item_no: item.item_number,
-          position: item.position_title,
-          department: item.organization_name || employee.department,
-          emp_status: "Active",
-          lifecycle_state: "Active",
-        },
-        occupancy: {
-          id: occupancyId,
-          itemId: item.id,
-          itemNumber: item.item_number,
-          dateFrom: effectiveFrom,
-        },
-      };
-      await connection.execute(
-        `INSERT INTO plantilla_reconciliations
-          (id,employee_id,plantilla_item_id,occupancy_id,effective_from,remarks,classification_before,before_snapshot_json,after_snapshot_json,confirmed_by)
-         VALUES (:id,:employeeId,:plantillaItemId,:occupancyId,:effectiveFrom,:remarks,'HR confirmed',:before,:after,:userId)`,
-        {
-          id: reconciliationId,
-          employeeId,
-          plantillaItemId,
-          occupancyId,
-          effectiveFrom,
-          remarks,
-          before: JSON.stringify(before),
-          after: JSON.stringify(after),
-          userId,
-        },
-      );
-      await connection.execute(
-        "INSERT INTO plantilla_item_history(plantilla_item_id,action,snapshot_json,changed_by) VALUES(:id,'Legacy Reconciliation',:snapshot,:userId)",
-        { id: plantillaItemId, snapshot: JSON.stringify(after), userId },
-      );
-      await connection.execute(
-        `INSERT INTO service_record_entries
-          (id,employee_id,service_from,position_title,department,appointment_status,annual_salary,salary_grade,salary_step,item_number,remarks,created_by,updated_by)
-         VALUES(:id,:employeeId,:effectiveFrom,:position,:department,'Legacy Reconciliation',:salary,:grade,:step,:itemNumber,:remarks,:userId,:userId)`,
-        {
-          id: crypto.randomUUID(),
-          employeeId,
-          effectiveFrom,
-          position: item.position_title,
-          department: item.organization_name || employee.department,
-          salary: item.authorized_salary,
-          grade: item.grade,
-          step: item.step,
-          itemNumber: item.item_number,
-          remarks: `Legacy Reconciliation: ${remarks}`,
-          userId,
-        },
-      );
-      if (item.salary_grade_id) {
-        await connection.execute(
-          "INSERT INTO employee_salary_records(id,employee_id,payload) VALUES(:id,:employeeId,:payload)",
-          {
-            id: crypto.randomUUID(),
-            employeeId,
-            payload: JSON.stringify({
-              date: effectiveFrom,
-              description: "Legacy Plantilla reconciliation",
-              ordinance: item.ordinance || "",
-              grade: Number(item.grade || 0),
-              step: Number(item.step || 0),
-              amount: Number(item.authorized_salary || 0),
-              gross: Number(item.authorized_salary || 0),
-              type: "Legacy Reconciliation",
-              remarks,
-            }),
-          },
-        );
-      }
-      await connection.commit();
-      return { employeeId, plantillaItemId, occupancyId, reconciliationId };
-    } catch (error) {
-      await connection.rollback().catch(() => {});
-      throw error;
-    } finally {
-      connection.release();
-    }
-  };
-
-  handlers.reconcile = async (req, res) => {
-    const user = await requireReconciliation(req, res);
-    if (!user) return;
-    try {
-      const body = await readBody(req);
-      const effectiveFrom = strictDate(body.effectiveFrom, "Effective-from date", true);
-      const remarks = String(body.remarks || "").trim();
-      if (!remarks) throw new Error("Reconciliation remarks are required");
-      const result = await confirmOne({
-        employeeId: String(body.employeeId || "").trim(),
-        plantillaItemId: String(body.plantillaItemId || "").trim(),
-        effectiveFrom,
-        remarks,
-        userId: user.id,
-      });
-      await logAudit(user.id, "plantilla.reconcile", result, req);
-      return json(res, 201, {
-        result,
-        currentAssignment: await readCurrentAssignment(pool, result.employeeId),
-      });
-    } catch (error) {
-      return fail(res, error);
-    }
-  };
-
-  handlers.reconcileBulk = async (req, res) => {
-    const user = await requireReconciliation(req, res);
-    if (!user) return;
-    const body = await readBody(req);
-    const matches = Array.isArray(body.matches) ? body.matches.slice(0, 100) : [];
-    if (!matches.length)
-      return json(res, 400, { error: "Select at least one reconciliation match" });
-    const results = [];
-    for (const match of matches) {
-      try {
-        const remarks = String(match.remarks || body.remarks || "").trim();
-        if (!remarks) throw new Error("Reconciliation remarks are required");
-        results.push({
-          ok: true,
-          ...(await confirmOne({
-            employeeId: String(match.employeeId || "").trim(),
-            plantillaItemId: String(match.plantillaItemId || "").trim(),
-            effectiveFrom: strictDate(
-              match.effectiveFrom || body.effectiveFrom,
-              "Effective-from date",
-              true,
-            ),
-            remarks,
-            userId: user.id,
-          })),
-        });
-      } catch (error) {
-        results.push({ ok: false, employeeId: match.employeeId || "", error: error.message });
-      }
-    }
-    await logAudit(
-      user.id,
-      "plantilla.reconcile_bulk",
-      {
-        succeeded: results.filter((x) => x.ok).length,
-        failed: results.filter((x) => !x.ok).length,
-      },
-      req,
-    );
-    return json(res, 200, { results });
   };
 
   handlers.listEngagements = async (req, res, url) => {
@@ -814,7 +507,7 @@ export function createAssignmentHandlers({
             employeeId: data.employeeId,
             department: data.organizationName,
             position: data.designation,
-            employmentType: data.engagementType === "Casual" ? "Casual" : "JO/COS",
+            employmentType: data.engagementType,
             organizationId: data.organizationId,
           },
         );

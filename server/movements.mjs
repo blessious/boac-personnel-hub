@@ -15,7 +15,6 @@ export const MOVEMENT_ACTION_TYPES = [
   "Retirement",
   "Termination",
   "Death",
-  "Other",
 ];
 const ITEM_ACTIONS = new Set(["Original Appointment", "Promotion", "Transfer"]);
 const PROFILE_ACTIONS = new Set(["Detail", "Designation"]);
@@ -215,6 +214,7 @@ export function createMovementHandlers({
   readBody,
   json,
   logAudit,
+  notifyRoles = async () => [],
 }) {
   const read = async (id, connection = pool) => {
     const [rows] = await connection.execute(`${MOVEMENT_SELECT} WHERE m.id=:id LIMIT 1`, { id });
@@ -322,8 +322,8 @@ export function createMovementHandlers({
       throw new Error(`${actionType} requires a target position`);
     if (actionType === "Reclassification" && (!targetPositionId || !targetSalaryGradeId))
       throw new Error("Reclassification requires a target position and salary grade");
-    if (actionType === "Renewal")
-      throw new Error("Renewal must create a new effective-dated non-Plantilla engagement period");
+    if (actionType === "Renewal" && !endDate)
+      throw new Error("Renewal requires a new engagement end date");
     if (["Detail", "Designation", "Job Rotation"].includes(actionType) && !endDate)
       throw new Error(`${actionType} requires an end date`);
     if (
@@ -859,6 +859,54 @@ export function createMovementHandlers({
             userId: user.id,
           },
         );
+      } else if (movement.action_type === "Renewal") {
+        const [[engagement]] = await connection.execute(
+          `SELECT * FROM non_plantilla_engagements
+             WHERE employee_id=:employeeId AND status='Active'
+             ORDER BY date_from DESC LIMIT 1 FOR UPDATE`,
+          { employeeId: movement.employee_id },
+        );
+        if (!engagement) throw new Error("Renewal requires an active non-Plantilla engagement");
+        if (effectiveDate <= dateOnly(engagement.date_from))
+          throw new Error("Renewal effective date must be after the current engagement start date");
+        await connection.execute(
+          `UPDATE non_plantilla_engagements
+              SET status='Expired', date_to=:dateTo, ended_by=:userId, ended_at=NOW()
+            WHERE id=:id`,
+          { id: engagement.id, dateTo: previousDate(effectiveDate), userId: user.id },
+        );
+        const renewalId = crypto.randomUUID();
+        const status = effectiveDate > dateOnly(new Date()) ? "Scheduled" : "Active";
+        await connection.execute(
+          `INSERT INTO non_plantilla_engagements
+             (id,employee_id,engagement_type,org_unit_ref_id,designation,contract_number,
+              date_from,date_to,rate,funding_source,supervisor,remarks,status,created_by)
+           VALUES(:id,:employeeId,:engagementType,:organizationId,:designation,:contractNumber,
+              :dateFrom,:dateTo,:rate,:fundingSource,:supervisor,:remarks,:status,:userId)`,
+          {
+            id: renewalId,
+            employeeId: movement.employee_id,
+            engagementType: engagement.engagement_type,
+            organizationId: engagement.org_unit_ref_id,
+            designation: engagement.designation,
+            contractNumber: engagement.contract_number,
+            dateFrom: effectiveDate,
+            dateTo: dateOnly(movement.end_date),
+            rate: engagement.rate,
+            fundingSource: engagement.funding_source,
+            supervisor: engagement.supervisor,
+            remarks: movement.remarks || engagement.remarks,
+            status,
+            userId: user.id,
+          },
+        );
+        if (status === "Active") {
+          await connection.execute(
+            `UPDATE employees SET lifecycle_state='Active', emp_status='Active'
+             WHERE id=:employeeId`,
+            { employeeId: movement.employee_id },
+          );
+        }
       } else if (movement.action_type === "Reclassification") {
         if (!before.occupancy)
           throw new Error("Reclassification requires an active Plantilla occupancy");
@@ -976,6 +1024,14 @@ export function createMovementHandlers({
           },
         );
       }
+      if (
+        !ITEM_ACTIONS.has(movement.action_type) &&
+        !SEPARATION_ACTIONS.has(movement.action_type) &&
+        !TEMPORARY_ACTIONS.has(movement.action_type) &&
+        !["Renewal", "Reclassification", "Step Increment"].includes(movement.action_type)
+      ) {
+        throw new Error(`Posting is not implemented for ${movement.action_type}`);
+      }
       const after = await currentSnapshot(movement.employee_id, connection, false);
       after.postedOccupancyId = postedOccupancyId;
       after.changedItem = changedItem;
@@ -1063,6 +1119,11 @@ export function createMovementHandlers({
           "UPDATE non_plantilla_engagements SET status='Active',date_to=:dateTo,ended_by=NULL,ended_at=NULL WHERE id=:id",
           { id: before.engagement.id, dateTo: before.engagement.dateTo },
         );
+      if (after.engagement && before.engagement?.id !== after.engagement.id)
+        await connection.execute(
+          "UPDATE non_plantilla_engagements SET status='Expired',date_to=CURDATE(),ended_by=:userId,ended_at=NOW() WHERE id=:id AND status='Active'",
+          { id: after.engagement.id, userId: user.id },
+        );
       if (after.changedItem)
         await connection.execute(
           "UPDATE plantilla_items SET position_id=COALESCE(:positionId,position_id),salary_grade_id=:salaryGradeId,authorized_salary=:authorizedSalary,updated_by=:userId WHERE id=:itemId",
@@ -1109,7 +1170,7 @@ export function createMovementHandlers({
   };
   handlers.processDue = async () => {
     const [due] = await pool.query(
-      `SELECT m.id,m.posted_by,u.role
+      `SELECT m.id,m.control_number,m.posted_by,u.role
          FROM personnel_movements m
          LEFT JOIN users u ON u.id=m.posted_by
         WHERE m.status='Scheduled' AND m.effective_date<=CURDATE()
@@ -1152,6 +1213,17 @@ export function createMovementHandlers({
             error: String(body?.error || "Scheduled activation failed").slice(0, 2000),
           },
         );
+        await notifyRoles({
+          roles: ["Super Admin", "HR"],
+          topic: "movements",
+          title: "Movement activation failed",
+          message: `${movement.control_number || "Scheduled movement"} could not be posted automatically: ${String(
+            body?.error || "Scheduled activation failed",
+          ).slice(0, 240)}`,
+          path: `/movements?status=activation-failed`,
+          sourceType: "personnel_movement",
+          sourceId: movement.id,
+        }).catch(() => {});
       }
       results.push({ id: movement.id, ok: statusCode < 400, error: body?.error || "" });
     }

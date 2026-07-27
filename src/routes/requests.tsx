@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ClipboardCheck, Clock, FilePlus2, Search, XCircle } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ import {
   requestsFromLeave,
   type RequestRecord,
   type RequestStatus,
+  withdrawLeaveRequest,
 } from "@/lib/requests-api";
 import { cn, formatDisplayDate } from "@/lib/utils";
 import { useRealtimeRefresh } from "@/lib/realtime";
@@ -29,6 +31,7 @@ function RequestsPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<RequestStatus | "all">("all");
   const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState("");
 
   const load = () => {
     if (!user?.employeeId) {
@@ -65,6 +68,20 @@ function RequestsPage() {
   }, [records, query, status]);
 
   const summary = useMemo(() => summarize(records), [records]);
+
+  const withdrawLeave = async (application: RequestRecord) => {
+    if (application.kind !== "Leave" || application.status !== "Pending") return;
+    try {
+      setBusyId(application.id);
+      await withdrawLeaveRequest(application.id);
+      toast.success("Leave request withdrawn");
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to withdraw leave request");
+    } finally {
+      setBusyId("");
+    }
+  };
 
   return (
     <AppShell title="My Requests" subtitle="Track leave, attendance, and HR request status">
@@ -161,7 +178,11 @@ function RequestsPage() {
               No employee record is linked to this account yet.
             </div>
           ) : (
-            <RequestsTable applications={applications} />
+            <RequestsTable
+              applications={applications}
+              busyId={busyId}
+              onWithdrawLeave={withdrawLeave}
+            />
           )}
         </section>
       </div>
@@ -169,7 +190,15 @@ function RequestsPage() {
   );
 }
 
-function RequestsTable({ applications }: { applications: RequestRecord[] }) {
+function RequestsTable({
+  applications,
+  busyId,
+  onWithdrawLeave,
+}: {
+  applications: RequestRecord[];
+  busyId: string;
+  onWithdrawLeave: (application: RequestRecord) => void;
+}) {
   if (!applications.length) {
     return (
       <div className="p-12 text-center text-sm text-muted-foreground">
@@ -214,6 +243,16 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
                 </span>
               </div>
             </div>
+            {application.kind === "Leave" && application.status === "Pending" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busyId === application.id}
+                onClick={() => onWithdrawLeave(application)}
+              >
+                Withdraw
+              </Button>
+            ) : null}
           </article>
         ))}
       </div>
@@ -227,6 +266,7 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
               <th className="px-4 py-3 font-semibold">Detail</th>
               <th className="px-4 py-3 font-semibold">Status</th>
               <th className="px-4 py-3 font-semibold">Remarks</th>
+              <th className="px-4 py-3 text-right font-semibold">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -252,6 +292,20 @@ function RequestsTable({ applications }: { applications: RequestRecord[] }) {
                 </td>
                 <td className="max-w-[260px] px-4 py-3 text-muted-foreground">
                   {application.remarks || application.details || "-"}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  {application.kind === "Leave" && application.status === "Pending" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busyId === application.id}
+                      onClick={() => onWithdrawLeave(application)}
+                    >
+                      Withdraw
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">-</span>
+                  )}
                 </td>
               </tr>
             ))}

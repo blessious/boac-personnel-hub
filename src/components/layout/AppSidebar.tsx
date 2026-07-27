@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { LogOut, ChevronLeft, ChevronRight, Stethoscope } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -12,6 +12,7 @@ import { groupNavItems, navForPermissions } from "@/components/layout/navigation
 export function AppSidebar() {
   const { agency, sidebarCollapsed: collapsed, toggleSidebar } = useSettings();
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
   const { user, logout, hasPermission } = useAuth();
   const nav = navForPermissions(user?.permissions);
   const navSections = groupNavItems(nav);
@@ -20,7 +21,7 @@ export function AppSidebar() {
 
   const { data: dashboard } = useQuery({
     queryKey: ["dashboard"],
-    queryFn: getDashboard,
+    queryFn: ({ signal }) => getDashboard({ signal }),
     enabled: canSeeEmployeeStats,
   });
 
@@ -41,6 +42,11 @@ export function AppSidebar() {
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? path === to : path === to || path.startsWith(to + "/");
+
+  const handleLogout = async () => {
+    await logout();
+    navigate({ to: "/login", search: {}, replace: true });
+  };
 
   return (
     <aside
@@ -160,7 +166,7 @@ export function AppSidebar() {
 
       <div className="border-t border-sidebar-border/50 p-2">
         <button
-          onClick={logout}
+          onClick={handleLogout}
           className={cn(
             "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/82 transition-all duration-200 hover:bg-destructive/10 hover:text-destructive",
             collapsed && "justify-center px-0",

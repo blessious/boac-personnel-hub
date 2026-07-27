@@ -118,6 +118,7 @@ type FieldConfig = {
 };
 
 const MAX_201_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_PROFILE_IMAGE_BYTES = 2 * 1024 * 1024;
 
 const SECTION_FIELDS: Record<string, FieldConfig[]> = {
   family: [
@@ -249,7 +250,7 @@ const SECTION_FIELDS: Record<string, FieldConfig[]> = {
 
 function EmployeeFile() {
   const { id } = useParams({ from: "/employees/$id" });
-  const { can, user } = useAuth();
+  const { can, hasPermission, user } = useAuth();
   const canManageEmployees = can("edit");
   const [active, setActive] = useState<Tab>("PERSONAL");
   const [employee, setEmployee] = useState<EmployeeRecord | null>(null);
@@ -310,8 +311,10 @@ function EmployeeFile() {
     );
   }
 
-  const canEditOwnProfile = user?.role === "Employee" && user.employeeId === employee.id;
+  const canEditOwnProfile = hasPermission("self_service.access") && user?.employeeId === employee.id;
   const canEditProfile = canManageEmployees || canEditOwnProfile;
+  const canEditSection =
+    canManageEmployees || (canEditOwnProfile && SECTION_BY_TAB[active] === "work");
 
   return (
     <AppShell title="201 File" subtitle="Personnel record management">
@@ -339,6 +342,12 @@ function EmployeeFile() {
       </div>
 
       <CurrentAssignmentCard assignment={currentAssignment} employee={employee} />
+      {employee.isHidden && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          This employee is archived and excluded from active workforce lists, dashboard totals, and
+          downstream selections.
+        </div>
+      )}
 
       <div className="mt-4 border-b border-border">
         <div className="flex flex-wrap gap-x-1 sm:gap-x-2">
@@ -371,6 +380,7 @@ function EmployeeFile() {
             employee={employee}
             options={options}
             canEdit={canEditProfile}
+            selfService={Boolean(canEditOwnProfile && !canManageEmployees)}
             currentAssignment={currentAssignment}
             onSaved={(updated) => setEmployee(updated)}
           />
@@ -382,7 +392,7 @@ function EmployeeFile() {
             section={SECTION_BY_TAB[active] || ""}
             title={active}
             rows={sections[SECTION_BY_TAB[active] || ""] || []}
-            canEdit={canEditProfile}
+            canEdit={canEditSection}
             onChange={load}
           />
         )}
@@ -475,12 +485,14 @@ function PersonalTab({
   employee,
   options,
   canEdit,
+  selfService,
   currentAssignment,
   onSaved,
 }: {
   employee: EmployeeRecord;
   options: SettingsOptions;
   canEdit: boolean;
+  selfService: boolean;
   currentAssignment: CurrentAssignment;
   onSaved: (employee: EmployeeRecord) => void;
 }) {
@@ -517,177 +529,181 @@ function PersonalTab({
 
   return (
     <div>
-      <FormSection title="Employment">
-        <Field label="Employee ID">
-          <Input value={form.employeeId} onChange={(e) => set("employeeId", e.target.value)} />
-        </Field>
-        <Field label="Biometric ID">
-          <Input
-            value={form.biometricId}
-            onChange={(e) => set("biometricId", e.target.value)}
-            placeholder="Device user ID / attendance ID"
-          />
-        </Field>
-        <Field label="Department" required={!hasPlantillaOccupancy}>
-          <Select
-            disabled={hasPlantillaOccupancy}
-            value={form.department}
-            onValueChange={(value) => set("department", value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select department" />
-            </SelectTrigger>
-            <SelectContent>
-              <div className="sticky top-0 z-10 bg-popover p-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                  <Input
-                    value={departmentQuery}
-                    onChange={(event) => setDepartmentQuery(event.target.value)}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    placeholder="Search departments..."
-                    className="h-8 pl-9"
-                  />
+      {!selfService && (
+        <FormSection title="Employment">
+          <Field label="Employee ID">
+            <Input value={form.employeeId} onChange={(e) => set("employeeId", e.target.value)} />
+          </Field>
+          <Field label="Biometric ID">
+            <Input
+              value={form.biometricId}
+              onChange={(e) => set("biometricId", e.target.value)}
+              placeholder="Device user ID / attendance ID"
+            />
+          </Field>
+          <Field label="Department" required={!hasPlantillaOccupancy}>
+            <Select
+              disabled={hasPlantillaOccupancy}
+              value={form.department}
+              onValueChange={(value) => set("department", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select department" />
+              </SelectTrigger>
+              <SelectContent>
+                <div className="sticky top-0 z-10 bg-popover p-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                    <Input
+                      value={departmentQuery}
+                      onChange={(event) => setDepartmentQuery(event.target.value)}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      placeholder="Search departments..."
+                      className="h-8 pl-9"
+                    />
+                  </div>
                 </div>
-              </div>
-              {filteredDepartments.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item}
-                </SelectItem>
-              ))}
-              {filteredDepartments.length === 0 && (
-                <div className="px-3 py-2 text-sm text-muted-foreground">No departments found.</div>
-              )}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Position" required={!hasPlantillaOccupancy}>
-          <Select
-            disabled={hasPlantillaOccupancy}
-            value={form.position}
-            onValueChange={(value) => set("position", value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select position" />
-            </SelectTrigger>
-            <SelectContent>
-              <div className="sticky top-0 z-10 bg-popover p-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                  <Input
-                    value={positionQuery}
-                    onChange={(event) => setPositionQuery(event.target.value)}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    placeholder="Search positions..."
-                    className="h-8 pl-9"
-                  />
+                {filteredDepartments.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+                {filteredDepartments.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">
+                    No departments found.
+                  </div>
+                )}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Position" required={!hasPlantillaOccupancy}>
+            <Select
+              disabled={hasPlantillaOccupancy}
+              value={form.position}
+              onValueChange={(value) => set("position", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select position" />
+              </SelectTrigger>
+              <SelectContent>
+                <div className="sticky top-0 z-10 bg-popover p-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                    <Input
+                      value={positionQuery}
+                      onChange={(event) => setPositionQuery(event.target.value)}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      placeholder="Search positions..."
+                      className="h-8 pl-9"
+                    />
+                  </div>
                 </div>
-              </div>
-              {filteredPositions.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item}
-                </SelectItem>
-              ))}
-              {filteredPositions.length === 0 && (
-                <div className="px-3 py-2 text-sm text-muted-foreground">No positions found.</div>
-              )}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Status">
-          <Select value={form.status} onValueChange={(value) => set("status", value)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {EMPLOYMENT_STATUSES.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Level">
-          <Select
-            value={form.level || "none"}
-            onValueChange={(value) => set("level", value === "none" ? "" : value)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Not specified</SelectItem>
-              {EMPLOYEE_LEVELS.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Status Class">
-          <Input value={form.statusClass} onChange={(e) => set("statusClass", e.target.value)} />
-        </Field>
-        <Field label="Date Hired">
-          <Input
-            type="date"
-            value={form.dateHired}
-            onChange={(e) => set("dateHired", e.target.value)}
-          />
-        </Field>
-        <Field label="Date Employed">
-          <Input
-            type="date"
-            value={form.dateEmployed}
-            onChange={(e) => set("dateEmployed", e.target.value)}
-          />
-        </Field>
-        <Field label="Item No">
-          <Input
-            disabled={hasPlantillaOccupancy}
-            value={form.itemNo}
-            onChange={(e) => set("itemNo", e.target.value)}
-          />
-        </Field>
-        <Field label="Employment Status">
-          <RadioGroup
-            value={form.empStatus}
-            onValueChange={(value) => set("empStatus", value)}
-            className="flex gap-4 pt-1"
-          >
-            <RadioItem id="emp-active" value="Active" label="Active" />
-            <RadioItem id="emp-inactive" value="Inactive" label="Inactive" />
-          </RadioGroup>
-        </Field>
-        <Field label="DTR Noter">
-          <RadioGroup
-            value={form.isDtrNoter ? "yes" : "no"}
-            onValueChange={(value) => set("isDtrNoter", value === "yes")}
-            className="flex gap-4 pt-1"
-          >
-            <RadioItem id="dtr-noter-yes" value="yes" label="Yes" />
-            <RadioItem id="dtr-noter-no" value="no" label="No" />
-          </RadioGroup>
-        </Field>
-        <Field label="DTR Signatory">
-          <Input
-            value={form.dtrSignatory}
-            onChange={(e) => set("dtrSignatory", e.target.value)}
-            placeholder={formatEmployeeName(form, "")}
-          />
-        </Field>
-        <Field label="Agency">
-          <Input value={form.agency} onChange={(e) => set("agency", e.target.value)} />
-        </Field>
-        <Field label="Date Separated">
-          <Input
-            type="date"
-            value={form.dateSeparated}
-            onChange={(e) => set("dateSeparated", e.target.value)}
-          />
-        </Field>
-      </FormSection>
+                {filteredPositions.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+                {filteredPositions.length === 0 && (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">No positions found.</div>
+                )}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Status">
+            <Select value={form.status} onValueChange={(value) => set("status", value)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EMPLOYMENT_STATUSES.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Level">
+            <Select
+              value={form.level || "none"}
+              onValueChange={(value) => set("level", value === "none" ? "" : value)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Not specified</SelectItem>
+                {EMPLOYEE_LEVELS.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Status Class">
+            <Input value={form.statusClass} onChange={(e) => set("statusClass", e.target.value)} />
+          </Field>
+          <Field label="Date Hired">
+            <Input
+              type="date"
+              value={form.dateHired}
+              onChange={(e) => set("dateHired", e.target.value)}
+            />
+          </Field>
+          <Field label="Date Employed">
+            <Input
+              type="date"
+              value={form.dateEmployed}
+              onChange={(e) => set("dateEmployed", e.target.value)}
+            />
+          </Field>
+          <Field label="Item No">
+            <Input
+              disabled={hasPlantillaOccupancy}
+              value={form.itemNo}
+              onChange={(e) => set("itemNo", e.target.value)}
+            />
+          </Field>
+          <Field label="Employment Status">
+            <RadioGroup
+              value={form.empStatus}
+              onValueChange={(value) => set("empStatus", value)}
+              className="flex gap-4 pt-1"
+            >
+              <RadioItem id="emp-active" value="Active" label="Active" />
+              <RadioItem id="emp-inactive" value="Inactive" label="Inactive" />
+            </RadioGroup>
+          </Field>
+          <Field label="DTR Noter">
+            <RadioGroup
+              value={form.isDtrNoter ? "yes" : "no"}
+              onValueChange={(value) => set("isDtrNoter", value === "yes")}
+              className="flex gap-4 pt-1"
+            >
+              <RadioItem id="dtr-noter-yes" value="yes" label="Yes" />
+              <RadioItem id="dtr-noter-no" value="no" label="No" />
+            </RadioGroup>
+          </Field>
+          <Field label="DTR Signatory">
+            <Input
+              value={form.dtrSignatory}
+              onChange={(e) => set("dtrSignatory", e.target.value)}
+              placeholder={formatEmployeeName(form, "")}
+            />
+          </Field>
+          <Field label="Agency">
+            <Input value={form.agency} onChange={(e) => set("agency", e.target.value)} />
+          </Field>
+          <Field label="Date Separated">
+            <Input
+              type="date"
+              value={form.dateSeparated}
+              onChange={(e) => set("dateSeparated", e.target.value)}
+            />
+          </Field>
+        </FormSection>
+      )}
 
       <section className="mb-3 rounded-xl border border-border bg-card/50 p-3">
         <h4 className="mb-2.5 text-sm font-semibold text-foreground">Identity</h4>
@@ -773,6 +789,14 @@ function PersonalTab({
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (!file) return;
+                    if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
+                      toast.error("Photo must be PNG, JPEG, WebP, or GIF");
+                      return;
+                    }
+                    if (file.size > MAX_PROFILE_IMAGE_BYTES) {
+                      toast.error("Photo must be 2 MB or smaller");
+                      return;
+                    }
                     const reader = new FileReader();
                     reader.onload = () => set("photoUrl", String(reader.result || ""));
                     reader.readAsDataURL(file);

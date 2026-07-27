@@ -5,13 +5,18 @@ export const EMPLOYMENT_STATUSES = [
   "Permanent",
   "Regular",
   "Casual",
-  "JO/COS",
+  "JO",
+  "COS",
 ] as const;
 export const EMPLOYEE_LEVELS = ["First Level", "Second Level", "Third Level", "Executive"] as const;
 export const GENDERS = ["Male", "Female"] as const;
 export const CIVIL_STATUSES = ["Single", "Married", "Widowed", "Separated"] as const;
 
-export type EmploymentStatus = (typeof EMPLOYMENT_STATUSES)[number];
+export type EmploymentStatus =
+  | (typeof EMPLOYMENT_STATUSES)[number]
+  | "JO/COS"
+  | "Job Order"
+  | "Contract of Service";
 export type EmployeeLevel = (typeof EMPLOYEE_LEVELS)[number];
 export type Gender = (typeof GENDERS)[number];
 export type CivilStatus = (typeof CIVIL_STATUSES)[number];
@@ -62,6 +67,7 @@ export type EmployeeRecord = {
   dtrSignatory: string;
   dtrNoterId: string;
   isDtrNoter: boolean;
+  isHidden: boolean;
   regular: boolean;
   residentialAddress: string;
   residentialZipcode: string;
@@ -195,6 +201,7 @@ export function listEmployees(
     status?: string;
     empStatus?: string;
     gender?: string;
+    archive?: "active" | "archived" | "all";
     page?: number;
     pageSize?: number;
   },
@@ -206,6 +213,7 @@ export function listEmployees(
   if (params.status && params.status !== "all") query.set("status", params.status);
   if (params.empStatus && params.empStatus !== "all") query.set("empStatus", params.empStatus);
   if (params.gender && params.gender !== "all") query.set("gender", params.gender);
+  if (params.archive && params.archive !== "active") query.set("archive", params.archive);
   if (params.page) query.set("page", String(params.page));
   if (params.pageSize) query.set("pageSize", String(params.pageSize));
   return api<EmployeeListResponse>(`/api/employees?${query.toString()}`, options);
@@ -216,7 +224,11 @@ export function getEmployee(id: string) {
 }
 
 export function generateEmployeePdsExcel(id: string) {
-  return api<{ fileName: string; downloadUrl: string }>(`/api/employees/${id}/pds/excel`, {
+  return api<{
+    fileName: string;
+    downloadUrl: string;
+    warnings?: Array<{ section: string; message: string; total: number; included: number }>;
+  }>(`/api/employees/${id}/pds/excel`, {
     method: "POST",
   });
 }
@@ -279,6 +291,10 @@ export function deleteEmployee(id: string) {
   return api<{ ok: boolean }>(`/api/employees/${id}`, { method: "DELETE" });
 }
 
+export function restoreEmployee(id: string) {
+  return api<{ ok: boolean }>(`/api/employees/${id}/restore`, { method: "POST" });
+}
+
 export function createSectionRow(
   employeeId: string,
   section: string,
@@ -308,10 +324,10 @@ export function deleteSectionRow(employeeId: string, section: string, rowId: str
   });
 }
 
-export function getDashboard() {
-  return api<DashboardResponse>("/api/dashboard");
+export function getDashboard(options: RequestInit = {}) {
+  return api<DashboardResponse>("/api/dashboard", options);
 }
 
-export function getSettingsOptions() {
-  return api<SettingsOptions>("/api/settings");
+export function getSettingsOptions(options: RequestInit = {}) {
+  return api<SettingsOptions>("/api/settings", options);
 }

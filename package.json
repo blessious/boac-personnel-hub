@@ -9,6 +9,8 @@
     "api": "node server/index.mjs",
     "build": "vite build && node scripts/prepare-preview.mjs",
     "build:dev": "vite build --mode development",
+    "test:permissions": "node scripts/permission-matrix-audit.mjs",
+    "test:exports": "node scripts/export-smoke-test.mjs",
     "preview": "vite preview --host --port 47100",
     "lint": "eslint .",
     "format": "prettier --write ."

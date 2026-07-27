@@ -1,4 +1,5 @@
 import {
+  cancelLeaveApplication,
   createLeaveApplication,
   type CreateLeaveApplicationPayload,
   type LeaveApplication,
@@ -70,6 +71,10 @@ export function requestsFromLeave(applications: LeaveApplication[]) {
 
 export function submitLeaveRequest(payload: CreateLeaveApplicationPayload) {
   return createLeaveApplication(payload);
+}
+
+export function withdrawLeaveRequest(id: string) {
+  return cancelLeaveApplication(id);
 }
 
 function formatNumber(value: number) {

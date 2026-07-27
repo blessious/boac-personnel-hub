@@ -30,7 +30,11 @@ const EMPLOYMENT_TONES: Record<string, StatusBadgeTone> = {
   Permanent: "success",
   Regular: "info",
   Casual: "accent",
+  JO: "warning",
+  COS: "warning",
   "JO/COS": "warning",
+  "Job Order": "warning",
+  "Contract of Service": "warning",
 };
 
 export function EmploymentTypeBadge({ status, className }: { status: string; className?: string }) {

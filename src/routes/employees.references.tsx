@@ -54,7 +54,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { canWriteHrRecords, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { api, isAbortError } from "@/lib/api";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import { cn, formatDisplayDate } from "@/lib/utils";
@@ -124,8 +124,8 @@ function formatMoney(amount: number) {
 }
 
 function EmployeeReferencesPage() {
-  const { user } = useAuth();
-  const canManage = canWriteHrRecords(user?.role);
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission("settings.manage");
   const [depts, setDepts] = useState<DepartmentRow[]>([]);
   const [pos, setPos] = useState<PositionRow[]>([]);
   const [salaryGrades, setSalaryGrades] = useState<SalaryGradeRow[]>([]);

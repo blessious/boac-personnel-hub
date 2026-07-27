@@ -100,7 +100,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
 
   const handleLogout = async () => {
     await logout();
-    navigate({ to: "/login", search: { redirect: "/" } });
+    navigate({ to: "/login", search: {}, replace: true });
   };
 
   const isActive = (to: string, exact?: boolean) =>

@@ -7,6 +7,7 @@ import {
   useSearch,
 } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   Copy,
@@ -15,6 +16,7 @@ import {
   Pencil,
   Plus,
   Printer,
+  RotateCcw,
   Search,
   Trash2,
   Users,
@@ -58,6 +60,7 @@ import {
   createEmployee,
   getDashboard,
   deleteEmployee,
+  restoreEmployee,
   EMPLOYMENT_STATUSES,
   GENDERS,
   getSettingsOptions,
@@ -68,7 +71,6 @@ import {
   type DashboardResponse,
 } from "@/lib/employees-api";
 import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
-import { useRealtimeRefresh } from "@/lib/realtime";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { api } from "@/lib/api";
 import { listPlantilla, type PlantillaItem } from "@/lib/plantilla-api";
@@ -107,6 +109,12 @@ type AddEngagementForm = Pick<
   "engagementType" | "organizationId" | "designation" | "dateFrom" | "dateTo"
 >;
 const today = () => new Date().toISOString().slice(0, 10);
+const engagementTypeForStatus = (status?: string): AddEngagementForm["engagementType"] =>
+  status === "Casual"
+    ? "Casual"
+    : status === "COS" || status === "Contract of Service"
+      ? "COS"
+      : "JO";
 const onboardingModeForStatus = (status?: string): OnboardingMode => {
   if (status === "Unassigned") return "personal";
   if (status === "Permanent" || status === "Regular") return "plantilla";
@@ -128,67 +136,118 @@ const EMPTY_ENGAGEMENT: AddEngagementForm = {
   dateTo: "",
 };
 
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debounced;
+}
+
 function EmployeesPage() {
   const location = useLocation();
   const navigate = useNavigate({ from: "/employees" });
   const search = useSearch({ from: "/employees" });
+  const queryClient = useQueryClient();
   const { can } = useAuth();
   const isMobile = useIsMobile();
   const canEdit = can("edit");
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q, 250);
   const [dept, setDept] = useState(search.department?.trim() || "all");
   const [status, setStatus] = useState("all");
   const [empStatus, setEmpStatus] = useState("all");
   const [gender, setGender] = useState("all");
+  const [archiveScope, setArchiveScope] = useState<"active" | "archived">("active");
   const [filterDepartmentQuery, setFilterDepartmentQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
-  const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [options, setOptions] = useState<SettingsOptions>({
-    departments: [],
-    positions: [],
-    salaryGrades: [],
-  });
-
-  const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null);
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [form, setForm] = useState<Partial<EmployeeRecord>>(EMPTY_FORM);
   const [appointment, setAppointment] = useState(EMPTY_APPOINTMENT);
   const [engagement, setEngagement] = useState<AddEngagementForm>(EMPTY_ENGAGEMENT);
   const [sameDtrSignatoryAsName, setSameDtrSignatoryAsName] = useState(false);
-  const [vacancies, setVacancies] = useState<PlantillaItem[]>([]);
-  const [organizationUnits, setOrganizationUnits] = useState<ReferenceRow[]>([]);
   const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
   const [createdAccount, setCreatedAccount] = useState<{
     employeeName: string;
     credentials: EmployeeAccountCredentials;
   } | null>(null);
 
+  const employeeListQuery = useQuery({
+    queryKey: [
+      "employees",
+      "list",
+      { q: debouncedQ, dept, status, empStatus, gender, archiveScope, page, pageSize },
+    ],
+    queryFn: ({ signal }) =>
+      listEmployees(
+        {
+          q: debouncedQ,
+          department: dept,
+          status,
+          empStatus,
+          gender,
+          archive: archiveScope,
+          page,
+          pageSize,
+        },
+        { signal },
+      ),
+    placeholderData: keepPreviousData,
+  });
+  const settingsQuery = useQuery({
+    queryKey: ["settings", "employee-options"],
+    queryFn: ({ signal }) => getSettingsOptions({ signal }),
+    staleTime: 5 * 60_000,
+  });
+  const onboardingQuery = useQuery({
+    queryKey: ["employees", "onboarding-options"],
+    queryFn: async ({ signal }) => {
+      const [plantilla, references] = await Promise.all([
+        listPlantilla("", "Active", "vacant", { signal }),
+        api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references", {
+          signal,
+        }),
+      ]);
+      return {
+        vacancies: plantilla.items.filter((item) => !item.occupant && !item.pendingMovement),
+        organizationUnits: [
+          ...references.libraries.sectors,
+          ...references.libraries.offices,
+          ...references.libraries.divisions,
+          ...references.libraries.sections,
+        ].filter((row) => row.isActive),
+      };
+    },
+    staleTime: 5 * 60_000,
+  });
+  const dashboardQuery = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: ({ signal }) => getDashboard({ signal }),
+  });
+
+  const employees = employeeListQuery.data?.employees ?? [];
+  const total = employeeListQuery.data?.total ?? 0;
+  const loading = employeeListQuery.isLoading || employeeListQuery.isFetching;
+  const error = employeeListQuery.error instanceof Error ? employeeListQuery.error.message : "";
+  const options: SettingsOptions = settingsQuery.data ?? {
+    departments: [],
+    positions: [],
+    salaryGrades: [],
+  };
+  const vacancies = onboardingQuery.data?.vacancies ?? [];
+  const organizationUnits = onboardingQuery.data?.organizationUnits ?? [];
+  const dashboardData: DashboardResponse | null = dashboardQuery.data ?? null;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const selectedDepartment = search.department?.trim() || "all";
   const onboardingMode = onboardingModeForStatus(form.status);
   const employeeDisplayName = formatEmployeeName(form, "");
-
-  const load = () => {
-    setLoading(true);
-    setError("");
-    listEmployees({ q, department: dept, status, empStatus, gender, page, pageSize })
-      .then((result) => {
-        setEmployees(result.employees);
-        setTotal(result.total);
-      })
-      .catch((err) => setError(err.message || "Unable to load employees"))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(load, [q, dept, status, empStatus, gender, page, pageSize]);
-  useRealtimeRefresh(load, ["employees", "settings"]);
 
   useEffect(() => {
     setDept(selectedDepartment);
@@ -210,40 +269,6 @@ function EmployeesPage() {
     if (!sameDtrSignatoryAsName) return;
     setForm((current) => ({ ...current, dtrSignatory: formatEmployeeName(current, "") }));
   }, [form.firstname, form.middlename, form.lastname, sameDtrSignatoryAsName]);
-
-  useEffect(() => {
-    getSettingsOptions()
-      .then(setOptions)
-      .catch(() => setOptions({ departments: [], positions: [], salaryGrades: [] }));
-  }, []);
-
-  useEffect(() => {
-    Promise.all([
-      listPlantilla("", "Active", "vacant"),
-      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references"),
-    ])
-      .then(([plantilla, references]) => {
-        setVacancies(plantilla.items.filter((item) => !item.occupant && !item.pendingMovement));
-        setOrganizationUnits(
-          [
-            ...references.libraries.sectors,
-            ...references.libraries.offices,
-            ...references.libraries.divisions,
-            ...references.libraries.sections,
-          ].filter((row) => row.isActive),
-        );
-      })
-      .catch(() => {
-        setVacancies([]);
-        setOrganizationUnits([]);
-      });
-  }, []);
-
-  useEffect(() => {
-    getDashboard()
-      .then(setDashboardData)
-      .catch(() => setDashboardData(null));
-  }, []);
 
   useEffect(() => {
     setViewMode(isMobile ? "grid" : "table");
@@ -274,8 +299,7 @@ function EmployeesPage() {
       };
       const effectiveEngagement = {
         ...engagement,
-        engagementType:
-          form.status === "Casual" ? "Casual" : (engagement.engagementType as "JO" | "COS"),
+        engagementType: engagementTypeForStatus(form.status),
       };
       const result =
         onboardingMode === "plantilla"
@@ -299,7 +323,7 @@ function EmployeesPage() {
           : onboardingMode === "engagement"
             ? await createEmployee({
                 ...common,
-                status: effectiveEngagement.engagementType === "Casual" ? "Casual" : "JO/COS",
+                status: effectiveEngagement.engagementType,
                 empStatus: "Inactive",
                 lifecycleState: "Personal Record",
                 createAccount: true,
@@ -332,7 +356,8 @@ function EmployeesPage() {
       setEngagement({ ...EMPTY_ENGAGEMENT, dateFrom: today() });
       setSameDtrSignatoryAsName(false);
       setPage(1);
-      load();
+      queryClient.invalidateQueries({ queryKey: ["employees"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       return result.employee;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to add employee");
@@ -344,16 +369,28 @@ function EmployeesPage() {
   const remove = async (employee: EmployeeRecord) => {
     if (
       !window.confirm(
-        `Delete ${formatEmployeeName(employee)} from Employee Management? The database record will be kept.`,
+        `Archive ${formatEmployeeName(employee)}? The database record will be kept and can be restored.`,
       )
     )
       return;
     try {
       await deleteEmployee(employee.id);
-      toast.success("Employee deleted from the list");
-      load();
+      toast.success("Employee archived");
+      queryClient.invalidateQueries({ queryKey: ["employees"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Unable to delete employee");
+      toast.error(err instanceof Error ? err.message : "Unable to archive employee");
+    }
+  };
+
+  const restore = async (employee: EmployeeRecord) => {
+    try {
+      await restoreEmployee(employee.id);
+      toast.success("Employee restored");
+      queryClient.invalidateQueries({ queryKey: ["employees"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to restore employee");
     }
   };
 
@@ -631,6 +668,22 @@ function EmployeesPage() {
               </SelectContent>
             </Select>
 
+            <Select
+              value={archiveScope}
+              onValueChange={(value) => {
+                setArchiveScope(value as "active" | "archived");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="hidden w-full bg-card text-card-foreground lg:flex lg:w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active list</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+              </SelectContent>
+            </Select>
+
             <div className="order-1 col-span-1 flex w-full items-center gap-2 lg:order-none lg:ml-auto lg:mt-0 lg:w-auto">
               <Button
                 variant={showAdvancedFilters ? "default" : "outline"}
@@ -664,7 +717,8 @@ function EmployeesPage() {
                 Active filters: department <strong>{dept === "all" ? "Any" : dept}</strong>,
                 employment type <strong>{status === "all" ? "Any" : status}</strong>, status{" "}
                 <strong>{empStatus === "all" ? "Any" : empStatus}</strong>, gender{" "}
-                <strong>{gender === "all" ? "Any" : gender}</strong>
+                <strong>{gender === "all" ? "Any" : gender}</strong>, archive{" "}
+                <strong>{archiveScope === "archived" ? "Archived" : "Active list"}</strong>
               </span>
               <Button
                 variant="ghost"
@@ -676,6 +730,7 @@ function EmployeesPage() {
                   setStatus("all");
                   setEmpStatus("all");
                   setGender("all");
+                  setArchiveScope("active");
                   setPage(1);
                   navigate({ search: {}, replace: true });
                 }}
@@ -804,11 +859,21 @@ function EmployeesPage() {
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
                                     disabled={!canEdit}
-                                    onClick={() => remove(employee)}
-                                    className="text-rose-600 focus:text-rose-600"
+                                    onClick={() =>
+                                      employee.isHidden ? restore(employee) : remove(employee)
+                                    }
+                                    className={cn(
+                                      employee.isHidden
+                                        ? "text-emerald-600 focus:text-emerald-600"
+                                        : "text-rose-600 focus:text-rose-600",
+                                    )}
                                   >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete
+                                    {employee.isHidden ? (
+                                      <RotateCcw className="h-4 w-4 mr-2" />
+                                    ) : (
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                    )}
+                                    {employee.isHidden ? "Restore" : "Archive"}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -902,11 +967,19 @@ function EmployeesPage() {
                           variant="outline"
                           size="icon"
                           disabled={!canEdit}
-                          onClick={() => remove(employee)}
-                          className="text-rose-600 hover:text-rose-600 dark:text-rose-300"
-                          title="Delete"
+                          onClick={() => (employee.isHidden ? restore(employee) : remove(employee))}
+                          className={cn(
+                            employee.isHidden
+                              ? "text-emerald-600 hover:text-emerald-600 dark:text-emerald-300"
+                              : "text-rose-600 hover:text-rose-600 dark:text-rose-300",
+                          )}
+                          title={employee.isHidden ? "Restore" : "Archive"}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          {employee.isHidden ? (
+                            <RotateCcw className="h-4 w-4" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -981,11 +1054,10 @@ function EmployeesPage() {
                 onValueChange={(value) => {
                   const nextStatus = value as EmployeeRecord["status"];
                   setForm({ ...form, status: nextStatus });
-                  if (nextStatus === "Casual") {
-                    setEngagement((current) => ({ ...current, engagementType: "Casual" }));
-                  } else if (nextStatus === "JO/COS" && engagement.engagementType === "Casual") {
-                    setEngagement((current) => ({ ...current, engagementType: "JO" }));
-                  }
+                  setEngagement((current) => ({
+                    ...current,
+                    engagementType: engagementTypeForStatus(nextStatus),
+                  }));
                 }}
               >
                 <SelectTrigger>
@@ -1149,27 +1221,6 @@ function EmployeesPage() {
             )}
             {onboardingMode === "engagement" && (
               <>
-                {form.status === "JO/COS" && (
-                  <Field label="Engagement type *">
-                    <Select
-                      value={engagement.engagementType === "COS" ? "COS" : "JO"}
-                      onValueChange={(value) =>
-                        setEngagement({
-                          ...engagement,
-                          engagementType: value as "JO" | "COS",
-                        })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="JO">JO</SelectItem>
-                        <SelectItem value="COS">COS</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                )}
                 <Field label="Official organization *">
                   <Select
                     value={engagement.organizationId}

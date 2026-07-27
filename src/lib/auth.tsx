@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export type Role = "Super Admin" | "Admin" | "HR" | "Approver" | "Employee" | "Viewer";
 
@@ -15,7 +16,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   "Super Admin": "Full access to all system, HR, approval, reporting, and self-service functions.",
-  Admin: "Manages users, settings, audit logs, backups, and system configuration.",
+  Admin: "Manages users, settings, audit logs, and system configuration.",
   HR: "Maintains employee records, attendance, leave setup, plantilla, movements, and service records.",
   Approver:
     "Reviews dashboards and HR records, approves leave and personnel movements, but cannot edit master data.",
@@ -43,6 +44,7 @@ export type PermissionKey =
   | "approvals.manage"
   | "plantilla.read"
   | "plantilla.write"
+  | "engagements.manage"
   | "movements.read"
   | "movements.write"
   | "service_records.read"
@@ -51,7 +53,6 @@ export type PermissionKey =
   | "admin.users"
   | "admin.audit"
   | "admin.errors"
-  | "admin.backups"
   | "settings.manage"
   | "role_permissions.manage"
   | "my_profile.access"
@@ -64,14 +65,6 @@ export function isSelfServiceRole(role: Role | string | undefined): role is "Emp
 
 export function canSeeApprovals(role: Role | string | undefined) {
   return role === "Super Admin" || role === "Approver";
-}
-
-export function canReadHrRecords(role: Role | string | undefined) {
-  return role === "Super Admin" || role === "HR" || role === "Approver" || role === "Viewer";
-}
-
-export function canWriteHrRecords(role: Role | string | undefined) {
-  return role === "Super Admin" || role === "HR";
 }
 
 export interface User {
@@ -103,16 +96,22 @@ const Ctx = createContext<AuthCtx | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  useEffect(() => {
+  const loadSession = useCallback(() => {
+    setReady(false);
+    setBootstrapError(null);
     let alive = true;
     api<{ user: User | null }>("/api/auth/me")
       .then(({ user }) => {
         if (alive) setUser(user);
       })
-      .catch(() => {
-        if (alive) setUser(null);
+      .catch((error) => {
+        if (alive) {
+          setUser(null);
+          setBootstrapError(error instanceof Error ? error.message : "Unable to load your session");
+        }
       })
       .finally(() => {
         if (alive) setReady(true);
@@ -122,6 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       alive = false;
     };
   }, []);
+
+  useEffect(() => loadSession(), [loadSession]);
 
   const login = async (username: string, password: string, expectedRole?: Role) => {
     const result = await api<{ user: User }>("/api/auth/login", {
@@ -181,13 +182,120 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user?.permissions],
   );
 
-  if (!ready) return null;
+  if (!ready) {
+    return <SessionSkeleton />;
+  }
+  if (bootstrapError) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-background px-4">
+        <div className="max-w-md text-center" role="alert">
+          <h1 className="text-xl font-semibold text-foreground">Session unavailable</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{bootstrapError}</p>
+          <button
+            type="button"
+            className="mt-5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+            onClick={loadSession}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <Ctx.Provider
       value={{ user, login, logout, updateProfile, changePassword, hasPermission, can, ready }}
     >
       {children}
     </Ctx.Provider>
+  );
+}
+
+function SessionSkeleton() {
+  return (
+    <div className="flex min-h-dvh bg-background" role="status" aria-live="polite">
+      <span className="sr-only">Loading your session...</span>
+      <aside className="hidden w-[260px] shrink-0 border-r border-sidebar-border bg-sidebar p-3 md:block">
+        <div className="mb-6 flex h-9 items-center gap-3">
+          <Skeleton className="h-9 w-9 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-2.5 w-36" />
+          </div>
+        </div>
+        <div className="space-y-5">
+          {[0, 1, 2].map((section) => (
+            <div key={section} className="space-y-2">
+              <Skeleton className="h-2.5 w-20" />
+              {[0, 1, 2, 3].map((item) => (
+                <div key={item} className="flex items-center gap-3 rounded-lg px-2 py-2">
+                  <Skeleton className="h-4 w-4 rounded" />
+                  <Skeleton className="h-3.5 w-32" />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </aside>
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-16 items-center justify-between border-b border-border/50 px-4 md:px-6">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-44" />
+            <Skeleton className="h-3 w-64 max-w-[55vw]" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-9 w-9 rounded-full" />
+            <Skeleton className="h-9 w-9 rounded-full" />
+            <Skeleton className="hidden h-9 w-28 rounded-md sm:block" />
+          </div>
+        </header>
+        <section className="flex-1 space-y-4 p-3 sm:p-4 xl:p-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[0, 1, 2, 3].map((card) => (
+              <div key={card} className="rounded-lg border border-border bg-card p-4">
+                <Skeleton className="mb-4 h-3 w-24" />
+                <Skeleton className="mb-3 h-8 w-20" />
+                <Skeleton className="h-3 w-32" />
+              </div>
+            ))}
+          </div>
+          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="rounded-lg border border-border bg-card p-4">
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-3 w-56" />
+                </div>
+                <Skeleton className="h-9 w-28 rounded-md" />
+              </div>
+              <div className="space-y-3">
+                {[0, 1, 2, 3, 4, 5].map((row) => (
+                  <div key={row} className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3">
+                    <Skeleton className="h-4" />
+                    <Skeleton className="h-4" />
+                    <Skeleton className="h-4" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-4">
+              <Skeleton className="mb-5 h-4 w-32" />
+              <div className="space-y-3">
+                {[0, 1, 2, 3].map((item) => (
+                  <div key={item} className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-3.5 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
   );
 }
 

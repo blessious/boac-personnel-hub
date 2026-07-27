@@ -5,8 +5,6 @@ import {
   AlertCircle,
   Bug,
   Copy,
-  Database,
-  Download,
   Edit,
   Lock,
   Plus,
@@ -56,7 +54,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-type AdminTab = "users" | "permissions" | "audit" | "errors" | "backup";
+type AdminTab = "users" | "permissions" | "audit" | "errors";
 
 interface AdminUser {
   id: number;
@@ -111,11 +109,11 @@ interface ImportLog {
   user: { username: string; name: string; role: Role } | null;
 }
 
-interface BackupFile {
-  fileName: string;
-  size: number;
-  createdAt: string;
-  modifiedAt: string;
+interface LogPagination {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 interface BulkEmployeeAccount {
@@ -158,7 +156,6 @@ const ADMIN_TABS: {
   },
   { key: "audit", label: "Audit Log", icon: Activity, permission: "admin.audit" },
   { key: "errors", label: "Error Log", icon: Bug, permission: "admin.errors" },
-  { key: "backup", label: "Data Backup", icon: Database, permission: "admin.backups" },
 ];
 
 const ROLE_COLORS: Record<Role, string> = {
@@ -197,15 +194,34 @@ function AdminPage() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [errorLogs, setErrorLogs] = useState<ErrorLog[]>([]);
   const [importLogs, setImportLogs] = useState<ImportLog[]>([]);
-  const [backups, setBackups] = useState<BackupFile[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [loadingErrors, setLoadingErrors] = useState(false);
-  const [loadingBackups, setLoadingBackups] = useState(false);
+  const [auditError, setAuditError] = useState("");
+  const [errorLogError, setErrorLogError] = useState("");
+  const [auditFilters, setAuditFilters] = useState({ q: "", action: "", from: "", to: "" });
+  const [errorFilters, setErrorFilters] = useState({ q: "", from: "", to: "", importLevel: "all" });
+  const [auditPagination, setAuditPagination] = useState<LogPagination>({
+    total: 0,
+    page: 1,
+    pageSize: 50,
+    totalPages: 1,
+  });
+  const [errorPagination, setErrorPagination] = useState<LogPagination>({
+    total: 0,
+    page: 1,
+    pageSize: 50,
+    totalPages: 1,
+  });
+  const [importPagination, setImportPagination] = useState<LogPagination>({
+    total: 0,
+    page: 1,
+    pageSize: 50,
+    totalPages: 1,
+  });
   const [loadingPermissions, setLoadingPermissions] = useState(false);
   const [savingPermissionRole, setSavingPermissionRole] = useState<Role | null>(null);
   const [rolePermissionData, setRolePermissionData] = useState<RolePermissionResponse | null>(null);
   const [selectedPermissionRole, setSelectedPermissionRole] = useState<Role>("HR");
-  const [creatingBackup, setCreatingBackup] = useState(false);
   const [showAddUser, setShowAddUser] = useState(false);
   const [showEditUser, setShowEditUser] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
@@ -258,44 +274,72 @@ function AdminPage() {
   const loadAuditLogs = useCallback(async () => {
     if (!hasPermission("admin.audit")) return;
     setLoadingAudit(true);
+    setAuditError("");
     try {
-      const result = await api<{ logs: AuditLog[] }>("/api/admin/audit-logs");
+      const query = new URLSearchParams({
+        page: String(auditPagination.page),
+        pageSize: String(auditPagination.pageSize),
+      });
+      if (auditFilters.q.trim()) query.set("q", auditFilters.q.trim());
+      if (auditFilters.action.trim()) query.set("action", auditFilters.action.trim());
+      if (auditFilters.from) query.set("from", auditFilters.from);
+      if (auditFilters.to) query.set("to", auditFilters.to);
+      const result = await api<{ logs: AuditLog[]; pagination: LogPagination }>(
+        `/api/admin/audit-logs?${query.toString()}`,
+      );
       setAuditLogs(result.logs);
+      setAuditPagination(result.pagination);
     } catch (error) {
-      toast.error((error as Error).message);
+      const message = error instanceof Error ? error.message : "Unable to load audit logs";
+      setAuditError(message);
+      toast.error(message);
     } finally {
       setLoadingAudit(false);
     }
-  }, [hasPermission]);
+  }, [auditFilters, auditPagination.page, auditPagination.pageSize, hasPermission]);
 
   const loadErrorLogs = useCallback(async () => {
     if (!hasPermission("admin.errors")) return;
     setLoadingErrors(true);
+    setErrorLogError("");
     try {
-      const result = await api<{ logs: ErrorLog[]; importLogs: ImportLog[] }>(
-        "/api/admin/error-logs",
+      const query = new URLSearchParams({
+        page: String(errorPagination.page),
+        pageSize: String(errorPagination.pageSize),
+        importPage: String(importPagination.page),
+        importPageSize: String(importPagination.pageSize),
+      });
+      if (errorFilters.q.trim()) query.set("q", errorFilters.q.trim());
+      if (errorFilters.from) query.set("from", errorFilters.from);
+      if (errorFilters.to) query.set("to", errorFilters.to);
+      if (errorFilters.importLevel !== "all") query.set("importLevel", errorFilters.importLevel);
+      const result = await api<{
+        logs: ErrorLog[];
+        importLogs: ImportLog[];
+        pagination: LogPagination;
+        importPagination: LogPagination;
+      }>(
+        `/api/admin/error-logs?${query.toString()}`,
       );
       setErrorLogs(result.logs);
       setImportLogs(result.importLogs || []);
+      setErrorPagination(result.pagination);
+      setImportPagination(result.importPagination);
     } catch (error) {
-      toast.error((error as Error).message);
+      const message = error instanceof Error ? error.message : "Unable to load error logs";
+      setErrorLogError(message);
+      toast.error(message);
     } finally {
       setLoadingErrors(false);
     }
-  }, [hasPermission]);
-
-  const loadBackups = useCallback(async () => {
-    if (!hasPermission("admin.backups")) return;
-    setLoadingBackups(true);
-    try {
-      const result = await api<{ backups: BackupFile[] }>("/api/admin/backups");
-      setBackups(result.backups);
-    } catch (error) {
-      toast.error((error as Error).message);
-    } finally {
-      setLoadingBackups(false);
-    }
-  }, [hasPermission]);
+  }, [
+    errorFilters,
+    errorPagination.page,
+    errorPagination.pageSize,
+    hasPermission,
+    importPagination.page,
+    importPagination.pageSize,
+  ]);
 
   const loadRolePermissions = useCallback(async () => {
     if (!canManageRolePermissions && !canManageUsers) return;
@@ -314,8 +358,7 @@ function AdminPage() {
     if (activeTab === "permissions") loadRolePermissions();
     if (activeTab === "audit") loadAuditLogs();
     if (activeTab === "errors") loadErrorLogs();
-    if (activeTab === "backup") loadBackups();
-  }, [activeTab, loadAuditLogs, loadBackups, loadErrorLogs, loadRolePermissions]);
+  }, [activeTab, loadAuditLogs, loadErrorLogs, loadRolePermissions]);
 
   useEffect(() => {
     if (visibleTabs.length === 0) return;
@@ -329,7 +372,6 @@ function AdminPage() {
     if (activeTab === "permissions") loadRolePermissions();
     if (activeTab === "audit") loadAuditLogs();
     if (activeTab === "errors") loadErrorLogs();
-    if (activeTab === "backup") loadBackups();
   }, ["admin", "employees", "attendance"]);
 
   const openAddUser = () => {
@@ -646,19 +688,6 @@ function AdminPage() {
     }
   };
 
-  const createBackup = async () => {
-    setCreatingBackup(true);
-    try {
-      const result = await api<{ backup: BackupFile }>("/api/admin/backups", { method: "POST" });
-      setBackups((prev) => [result.backup, ...prev]);
-      toast.success("Backup created");
-    } catch (error) {
-      toast.error((error as Error).message);
-    } finally {
-      setCreatingBackup(false);
-    }
-  };
-
   const permissionGroups = useMemo(() => {
     const groups = new Map<string, RolePermissionDefinition[]>();
     for (const permission of rolePermissionData?.permissions || []) {
@@ -719,11 +748,14 @@ function AdminPage() {
   };
 
   const formatDateTime = (value: string) => formatDisplayDateTime(value);
-
-  const formatBytes = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  const resetAuditPage = (updates: Partial<typeof auditFilters>) => {
+    setAuditFilters((current) => ({ ...current, ...updates }));
+    setAuditPagination((current) => ({ ...current, page: 1 }));
+  };
+  const resetErrorPage = (updates: Partial<typeof errorFilters>) => {
+    setErrorFilters((current) => ({ ...current, ...updates }));
+    setErrorPagination((current) => ({ ...current, page: 1 }));
+    setImportPagination((current) => ({ ...current, page: 1 }));
   };
 
   const activeUsers = users.filter((item) => item.isActive).length;
@@ -778,7 +810,6 @@ function AdminPage() {
       <div className="mb-4 grid gap-3 md:grid-cols-3">
         <AdminSummaryCard label="Active Users" value={activeUsers} icon={Users} />
         <AdminSummaryCard label="Approvers" value={approverUsers} icon={ShieldCheck} />
-        <AdminSummaryCard label="Backups" value={backups.length} icon={Database} />
       </div>
 
       <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/40 dark:bg-amber-500/15">
@@ -1144,7 +1175,7 @@ function AdminPage() {
             <div>
               <h4 className="font-semibold text-foreground">Audit Log</h4>
               <p className="text-xs text-muted-foreground">
-                Latest {auditLogs.length} recorded system actions
+                Showing {auditLogs.length} of {auditPagination.total} recorded system actions
               </p>
             </div>
             <Button
@@ -1156,6 +1187,41 @@ function AdminPage() {
               <RefreshCw className={cn("h-4 w-4", loadingAudit && "animate-spin")} /> Refresh
             </Button>
           </div>
+          <div className="grid gap-2 border-b border-border p-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_10rem_10rem]">
+            <Input
+              value={auditFilters.q}
+              onChange={(event) => resetAuditPage({ q: event.target.value })}
+              placeholder="Search user or action"
+            />
+            <Input
+              value={auditFilters.action}
+              onChange={(event) => resetAuditPage({ action: event.target.value })}
+              placeholder="Action contains"
+            />
+            <Input
+              type="date"
+              value={auditFilters.from}
+              onChange={(event) => resetAuditPage({ from: event.target.value })}
+            />
+            <Input
+              type="date"
+              value={auditFilters.to}
+              onChange={(event) => resetAuditPage({ to: event.target.value })}
+            />
+          </div>
+          {auditError ? (
+            <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex gap-2">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{auditError}</span>
+                </div>
+                <Button variant="outline" size="sm" onClick={loadAuditLogs} disabled={loadingAudit}>
+                  Retry
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -1202,6 +1268,14 @@ function AdminPage() {
               </tbody>
             </table>
           </div>
+          <LogPager
+            pagination={auditPagination}
+            loading={loadingAudit}
+            onPageChange={(page) => setAuditPagination((current) => ({ ...current, page }))}
+            onPageSizeChange={(pageSize) =>
+              setAuditPagination((current) => ({ ...current, page: 1, pageSize }))
+            }
+          />
         </div>
       )}
 
@@ -1212,8 +1286,8 @@ function AdminPage() {
               <div>
                 <h4 className="font-semibold text-foreground">Error Log</h4>
                 <p className="text-xs text-muted-foreground">
-                  Latest {errorLogs.length} unexpected system errors and {importLogs.length} DTR
-                  import log entries
+                  Showing {errorLogs.length} of {errorPagination.total} unexpected system errors and{" "}
+                  {importLogs.length} of {importPagination.total} DTR import log entries
                 </p>
               </div>
               <Button
@@ -1225,6 +1299,56 @@ function AdminPage() {
                 <RefreshCw className={cn("h-4 w-4", loadingErrors && "animate-spin")} /> Refresh
               </Button>
             </div>
+            <div className="grid gap-2 border-b border-border p-4 md:grid-cols-[minmax(0,1.2fr)_10rem_10rem_10rem]">
+              <Input
+                value={errorFilters.q}
+                onChange={(event) => resetErrorPage({ q: event.target.value })}
+                placeholder="Search path, message, user, file, employee"
+              />
+              <Input
+                type="date"
+                value={errorFilters.from}
+                onChange={(event) => resetErrorPage({ from: event.target.value })}
+              />
+              <Input
+                type="date"
+                value={errorFilters.to}
+                onChange={(event) => resetErrorPage({ to: event.target.value })}
+              />
+              <Select
+                value={errorFilters.importLevel}
+                onValueChange={(value) => resetErrorPage({ importLevel: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All import levels</SelectItem>
+                  <SelectItem value="Info">Info</SelectItem>
+                  <SelectItem value="Success">Success</SelectItem>
+                  <SelectItem value="Warning">Warning</SelectItem>
+                  <SelectItem value="Error">Error</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {errorLogError ? (
+              <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="flex gap-2">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{errorLogError}</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={loadErrorLogs}
+                    disabled={loadingErrors}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[960px] text-sm">
                 <thead>
@@ -1282,6 +1406,14 @@ function AdminPage() {
                 </tbody>
               </table>
             </div>
+            <LogPager
+              pagination={errorPagination}
+              loading={loadingErrors}
+              onPageChange={(page) => setErrorPagination((current) => ({ ...current, page }))}
+              onPageSizeChange={(pageSize) =>
+                setErrorPagination((current) => ({ ...current, page: 1, pageSize }))
+              }
+            />
           </div>
 
           <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -1358,84 +1490,14 @@ function AdminPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === "backup" && (
-        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="p-4 flex items-center justify-between border-b border-border">
-            <div>
-              <h4 className="font-semibold text-foreground">Data Backup</h4>
-              <p className="text-xs text-muted-foreground">
-                Create and download MySQL JSON snapshots
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={loadBackups}
-                disabled={loadingBackups}
-                className="gap-1.5"
-              >
-                <RefreshCw className={cn("h-4 w-4", loadingBackups && "animate-spin")} /> Refresh
-              </Button>
-              <Button
-                onClick={createBackup}
-                disabled={creatingBackup}
-                className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
-              >
-                <Database className="h-4 w-4" /> {creatingBackup ? "Creating..." : "Create Backup"}
-              </Button>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                  <th className="px-4 py-3 font-semibold">Backup File</th>
-                  <th className="px-4 py-3 font-semibold">Created</th>
-                  <th className="px-4 py-3 font-semibold">Size</th>
-                  <th className="px-4 py-3 font-semibold text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {backups.map((backup, index) => (
-                  <tr
-                    key={backup.fileName}
-                    className={cn(
-                      "border-b border-border/50 last:border-0",
-                      index % 2 === 1 && "bg-muted/10",
-                    )}
-                  >
-                    <td className="px-4 py-3 font-mono text-xs">{backup.fileName}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {formatDateTime(backup.createdAt || backup.modifiedAt)}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatBytes(backup.size)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Button asChild variant="outline" size="sm" className="gap-1.5">
-                        <a
-                          href={`/api/admin/backups/${encodeURIComponent(backup.fileName)}/download`}
-                          download
-                        >
-                          <Download className="h-3.5 w-3.5" /> Download
-                        </a>
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-                {backups.length === 0 && (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={4}>
-                      {loadingBackups
-                        ? "Loading backups..."
-                        : "No backups found. Create one to start."}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+            <LogPager
+              pagination={importPagination}
+              loading={loadingErrors}
+              onPageChange={(page) => setImportPagination((current) => ({ ...current, page }))}
+              onPageSizeChange={(pageSize) =>
+                setImportPagination((current) => ({ ...current, page: 1, pageSize }))
+              }
+            />
           </div>
         </div>
       )}
@@ -1718,6 +1780,65 @@ function AdminSummaryCard({
       <div className="min-w-0">
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
         <p className="mt-1 truncate text-lg font-semibold text-foreground">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function LogPager({
+  pagination,
+  loading,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  pagination: LogPagination;
+  loading: boolean;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
+}) {
+  const start = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
+  const end = Math.min(pagination.total, start + pagination.pageSize - 1);
+  return (
+    <div className="flex flex-col gap-3 border-t border-border px-4 py-3 text-sm md:flex-row md:items-center md:justify-between">
+      <p className="text-xs text-muted-foreground">
+        Showing {start}-{end} of {pagination.total}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          value={String(pagination.pageSize)}
+          onValueChange={(value) => onPageSizeChange(Number(value))}
+          disabled={loading}
+        >
+          <SelectTrigger className="h-9 w-[120px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[25, 50, 100, 200].map((size) => (
+              <SelectItem key={size} value={String(size)}>
+                {size} / page
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={loading || pagination.page <= 1}
+          onClick={() => onPageChange(Math.max(1, pagination.page - 1))}
+        >
+          Previous
+        </Button>
+        <span className="px-2 text-xs text-muted-foreground">
+          Page {pagination.page} of {pagination.totalPages}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={loading || pagination.page >= pagination.totalPages}
+          onClick={() => onPageChange(Math.min(pagination.totalPages, pagination.page + 1))}
+        >
+          Next
+        </Button>
       </div>
     </div>
   );

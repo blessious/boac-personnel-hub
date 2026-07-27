@@ -167,11 +167,35 @@ def fill_rows(cells, rows, start_row, max_rows, mapping):
             set_cell(cells, f"{col}{row}", value)
 
 
+def overflow_warning(sections, key, label, max_rows):
+    total = len(section_payloads(sections, key))
+    if total <= max_rows:
+        return None
+    return {
+        "section": key,
+        "message": f"{label} has {total} row(s); only {max_rows} fit on the current PDS template.",
+        "total": total,
+        "included": max_rows,
+        "overflow": total - max_rows,
+    }
+
+
 def fill_sheet(payload, output_path, template_path):
     employee = payload.get("employee", {})
     sections = payload.get("sections", {})
     family = single_payload(sections, "family")
     sheet_cells = {path: {} for path in SHEET_FILES.values()}
+    warnings = [
+        warning
+        for warning in [
+            overflow_warning(sections, "children", "Children", 12),
+            overflow_warning(sections, "civilService", "Civil service eligibility", 7),
+            overflow_warning(sections, "work", "Work experience", 28),
+            overflow_warning(sections, "organization", "Voluntary work / organization", 7),
+            overflow_warning(sections, "training", "Learning and development", 21),
+        ]
+        if warning
+    ]
 
     c1 = sheet_cells[SHEET_FILES["C1"]]
     clear_cells(
@@ -356,6 +380,7 @@ def fill_sheet(payload, output_path, template_path):
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     write_xlsx(template_path, output_path, sheet_cells, selected_checkbox_ids(employee))
+    return warnings
 
 
 def selected_checkbox_ids(employee):
@@ -577,8 +602,8 @@ def main():
         return 2
     with open(sys.argv[1], "r", encoding="utf-8-sig") as handle:
         payload = json.load(handle)
-    fill_sheet(payload, sys.argv[2], sys.argv[3])
-    print(sys.argv[2])
+    warnings = fill_sheet(payload, sys.argv[2], sys.argv[3])
+    print(json.dumps({"outputPath": sys.argv[2], "warnings": warnings}))
     return 0
 
 

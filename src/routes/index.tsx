@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
   Briefcase,
@@ -17,7 +18,6 @@ import { cn, formatDisplayDate } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getDashboard, type DashboardResponse } from "@/lib/employees-api";
 import { EmployeeDashboardHome } from "@/routes/self-service";
-import { useRealtimeRefresh } from "@/lib/realtime";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
@@ -25,16 +25,25 @@ export const Route = createFileRoute("/")({
 
 function Dashboard() {
   const { user, hasPermission } = useAuth();
-  const [data, setData] = useState<DashboardResponse | null>(null);
   const canReadDashboardStats = hasPermission("employees.read");
-  const [loading, setLoading] = useState(canReadDashboardStats);
-  const [error, setError] = useState("");
   const [now, setNow] = useState(() => new Date());
+  const {
+    data = null,
+    error,
+    isFetching,
+    isLoading,
+    refetch,
+  } = useQuery<DashboardResponse>({
+    queryKey: ["dashboard"],
+    queryFn: ({ signal }) => getDashboard({ signal }),
+    enabled: canReadDashboardStats,
+  });
+  const loading = isLoading || (isFetching && !data);
+  const errorMessage = error instanceof Error ? error.message : "";
   const quickLinks = [
     ...(hasPermission("admin.users") ||
     hasPermission("admin.audit") ||
     hasPermission("admin.errors") ||
-    hasPermission("admin.backups") ||
     hasPermission("role_permissions.manage")
       ? [
           {
@@ -107,23 +116,6 @@ function Dashboard() {
       : []),
   ];
 
-  const load = () => {
-    if (!canReadDashboardStats) {
-      setLoading(false);
-      setError("");
-      return;
-    }
-
-    setLoading(true);
-    getDashboard()
-      .then(setData)
-      .catch((err) => setError(err.message || "Unable to load dashboard"))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(load, [canReadDashboardStats]);
-  useRealtimeRefresh(load, ["employees", "leave", "attendance"]);
-
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(interval);
@@ -155,7 +147,11 @@ function Dashboard() {
     ["Permanent", "Regular"],
     permanentRegularEmployees,
   );
-  const joCosTotal = sumStatuses(data, ["JO/COS", "Casual"], joCosEmployees);
+  const joCosTotal = sumStatuses(
+    data,
+    ["JO", "COS", "JO/COS", "Job Order", "Contract of Service", "Casual"],
+    joCosEmployees,
+  );
   const otherTotal = Math.max(0, totalEmployees - permanentRegularTotal - joCosTotal);
 
   const maleTotal = (data?.bySexLevel ?? []).reduce((total, row) => total + row.male, 0);
@@ -172,29 +168,40 @@ function Dashboard() {
     minute: "2-digit",
     second: "2-digit",
   }).format(now);
+  const greeting = getGreeting(now);
+
+  if ((loading && !data) || errorMessage || (!loading && !data)) {
+    return (
+      <AppShell title="" subtitle="">
+        <div className="flex flex-col space-y-6 pb-8">
+          <DashboardHeader
+            greeting={greeting}
+            firstName={firstName}
+            currentTime={currentTime}
+            currentDate={currentDate}
+          />
+          {loading && !data ? (
+            <DashboardLoadingPanel />
+          ) : (
+            <DashboardErrorPanel
+              message={errorMessage || "Dashboard data is unavailable."}
+              onRetry={() => void refetch()}
+            />
+          )}
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="" subtitle="">
-      {error && (
-        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
       <div className="flex flex-col space-y-6 pb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="mb-1 text-sm font-medium text-blue-600">Good morning, {firstName}</div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
-          </div>
-          <div className="mt-4 sm:mt-0">
-            <div className="flex items-center gap-3 text-sm font-medium tabular-nums text-muted-foreground">
-              <span>{currentTime}</span>
-              <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
-              <span>{currentDate}</span>
-            </div>
-          </div>
-        </div>
+        <DashboardHeader
+          greeting={greeting}
+          firstName={firstName}
+          currentTime={currentTime}
+          currentDate={currentDate}
+        />
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-4">
           <div className="dash-card-stagger">
@@ -205,8 +212,6 @@ function Dashboard() {
               subtextColor="text-muted-foreground"
               icon={<Users className="h-5 w-5 text-blue-600" />}
               iconBg="bg-blue-50 dark:bg-blue-500/15"
-              chartColor="stroke-blue-500"
-              trend="up"
             />
           </div>
           <div className="dash-card-stagger">
@@ -218,8 +223,6 @@ function Dashboard() {
               subtextDot="bg-emerald-500"
               icon={<Briefcase className="h-5 w-5 text-emerald-600" />}
               iconBg="bg-emerald-50 dark:bg-emerald-500/15"
-              chartColor="stroke-emerald-500"
-              trend="up"
             />
           </div>
           <div className="dash-card-stagger">
@@ -231,8 +234,6 @@ function Dashboard() {
               subtextDot="bg-amber-500"
               icon={<UserCheck className="h-5 w-5 text-amber-600" />}
               iconBg="bg-amber-50 dark:bg-amber-500/15"
-              chartColor="stroke-amber-500"
-              trend="down"
             />
           </div>
           <div className="dash-card-stagger">
@@ -244,8 +245,6 @@ function Dashboard() {
               subtextDot="bg-blue-500"
               icon={<UserCheck className="h-5 w-5 text-blue-600" />}
               iconBg="bg-blue-50 dark:bg-blue-500/15"
-              chartColor="stroke-blue-500"
-              trend="up"
             />
           </div>
         </div>
@@ -534,6 +533,13 @@ function percentOf(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 100) : 0;
 }
 
+function getGreeting(date: Date) {
+  const hour = date.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 function getFirstName(value?: string) {
   const cleaned = String(value || "").trim();
   if (!cleaned) return "there";
@@ -541,6 +547,67 @@ function getFirstName(value?: string) {
     return cleaned.split(",")[1]?.trim().split(/\s+/)[0] || cleaned.split(",")[0].trim();
   }
   return cleaned.split(/\s+/)[0];
+}
+
+function DashboardHeader({
+  greeting,
+  firstName,
+  currentTime,
+  currentDate,
+}: {
+  greeting: string;
+  firstName: string;
+  currentTime: string;
+  currentDate: string;
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div className="mb-1 text-sm font-medium text-blue-600">
+          {greeting}, {firstName}
+        </div>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
+      </div>
+      <div className="mt-4 sm:mt-0">
+        <div className="flex items-center gap-3 text-sm font-medium tabular-nums text-muted-foreground">
+          <span>{currentTime}</span>
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+          <span>{currentDate}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DashboardLoadingPanel() {
+  return (
+    <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
+      <div className="space-y-3" role="status" aria-live="polite">
+        <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="h-24 animate-pulse rounded-lg bg-muted/70" />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DashboardErrorPanel({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 shadow-sm">
+      <h2 className="text-base font-semibold text-destructive">Dashboard unavailable</h2>
+      <p className="mt-2 max-w-2xl text-sm text-destructive/85">{message}</p>
+      <button
+        type="button"
+        className="mt-5 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+        onClick={onRetry}
+      >
+        Retry
+      </button>
+    </section>
+  );
 }
 
 function StatCard({
@@ -551,8 +618,6 @@ function StatCard({
   subtextDot,
   icon,
   iconBg,
-  chartColor,
-  trend,
 }: {
   title: string;
   value: string | number;
@@ -561,8 +626,6 @@ function StatCard({
   subtextDot?: string;
   icon: React.ReactNode;
   iconBg: string;
-  chartColor: string;
-  trend: "up" | "down";
 }) {
   return (
     <div className="relative min-h-[6.35rem] overflow-hidden rounded-xl border border-border bg-card p-3 text-card-foreground shadow-sm md:p-4">
@@ -578,27 +641,6 @@ function StatCard({
       <div className="relative z-10 mt-2 flex items-center text-[10px]">
         {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
         <span className={subtextColor}>{subtext}</span>
-      </div>
-      <div className="absolute bottom-2 right-2 z-0 h-7 w-20 opacity-50 md:h-8 md:w-24">
-        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
-          {trend === "up" ? (
-            <path
-              d="M0,25 C20,20 40,30 60,10 C80,-5 100,5 100,5"
-              fill="none"
-              className={chartColor}
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          ) : (
-            <path
-              d="M0,5 C20,5 40,-5 60,15 C80,30 100,20 100,20"
-              fill="none"
-              className={chartColor}
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          )}
-        </svg>
       </div>
     </div>
   );

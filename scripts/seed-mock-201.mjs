@@ -26,6 +26,13 @@ function loadServerEnv() {
 
 loadServerEnv();
 
+if (process.env.HRIS_ALLOW_MOCK_SEED !== "1") {
+  console.error(
+    "Refusing to seed mock 201/leave data. Set HRIS_ALLOW_MOCK_SEED=1 only in a development database.",
+  );
+  process.exit(1);
+}
+
 const DB_HOST = process.env.HRIS_DB_HOST || "localhost";
 const DB_USER = process.env.HRIS_DB_USER || "root";
 const DB_PASSWORD = process.env.HRIS_DB_PASSWORD || "";

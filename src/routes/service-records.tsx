@@ -38,7 +38,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { canReadHrRecords, canWriteHrRecords, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 import {
   deleteServiceRecord,
@@ -52,8 +52,8 @@ import {
 import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
 export const Route = createFileRoute("/service-records")({ component: ServiceRecordsPage });
 function ServiceRecordsPage() {
-  const { user } = useAuth(),
-    canManage = canWriteHrRecords(user?.role);
+  const { user, hasPermission } = useAuth(),
+    canManage = hasPermission("service_records.write");
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]),
     [employeeId, setEmployeeId] = useState(""),
     [records, setRecords] = useState<ServiceRecord[]>([]),
@@ -70,11 +70,12 @@ function ServiceRecordsPage() {
     loadAllEmployees()
       .then((x) => {
         setEmployees(x);
-        if (user?.employeeId && !canReadHrRecords(user.role)) setEmployeeId(user.employeeId);
+        if (user?.employeeId && !hasPermission("service_records.read"))
+          setEmployeeId(user.employeeId);
       })
       .catch((e) => toast.error(e.message))
       .finally(() => setLoadingEmployees(false));
-  }, [user]);
+  }, [hasPermission, user]);
   const load = useCallback(
     async (id = employeeId) => {
       if (!id) {
@@ -704,7 +705,7 @@ function ServiceDialog({
             <Input
               value={form.appointmentStatus}
               onChange={f("appointmentStatus")}
-              placeholder="Permanent, Casual, JO/COS..."
+              placeholder="Permanent, Casual, JO, COS..."
             />
           </Field>
           <Field l="Annual salary">

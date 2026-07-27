@@ -2,10 +2,10 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   ArrowRightLeft,
   Archive,
   BriefcaseBusiness,
-  ClipboardCheck,
   ChevronRight,
   History,
   Plus,
@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn, formatDisplayDateTime } from "@/lib/utils";
+import { cn, formatDisplayDate, formatDisplayDateTime } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -28,9 +28,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { api, isAbortError } from "@/lib/api";
-import { canWriteHrRecords, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { type SettingsOptions } from "@/lib/employees-api";
 import {
   emptyPlantilla,
@@ -42,9 +41,12 @@ import {
 } from "@/lib/plantilla-api";
 import type { ReferenceCategory, ReferenceRow } from "@/lib/reference-libraries";
 import {
-  confirmReconciliationBulk,
-  listReconciliation,
-  type ReconciliationRecord,
+  getAssignmentSummary,
+  listEngagements,
+  renewEngagement,
+  terminateEngagement,
+  type AssignmentSummary,
+  type NonPlantillaEngagement,
 } from "@/lib/assignments-api";
 
 export const Route = createFileRoute("/plantilla")({ component: PlantillaPage });
@@ -59,8 +61,9 @@ const categories: ReferenceCategory[] = [
 ];
 function PlantillaPage() {
   const navigate = useNavigate({ from: "/plantilla" });
-  const { user } = useAuth(),
-    canManage = canWriteHrRecords(user?.role);
+  const { hasPermission } = useAuth(),
+    canManage = hasPermission("plantilla.write"),
+    canManageEngagements = hasPermission("engagements.manage");
   const [items, setItems] = useState<PlantillaItem[]>([]),
     [summary, setSummary] = useState({
       authorized: 0,
@@ -74,6 +77,11 @@ function PlantillaPage() {
     positions: [],
     salaryGrades: [],
   });
+  const [assignmentSummary, setAssignmentSummary] = useState<AssignmentSummary>({
+    awaitingAssignment: 0,
+    scheduledMovements: 0,
+    expiringEngagements: 0,
+  });
   const [refs, setRefs] = useState<Record<ReferenceCategory, ReferenceRow[]>>(
     {} as Record<ReferenceCategory, ReferenceRow[]>,
   );
@@ -81,22 +89,17 @@ function PlantillaPage() {
     [status, setStatus] = useState("all"),
     [occupancy, setOccupancy] = useState("all"),
     [busy, setBusy] = useState(false);
+  const [listError, setListError] = useState("");
+  const [configError, setConfigError] = useState("");
   const [edit, setEdit] = useState<PlantillaItem | null | undefined>(undefined),
     [form, setForm] = useState<PlantillaPayload>(emptyPlantilla);
   const [history, setHistory] = useState<
       Array<{ id: number; action: string; changedBy: string; createdAt: string }>
     >([]),
     [historyItem, setHistoryItem] = useState<PlantillaItem | null>(null);
-  const [reconciliationOpen, setReconciliationOpen] = useState(false);
-  const [reconciliationRows, setReconciliationRows] = useState<ReconciliationRecord[]>([]);
-  const [reconciliationSummary, setReconciliationSummary] = useState<Record<string, number>>({});
-  const [reconciliationQuery, setReconciliationQuery] = useState("");
-  const [reconciliationFilter, setReconciliationFilter] = useState("all");
-  const [selectedMatches, setSelectedMatches] = useState<Record<string, string>>({});
-  const [reconciliationForm, setReconciliationForm] = useState({
-    effectiveFrom: "",
-    remarks: "",
-  });
+  const [engagements, setEngagements] = useState<NonPlantillaEngagement[]>([]);
+  const [engagementStatus, setEngagementStatus] = useState("Active");
+  const [engagementError, setEngagementError] = useState("");
   const load = useCallback(
     async (signal?: AbortSignal) => {
       try {
@@ -104,11 +107,42 @@ function PlantillaPage() {
         if (signal?.aborted) return;
         setItems(x.items);
         setSummary(x.summary);
+        setListError("");
       } catch (e) {
-        if (!isAbortError(e)) toast.error((e as Error).message);
+        if (!isAbortError(e)) {
+          const message = (e as Error).message;
+          setListError(message);
+          toast.error(message);
+        }
       }
     },
     [q, status, occupancy],
+  );
+  const loadAssignmentSummary = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const result = await getAssignmentSummary({ signal });
+      if (signal?.aborted) return;
+      setAssignmentSummary(result);
+    } catch (e) {
+      if (!isAbortError(e)) toast.error((e as Error).message);
+    }
+  }, []);
+  const loadEngagements = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const result = await listEngagements("", engagementStatus, { signal });
+        if (signal?.aborted) return;
+        setEngagements(result.engagements);
+        setEngagementError("");
+      } catch (e) {
+        if (!isAbortError(e)) {
+          const message = (e as Error).message;
+          setEngagementError(message);
+          toast.error(message);
+        }
+      }
+    },
+    [engagementStatus],
   );
   useEffect(() => {
     const controller = new AbortController();
@@ -117,26 +151,39 @@ function PlantillaPage() {
       api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references", {
         signal: controller.signal,
       }),
+      getAssignmentSummary({ signal: controller.signal }),
     ])
-      .then(([s, r]) => {
+      .then(([s, r, a]) => {
         setSettings(s);
         setRefs(r.libraries);
+        setAssignmentSummary(a);
+        setConfigError("");
       })
       .catch((e) => {
-        if (!isAbortError(e)) toast.error(e.message);
+        if (!isAbortError(e)) {
+          setConfigError(e.message);
+          toast.error(e.message);
+        }
       });
 
     return () => controller.abort();
   }, []);
   useEffect(() => {
-    if (!user) return;
     const controller = new AbortController();
     const t = setTimeout(() => load(controller.signal), 200);
     return () => {
       clearTimeout(t);
       controller.abort();
     };
-  }, [load, user]);
+  }, [load]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => loadEngagements(controller.signal), 200);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [loadEngagements]);
   const active = (c: ReferenceCategory) => refs[c]?.filter((x) => x.isActive) || [];
   const offices = useMemo(
     () =>
@@ -251,37 +298,34 @@ function PlantillaPage() {
         targetPlantillaItemId: item.id,
       },
     });
-  const loadReconciliation = useCallback(async () => {
-    try {
-      const result = await listReconciliation(reconciliationQuery, reconciliationFilter);
-      setReconciliationRows(result.records);
-      setReconciliationSummary(result.summary);
-    } catch (error) {
-      toast.error((error as Error).message);
-    }
-  }, [reconciliationFilter, reconciliationQuery]);
-  useEffect(() => {
-    if (!reconciliationOpen) return;
-    const timer = setTimeout(loadReconciliation, 200);
-    return () => clearTimeout(timer);
-  }, [loadReconciliation, reconciliationOpen]);
-  const confirmSelectedMatches = async () => {
-    const matches = Object.entries(selectedMatches).map(([employeeId, plantillaItemId]) => ({
-      employeeId,
-      plantillaItemId,
-    }));
-    if (!matches.length) return toast.error("Select at least one suggested Plantilla match.");
-    if (!reconciliationForm.effectiveFrom || !reconciliationForm.remarks.trim()) {
-      return toast.error("Effective-from date and migration remarks are required.");
-    }
+  const renewSelectedEngagement = async (engagement: NonPlantillaEngagement) => {
+    const dateFrom = window.prompt("Renewal start date (YYYY-MM-DD)", engagement.dateTo || "");
+    if (!dateFrom) return;
+    const dateTo = window.prompt("Renewal end date (YYYY-MM-DD)", engagement.dateTo || "");
+    if (!dateTo) return;
+    const remarks = window.prompt("Renewal remarks", engagement.remarks || "Renewed engagement");
+    if (remarks === null) return;
     setBusy(true);
     try {
-      const result = await confirmReconciliationBulk({ ...reconciliationForm, matches });
-      const failed = result.results.filter((row) => !row.ok);
-      toast.success(`${result.results.length - failed.length} historical occupancies confirmed.`);
-      if (failed.length) toast.error(`${failed.length} matches need individual review.`);
-      setSelectedMatches({});
-      await Promise.all([loadReconciliation(), load()]);
+      await renewEngagement(engagement.id, { dateFrom, dateTo, remarks });
+      toast.success("Engagement renewed");
+      await Promise.all([loadEngagements(), loadAssignmentSummary(), load()]);
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const terminateSelectedEngagement = async (engagement: NonPlantillaEngagement) => {
+    const dateTo = window.prompt("Termination date (YYYY-MM-DD)", new Date().toISOString().slice(0, 10));
+    if (!dateTo) return;
+    const remarks = window.prompt("Termination remarks", "Terminated by HR action");
+    if (!remarks) return;
+    setBusy(true);
+    try {
+      await terminateEngagement(engagement.id, dateTo, remarks);
+      toast.success("Engagement terminated");
+      await Promise.all([loadEngagements(), loadAssignmentSummary(), load()]);
     } catch (error) {
       toast.error((error as Error).message);
     } finally {
@@ -352,7 +396,19 @@ function PlantillaPage() {
           />
         </div>
       </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
+        <AssignmentMetric label="Awaiting assignment" value={assignmentSummary.awaitingAssignment} />
+        <AssignmentMetric label="Scheduled movements" value={assignmentSummary.scheduledMovements} />
+        <AssignmentMetric label="Expiring engagements" value={assignmentSummary.expiringEngagements} />
+      </div>
       <WorkflowStrip />
+      {configError && (
+        <ErrorPanel
+          title="Unable to load Plantilla references"
+          message={configError}
+          onRetry={() => window.location.reload()}
+        />
+      )}
       <div className="mt-5 grid gap-2 md:flex md:flex-wrap">
         <div className="relative min-w-0 flex-1 md:min-w-64">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -383,18 +439,15 @@ function PlantillaPage() {
           <option value="vacant">Vacant</option>
         </select>
         {canManage && (
-          <>
-            <Button variant="outline" onClick={() => setReconciliationOpen(true)}>
-              <ClipboardCheck className="mr-2 h-4 w-4" />
-              Reconcile employees
-            </Button>
-            <Button onClick={() => openEdit()} className="bg-blue-600 text-white hover:bg-blue-700">
-              <Plus className="mr-2 h-4 w-4" />
-              New item
-            </Button>
-          </>
+          <Button onClick={() => openEdit()} className="bg-blue-600 text-white hover:bg-blue-700">
+            <Plus className="mr-2 h-4 w-4" />
+            New item
+          </Button>
         )}
       </div>
+      {listError && (
+        <ErrorPanel title="Unable to load Plantilla items" message={listError} onRetry={() => load()} />
+      )}
       <div className="mobile-record-list mt-4 md:hidden">
         {items.map((i) => (
           <article className="rounded-xl border border-border bg-white p-3 shadow-sm" key={i.id}>
@@ -638,6 +691,120 @@ function PlantillaPage() {
           </tbody>
         </table>
       </div>
+      <section className="mt-6 rounded-lg border bg-card">
+        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Non-Plantilla Engagements</h3>
+            <p className="text-xs text-muted-foreground">
+              JO, COS, casual, and contractual engagement records.
+            </p>
+          </div>
+          <select
+            className={fieldClass + " sm:max-w-44"}
+            value={engagementStatus}
+            onChange={(event) => setEngagementStatus(event.target.value)}
+          >
+            <option value="all">All statuses</option>
+            <option>Active</option>
+            <option>Scheduled</option>
+            <option>Expired</option>
+            <option>Renewed</option>
+            <option>Terminated</option>
+          </select>
+        </div>
+        {engagementError && (
+          <div className="px-4">
+            <ErrorPanel
+              title="Unable to load engagements"
+              message={engagementError}
+              onRetry={() => loadEngagements()}
+            />
+          </div>
+        )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left">
+              <tr>
+                {["Employee", "Type / Position", "Organization", "Period", "Status", "Actions"].map(
+                  (heading) => (
+                    <th className="p-3" key={heading}>
+                      {heading}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {engagements.map((engagement) => (
+                <tr className="border-t" key={engagement.id}>
+                  <td className="p-3">
+                    <div className="font-medium">{engagement.employeeName}</div>
+                    <div className="text-xs text-muted-foreground">{engagement.employeeNo}</div>
+                  </td>
+                  <td className="p-3">
+                    <div className="font-medium">{engagement.engagementType}</div>
+                    <div className="text-xs text-muted-foreground">{engagement.designation}</div>
+                  </td>
+                  <td className="p-3">{engagement.organization || "-"}</td>
+                  <td className="whitespace-nowrap p-3">
+                    {formatDisplayDate(engagement.dateFrom)}
+                    <div className="text-xs text-muted-foreground">
+                      to {formatDisplayDate(engagement.dateTo)}
+                    </div>
+                  </td>
+                  <td className="p-3">
+                    <span
+                      className={cn(
+                        "rounded-full border px-2 py-1 text-xs font-semibold",
+                        engagement.status === "Active"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : engagement.status === "Scheduled"
+                            ? "border-blue-200 bg-blue-50 text-blue-700"
+                            : "border-slate-200 bg-slate-50 text-slate-700",
+                      )}
+                    >
+                      {engagement.status}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex flex-wrap gap-1">
+                      {canManageEngagements && ["Active", "Expired"].includes(engagement.status) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => renewSelectedEngagement(engagement)}
+                        >
+                          Renew
+                        </Button>
+                      )}
+                      {canManageEngagements &&
+                        ["Active", "Scheduled"].includes(engagement.status) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => terminateSelectedEngagement(engagement)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            Terminate
+                          </Button>
+                        )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!engagements.length && (
+                <tr>
+                  <td className="p-8 text-center text-muted-foreground" colSpan={6}>
+                    No non-Plantilla engagements found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
       <Dialog open={edit !== undefined} onOpenChange={(o) => !o && setEdit(undefined)}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
@@ -771,165 +938,6 @@ function PlantillaPage() {
           </div>
         </DialogContent>
       </Dialog>
-      <Dialog open={reconciliationOpen} onOpenChange={setReconciliationOpen}>
-        <DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Legacy Plantilla reconciliation</DialogTitle>
-          </DialogHeader>
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-100">
-            Review the approved PSIPOP first. Matching only proposes links; occupancy history is
-            created only after HR supplies an effectivity date and migration remarks.
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs">
-            {Object.entries(reconciliationSummary).map(([label, value]) => (
-              <span className="rounded-full border bg-muted/40 px-2.5 py-1" key={label}>
-                {label}: <strong>{value}</strong>
-              </span>
-            ))}
-          </div>
-          <div className="grid gap-2 md:grid-cols-[1fr_16rem]">
-            <Input
-              value={reconciliationQuery}
-              onChange={(event) => setReconciliationQuery(event.target.value)}
-              placeholder="Search employee, item number, position, or office"
-            />
-            <select
-              className={fieldClass}
-              value={reconciliationFilter}
-              onChange={(event) => setReconciliationFilter(event.target.value)}
-            >
-              <option value="all">All classifications</option>
-              {Object.keys(reconciliationSummary).map((label) => (
-                <option key={label} value={label}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="max-h-[45vh] overflow-auto rounded-lg border">
-            <table className="w-full min-w-[900px] text-sm">
-              <thead className="sticky top-0 bg-muted text-left">
-                <tr>
-                  <th className="w-10 p-3">Select</th>
-                  <th className="p-3">Employee</th>
-                  <th className="p-3">Legacy record</th>
-                  <th className="p-3">Classification</th>
-                  <th className="p-3">Suggested Plantilla</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reconciliationRows.map((row) => {
-                  const selectable =
-                    Boolean(row.matchedItemId) &&
-                    ![
-                      "Already occupied item",
-                      "Duplicate item number",
-                      "Non-Plantilla/JO/COS record",
-                      "Linked",
-                    ].includes(row.classification);
-                  return (
-                    <tr className="border-t align-top" key={row.employeeId}>
-                      <td className="p-3">
-                        <input
-                          type="checkbox"
-                          disabled={!selectable}
-                          checked={Boolean(selectedMatches[row.employeeId])}
-                          onChange={(event) =>
-                            setSelectedMatches((current) => {
-                              const next = { ...current };
-                              if (event.target.checked && row.matchedItemId)
-                                next[row.employeeId] = row.matchedItemId;
-                              else delete next[row.employeeId];
-                              return next;
-                            })
-                          }
-                        />
-                      </td>
-                      <td className="p-3">
-                        <div className="font-medium">{row.employeeName}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {row.employeeNo} · {row.employmentType}
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <div>
-                          {row.legacyItemNumber || "No item number"} ·{" "}
-                          {row.legacyPosition || "No position"}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {row.legacyOrganization || "No office"}
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <span className="rounded-full border px-2 py-1 text-xs font-medium">
-                          {row.classification}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        {row.matchedItemId ? (
-                          <>
-                            <div className="font-medium">
-                              {row.matchedItemNumber} · {row.matchedPosition}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {row.matchedOrganization || "No organization"}
-                            </div>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">No unique match</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!reconciliationRows.length && (
-                  <tr>
-                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
-                      No reconciliation records found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className="grid gap-3 md:grid-cols-[15rem_1fr]">
-            <div>
-              <Label>Historical occupancy effective from</Label>
-              <Input
-                type="date"
-                value={reconciliationForm.effectiveFrom}
-                onChange={(event) =>
-                  setReconciliationForm((current) => ({
-                    ...current,
-                    effectiveFrom: event.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <Label>Migration remarks</Label>
-              <Textarea
-                value={reconciliationForm.remarks}
-                onChange={(event) =>
-                  setReconciliationForm((current) => ({ ...current, remarks: event.target.value }))
-                }
-                placeholder="Official PSIPOP source, verification details, and reason for confirmation"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setReconciliationOpen(false)}>
-              Close
-            </Button>
-            <Button
-              disabled={busy || !Object.keys(selectedMatches).length}
-              onClick={confirmSelectedMatches}
-            >
-              Confirm selected matches
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </AppShell>
   );
 }
@@ -944,6 +952,40 @@ function WorkflowStrip() {
           {index < steps.length - 1 && <ChevronRight className="h-3.5 w-3.5" />}
         </div>
       ))}
+    </div>
+  );
+}
+
+function AssignmentMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border bg-card px-3 py-2">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 text-lg font-semibold">{value.toLocaleString()}</div>
+    </div>
+  );
+}
+
+function ErrorPanel({
+  title,
+  message,
+  onRetry,
+}: {
+  title: string;
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="mt-4 flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+        <div>
+          <div className="font-semibold">{title}</div>
+          <div>{message}</div>
+        </div>
+      </div>
+      <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   );
 }

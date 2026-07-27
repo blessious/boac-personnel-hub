@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   CalendarClock,
   CheckCircle2,
   ChevronDown,
@@ -70,6 +71,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TablePagination } from "@/components/ui/table-pagination";
 import {
   createDtr,
+  cancelDtrCorrectionRequest,
   createDtrCorrectionRequest,
   decideDtrCorrectionRequest,
   deleteDtr,
@@ -90,6 +92,7 @@ import {
   listBiometricDevices,
   listDtrNoters,
   listDtr,
+  listAttendanceImportLogs,
   listDtrCorrectionRequests,
   openGeneratedFile,
   openGeneratedFileTab,
@@ -101,6 +104,8 @@ import {
   type BiometricRealtimeLog,
   type BiometricRealtimeStatus,
   type BiometricDevice,
+  type AttendanceImport,
+  type AttendanceImportLog,
   type DtrNoter,
   type DtrEntry,
   type DtrCorrectionPayload,
@@ -108,7 +113,7 @@ import {
   type DtrCorrectionStatus,
   type DtrPayload,
 } from "@/lib/attendance-api";
-import { canReadHrRecords, canWriteHrRecords, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import {
@@ -299,10 +304,15 @@ const EMPTY_CORRECTION_FORM: DtrCorrectionPayload = {
 };
 
 function AttendancePage() {
-  const { user, can } = useAuth();
-  const canManage = canWriteHrRecords(user?.role);
+  const { user, can, hasPermission } = useAuth();
+  const canManage = hasPermission("attendance.write");
+  const canRead = hasPermission("attendance.read");
   const canApprove = can("approve");
-  const isEmployee = user?.role === "Employee";
+  const isEmployee =
+    hasPermission("self_service.access") &&
+    Boolean(user?.employeeId) &&
+    !canManage &&
+    !hasPermission("employees.read");
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(DEFAULT_TO);
   const [q, setQ] = useState("");
@@ -320,6 +330,10 @@ function AttendancePage() {
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [entries, setEntries] = useState<DtrEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dtrError, setDtrError] = useState("");
+  const [correctionError, setCorrectionError] = useState("");
+  const [employeeLoadError, setEmployeeLoadError] = useState("");
+  const [noterError, setNoterError] = useState("");
   const [busy, setBusy] = useState(false);
   const [generationLoader, setGenerationLoader] = useState<{
     title: string;
@@ -337,6 +351,12 @@ function AttendancePage() {
   const [correctionStatus, setCorrectionStatus] = useState<DtrCorrectionStatus | "all">("all");
   const [correctionType, setCorrectionType] = useState<"all" | "Times" | "Label">("all");
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importLogOpen, setImportLogOpen] = useState(false);
+  const [importLogLoading, setImportLogLoading] = useState(false);
+  const [importLogError, setImportLogError] = useState("");
+  const [importLogId, setImportLogId] = useState("");
+  const [importLogSummary, setImportLogSummary] = useState<AttendanceImport | null>(null);
+  const [importLogs, setImportLogs] = useState<AttendanceImportLog[]>([]);
 
   const [showImportAllDialog, setShowImportAllDialog] = useState(false);
   const [massImportSource, setMassImportSource] = useState<"biometric" | "file">("biometric");
@@ -423,6 +443,7 @@ function AttendancePage() {
 
   const load = () => {
     setLoading(true);
+    setDtrError("");
     listDtr({
       employeeId: selectedEmployeeId,
       from,
@@ -445,7 +466,12 @@ function AttendancePage() {
           setDtrPage(nextPagination.totalPages);
         }
       })
-      .catch((err) => toast.error(err.message || "Unable to load DTR"))
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : "Unable to load DTR";
+        setEntries([]);
+        setDtrError(message);
+        toast.error(message);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -474,8 +500,10 @@ function AttendancePage() {
   const loadCorrections = () => {
     if (!canApprove && !isEmployee) {
       setCorrectionRequests([]);
+      setCorrectionError("");
       return;
     }
+    setCorrectionError("");
     listDtrCorrectionRequests({
       employeeId: isEmployee ? undefined : selectedEmployeeId,
       status: correctionStatus === "all" ? undefined : correctionStatus,
@@ -485,7 +513,12 @@ function AttendancePage() {
       to,
     })
       .then((result) => setCorrectionRequests(result.requests))
-      .catch((error) => toast.error(error.message || "Unable to load DTR requests"));
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "Unable to load DTR requests";
+        setCorrectionRequests([]);
+        setCorrectionError(message);
+        toast.error(message);
+      });
   };
 
   useEffect(loadCorrections, [
@@ -504,7 +537,7 @@ function AttendancePage() {
   }, ["attendance"]);
 
   useEffect(() => {
-    if (!canManage && !canReadHrRecords(user?.role)) return;
+    if (!canManage && !canRead) return;
     let cancelled = false;
 
     const loadEmployees = async () => {
@@ -520,23 +553,31 @@ function AttendancePage() {
         page += 1;
       } while (loadedEmployees.length < total);
 
-      if (!cancelled) setEmployees(loadedEmployees);
+      if (!cancelled) {
+        setEmployees(loadedEmployees);
+        setEmployeeLoadError("");
+      }
     };
 
-    loadEmployees().catch(() => {
-      if (!cancelled) setEmployees([]);
+    setEmployeeLoadError("");
+    loadEmployees().catch((error) => {
+      if (!cancelled) {
+        setEmployees([]);
+        setEmployeeLoadError(error instanceof Error ? error.message : "Unable to load employees");
+      }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [canManage, user?.role]);
+  }, [canManage, canRead]);
 
   useEffect(() => {
     if (!canManage && !isEmployee) return;
     listDtrNoters()
       .then((result) => {
         setNoters(result.noters);
+        setNoterError("");
         if (result.noters[0]) {
           setExportForm((current) => ({
             ...current,
@@ -545,7 +586,10 @@ function AttendancePage() {
           }));
         }
       })
-      .catch(() => setNoters([]));
+      .catch((error) => {
+        setNoters([]);
+        setNoterError(error instanceof Error ? error.message : "Unable to load DTR noters");
+      });
   }, [canManage, isEmployee]);
 
   useEffect(() => {
@@ -799,6 +843,48 @@ function AttendancePage() {
     }
   };
 
+  const cancelCorrection = async (request: DtrCorrectionRequest) => {
+    try {
+      setBusy(true);
+      await cancelDtrCorrectionRequest(request.id);
+      toast.success("DTR correction request cancelled");
+      setSelectedCorrection((current) =>
+        current?.id === request.id ? { ...current, status: "Cancelled" } : current,
+      );
+      loadCorrections();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to cancel DTR request");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openImportLog = async (importId: string) => {
+    setImportLogOpen(true);
+    setImportLogLoading(true);
+    setImportLogError("");
+    setImportLogId(importId);
+    setImportLogSummary(null);
+    setImportLogs([]);
+    try {
+      const result = await listAttendanceImportLogs(importId);
+      setImportLogSummary(result.import);
+      setImportLogs(result.logs);
+    } catch (error) {
+      setImportLogError(error instanceof Error ? error.message : "Unable to load import log");
+    } finally {
+      setImportLogLoading(false);
+    }
+  };
+
+  const openErrorImportLog = (error: unknown) => {
+    const importId =
+      typeof error === "object" && error && "importId" in error
+        ? String((error as { importId?: unknown }).importId || "")
+        : "";
+    if (importId) void openImportLog(importId);
+  };
+
   const openAdd = () => {
     setEditing(null);
     setForm({ ...EMPTY_DTR_FORM, employeeDbId: employeeId === "all" ? "" : employeeId });
@@ -934,13 +1020,15 @@ function AttendancePage() {
         `Import DTR complete: ${result.imported} punch(es) imported; ${result.refreshed?.recordsProcessed || 0} DTR row(s) refreshed`,
       );
       if (result.errors?.length) {
-        toast.warning(`${result.errors.length} row(s) had errors. Check Admin > Error Log.`);
+        toast.warning(`${result.errors.length} row(s) had errors. Opening import log.`);
       }
+      void openImportLog(result.importId);
       setShowImportAllDialog(false);
       setMassImportFile(null);
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to import DTR");
+      openErrorImportLog(err);
       load();
     } finally {
       setBusy(false);
@@ -1144,13 +1232,15 @@ function AttendancePage() {
         `Imported ${result.imported} punch(es); refreshed ${result.refreshed.recordsProcessed} DTR row(s)`,
       );
       if (result.errors?.length) {
-        toast.warning(`${result.errors.length} row(s) need checking. Check Admin > Error Log.`);
+        toast.warning(`${result.errors.length} row(s) need checking. Opening import log.`);
       }
+      void openImportLog(result.importId);
       setShowImportDialog(false);
       setImportFile(null);
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to import DTR");
+      openErrorImportLog(err);
       load();
     } finally {
       setBusy(false);
@@ -1640,6 +1730,26 @@ function AttendancePage() {
           )}
         </div>
 
+        {(dtrError || employeeLoadError || noterError) && (
+          <section className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-semibold">Attendance data needs retry</p>
+                  <p className="text-xs">
+                    {[dtrError, employeeLoadError, noterError].filter(Boolean).join(" ")}
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+                <RefreshCw className="mr-1.5 h-4 w-4" />
+                Retry DTR
+              </Button>
+            </div>
+          </section>
+        )}
+
         <Tabs defaultValue="records" className="space-y-3 md:space-y-4">
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-border bg-muted/50 p-1">
             <TabsTrigger value="records" className="flex min-w-max items-center gap-2 py-2">
@@ -1967,6 +2077,23 @@ function AttendancePage() {
                     </SelectContent>
                   </Select>
                 </div>
+                {correctionError && (
+                  <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="flex gap-2">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div>
+                          <p className="font-semibold">Unable to load correction requests</p>
+                          <p className="text-xs">{correctionError}</p>
+                        </div>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={loadCorrections}>
+                        <RefreshCw className="mr-1.5 h-4 w-4" />
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[900px] text-sm">
                     <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
@@ -2001,13 +2128,27 @@ function AttendancePage() {
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => reviewCorrection(request)}
-                            >
-                              {request.status === "Pending" && canApprove ? "Review" : "View Audit"}
-                            </Button>
+                            <div className="flex justify-end gap-2">
+                              {request.status === "Pending" && (isEmployee || canManage) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={busy}
+                                  onClick={() => cancelCorrection(request)}
+                                >
+                                  Cancel
+                                </Button>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => reviewCorrection(request)}
+                              >
+                                {request.status === "Pending" && canApprove
+                                  ? "Review"
+                                  : "View Audit"}
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -2655,13 +2796,13 @@ function AttendancePage() {
                     </span>
                     <Input
                       type="file"
-                      accept=".txt,.xlsx,.xls,.dat"
+                      accept=".txt,.xlsx,.dat"
                       className="hidden"
                       onChange={(event) => {
                         const file = event.target.files?.[0];
                         if (!file) return;
-                        if (!/\.(txt|xlsx|xls|dat)$/i.test(file.name)) {
-                          toast.error("Only TXT, XLSX, XLS, and DAT files are supported");
+                        if (!/\.(txt|xlsx|dat)$/i.test(file.name)) {
+                          toast.error("Only TXT, XLSX, and DAT files are supported");
                           event.target.value = "";
                           return;
                         }
@@ -2782,13 +2923,13 @@ function AttendancePage() {
                   </span>
                   <Input
                     type="file"
-                    accept=".txt,.xlsx,.xls,.dat"
+                    accept=".txt,.xlsx,.dat"
                     className="hidden"
                     onChange={(event: ChangeEvent<HTMLInputElement>) => {
                       const file = event.target.files?.[0];
                       if (!file) return;
-                      if (!/\.(txt|xlsx|xls|dat)$/i.test(file.name)) {
-                        toast.error("Only TXT, XLSX, XLS, and DAT files are supported");
+                      if (!/\.(txt|xlsx|dat)$/i.test(file.name)) {
+                        toast.error("Only TXT, XLSX, and DAT files are supported");
                         event.target.value = "";
                         return;
                       }
@@ -2837,6 +2978,98 @@ function AttendancePage() {
               {busy ? "Importing..." : "Import DTR"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importLogOpen} onOpenChange={setImportLogOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Attendance Import Log</DialogTitle>
+          </DialogHeader>
+          {importLogLoading ? (
+            <div className="flex items-center gap-2 rounded-lg border border-border px-4 py-6 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading import log...
+            </div>
+          ) : importLogError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+              <div className="flex items-center justify-between gap-3">
+                <span>{importLogError}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => importLogId && openImportLog(importLogId)}
+                >
+                  Retry
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {importLogSummary && (
+                <div className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm md:grid-cols-4">
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Status</p>
+                    <p className="font-semibold">{importLogSummary.status}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">File</p>
+                    <p className="truncate font-semibold">{importLogSummary.fileName || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Rows</p>
+                    <p className="font-semibold">{importLogSummary.rowCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Warnings / Errors</p>
+                    <p className="font-semibold">
+                      {importLogSummary.warningCount} / {importLogSummary.errorCount}
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2">Level</th>
+                      <th className="px-3 py-2">Row</th>
+                      <th className="px-3 py-2">Employee No.</th>
+                      <th className="px-3 py-2">Message</th>
+                      <th className="px-3 py-2">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importLogs.map((log) => (
+                      <tr key={log.id} className="border-t border-border">
+                        <td className="px-3 py-2">
+                          <Badge variant="outline">{log.level}</Badge>
+                        </td>
+                        <td className="px-3 py-2">{log.rowNumber ?? "-"}</td>
+                        <td className="px-3 py-2">{log.employeeNo || "-"}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-start gap-2">
+                            <SquareTerminal className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span>{log.message}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {formatDisplayDateTime(log.createdAt)}
+                        </td>
+                      </tr>
+                    ))}
+                    {!importLogs.length && (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                          No import log entries found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -3544,6 +3777,17 @@ function AttendancePage() {
                       Approve and Apply
                     </Button>
                   </div>
+                </div>
+              )}
+              {selectedCorrection.status === "Pending" && (isEmployee || canManage) && (
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => cancelCorrection(selectedCorrection)}
+                    disabled={busy}
+                  >
+                    Cancel Request
+                  </Button>
                 </div>
               )}
               {canApprove && selectedCorrection.status === "Approved" && (

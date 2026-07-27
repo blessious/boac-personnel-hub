@@ -65,23 +65,3 @@ CREATE TABLE IF NOT EXISTS temporary_assignments (
   FOREIGN KEY (ended_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS plantilla_reconciliations (
-  id CHAR(36) NOT NULL PRIMARY KEY,
-  employee_id CHAR(36) NOT NULL,
-  plantilla_item_id CHAR(36) NOT NULL,
-  occupancy_id CHAR(36) NOT NULL,
-  effective_from DATE NOT NULL,
-  remarks TEXT NOT NULL,
-  classification_before VARCHAR(50) NOT NULL,
-  before_snapshot_json JSON NOT NULL,
-  after_snapshot_json JSON NOT NULL,
-  confirmed_by INT UNSIGNED NULL,
-  confirmed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uniq_reconciled_employee (employee_id),
-  UNIQUE KEY uniq_reconciled_occupancy (occupancy_id),
-  INDEX idx_reconciliation_item (plantilla_item_id,confirmed_at),
-  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE RESTRICT,
-  FOREIGN KEY (plantilla_item_id) REFERENCES plantilla_items(id) ON DELETE RESTRICT,
-  FOREIGN KEY (occupancy_id) REFERENCES plantilla_occupancies(id) ON DELETE RESTRICT,
-  FOREIGN KEY (confirmed_by) REFERENCES users(id) ON DELETE SET NULL
-) ENGINE=InnoDB;

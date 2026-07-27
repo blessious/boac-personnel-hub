@@ -318,7 +318,7 @@ def build_manual():
         doc,
         ["Role", "Typical Access During Testing"],
         [
-            ("Admin", "System administration, users, backups, audit/error logs, plus HR modules."),
+            ("Admin", "System administration, users, audit/error logs, plus HR modules."),
             ("HR", "Dashboard, employee records, attendance, plantilla, movements, service records, leave, reports, and settings."),
             ("Viewer", "Read-oriented access to dashboard, employees, plantilla, movements, service records, and reports."),
             ("Employee", "Self-service dashboard, profile, attendance, leave filing, requests, and PDS generation."),
@@ -346,7 +346,7 @@ def build_manual():
             ("Leave Management", "File leave, approve/disapprove/cancel, generate CS Form No. 6 Excel/PDF, and manage leave types."),
             ("Self-Service / My Requests", "Validate employee-side leave filing, DTR correction requests, request history, and PDS generation."),
             ("Reports & Analytics", "Currently a report catalog; broad report generation is still pending."),
-            ("System Administration", "Manage users, reset passwords, unlock accounts, create backups, and review audit/error logs."),
+            ("System Administration", "Manage users, reset passwords, unlock accounts, and review audit/error logs."),
             ("Settings / References", "Update agency branding and maintain reference libraries such as departments, positions, salary grades, and HR coded values."),
         ],
         [2100, 7260],
@@ -412,7 +412,7 @@ def build_manual():
         [
             ("[ ]", "Create a user and link to employee when needed.", "Temporary password is shown; account can log in."),
             ("[ ]", "Reset password and unlock user.", "Temporary password works and failed-login counter resets."),
-            ("[ ]", "Create a manual backup.", "Backup file appears and can be downloaded by Admin."),
+            ("[ ]", "Verify scheduled database backup task.", "Task Scheduler history and backup folder show a recent successful run."),
             ("[ ]", "Update agency profile, logo, icon, or cover photo.", "Login and app branding reflect saved settings."),
             ("[ ]", "Add/update/deactivate a reference value.", "Validation prevents invalid hierarchy, duplicate, or inactive-parent choices."),
         ],
@@ -435,7 +435,7 @@ def build_manual():
         "Reports & Analytics is currently a catalog; broad report generation/export is still pending.",
         "Service Record exports are generated directly from encoded HRIS service history and can be aligned with STRH's preferred final print format.",
         "Some self-service actions such as certificate request, overtime, schedule change, and similar HR requests are placeholders or future workflow items.",
-        "Leave accrual automation, low-balance warnings, configurable multi-level approvals, automated backups, restore workflow, and archival/retention tools require later validation or implementation.",
+        "Leave accrual automation, low-balance warnings, configurable multi-level approvals, scheduled backup monitoring, restore workflow, and archival/retention tools require later validation or implementation.",
         "Biometric testing must be done with the actual STRH devices, network, time settings, and employee device IDs.",
         "Port forwarding and production URL setup will be handled later; this manual only prepares HR for application testing.",
     ]:
@@ -469,7 +469,7 @@ def build_manual():
             ("Leave and Form 6", "", "", ""),
             ("Plantilla / Movements / Service Records", "", "", ""),
             ("Self-Service", "", "", ""),
-            ("Administration / Security / Backup", "", "", ""),
+            ("Administration / Security / Operations", "", "", ""),
         ],
         [2300, 1700, 3960, 1400],
     )

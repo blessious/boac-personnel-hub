@@ -156,7 +156,6 @@ if errorlevel 1 (
 
 echo.
 echo [INFO] Preparing local folders...
-if not exist "server\backups" mkdir "server\backups"
 
 echo.
 echo [INFO] Preparing local server environment...
@@ -217,10 +216,22 @@ echo.
 echo [INFO] Checking LibreOffice availability...
 if exist "C:\Program Files\LibreOffice\program\soffice.com" (
     echo [INFO] LibreOffice found.
+    findstr /b /c:"HRIS_LIBREOFFICE_EXE=" "server\.env.local" >nul 2>nul
+    if errorlevel 1 echo HRIS_LIBREOFFICE_EXE=C:\Program Files\LibreOffice\program\soffice.com>>"server\.env.local"
 ) else (
-    echo [WARN] LibreOffice was not found at C:\Program Files\LibreOffice\program\soffice.com
-    echo [WARN] Install LibreOffice if you need PDF previews/exports from spreadsheet templates.
-    echo [WARN] If installed somewhere else, set HRIS_LIBREOFFICE_EXE in server\.env.local.
+    where soffice >nul 2>nul
+    if errorlevel 1 (
+        echo [WARN] LibreOffice was not found.
+        echo [WARN] Install LibreOffice if you need PDF previews/exports from spreadsheet templates.
+        echo [WARN] If installed somewhere else, set HRIS_LIBREOFFICE_EXE in server\.env.local.
+    ) else (
+        for /f "delims=" %%L in ('where soffice 2^>nul') do (
+            if not defined SOFFICE_FOUND set "SOFFICE_FOUND=%%L"
+        )
+        echo [INFO] LibreOffice found at !SOFFICE_FOUND!.
+        findstr /b /c:"HRIS_LIBREOFFICE_EXE=" "server\.env.local" >nul 2>nul
+        if errorlevel 1 echo HRIS_LIBREOFFICE_EXE=!SOFFICE_FOUND!>>"server\.env.local"
+    )
 )
 
 echo.

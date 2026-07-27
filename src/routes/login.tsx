@@ -5,7 +5,8 @@ import { z } from "zod";
 import { Eye, EyeOff, Loader2, Lock, ShieldCheck, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useAuth } from "@/lib/auth";
+import { useAuth, type PermissionKey, type User as AuthUser } from "@/lib/auth";
+import { api } from "@/lib/api";
 import { useSettings } from "@/lib/settings-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,24 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
+const setupSchema = z
+  .object({
+    name: z.string().trim().min(1, "Full name required").max(150),
+    username: z
+      .string()
+      .trim()
+      .min(3, "Username must be at least 3 characters")
+      .max(50)
+      .regex(/^[a-zA-Z0-9._-]+$/, "Use letters, numbers, dot, dash, or underscore"),
+    password: z.string().min(8, "Password must be at least 8 characters").max(100),
+    confirmPassword: z.string().min(1, "Confirm your password"),
+  })
+  .refine((value) => value.password === value.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+type SetupFormData = z.infer<typeof setupSchema>;
+
 export const Route = createFileRoute("/login")({
   validateSearch: (s: Record<string, unknown>) => ({
     redirect: typeof s.redirect === "string" ? s.redirect : "/",
@@ -27,12 +46,103 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
+const KNOWN_STATIC_ROUTES = [
+  "/",
+  "/employees",
+  "/employees/references",
+  "/attendance",
+  "/self-service",
+  "/my-profile",
+  "/requests",
+  "/leave",
+  "/reports",
+  "/settings",
+  "/admin",
+  "/schedules",
+  "/plantilla",
+  "/movements",
+  "/service-records",
+] as const;
+
+type KnownStaticRoute = (typeof KNOWN_STATIC_ROUTES)[number];
+
+function isKnownRoute(value: string): value is KnownStaticRoute {
+  return KNOWN_STATIC_ROUTES.includes(value as KnownStaticRoute);
+}
+
+function redirectPath(value: string) {
+  if (!value.startsWith("/") || value.startsWith("//")) return "/";
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin) return "/";
+    return url.pathname;
+  } catch {
+    return "/";
+  }
+}
+
+function defaultRouteForUser(user: AuthUser) {
+  const allowed = new Set(user.permissions || []);
+  if (allowed.has("dashboard.view")) return "/";
+  if (allowed.has("self_service.access")) return "/self-service";
+  if (allowed.has("my_profile.access")) return "/my-profile";
+  if (allowed.has("requests.access")) return "/requests";
+  if (allowed.has("employees.read")) return "/employees";
+  if (allowed.has("attendance.read")) return "/attendance";
+  if (allowed.has("leave.read")) return "/leave";
+  if (allowed.has("plantilla.read")) return "/plantilla";
+  if (allowed.has("movements.read")) return "/movements";
+  if (allowed.has("service_records.read")) return "/service-records";
+  if (allowed.has("reports.view")) return "/reports";
+  if (allowed.has("settings.manage")) return "/settings";
+  return "/";
+}
+
+function canAccessRedirect(pathname: string, user: AuthUser) {
+  const allowed = new Set<PermissionKey>(user.permissions || []);
+  if (pathname === "/") return allowed.has("dashboard.view");
+  if (pathname.startsWith("/self-service")) return allowed.has("self_service.access");
+  if (pathname.startsWith("/my-profile")) return allowed.has("my_profile.access");
+  if (pathname.startsWith("/requests")) return allowed.has("requests.access");
+  if (pathname.startsWith("/admin")) {
+    return ["admin.users", "admin.audit", "admin.errors", "role_permissions.manage"].some(
+      (permission) => allowed.has(permission as PermissionKey),
+    );
+  }
+  if (pathname.startsWith("/settings")) return allowed.has("settings.manage");
+  if (pathname.startsWith("/leave")) return allowed.has("leave.read");
+  if (pathname.startsWith("/attendance")) {
+    return allowed.has("attendance.read") || allowed.has("self_service.access");
+  }
+  if (pathname.startsWith("/schedules")) return allowed.has("attendance.write");
+  if (pathname.startsWith("/plantilla")) return allowed.has("plantilla.read");
+  if (pathname.startsWith("/movements")) return allowed.has("movements.read");
+  if (pathname.startsWith("/service-records")) return allowed.has("service_records.read");
+  if (pathname.startsWith("/reports")) return allowed.has("reports.view");
+  if (pathname.startsWith("/employees/references")) return allowed.has("settings.manage");
+  if (pathname.startsWith("/employees/")) {
+    return (
+      allowed.has("employees.read") ||
+      Boolean(user.employeeId && pathname === `/employees/${user.employeeId}`)
+    );
+  }
+  if (pathname.startsWith("/employees")) return allowed.has("employees.read");
+  return false;
+}
+
+function allowedRedirectForUser(redirect: string, user: AuthUser) {
+  const path = redirectPath(redirect);
+  return canAccessRedirect(path, user) ? path : defaultRouteForUser(user);
+}
+
 function LoginPage() {
   const { user, login } = useAuth();
   const { agency } = useSettings();
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
   const [submitting, setSubmitting] = useState(false);
+  const [setupRequired, setSetupRequired] = useState(false);
+  const [checkingSetup, setCheckingSetup] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [exiting, setExiting] = useState(false);
   const pendingRedirectRef = useRef<string | null>(null);
@@ -42,10 +152,36 @@ function LoginPage() {
     resolver: zodResolver(schema),
     defaultValues: { username: "", password: "" },
   });
+  const setupForm = useForm<SetupFormData>({
+    resolver: zodResolver(setupSchema),
+    defaultValues: {
+      name: "System Administrator",
+      username: "admin",
+      password: "",
+      confirmPassword: "",
+    },
+  });
   const passwordField = form.register("password");
   const logoSrc = agency.logoUrl || strhLogo;
   const bannerSrc = agency.bannerUrl || strhCover;
   const agencyName = agency.tagline || "SOUTHERN TAGALOG REGIONAL HOSPITAL";
+
+  useEffect(() => {
+    let alive = true;
+    api<{ setupRequired: boolean }>("/api/auth/bootstrap-status")
+      .then((result) => {
+        if (alive) setSetupRequired(result.setupRequired);
+      })
+      .catch(() => {
+        if (alive) setSetupRequired(false);
+      })
+      .finally(() => {
+        if (alive) setCheckingSetup(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (user && !exiting) {
@@ -60,25 +196,17 @@ function LoginPage() {
     }
   }, [user, navigate, form, exiting]);
 
-  const doNavigate = (redirect: string) => {
-    if (redirect.startsWith("/employees/")) {
-      const id = redirect.split("/").filter(Boolean).at(-1);
+  const doNavigate = (redirect: string, redirectUser: AuthUser) => {
+    const target = allowedRedirectForUser(redirect, redirectUser);
+    if (target.startsWith("/employees/")) {
+      const id = target.split("/").filter(Boolean).at(-1);
       if (id) {
         navigate({ to: "/employees/$id", params: { id } });
         return;
       }
     }
-    if (
-      redirect === "/" ||
-      redirect === "/employees" ||
-      redirect === "/attendance" ||
-      redirect === "/self-service" ||
-      redirect === "/leave" ||
-      redirect === "/reports" ||
-      redirect === "/settings" ||
-      redirect === "/admin"
-    ) {
-      navigate({ to: redirect });
+    if (isKnownRoute(target)) {
+      navigate({ to: target });
     } else {
       navigate({ to: "/" });
     }
@@ -87,7 +215,7 @@ function LoginPage() {
   const onSubmit = async (data: FormData) => {
     setSubmitting(true);
     try {
-      await login(data.username, data.password);
+      const loggedInUser = await login(data.username, data.password);
       form.reset({ username: "", password: "" });
       toast.success("Welcome back!");
       const redirect = search.redirect || "/";
@@ -95,10 +223,40 @@ function LoginPage() {
       pendingRedirectRef.current = redirect;
       setExiting(true);
       setTimeout(() => {
-        doNavigate(pendingRedirectRef.current || "/");
+        doNavigate(pendingRedirectRef.current || "/", loggedInUser);
       }, 600);
     } catch (e) {
       toast.error((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onSetupSubmit = async (data: SetupFormData) => {
+    setSubmitting(true);
+    try {
+      await api<{ ok: boolean; username: string }>("/api/auth/bootstrap-super-admin", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      const loggedInUser = await login(data.username, data.password);
+      setupForm.reset({
+        name: "System Administrator",
+        username: "admin",
+        password: "",
+        confirmPassword: "",
+      });
+      toast.success("Super Admin account created");
+      pendingRedirectRef.current = "/";
+      setExiting(true);
+      setTimeout(() => {
+        doNavigate("/", loggedInUser);
+      }, 600);
+    } catch (e) {
+      toast.error((e as Error).message);
+      api<{ setupRequired: boolean }>("/api/auth/bootstrap-status")
+        .then((result) => setSetupRequired(result.setupRequired))
+        .catch(() => {});
     } finally {
       setSubmitting(false);
     }
@@ -172,86 +330,194 @@ function LoginPage() {
           <div className="w-full rounded-t-[2rem] border border-white bg-white px-6 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-7 shadow-[0_-18px_46px_rgba(8,29,66,0.18)] dark:border-white/10 dark:bg-[#111c2b] dark:shadow-[0_-18px_46px_rgba(0,0,0,0.42)] md:max-w-[410px] md:rounded-xl md:border-white/80 md:bg-white/95 md:p-7 md:shadow-[0_24px_70px_rgba(21,56,112,0.18)] md:backdrop-blur md:dark:border-white/10 md:dark:bg-[#111c2b]/95 md:dark:shadow-[0_24px_70px_rgba(0,0,0,0.42)]">
             <div className="mb-7">
               <h2 className="text-2xl font-extrabold tracking-normal text-[#0b2454] dark:text-slate-50">
-                Sign in
+                {setupRequired ? "Create Super Admin" : "Sign in"}
               </h2>
               <p className="mt-1 text-xs font-semibold text-[#5e6c84] dark:text-slate-400">
-                Enter your official credentials to continue
+                {setupRequired
+                  ? "No users were found. Create the first administrator account."
+                  : "Enter your official credentials to continue"}
               </p>
             </div>
 
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" autoComplete="off">
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor="username"
-                  className="text-[0.72rem] font-extrabold uppercase text-[#334e7c] dark:text-slate-300"
-                >
-                  Username
-                </Label>
-                <div className="relative">
-                  <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f91b1] dark:text-slate-500" />
-                  <Input
-                    id="username"
-                    autoComplete="username"
-                    placeholder="e.g. jdelacruz"
-                    className="h-11 rounded-xl border-[#dbe4f2] bg-white pl-11 text-sm text-[#0b2454] shadow-sm placeholder:text-[#7f91b1] focus-visible:border-[#0b57d0] focus-visible:ring-[#0b57d0] dark:border-white/10 dark:bg-[#0b1422] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-blue-500 dark:focus-visible:ring-blue-500"
-                    {...form.register("username")}
-                  />
-                </div>
-                {form.formState.errors.username && (
-                  <p className="text-xs font-medium text-destructive">
-                    {form.formState.errors.username.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor="password"
-                  className="text-[0.72rem] font-extrabold uppercase text-[#334e7c] dark:text-slate-300"
-                >
-                  Password
-                </Label>
-                <div className="relative">
-                  <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f91b1] dark:text-slate-500" />
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="new-password"
-                    data-lpignore="true"
-                    data-1p-ignore="true"
-                    placeholder="Password"
-                    className="h-11 rounded-xl border-[#dbe4f2] bg-white pl-11 pr-11 text-sm text-[#0b2454] shadow-sm placeholder:text-[#7f91b1] focus-visible:border-[#0b57d0] focus-visible:ring-[#0b57d0] dark:border-white/10 dark:bg-[#0b1422] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-blue-500 dark:focus-visible:ring-blue-500"
-                    {...passwordField}
-                    ref={(element) => {
-                      passwordField.ref(element);
-                      passwordInputRef.current = element;
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((value) => !value)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                    aria-pressed={showPassword}
-                    className="absolute right-3 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md text-[#6d7f9f] transition-colors hover:bg-[#eef4ff] hover:text-[#0b2454] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0b57d0] dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100 dark:focus-visible:ring-blue-500"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {form.formState.errors.password && (
-                  <p className="text-xs font-medium text-destructive">
-                    {form.formState.errors.password.message}
-                  </p>
-                )}
-              </div>
-
-              <Button
-                type="submit"
-                className="h-12 w-full rounded-xl bg-[#0b57d0] text-xs font-extrabold uppercase text-white shadow-[0_10px_18px_rgba(11,87,208,0.22)] transition-colors hover:bg-[#0647ad]"
-                disabled={submitting}
+            {setupRequired ? (
+              <form
+                onSubmit={setupForm.handleSubmit(onSetupSubmit)}
+                className="space-y-4"
+                autoComplete="off"
               >
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign in"}
-              </Button>
-            </form>
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="setup-name"
+                    className="text-[0.72rem] font-extrabold uppercase text-[#334e7c] dark:text-slate-300"
+                  >
+                    Full Name
+                  </Label>
+                  <div className="relative">
+                    <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f91b1] dark:text-slate-500" />
+                    <Input
+                      id="setup-name"
+                      autoComplete="name"
+                      className="h-11 rounded-xl border-[#dbe4f2] bg-white pl-11 text-sm text-[#0b2454] shadow-sm placeholder:text-[#7f91b1] focus-visible:border-[#0b57d0] focus-visible:ring-[#0b57d0] dark:border-white/10 dark:bg-[#0b1422] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-blue-500 dark:focus-visible:ring-blue-500"
+                      {...setupForm.register("name")}
+                    />
+                  </div>
+                  {setupForm.formState.errors.name && (
+                    <p className="text-xs font-medium text-destructive">
+                      {setupForm.formState.errors.name.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="setup-username"
+                    className="text-[0.72rem] font-extrabold uppercase text-[#334e7c] dark:text-slate-300"
+                  >
+                    Username
+                  </Label>
+                  <div className="relative">
+                    <ShieldCheck className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f91b1] dark:text-slate-500" />
+                    <Input
+                      id="setup-username"
+                      autoComplete="username"
+                      className="h-11 rounded-xl border-[#dbe4f2] bg-white pl-11 text-sm text-[#0b2454] shadow-sm placeholder:text-[#7f91b1] focus-visible:border-[#0b57d0] focus-visible:ring-[#0b57d0] dark:border-white/10 dark:bg-[#0b1422] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-blue-500 dark:focus-visible:ring-blue-500"
+                      {...setupForm.register("username")}
+                    />
+                  </div>
+                  {setupForm.formState.errors.username && (
+                    <p className="text-xs font-medium text-destructive">
+                      {setupForm.formState.errors.username.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="setup-password"
+                      className="text-[0.72rem] font-extrabold uppercase text-[#334e7c] dark:text-slate-300"
+                    >
+                      Password
+                    </Label>
+                    <Input
+                      id="setup-password"
+                      type="password"
+                      autoComplete="new-password"
+                      className="h-11 rounded-xl border-[#dbe4f2] bg-white text-sm text-[#0b2454] shadow-sm placeholder:text-[#7f91b1] focus-visible:border-[#0b57d0] focus-visible:ring-[#0b57d0] dark:border-white/10 dark:bg-[#0b1422] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-blue-500 dark:focus-visible:ring-blue-500"
+                      {...setupForm.register("password")}
+                    />
+                    {setupForm.formState.errors.password && (
+                      <p className="text-xs font-medium text-destructive">
+                        {setupForm.formState.errors.password.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="setup-confirm-password"
+                      className="text-[0.72rem] font-extrabold uppercase text-[#334e7c] dark:text-slate-300"
+                    >
+                      Confirm
+                    </Label>
+                    <Input
+                      id="setup-confirm-password"
+                      type="password"
+                      autoComplete="new-password"
+                      className="h-11 rounded-xl border-[#dbe4f2] bg-white text-sm text-[#0b2454] shadow-sm placeholder:text-[#7f91b1] focus-visible:border-[#0b57d0] focus-visible:ring-[#0b57d0] dark:border-white/10 dark:bg-[#0b1422] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-blue-500 dark:focus-visible:ring-blue-500"
+                      {...setupForm.register("confirmPassword")}
+                    />
+                    {setupForm.formState.errors.confirmPassword && (
+                      <p className="text-xs font-medium text-destructive">
+                        {setupForm.formState.errors.confirmPassword.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  className="h-12 w-full rounded-xl bg-[#0b57d0] text-xs font-extrabold uppercase text-white shadow-[0_10px_18px_rgba(11,87,208,0.22)] transition-colors hover:bg-[#0647ad]"
+                  disabled={submitting || checkingSetup}
+                >
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create Super Admin"}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" autoComplete="off">
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="username"
+                    className="text-[0.72rem] font-extrabold uppercase text-[#334e7c] dark:text-slate-300"
+                  >
+                    Username
+                  </Label>
+                  <div className="relative">
+                    <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f91b1] dark:text-slate-500" />
+                    <Input
+                      id="username"
+                      autoComplete="username"
+                      placeholder="e.g. jdelacruz"
+                      className="h-11 rounded-xl border-[#dbe4f2] bg-white pl-11 text-sm text-[#0b2454] shadow-sm placeholder:text-[#7f91b1] focus-visible:border-[#0b57d0] focus-visible:ring-[#0b57d0] dark:border-white/10 dark:bg-[#0b1422] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-blue-500 dark:focus-visible:ring-blue-500"
+                      {...form.register("username")}
+                    />
+                  </div>
+                  {form.formState.errors.username && (
+                    <p className="text-xs font-medium text-destructive">
+                      {form.formState.errors.username.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="password"
+                    className="text-[0.72rem] font-extrabold uppercase text-[#334e7c] dark:text-slate-300"
+                  >
+                    Password
+                  </Label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7f91b1] dark:text-slate-500" />
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      placeholder="Password"
+                      className="h-11 rounded-xl border-[#dbe4f2] bg-white pl-11 pr-11 text-sm text-[#0b2454] shadow-sm placeholder:text-[#7f91b1] focus-visible:border-[#0b57d0] focus-visible:ring-[#0b57d0] dark:border-white/10 dark:bg-[#0b1422] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-blue-500 dark:focus-visible:ring-blue-500"
+                      {...passwordField}
+                      ref={(element) => {
+                        passwordField.ref(element);
+                        passwordInputRef.current = element;
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((value) => !value)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
+                      className="absolute right-3 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md text-[#6d7f9f] transition-colors hover:bg-[#eef4ff] hover:text-[#0b2454] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0b57d0] dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100 dark:focus-visible:ring-blue-500"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {form.formState.errors.password && (
+                    <p className="text-xs font-medium text-destructive">
+                      {form.formState.errors.password.message}
+                    </p>
+                  )}
+                </div>
+
+                <Button
+                  type="submit"
+                  className="h-12 w-full rounded-xl bg-[#0b57d0] text-xs font-extrabold uppercase text-white shadow-[0_10px_18px_rgba(11,87,208,0.22)] transition-colors hover:bg-[#0647ad]"
+                  disabled={submitting || checkingSetup}
+                >
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign in"}
+                </Button>
+              </form>
+            )}
 
             <div className="mt-9 text-center text-[0.72rem] font-semibold text-[#6c7890] dark:text-slate-500 md:hidden">
               41 Information Technology Services © {new Date().getFullYear()}

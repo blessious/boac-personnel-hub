@@ -58,7 +58,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
-import { canReadHrRecords, canWriteHrRecords, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import {
   deleteScheduleOverride,
   listSchedules,
@@ -101,9 +101,9 @@ const EMPTY_FORM: ScheduleForm = {
 };
 
 function SchedulesPage() {
-  const { user } = useAuth();
-  const canRead = canReadHrRecords(user?.role);
-  const canManage = canWriteHrRecords(user?.role);
+  const { hasPermission } = useAuth();
+  const canRead = hasPermission("attendance.read");
+  const canManage = hasPermission("attendance.write");
   const [employees, setEmployees] = useState<ScheduleEmployee[]>([]);
   const [overrides, setOverrides] = useState<ScheduleOverride[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);

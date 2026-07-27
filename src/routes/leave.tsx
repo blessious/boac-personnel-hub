@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   Check,
   CheckCircle2,
   ClipboardCheck,
@@ -10,6 +11,7 @@ import {
   FilePlus2,
   FileText,
   Plus,
+  RefreshCw,
   Search,
   X,
   XCircle,
@@ -63,8 +65,8 @@ export const Route = createFileRoute("/leave")({
 });
 
 function LeavePage() {
-  const { can } = useAuth();
-  const canEdit = can("edit");
+  const { hasPermission, can } = useAuth();
+  const canEdit = hasPermission("leave.write");
   const canApprove = can("approve");
   const [status, setStatus] = useState("all");
   const [q, setQ] = useState("");
@@ -76,6 +78,8 @@ function LeavePage() {
   const [ledgerEmployeeId, setLedgerEmployeeId] = useState("");
   const [ledgerData, setLedgerData] = useState<EmployeeLeaveResponse | null>(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [ledgerError, setLedgerError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [generationLoader, setGenerationLoader] = useState<{
     title: string;
     description: string;
@@ -122,10 +126,11 @@ function LeavePage() {
 
   const load = () => {
     setLoading(true);
+    setLoadError("");
     Promise.all([
       listLeaveApplications({ status, q }),
       listLeaveTypes(),
-      listEmployees({ page: 1, pageSize: 100 }),
+      listAllLeaveEmployees(),
     ])
       .then(([leaveResult, typeResult, employeeResult]) => {
         setApplications(leaveResult.applications);
@@ -134,7 +139,11 @@ function LeavePage() {
         setEmployees(employeeResult.employees);
         setLedgerEmployeeId((current) => current || employeeResult.employees[0]?.id || "");
       })
-      .catch((error) => toast.error((error as Error).message))
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "Unable to load leave records";
+        setLoadError(message);
+        toast.error(message);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -144,10 +153,15 @@ function LeavePage() {
   useEffect(() => {
     if (view !== "ledger" || !ledgerEmployeeId) return;
     setLedgerLoading(true);
+    setLedgerError("");
     setLedgerData(null);
     getEmployeeLeave(ledgerEmployeeId)
       .then(setLedgerData)
-      .catch((error) => toast.error((error as Error).message))
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "Unable to load leave ledger";
+        setLedgerError(message);
+        toast.error(message);
+      })
       .finally(() => setLedgerLoading(false));
   }, [ledgerEmployeeId, view]);
 
@@ -350,6 +364,18 @@ function LeavePage() {
           onEmployeeChange={setLedgerEmployeeId}
           data={ledgerData}
           loading={ledgerLoading}
+          error={ledgerError}
+          onRetry={() => {
+            if (!ledgerEmployeeId) return;
+            setLedgerLoading(true);
+            setLedgerError("");
+            getEmployeeLeave(ledgerEmployeeId)
+              .then(setLedgerData)
+              .catch((error) =>
+                setLedgerError(error instanceof Error ? error.message : "Unable to load leave ledger"),
+              )
+              .finally(() => setLedgerLoading(false));
+          }}
         />
       ) : (
         <div className="border-0 bg-transparent shadow-none md:rounded-xl md:border md:border-border md:bg-card md:shadow-sm">
@@ -398,8 +424,30 @@ function LeavePage() {
             </div>
           </div>
 
+          {loadError ? (
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 md:m-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-semibold">Unable to load leave records</p>
+                    <p className="text-xs">{loadError}</p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+                  <RefreshCw className="mr-1.5 h-4 w-4" />
+                  Retry
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="mobile-record-list">
-            {loading ? (
+            {loadError ? (
+              <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50 px-4 py-8 text-center text-sm text-amber-900">
+                Leave records are unavailable. Use Retry above.
+              </div>
+            ) : loading ? (
               <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
                 Loading leave records...
               </div>
@@ -545,7 +593,13 @@ function LeavePage() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {loadError ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-amber-700">
+                      Leave records are unavailable. Use Retry above.
+                    </td>
+                  </tr>
+                ) : loading ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                       Loading leave records...
@@ -1154,12 +1208,16 @@ function CreditLedgerPanel({
   onEmployeeChange,
   data,
   loading,
+  error,
+  onRetry,
 }: {
   employees: EmployeeRecord[];
   selectedEmployeeId: string;
   onEmployeeChange: (value: string) => void;
   data: EmployeeLeaveResponse | null;
   loading: boolean;
+  error: string;
+  onRetry: () => void;
 }) {
   const [employeeSearch, setEmployeeSearch] = useState("");
   const filteredEmployees = useMemo(
@@ -1208,7 +1266,23 @@ function CreditLedgerPanel({
         </div>
       </div>
 
-      {loading ? (
+      {error ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <p className="font-semibold">Unable to load leave credit ledger</p>
+                <p className="text-xs">{error}</p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={onRetry} disabled={loading}>
+              <RefreshCw className="mr-1.5 h-4 w-4" />
+              Retry
+            </Button>
+          </div>
+        </div>
+      ) : loading ? (
         <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
           Loading leave credit ledger...
         </div>
@@ -1415,6 +1489,18 @@ function calendarDaySpan(from: string, to: string) {
   const end = new Date(`${to}T00:00:00`);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
   return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+}
+
+async function listAllLeaveEmployees() {
+  const pageSize = 100;
+  const first = await listEmployees({ page: 1, pageSize });
+  const employees = [...first.employees];
+  const totalPages = Math.max(1, Math.ceil(first.total / first.pageSize));
+  for (let page = 2; page <= totalPages; page += 1) {
+    const result = await listEmployees({ page, pageSize });
+    employees.push(...result.employees);
+  }
+  return { ...first, employees, total: employees.length, page: 1 };
 }
 
 function calculateWeekdayLeaveDays(from: string, to: string) {
