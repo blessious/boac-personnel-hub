@@ -116,6 +116,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             [event, ...current.filter((item) => item.id !== event.id)].slice(0, 30),
           );
           toast.info(event.title, { description: event.message });
+        } else if (event.topic === "notifications") {
+          void refreshNotifications();
         }
       } catch {
         // Ignore malformed events; EventSource will continue receiving later updates.
@@ -169,6 +171,29 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
 export function useRealtime() {
   return useContext(RealtimeContext);
+}
+
+const TOPIC_NAV_PATHS: Record<string, string> = {
+  employees: "/employees",
+  plantilla: "/plantilla",
+  movements: "/movements",
+  engagements: "/plantilla",
+  attendance: "/attendance",
+  leave: "/leave",
+  settings: "/settings",
+  admin: "/admin",
+};
+
+export function navNotificationCount(notifications: NotificationRecord[], path: string) {
+  return notifications.filter((notification) => {
+    if (notification.readAt) return false;
+    if (
+      notification.path &&
+      (notification.path === path || notification.path.startsWith(`${path}/`))
+    )
+      return true;
+    return TOPIC_NAV_PATHS[notification.topic] === path;
+  }).length;
 }
 
 export function useRealtimeRefresh(refresh: () => void, topics?: string[]) {

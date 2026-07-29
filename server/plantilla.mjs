@@ -277,6 +277,7 @@ export function createPlantillaHandlers({
   readBody,
   json,
   logAudit,
+  notifyPermission = async () => [],
 }) {
   const read = async (id, c = pool) => {
     const [rs] = await c.execute(selectSql + " WHERE pi.id=:id LIMIT 1", { id });
@@ -483,6 +484,16 @@ export function createPlantillaHandlers({
       const item = await read(id);
       await history(pool, id, "Created", item, u.id);
       await logAudit(u.id, "plantilla.create", { id, itemNumber: x.itemNumber }, req);
+      await notifyPermission({
+        permission: "plantilla.read",
+        excludeUserId: u.id,
+        topic: "plantilla",
+        title: "Plantilla item added",
+        message: `${item.itemNumber} - ${item.positionTitle} was added.`,
+        path: "/plantilla",
+        sourceType: "plantilla_item",
+        sourceId: id,
+      });
       return json(res, 201, { item });
     } catch (e) {
       return fail(res, e);
@@ -524,6 +535,16 @@ export function createPlantillaHandlers({
       const item = await read(id);
       await history(pool, id, "Updated", { before: old, after: item }, u.id);
       await logAudit(u.id, "plantilla.update", { id }, req);
+      await notifyPermission({
+        permission: "plantilla.read",
+        excludeUserId: u.id,
+        topic: "plantilla",
+        title: "Plantilla item updated",
+        message: `${item.itemNumber} - ${item.positionTitle} was updated.`,
+        path: "/plantilla",
+        sourceType: "plantilla_item",
+        sourceId: id,
+      });
       return json(res, 200, { item });
     } catch (e) {
       return fail(res, e);
@@ -563,6 +584,16 @@ export function createPlantillaHandlers({
       await c.execute("DELETE FROM plantilla_items WHERE id=:id", { id });
       await c.commit();
       await logAudit(u.id, "plantilla.delete", { id, itemNumber: item.item_number }, req);
+      await notifyPermission({
+        permission: "plantilla.read",
+        excludeUserId: u.id,
+        topic: "plantilla",
+        title: "Plantilla item removed",
+        message: `${item.item_number} was removed from the Plantilla.`,
+        path: "/plantilla",
+        sourceType: "plantilla_item",
+        sourceId: id,
+      });
       return json(res, 200, { ok: true });
     } catch (e) {
       await c.rollback().catch(() => {});

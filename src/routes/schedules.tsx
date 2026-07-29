@@ -59,6 +59,7 @@ import {
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { useAuth } from "@/lib/auth";
+import { useRealtimeRefresh } from "@/lib/realtime";
 import {
   deleteScheduleOverride,
   listSchedules,
@@ -187,6 +188,9 @@ function SchedulesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  useRealtimeRefresh(() => {
+    void load();
+  }, ["attendance", "employees"]);
 
   useEffect(() => {
     setPage(1);

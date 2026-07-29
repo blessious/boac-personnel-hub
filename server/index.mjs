@@ -998,7 +998,7 @@ const DEFAULT_REFERENCE_VALUES = [
   {
     category: "plantilla-types",
     code: "PLANTILLA",
-    name: "Plantilla",
+    name: "Permanent",
     description: "Regular approved plantilla item.",
     sortOrder: 1,
   },
@@ -1739,10 +1739,10 @@ function realtimeTopic(pathname) {
   if (pathname.startsWith("/api/attendance")) return "attendance";
   if (pathname.startsWith("/api/leave")) return "leave";
   if (pathname.startsWith("/api/employees")) return "employees";
-  if (pathname.startsWith("/api/plantilla") || pathname.startsWith("/api/movements"))
-    return "employees";
+  if (pathname.startsWith("/api/plantilla")) return "plantilla";
+  if (pathname.startsWith("/api/movements")) return "movements";
   if (pathname.startsWith("/api/engagements") || pathname.startsWith("/api/assignments"))
-    return "employees";
+    return "engagements";
   if (pathname.startsWith("/api/settings")) return "settings";
   if (pathname.startsWith("/api/admin")) return "admin";
   if (pathname.startsWith("/api/auth")) return "auth";
@@ -1846,6 +1846,17 @@ async function notifyRoles({ roles, excludeUserId, ...notification }) {
   return notifyUsers({ ...notification, userIds: rows.map((row) => row.id) });
 }
 
+async function notifyPermission({ permission, excludeUserId, ...notification }) {
+  if (!PERMISSION_KEYS.has(permission)) return [];
+  const [rows] = await pool.query("SELECT id, role FROM users WHERE is_active = 1");
+  const recipients = [];
+  for (const row of rows) {
+    if (excludeUserId && Number(row.id) === Number(excludeUserId)) continue;
+    if (await hasPermission(row.role, permission)) recipients.push(row.id);
+  }
+  return notifyUsers({ ...notification, userIds: recipients });
+}
+
 async function notifyEmployees({ employeeIds, excludeUserId, ...notification }) {
   if (!employeeIds?.length) return [];
   const placeholders = employeeIds.map(() => "?").join(", ");
@@ -1890,6 +1901,7 @@ async function handleReadNotification(req, res, id) {
     { id, userId: user.id },
   );
   if (!result.affectedRows) return json(res, 404, { error: "Notification not found" });
+  publishRealtime({ kind: "refresh", topic: "notifications", userIds: [user.id] });
   return json(res, 200, { ok: true });
 }
 
@@ -1900,6 +1912,7 @@ async function handleReadAllNotifications(req, res) {
     `UPDATE notifications SET read_at = NOW() WHERE user_id = :userId AND read_at IS NULL`,
     { userId: user.id },
   );
+  publishRealtime({ kind: "refresh", topic: "notifications", userIds: [user.id] });
   return json(res, 200, { ok: true, updated: Number(result.affectedRows || 0) });
 }
 
@@ -9715,8 +9728,7 @@ async function handleCreateEmployee(req, res) {
   const id = crypto.randomUUID();
   const employeeNo = data.employeeNo || `EMP-${Date.now()}`;
   const createAccount = body.createAccount !== false;
-  let accountActive =
-    !body.appointment && !body.engagement ? body.accountActive !== false : false;
+  let accountActive = !body.appointment && !body.engagement ? body.accountActive !== false : false;
 
   let connection;
   let committed = false;
@@ -9760,18 +9772,29 @@ async function handleCreateEmployee(req, res) {
       const [[target]] = await connection.execute(
         `SELECT pi.*,p.title position_title,
                 item_sg.ordinance item_salary_ordinance,item_sg.grade item_salary_grade,
-                COALESCE(sec.name,divi.name,off.name,s.name) organization_name
+                COALESCE(sec.name,divi.name,off.name,s.name) organization_name,
+                pt.name plantilla_type_name
            FROM plantilla_items pi JOIN positions p ON p.id=pi.position_id
            LEFT JOIN salary_grades item_sg ON item_sg.id=pi.salary_grade_id
            LEFT JOIN hr_reference_values sec ON sec.id=pi.section_ref_id
            LEFT JOIN hr_reference_values divi ON divi.id=pi.division_ref_id
            LEFT JOIN hr_reference_values off ON off.id=pi.office_ref_id
            LEFT JOIN hr_reference_values s ON s.id=pi.sector_ref_id
+           LEFT JOIN hr_reference_values pt ON pt.id=pi.plantilla_type_ref_id
           WHERE pi.id=:id FOR UPDATE`,
         { id: targetPlantillaItemId },
       );
       if (!target || target.item_status !== "Active")
         throw httpError(409, "Target Plantilla item is not active");
+      const plantillaEmploymentStatus =
+        String(target.plantilla_type_name || "").trim() || "Permanent";
+      await connection.execute("UPDATE employees SET status=:status WHERE id=:id", {
+        id,
+        status:
+          plantillaEmploymentStatus.toLowerCase() === "plantilla"
+            ? "Permanent"
+            : plantillaEmploymentStatus,
+      });
       const targetSalaryGradeId = requestedSalaryGradeId || Number(target.salary_grade_id || 0);
       const [[appointmentSalary]] = await connection.execute(
         `SELECT selected.id
@@ -9891,11 +9914,11 @@ async function handleCreateEmployee(req, res) {
       const organizationId = Number(engagement.organizationId);
       const [[organization]] = await connection.execute(
         `SELECT id,name,is_active FROM hr_reference_values
-          WHERE id=:organizationId AND category IN ('sectors','offices','divisions','sections')`,
+          WHERE id=:organizationId AND category = 'offices'`,
         { organizationId },
       );
       if (!organization || !organization.is_active)
-        throw httpError(400, "Select an active organization");
+        throw httpError(400, "Select an active office");
       const designation = String(engagement.designation || "").trim();
       const dateFrom = String(engagement.dateFrom || "").trim();
       const dateTo = String(engagement.dateTo || "").trim();
@@ -10003,8 +10026,19 @@ async function handleCreateEmployee(req, res) {
         req,
       );
     }
+    const employee = await readEmployeeById(id);
+    await notifyPermission({
+      permission: "employees.read",
+      excludeUserId: user.id,
+      topic: "employees",
+      title: "Employee added",
+      message: `${formatEmployeeName(data)} (${employeeNo}) was added${appointmentDraftId ? " with a Plantilla appointment draft" : engagementId ? " with a non-Plantilla engagement" : ""}.`,
+      path: "/employees",
+      sourceType: "employee",
+      sourceId: id,
+    });
     return json(res, 201, {
-      employee: await readEmployeeById(id),
+      employee,
       ...(account ? { account } : {}),
       ...(appointmentDraftId ? { appointmentDraftId } : {}),
       ...(engagementId ? { engagementId } : {}),
@@ -11959,8 +11993,7 @@ async function handleUpdateSalaryGrade(req, res, id) {
   }
 
   const usage = await salaryGradeUsage(id);
-  const isUsed =
-    usage.plantillaCount > 0 || usage.occupancyCount > 0 || usage.movementCount > 0;
+  const isUsed = usage.plantillaCount > 0 || usage.occupancyCount > 0 || usage.movementCount > 0;
   if (Number(salaryGrade.is_active) === 1 || isUsed) {
     return json(res, 409, {
       error:
@@ -13483,7 +13516,11 @@ movementHandlers = createMovementHandlers({
   readBody,
   json,
   logAudit,
+  notifyUsers,
+  notifyEmployees,
+  notifyPermission,
   notifyRoles,
+  publishRealtime,
 });
 plantillaHandlers = createPlantillaHandlers({
   pool,
@@ -13492,6 +13529,7 @@ plantillaHandlers = createPlantillaHandlers({
   readBody,
   json,
   logAudit,
+  notifyPermission,
 });
 assignmentHandlers = createAssignmentHandlers({
   pool,
@@ -13500,6 +13538,9 @@ assignmentHandlers = createAssignmentHandlers({
   readBody,
   json,
   logAudit,
+  notifyEmployees,
+  notifyPermission,
+  publishRealtime,
 });
 await cleanupPreviewFiles().catch(() => {});
 await cleanupDocumentExportJobs().catch(() => {});

@@ -40,6 +40,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useAuth } from "@/lib/auth";
+import { useRealtimeRefresh } from "@/lib/realtime";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 import {
   deleteServiceRecord,
@@ -99,6 +100,10 @@ function ServiceRecordsPage() {
   useEffect(() => {
     load(employeeId);
   }, [employeeId, load]);
+  useRealtimeRefresh(() => {
+    void load(employeeId);
+    void loadAllEmployees().then(setEmployees);
+  }, ["employees", "movements"]);
   const filteredEmployees = employees.filter((e) =>
     [formatEmployeeName(e), e.employeeId, e.department, e.position]
       .join(" ")

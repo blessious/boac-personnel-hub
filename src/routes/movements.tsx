@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ArrowRightLeft,
   CalendarDays,
-  Check,
   ChevronRight,
   CheckCircle2,
   Clock3,
@@ -14,13 +13,13 @@ import {
   Search,
   Send,
   Undo2,
-  ChevronsUpDown,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDisplayDate, formatDisplayDateTime, formatEmployeeName } from "@/lib/utils";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Dialog,
   DialogContent,
@@ -32,17 +31,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api, isAbortError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useRealtimeRefresh } from "@/lib/realtime";
 import { listEmployees, type EmployeeRecord, type SettingsOptions } from "@/lib/employees-api";
 import {
   emptyMovement,
@@ -187,6 +178,9 @@ function MovementsPage() {
       controller.abort();
     };
   }, [load, user]);
+  useRealtimeRefresh(() => {
+    void load();
+  }, ["movements", "plantilla", "employees", "engagements"]);
   useEffect(() => {
     if (!user) return;
     const controller = new AbortController();
@@ -1364,72 +1358,20 @@ function SelectField({
   set: (x: string) => void;
   rows: readonly (readonly string[])[];
 }) {
-  const [open, setOpen] = useState(false);
-  const selectedRow = rows.find(([id]) => id === value);
-
   return (
     <Field label={label}>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            className="h-9 w-full justify-between px-3 font-normal"
-          >
-            <span className={cn("truncate", !selectedRow && "text-muted-foreground")}>
-              {selectedRow?.[1] || "Select..."}
-            </span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          className="w-[--radix-popover-trigger-width] max-h-[min(22rem,calc(100dvh-8rem))] overflow-hidden p-0"
-          onWheelCapture={(event) => event.stopPropagation()}
-          onTouchMoveCapture={(event) => event.stopPropagation()}
-        >
-          <Command
-            className="max-h-[min(22rem,calc(100dvh-8rem))]"
-            filter={(candidateValue, search) => {
-              const row = rows.find(([id]) => id === candidateValue);
-              if (!row) return 0;
-              return row.join(" ").toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
-            }}
-          >
-            <CommandInput placeholder={`Search ${label.toLowerCase()}...`} />
-            <CommandList className="max-h-[min(18rem,calc(100dvh-12rem))] overscroll-contain scrollbar-thin">
-              <CommandEmpty>No matches found.</CommandEmpty>
-              <CommandGroup>
-                <CommandItem
-                  value="__empty__"
-                  onSelect={() => {
-                    set("");
-                    setOpen(false);
-                  }}
-                >
-                  <Check className={cn("h-4 w-4", !value ? "opacity-100" : "opacity-0")} />
-                  <span>Select...</span>
-                </CommandItem>
-                {rows.map(([id, name]) => (
-                  <CommandItem
-                    key={id}
-                    value={id}
-                    onSelect={() => {
-                      set(id);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check className={cn("h-4 w-4", value === id ? "opacity-100" : "opacity-0")} />
-                    <span className="min-w-0 truncate">{name}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      <Combobox
+        value={value}
+        onValueChange={set}
+        options={rows.map(([id, name, ...details]) => ({
+          value: id,
+          label: name,
+          description: details.filter(Boolean).join(" · "),
+          keywords: details,
+        }))}
+        searchPlaceholder={`Search ${label.toLowerCase()}...`}
+        clearable
+      />
     </Field>
   );
 }

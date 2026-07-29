@@ -222,8 +222,57 @@ export function createMovementHandlers({
   readBody,
   json,
   logAudit,
+  notifyUsers = async () => [],
+  notifyEmployees = async () => [],
+  notifyPermission = async () => [],
   notifyRoles = async () => [],
+  publishRealtime = () => {},
 }) {
+  const notifyMovement = async ({ movement, action, actorId }) => {
+    const controlNumber = movement.controlNumber || movement.control_number;
+    const employeeId = movement.employeeId || movement.employee_id;
+    const preparedBy = Number(movement.preparedById || movement.prepared_by || 0);
+    const common = {
+      topic: "movements",
+      path: "/movements",
+      sourceType: "personnel_movement",
+      sourceId: movement.id,
+    };
+    if (action === "submit" || action === "review") {
+      await notifyPermission({
+        permission: "approvals.manage",
+        excludeUserId: actorId,
+        ...common,
+        title: action === "submit" ? "Movement awaiting review" : "Movement awaiting approval",
+        message: `${controlNumber} is ready for ${action === "submit" ? "review" : "approval"}.`,
+      });
+      return;
+    }
+    const labels = {
+      approve: ["Movement approved", `${controlNumber} is approved and ready for posting.`],
+      reject: ["Movement rejected", `${controlNumber} was rejected.`],
+      return: ["Movement returned to draft", `${controlNumber} was returned for revision.`],
+      schedule: ["Movement scheduled", `${controlNumber} is scheduled for automatic posting.`],
+      post: ["Movement posted", `${controlNumber} was posted to the employee record.`],
+      reverse: ["Movement reversed", `${controlNumber} was reversed.`],
+    };
+    const [title, message] = labels[action] || [
+      "Movement updated",
+      `${controlNumber} was updated.`,
+    ];
+    if (preparedBy && preparedBy !== Number(actorId)) {
+      await notifyUsers({ userIds: [preparedBy], ...common, title, message });
+    }
+    if (employeeId) {
+      await notifyEmployees({
+        employeeIds: [employeeId],
+        excludeUserId: actorId,
+        ...common,
+        title,
+        message,
+      });
+    }
+  };
   const read = async (id, connection = pool) => {
     const [rows] = await connection.execute(`${MOVEMENT_SELECT} WHERE m.id=:id LIMIT 1`, { id });
     return rows[0] ? movementRow(rows[0]) : null;
@@ -677,7 +726,13 @@ export function createMovementHandlers({
           { id, fromStatus: row.status, toStatus },
           req,
         );
-        return json(res, 200, { movement: await read(id) });
+        const updatedMovement = await read(id);
+        await notifyMovement({
+          movement: { ...updatedMovement, prepared_by: row.prepared_by },
+          action,
+          actorId: user.id,
+        });
+        return json(res, 200, { movement: updatedMovement });
       } catch (error) {
         await connection.rollback().catch(() => {});
         return fail(res, error);
@@ -724,7 +779,14 @@ export function createMovementHandlers({
           { id, employeeId: movement.employee_id, effectiveDate },
           req,
         );
-        return json(res, 200, { movement: await read(id) });
+        const updatedMovement = await read(id);
+        await notifyMovement({
+          movement: { ...updatedMovement, prepared_by: movement.prepared_by },
+          action: "schedule",
+          actorId: user.id,
+        });
+        publishRealtime({ kind: "refresh", topic: "movements", path: "/api/movements" });
+        return json(res, 200, { movement: updatedMovement });
       }
       const before = await currentSnapshot(movement.employee_id, connection, true),
         source = parseJson(movement.source_snapshot_json);
@@ -1162,7 +1224,16 @@ export function createMovementHandlers({
         { id, employeeId: movement.employee_id, actionType: movement.action_type },
         req,
       );
-      return json(res, 200, { movement: await read(id) });
+      const updatedMovement = await read(id);
+      await notifyMovement({
+        movement: { ...updatedMovement, prepared_by: movement.prepared_by },
+        action: "post",
+        actorId: user.id,
+      });
+      publishRealtime({ kind: "refresh", topic: "movements", path: "/api/movements" });
+      publishRealtime({ kind: "refresh", topic: "employees", path: "/api/employees" });
+      publishRealtime({ kind: "refresh", topic: "plantilla", path: "/api/plantilla" });
+      return json(res, 200, { movement: updatedMovement });
     } catch (error) {
       await connection.rollback().catch(() => {});
       return fail(res, error);
@@ -1272,7 +1343,16 @@ export function createMovementHandlers({
         { id, employeeId: movement.employee_id, reason },
         req,
       );
-      return json(res, 200, { movement: await read(id) });
+      const updatedMovement = await read(id);
+      await notifyMovement({
+        movement: { ...updatedMovement, prepared_by: movement.prepared_by },
+        action: "reverse",
+        actorId: user.id,
+      });
+      publishRealtime({ kind: "refresh", topic: "movements", path: "/api/movements" });
+      publishRealtime({ kind: "refresh", topic: "employees", path: "/api/employees" });
+      publishRealtime({ kind: "refresh", topic: "plantilla", path: "/api/plantilla" });
+      return json(res, 200, { movement: updatedMovement });
     } catch (error) {
       await connection.rollback().catch(() => {});
       return fail(res, error);
@@ -1323,15 +1403,6 @@ export function createMovementHandlers({
           {
             id: movement.id,
             error: String(body?.error || "Scheduled activation failed").slice(0, 2000),
-          },
-        );
-        await connection.execute(
-          `UPDATE plantilla_occupancies
-              SET current_salary_grade_id=:salaryGradeId
-            WHERE id=:occupancyId`,
-          {
-            salaryGradeId: classification.salary_grade_id,
-            occupancyId: before.occupancy.id,
           },
         );
         await notifyRoles({

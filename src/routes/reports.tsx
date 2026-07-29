@@ -23,6 +23,7 @@ import {
   type PlantillaItemReportRow,
 } from "@/lib/reports-api";
 import { cn } from "@/lib/utils";
+import { useRealtimeRefresh } from "@/lib/realtime";
 
 export const Route = createFileRoute("/reports")({
   component: ReportsPage,
@@ -55,6 +56,7 @@ function ReportsPage() {
   };
 
   useEffect(load, []);
+  useRealtimeRefresh(load, ["employees", "plantilla", "movements", "engagements"]);
 
   const doExport = async (format: "pdf" | "xlsx") => {
     setExporting(format);

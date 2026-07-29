@@ -1,21 +1,12 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import {
-  ArrowLeft,
-  ChevronDown,
-  Download,
-  Pencil,
-  Plus,
-  Save,
-  Search,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { ArrowLeft, ChevronDown, Download, Pencil, Plus, Save, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { WorkflowStatusBadge } from "@/components/ui/status-badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -515,21 +506,9 @@ function PersonalTab({
   onSaved: (employee: EmployeeRecord) => void;
 }) {
   const [form, setForm] = useState<EmployeeRecord>(employee);
-  const [departmentQuery, setDepartmentQuery] = useState("");
-  const [positionQuery, setPositionQuery] = useState("");
   const departments = options.departments.map((department) => department.name);
   const positions = options.positions.map((position) => position.title);
   const hasPlantillaOccupancy = currentAssignment.substantive?.kind === "Plantilla";
-  const filteredDepartments = useMemo(() => {
-    const query = departmentQuery.trim().toLowerCase();
-    if (!query) return departments;
-    return departments.filter((department) => department.toLowerCase().includes(query));
-  }, [departmentQuery, departments]);
-  const filteredPositions = useMemo(() => {
-    const query = positionQuery.trim().toLowerCase();
-    if (!query) return positions;
-    return positions.filter((position) => position.toLowerCase().includes(query));
-  }, [positionQuery, positions]);
 
   const set = (key: keyof EmployeeRecord, value: EmployeeRecord[keyof EmployeeRecord]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -560,72 +539,32 @@ function PersonalTab({
             />
           </Field>
           <Field label="Department" required={!hasPlantillaOccupancy}>
-            <Select
-              disabled={hasPlantillaOccupancy}
+            <Combobox
               value={form.department}
               onValueChange={(value) => set("department", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select department" />
-              </SelectTrigger>
-              <SelectContent>
-                <div className="sticky top-0 z-10 bg-popover p-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                    <Input
-                      value={departmentQuery}
-                      onChange={(event) => setDepartmentQuery(event.target.value)}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      placeholder="Search departments..."
-                      className="h-8 pl-9"
-                    />
-                  </div>
-                </div>
-                {filteredDepartments.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {item}
-                  </SelectItem>
-                ))}
-                {filteredDepartments.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">
-                    No departments found.
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
+              placeholder="Select department"
+              searchPlaceholder="Search departments..."
+              emptyText="No departments found."
+              options={departments.map((department) => ({
+                value: department,
+                label: department,
+              }))}
+              triggerProps={{ disabled: hasPlantillaOccupancy }}
+            />
           </Field>
           <Field label="Position" required={!hasPlantillaOccupancy}>
-            <Select
-              disabled={hasPlantillaOccupancy}
+            <Combobox
               value={form.position}
               onValueChange={(value) => set("position", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select position" />
-              </SelectTrigger>
-              <SelectContent>
-                <div className="sticky top-0 z-10 bg-popover p-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                    <Input
-                      value={positionQuery}
-                      onChange={(event) => setPositionQuery(event.target.value)}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      placeholder="Search positions..."
-                      className="h-8 pl-9"
-                    />
-                  </div>
-                </div>
-                {filteredPositions.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {item}
-                  </SelectItem>
-                ))}
-                {filteredPositions.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">No positions found.</div>
-                )}
-              </SelectContent>
-            </Select>
+              placeholder="Select position"
+              searchPlaceholder="Search positions..."
+              emptyText="No positions found."
+              options={positions.map((position) => ({
+                value: position,
+                label: position,
+              }))}
+              triggerProps={{ disabled: hasPlantillaOccupancy }}
+            />
           </Field>
           <Field label="Status">
             <Select value={form.status} onValueChange={(value) => set("status", value)}>

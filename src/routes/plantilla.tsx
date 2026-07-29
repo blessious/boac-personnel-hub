@@ -6,9 +6,7 @@ import {
   ArrowRightLeft,
   Archive,
   BriefcaseBusiness,
-  Check,
   ChevronRight,
-  ChevronsUpDown,
   History,
   MoreVertical,
   Plus,
@@ -21,15 +19,8 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Combobox } from "@/components/ui/combobox";
 import { cn, formatDisplayDate, formatDisplayDateTime } from "@/lib/utils";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -40,7 +31,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,6 +51,7 @@ import {
 } from "@/lib/data-table-styles";
 import { api, isAbortError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useRealtimeRefresh } from "@/lib/realtime";
 import { type SettingsOptions } from "@/lib/employees-api";
 import {
   emptyPlantilla,
@@ -107,6 +98,9 @@ const categories: ReferenceCategory[] = [
   "budget-codes",
 ];
 const optionCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+const CREATE_PLANTILLA_CLASSIFICATION_CODES = new Set(["PLANTILLA", "ELECTIVE", "COTER"]);
+const displayPlantillaClassification = (name: string) =>
+  name.trim().toLowerCase() === "plantilla" ? "Permanent" : name;
 function PlantillaPage() {
   const navigate = useNavigate({ from: "/plantilla" });
   const { hasPermission } = useAuth(),
@@ -236,6 +230,9 @@ function PlantillaPage() {
       controller.abort();
     };
   }, [loadEngagements]);
+  useRealtimeRefresh(() => {
+    void Promise.all([load(), loadEngagements()]);
+  }, ["plantilla", "movements", "employees", "engagements"]);
   const active = (c: ReferenceCategory) => refs[c]?.filter((x) => x.isActive) || [];
   const offices = useMemo(() => (refs["offices"] || []).filter((x) => x.isActive), [refs]);
   const openEdit = (item?: PlantillaItem) => {
@@ -738,7 +735,7 @@ function PlantillaPage() {
           <table className={dataTableClass}>
             <thead className={dataTableHeadClass}>
               <tr className={dataTableHeadRowClass}>
-                {["Employee", "Type / Position", "Organization", "Period", "Status", "Actions"].map(
+                {["Employee", "Type / Position", "Office", "Period", "Status", "Actions"].map(
                   (heading) => (
                     <th className={dataTableHeaderCellClass} key={heading}>
                       {heading}
@@ -917,7 +914,13 @@ function PlantillaPage() {
               l="Plantilla classification"
               v={form.plantillaTypeId}
               set={(v) => setForm({ ...form, plantillaTypeId: v })}
-              rows={active("plantilla-types").map((x) => [String(x.id), x.name])}
+              rows={active("plantilla-types")
+                .filter(
+                  (x) =>
+                    Boolean(edit) ||
+                    CREATE_PLANTILLA_CLASSIFICATION_CODES.has(x.code.toUpperCase()),
+                )
+                .map((x) => [String(x.id), displayPlantillaClassification(x.name)])}
             />
             {/* Hidden from the Edit Plantilla Item form; preserve the stored value on save.
             {edit && (
@@ -1133,73 +1136,22 @@ function Sel({
   set: (v: string) => void;
   rows: string[][];
 }) {
-  const [open, setOpen] = useState(false);
-  const selectedRow = rows.find(([id]) => id === v);
   const sortedRows = [...rows].sort((left, right) => optionCollator.compare(left[1], right[1]));
 
   return (
     <F l={l}>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            className="h-9 w-full justify-between px-3 font-normal"
-          >
-            <span className={cn("truncate", !selectedRow && "text-muted-foreground")}>
-              {selectedRow?.[1] || "Select..."}
-            </span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          className="w-[--radix-popover-trigger-width] max-h-[min(22rem,calc(100dvh-8rem))] overflow-hidden p-0"
-          onWheelCapture={(event) => event.stopPropagation()}
-          onTouchMoveCapture={(event) => event.stopPropagation()}
-        >
-          <Command
-            className="max-h-[min(22rem,calc(100dvh-8rem))]"
-            filter={(candidateValue, search) => {
-              const row = rows.find(([id]) => id === candidateValue);
-              if (!row) return 0;
-              return row.join(" ").toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
-            }}
-          >
-            <CommandInput placeholder={`Search ${l.toLowerCase()}...`} />
-            <CommandList className="max-h-[min(18rem,calc(100dvh-12rem))] overscroll-contain scrollbar-thin">
-              <CommandEmpty>No matches found.</CommandEmpty>
-              <CommandGroup>
-                <CommandItem
-                  value="__empty__"
-                  onSelect={() => {
-                    set("");
-                    setOpen(false);
-                  }}
-                >
-                  <Check className={cn("h-4 w-4", !v ? "opacity-100" : "opacity-0")} />
-                  <span>Select...</span>
-                </CommandItem>
-                {sortedRows.map(([id, name]) => (
-                  <CommandItem
-                    key={id}
-                    value={id}
-                    onSelect={() => {
-                      set(id);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check className={cn("h-4 w-4", v === id ? "opacity-100" : "opacity-0")} />
-                    <span className="min-w-0 truncate">{name}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      <Combobox
+        value={v}
+        onValueChange={set}
+        options={sortedRows.map(([id, name, ...details]) => ({
+          value: id,
+          label: name,
+          description: details.filter(Boolean).join(" · "),
+          keywords: details,
+        }))}
+        searchPlaceholder={`Search ${l.toLowerCase()}...`}
+        clearable
+      />
     </F>
   );
 }

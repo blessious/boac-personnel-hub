@@ -38,7 +38,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { listLeaveApplications } from "@/lib/leave-api";
 import { listDtrCorrectionRequests } from "@/lib/attendance-api";
-import { useRealtime } from "@/lib/realtime";
+import { navNotificationCount, useRealtime } from "@/lib/realtime";
 import { cn, formatDisplayDateTime } from "@/lib/utils";
 import { groupNavItems, navForPermissions } from "@/components/layout/navigation";
 
@@ -162,12 +162,13 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                       {section.items.map((item) => {
                         const active = isActive(item.to, item.exact);
                         const Icon = item.icon;
+                        const unreadCountForItem = navNotificationCount(notifications, item.to);
                         const itemPendingCount =
                           item.to === "/leave"
-                            ? pendingLeaveCount
+                            ? Math.max(pendingLeaveCount, unreadCountForItem)
                             : item.to === "/attendance"
-                              ? pendingDtrCount
-                              : 0;
+                              ? Math.max(pendingDtrCount, unreadCountForItem)
+                              : unreadCountForItem;
                         return (
                           <Link
                             key={item.to}
@@ -262,7 +263,9 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                     key={notification.id}
                     onClick={async () => {
                       await markRead(notification.id);
-                      if (notification.path) window.location.assign(notification.path);
+                      if (notification.path) {
+                        navigate({ to: notification.path as "/employees" });
+                      }
                     }}
                     className={cn(
                       "cursor-pointer items-start gap-2",

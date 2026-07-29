@@ -21,6 +21,7 @@ import { GenerationLoader } from "@/components/GenerationLoader";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { WorkflowStatusBadge } from "@/components/ui/status-badge";
 import {
   Dialog,
@@ -74,7 +75,6 @@ function LeavePage() {
   const [applications, setApplications] = useState<LeaveApplication[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
-  const [applicationEmployeeSearch, setApplicationEmployeeSearch] = useState("");
   const [view, setView] = useState<"applications" | "ledger">("applications");
   const [ledgerEmployeeId, setLedgerEmployeeId] = useState("");
   const [ledgerData, setLedgerData] = useState<EmployeeLeaveResponse | null>(null);
@@ -120,10 +120,6 @@ function LeavePage() {
   const daysRequested = applicationForm.overrideDays
     ? Number(applicationForm.daysRequested)
     : calculatedDays;
-  const filteredApplicationEmployees = useMemo(
-    () => filterEmployees(employees, applicationEmployeeSearch),
-    [applicationEmployeeSearch, employees],
-  );
 
   const load = () => {
     setLoading(true);
@@ -737,40 +733,22 @@ function LeavePage() {
           </DialogHeader>
           <div className="grid gap-3 py-2 md:grid-cols-2">
             <Field label="Employee">
-              <Select
+              <Combobox
                 value={applicationForm.employeeId}
                 onValueChange={(value) =>
                   setApplicationForm({ ...applicationForm, employeeId: value })
                 }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select employee" />
-                </SelectTrigger>
-                <SelectContent>
-                  <div className="sticky top-0 z-10 bg-popover p-2">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                      <Input
-                        value={applicationEmployeeSearch}
-                        onChange={(event) => setApplicationEmployeeSearch(event.target.value)}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        placeholder="Search employees..."
-                        className="h-8 pl-9"
-                      />
-                    </div>
-                  </div>
-                  {filteredApplicationEmployees.map((employee) => (
-                    <SelectItem key={employee.id} value={employee.id}>
-                      {formatEmployeeName(employee)}
-                    </SelectItem>
-                  ))}
-                  {filteredApplicationEmployees.length === 0 && (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">
-                      No employees found.
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
+                placeholder="Select employee"
+                searchPlaceholder="Search employees..."
+                emptyText="No employees found."
+                options={employees.map((employee) => ({
+                  value: employee.id,
+                  label: formatEmployeeName(employee),
+                  description: [employee.employeeId, employee.department, employee.position]
+                    .filter(Boolean)
+                    .join(" · "),
+                }))}
+              />
             </Field>
             <Field label="Leave Type">
               <Select
@@ -1210,44 +1188,25 @@ function CreditLedgerPanel({
   error: string;
   onRetry: () => void;
 }) {
-  const [employeeSearch, setEmployeeSearch] = useState("");
-  const filteredEmployees = useMemo(
-    () => filterEmployees(employees, employeeSearch),
-    [employeeSearch, employees],
-  );
-
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-[minmax(260px,420px)_1fr] md:items-end">
           <Field label="Employee">
-            <Select value={selectedEmployeeId} onValueChange={onEmployeeChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select employee" />
-              </SelectTrigger>
-              <SelectContent>
-                <div className="sticky top-0 z-10 bg-popover p-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                    <Input
-                      value={employeeSearch}
-                      onChange={(event) => setEmployeeSearch(event.target.value)}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      placeholder="Search employees..."
-                      className="h-8 pl-9"
-                    />
-                  </div>
-                </div>
-                {filteredEmployees.map((employee) => (
-                  <SelectItem key={employee.id} value={employee.id}>
-                    {formatEmployeeName(employee)}
-                  </SelectItem>
-                ))}
-                {filteredEmployees.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">No employees found.</div>
-                )}
-              </SelectContent>
-            </Select>
+            <Combobox
+              value={selectedEmployeeId}
+              onValueChange={onEmployeeChange}
+              placeholder="Select employee"
+              searchPlaceholder="Search employees..."
+              emptyText="No employees found."
+              options={employees.map((employee) => ({
+                value: employee.id,
+                label: formatEmployeeName(employee),
+                description: [employee.employeeId, employee.department, employee.position]
+                  .filter(Boolean)
+                  .join(" · "),
+              }))}
+            />
           </Field>
           {data ? (
             <div className="text-sm text-muted-foreground">
@@ -1366,23 +1325,6 @@ function CreditLedgerPanel({
         </>
       )}
     </div>
-  );
-}
-
-function filterEmployees(employees: EmployeeRecord[], query: string) {
-  const search = query.trim().toLowerCase();
-  if (!search) return employees;
-  return employees.filter((employee) =>
-    [
-      formatEmployeeName(employee),
-      employee.employeeId,
-      employee.department,
-      employee.position,
-      employee.email,
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(search),
   );
 }
 

@@ -29,6 +29,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { MassDtrPrintModal } from "@/components/MassDtrPrintModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { formatLocalDate, parseLocalDate } from "@/components/ui/date-range-utils";
 import {
@@ -255,17 +256,6 @@ function shiftDateString(value: string, days: number) {
   return formatLocalDate(date);
 }
 
-function filterEmployeeOptions(
-  options: Array<{ id: string; label: string; searchText?: string }>,
-  searchValue: string,
-) {
-  const search = searchValue.trim().toLowerCase();
-  if (!search) return options;
-  return options.filter((employee) =>
-    [employee.label, employee.searchText].join(" ").toLowerCase().includes(search),
-  );
-}
-
 const EMPTY_DTR_FORM: DtrPayload = {
   employeeDbId: "",
   workDate: formatLocalDate(new Date()),
@@ -379,11 +369,6 @@ function AttendancePage() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importSource, setImportSource] = useState<"biometric" | "file">("biometric");
   const [importSearch, setImportSearch] = useState("");
-  const [filterEmployeeSearch, setFilterEmployeeSearch] = useState("");
-  const [formEmployeeSearch, setFormEmployeeSearch] = useState("");
-  const [exportEmployeeSearch, setExportEmployeeSearch] = useState("");
-  const [correctionEmployeeSearch, setCorrectionEmployeeSearch] = useState("");
-  const [exportNoterSearch, setExportNoterSearch] = useState("");
   const [scheduleDepartment, setScheduleDepartment] = useState("all");
   const [scheduleEmployeeSearch, setScheduleEmployeeSearch] = useState("");
   const [selectedImportEmployeeId, setSelectedImportEmployeeId] = useState("");
@@ -669,22 +654,6 @@ function AttendancePage() {
       })),
     [employees],
   );
-  const filteredEmployeeOptions = useMemo(
-    () => filterEmployeeOptions(employeeOptions, filterEmployeeSearch),
-    [employeeOptions, filterEmployeeSearch],
-  );
-  const filteredFormEmployeeOptions = useMemo(
-    () => filterEmployeeOptions(employeeOptions, formEmployeeSearch),
-    [employeeOptions, formEmployeeSearch],
-  );
-  const filteredExportEmployeeOptions = useMemo(
-    () => filterEmployeeOptions(employeeOptions, exportEmployeeSearch),
-    [employeeOptions, exportEmployeeSearch],
-  );
-  const filteredCorrectionEmployeeOptions = useMemo(
-    () => filterEmployeeOptions(employeeOptions, correctionEmployeeSearch),
-    [correctionEmployeeSearch, employeeOptions],
-  );
   const scheduleDepartments = useMemo(
     () =>
       Array.from(new Set(employees.map((employee) => employee.department).filter(Boolean))).sort(
@@ -712,17 +681,6 @@ function AttendancePage() {
       return matchesDepartment && matchesSearch;
     });
   }, [scheduleDepartment, scheduleEmployeeOptions, scheduleEmployeeSearch]);
-  const filteredExportNoters = useMemo(() => {
-    const search = exportNoterSearch.trim().toLowerCase();
-    if (!search) return noters;
-    return noters.filter((noter) =>
-      [noter.signatory, noter.name, noter.position, noter.office]
-        .join(" ")
-        .toLowerCase()
-        .includes(search),
-    );
-  }, [noters, exportNoterSearch]);
-
   const importEmployees = useMemo(
     () =>
       employees.map((employee) => ({
@@ -1534,36 +1492,21 @@ function AttendancePage() {
                   <Label className="text-xs uppercase text-muted-foreground font-semibold">
                     Employee
                   </Label>
-                  <Select value={employeeId} onValueChange={setEmployeeId}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All employees" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <div className="sticky top-0 z-10 bg-popover p-2">
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                          <Input
-                            value={filterEmployeeSearch}
-                            onChange={(event) => setFilterEmployeeSearch(event.target.value)}
-                            onKeyDown={(event) => event.stopPropagation()}
-                            placeholder="Search employees..."
-                            className="h-8 pl-9"
-                          />
-                        </div>
-                      </div>
-                      <SelectItem value="all">All employees</SelectItem>
-                      {filteredEmployeeOptions.map((employee) => (
-                        <SelectItem key={employee.id} value={employee.id}>
-                          {employee.label}
-                        </SelectItem>
-                      ))}
-                      {filteredEmployeeOptions.length === 0 && (
-                        <div className="px-3 py-2 text-sm text-muted-foreground">
-                          No employees found.
-                        </div>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Combobox
+                    value={employeeId}
+                    onValueChange={setEmployeeId}
+                    placeholder="All employees"
+                    searchPlaceholder="Search employees..."
+                    emptyText="No employees found."
+                    options={[
+                      { value: "all", label: "All employees" },
+                      ...employeeOptions.map((employee) => ({
+                        value: employee.id,
+                        label: employee.label,
+                        keywords: [employee.searchText],
+                      })),
+                    ]}
+                  />
                 </div>
               )}
               <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
@@ -1810,24 +1753,21 @@ function AttendancePage() {
                     <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
                       <div className="space-y-1.5">
                         <Label>Manual Sync Device</Label>
-                        <Select value={manualSyncDeviceId} onValueChange={setManualSyncDeviceId}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All active devices</SelectItem>
-                            {biometricDevices.map((device) => (
-                              <SelectItem
-                                key={device.id}
-                                value={device.id}
-                                disabled={!device.active}
-                              >
-                                {device.name} - {device.ip_address}:{device.port}
-                                {!device.active ? " (Inactive)" : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Combobox
+                          value={manualSyncDeviceId}
+                          onValueChange={setManualSyncDeviceId}
+                          searchPlaceholder="Search devices..."
+                          options={[
+                            { value: "all", label: "All active devices" },
+                            ...biometricDevices.map((device) => ({
+                              value: device.id,
+                              label: device.name,
+                              description: `${device.ip_address}:${device.port}`,
+                              disabled: !device.active,
+                              disabledDescription: "Inactive",
+                            })),
+                          ]}
+                        />
                       </div>
                       <Button
                         variant="outline"
@@ -2522,41 +2462,21 @@ function AttendancePage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 space-y-1.5">
                 <Label>Employee</Label>
-                <Select
+                <Combobox
                   value={form.employeeDbId || ""}
                   onValueChange={(value) =>
                     setForm((current) => ({ ...current, employeeDbId: value }))
                   }
-                  disabled={!!editing}
-                >
-                  <SelectTrigger className="min-h-11">
-                    <SelectValue placeholder="Select employee" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <div className="sticky top-0 z-10 bg-popover p-2">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                        <Input
-                          value={formEmployeeSearch}
-                          onChange={(event) => setFormEmployeeSearch(event.target.value)}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          placeholder="Search employees..."
-                          className="h-8 pl-9"
-                        />
-                      </div>
-                    </div>
-                    {filteredFormEmployeeOptions.map((employee) => (
-                      <SelectItem key={employee.id} value={employee.id}>
-                        {employee.label}
-                      </SelectItem>
-                    ))}
-                    {filteredFormEmployeeOptions.length === 0 && (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        No employees found.
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
+                  placeholder="Select employee"
+                  searchPlaceholder="Search employees..."
+                  emptyText="No employees found."
+                  options={employeeOptions.map((employee) => ({
+                    value: employee.id,
+                    label: employee.label,
+                    keywords: [employee.searchText],
+                  }))}
+                  triggerProps={{ disabled: !!editing, className: "min-h-11" }}
+                />
               </div>
               <div className="col-span-2">
                 <Field
@@ -2750,19 +2670,20 @@ function AttendancePage() {
                       Add Device
                     </Button>
                   </div>
-                  <Select value={selectedBiometricId} onValueChange={setSelectedBiometricId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select biometric device" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {biometricDevices.map((device) => (
-                        <SelectItem key={device.id} value={device.id} disabled={!device.active}>
-                          {device.name} - {device.ip_address}:{device.port}
-                          {!device.active ? " (Inactive)" : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Combobox
+                    value={selectedBiometricId}
+                    onValueChange={setSelectedBiometricId}
+                    placeholder="Select biometric device"
+                    searchPlaceholder="Search devices..."
+                    emptyText="No devices found."
+                    options={biometricDevices.map((device) => ({
+                      value: device.id,
+                      label: device.name,
+                      description: `${device.ip_address}:${device.port}`,
+                      disabled: !device.active,
+                      disabledDescription: "Inactive",
+                    }))}
+                  />
                   <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span>
                       {selectedBiometricId && deviceStatus[selectedBiometricId]
@@ -2888,19 +2809,20 @@ function AttendancePage() {
                     Add Device
                   </Button>
                 </div>
-                <Select value={massImportBiometricId} onValueChange={setMassImportBiometricId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select biometric device" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {biometricDevices.map((device) => (
-                      <SelectItem key={device.id} value={device.id} disabled={!device.active}>
-                        {device.name} - {device.ip_address}:{device.port}
-                        {!device.active ? " (Inactive)" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  value={massImportBiometricId}
+                  onValueChange={setMassImportBiometricId}
+                  placeholder="Select biometric device"
+                  searchPlaceholder="Search devices..."
+                  emptyText="No devices found."
+                  options={biometricDevices.map((device) => ({
+                    value: device.id,
+                    label: device.name,
+                    description: `${device.ip_address}:${device.port}`,
+                    disabled: !device.active,
+                    disabledDescription: "Inactive",
+                  }))}
+                />
                 {!biometricDevices.length && (
                   <p className="text-xs text-muted-foreground">
                     No biometric devices configured yet.
@@ -3170,46 +3092,28 @@ function AttendancePage() {
             {!isEmployee && (
               <div className="space-y-1.5">
                 <Label>Employee</Label>
-                <Select
+                <Combobox
                   value={exportForm.employeeId}
                   onValueChange={(value) => setExportForm({ ...exportForm, employeeId: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select employee" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <div className="sticky top-0 z-10 bg-popover p-2">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                        <Input
-                          value={exportEmployeeSearch}
-                          onChange={(event) => setExportEmployeeSearch(event.target.value)}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          placeholder="Search employees..."
-                          className="h-8 pl-9"
-                        />
-                      </div>
-                    </div>
-                    <SelectItem value="all">Current selected employee</SelectItem>
-                    {filteredExportEmployeeOptions.map((employee) => (
-                      <SelectItem key={employee.id} value={employee.id}>
-                        {employee.label}
-                      </SelectItem>
-                    ))}
-                    {filteredExportEmployeeOptions.length === 0 && (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        No employees found.
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
+                  placeholder="Select employee"
+                  searchPlaceholder="Search employees..."
+                  emptyText="No employees found."
+                  options={[
+                    { value: "all", label: "Current selected employee" },
+                    ...employeeOptions.map((employee) => ({
+                      value: employee.id,
+                      label: employee.label,
+                      keywords: [employee.searchText],
+                    })),
+                  ]}
+                />
               </div>
             )}
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Noter Signatory</Label>
-                <Select
+                <Combobox
                   value={
                     noters.find((item) => item.signatory === exportForm.noterSignatory)?.id || ""
                   }
@@ -3221,35 +3125,16 @@ function AttendancePage() {
                       noterPosition: noter?.position || exportForm.noterPosition,
                     });
                   }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select noter" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <div className="sticky top-0 z-10 bg-popover p-2">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                        <Input
-                          value={exportNoterSearch}
-                          onChange={(event) => setExportNoterSearch(event.target.value)}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          placeholder="Search noters..."
-                          className="h-8 pl-9"
-                        />
-                      </div>
-                    </div>
-                    {filteredExportNoters.map((noter) => (
-                      <SelectItem key={noter.id} value={noter.id}>
-                        {noter.signatory} - {noter.position}
-                      </SelectItem>
-                    ))}
-                    {filteredExportNoters.length === 0 && (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        No noters found.
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
+                  placeholder="Select noter"
+                  searchPlaceholder="Search noters..."
+                  emptyText="No noters found."
+                  options={noters.map((noter) => ({
+                    value: noter.id,
+                    label: noter.signatory,
+                    description: [noter.position, noter.office].filter(Boolean).join(" · "),
+                    keywords: [noter.name],
+                  }))}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Noter Position</Label>
@@ -3563,40 +3448,20 @@ function AttendancePage() {
             {canManage && (
               <div className="space-y-1.5 md:col-span-2">
                 <Label>Employee</Label>
-                <Select
+                <Combobox
                   value={correctionForm.employeeId || ""}
                   onValueChange={(value) =>
                     setCorrectionForm((current) => ({ ...current, employeeId: value }))
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select employee" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <div className="sticky top-0 z-10 bg-popover p-2">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                        <Input
-                          value={correctionEmployeeSearch}
-                          onChange={(event) => setCorrectionEmployeeSearch(event.target.value)}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          placeholder="Search employees..."
-                          className="h-8 pl-9"
-                        />
-                      </div>
-                    </div>
-                    {filteredCorrectionEmployeeOptions.map((employee) => (
-                      <SelectItem key={employee.id} value={employee.id}>
-                        {employee.label}
-                      </SelectItem>
-                    ))}
-                    {filteredCorrectionEmployeeOptions.length === 0 && (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        No employees found.
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
+                  placeholder="Select employee"
+                  searchPlaceholder="Search employees..."
+                  emptyText="No employees found."
+                  options={employeeOptions.map((employee) => ({
+                    value: employee.id,
+                    label: employee.label,
+                    keywords: [employee.searchText],
+                  }))}
+                />
               </div>
             )}
             <div className="space-y-1.5">

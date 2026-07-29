@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
@@ -1615,18 +1616,6 @@ function UserDialog({
   }) => void;
   onSubmit: () => void;
 }) {
-  const [employeeSearch, setEmployeeSearch] = useState("");
-  const filteredEmployeeCandidates = useMemo(() => {
-    const search = employeeSearch.trim().toLowerCase();
-    if (!search) return employeeCandidates;
-    return employeeCandidates.filter((employee) =>
-      [formatEmployeeName(employee), employee.employeeId, employee.department, employee.position]
-        .join(" ")
-        .toLowerCase()
-        .includes(search),
-    );
-  }, [employeeCandidates, employeeSearch]);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
@@ -1644,47 +1633,31 @@ function UserDialog({
           </div>
           <div className="space-y-1">
             <Label>Linked Employee</Label>
-            <Select
-              value={form.employeeId || "none"}
+            <Combobox
+              value={form.employeeId}
               onValueChange={(employeeId) => {
-                const nextEmployeeId = employeeId === "none" ? "" : employeeId;
-                const employee = employeeCandidates.find((item) => item.id === nextEmployeeId);
+                const employee = employeeCandidates.find((item) => item.id === employeeId);
                 onChange({
                   ...form,
-                  employeeId: nextEmployeeId,
+                  employeeId,
                   name: employee ? formatEmployeeName(employee) : form.name,
                   username: mode === "add" && employee ? suggestUsername(employee) : form.username,
                   role: form.role || "Employee",
                 });
               }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select employee" className="w-full truncate text-left" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No linked employee</SelectItem>
-                <div className="sticky top-0 z-10 bg-popover p-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                    <Input
-                      value={employeeSearch}
-                      onChange={(event) => setEmployeeSearch(event.target.value)}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      placeholder="Search employees..."
-                      className="h-8 pl-9"
-                    />
-                  </div>
-                </div>
-                {filteredEmployeeCandidates.map((employee) => (
-                  <SelectItem key={employee.id} value={employee.id}>
-                    {formatEmployeeName(employee)}
-                  </SelectItem>
-                ))}
-                {filteredEmployeeCandidates.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">No employees found.</div>
-                )}
-              </SelectContent>
-            </Select>
+              placeholder="No linked employee"
+              searchPlaceholder="Search employees..."
+              emptyText="No employees found."
+              clearable
+              clearLabel="No linked employee"
+              options={employeeCandidates.map((employee) => ({
+                value: employee.id,
+                label: formatEmployeeName(employee),
+                description: [employee.employeeId, employee.department, employee.position]
+                  .filter(Boolean)
+                  .join(" · "),
+              }))}
+            />
           </div>
           <div className="space-y-1">
             <Label>Username</Label>

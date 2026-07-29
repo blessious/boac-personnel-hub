@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { useAuth } from "@/lib/auth";
 import { listLeaveApplications } from "@/lib/leave-api";
 import { listDtrCorrectionRequests } from "@/lib/attendance-api";
+import { navNotificationCount, useRealtime } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
 import { mobileTabsForPermissions } from "@/components/layout/navigation";
 
@@ -12,6 +13,7 @@ export function MobileBottomNav() {
   const { user, hasPermission } = useAuth();
   const tabs = mobileTabsForPermissions(user?.permissions);
   const canSeeLeaveNotifications = hasPermission("approvals.manage");
+  const { notifications } = useRealtime();
 
   const { data: leaveNotifications } = useQuery({
     queryKey: ["leave-notifications", user?.role],
@@ -51,12 +53,13 @@ export function MobileBottomNav() {
         {tabs.map((item) => {
           const active = isActive(item.to, item.exact);
           const Icon = item.icon;
+          const unreadCount = navNotificationCount(notifications, item.to);
           const itemPendingCount =
             item.to === "/leave"
-              ? pendingLeaveCount
+              ? Math.max(pendingLeaveCount, unreadCount)
               : item.to === "/attendance"
-                ? pendingDtrCount
-                : 0;
+                ? Math.max(pendingDtrCount, unreadCount)
+                : unreadCount;
 
           return (
             <Link

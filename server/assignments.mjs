@@ -127,7 +127,6 @@ export async function initializeAssignmentSchema(pool, employeeIdDefinition) {
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (ended_by) REFERENCES users(id) ON DELETE SET NULL
   ) ENGINE=InnoDB`);
-
 }
 
 const orgNameSql = "COALESCE(sec.name,divi.name,off.name,s.name)";
@@ -363,7 +362,42 @@ export function createAssignmentHandlers({
   readBody,
   json,
   logAudit,
+  notifyEmployees = async () => [],
+  notifyPermission = async () => [],
+  publishRealtime = () => {},
 }) {
+  const notifyEngagementChange = async ({ engagement, action, actorId }) => {
+    const labels = {
+      created: ["Engagement created", `${engagement.employeeName}'s engagement was created.`],
+      updated: ["Engagement updated", `${engagement.employeeName}'s engagement was updated.`],
+      renewed: ["Engagement renewed", `${engagement.employeeName}'s engagement was renewed.`],
+      terminated: [
+        "Engagement terminated",
+        `${engagement.employeeName}'s engagement was terminated.`,
+      ],
+    };
+    const [title, message] = labels[action];
+    const notification = {
+      topic: "engagements",
+      title,
+      message,
+      path: "/plantilla",
+      sourceType: "non_plantilla_engagement",
+      sourceId: engagement.id,
+    };
+    await Promise.all([
+      notifyPermission({
+        permission: "engagements.manage",
+        excludeUserId: actorId,
+        ...notification,
+      }),
+      notifyEmployees({
+        employeeIds: [engagement.employeeId],
+        excludeUserId: actorId,
+        ...notification,
+      }),
+    ]);
+  };
   const fail = (res, error) => {
     if (error?.code === "ER_DUP_ENTRY")
       return json(res, 409, {
@@ -394,13 +428,13 @@ export function createAssignmentHandlers({
     if (!allowed.has(engagementType)) throw new Error("Select a valid engagement type");
     const organizationId = Number(body.organizationId);
     if (!Number.isInteger(organizationId) || organizationId < 1)
-      throw new Error("Organization is required");
+      throw new Error("Office is required");
     const [[organization]] = await connection.execute(
       `SELECT id,name,category,is_active FROM hr_reference_values
-        WHERE id=:organizationId AND category IN ('sectors','offices','divisions','sections')`,
+        WHERE id=:organizationId AND category = 'offices'`,
       { organizationId },
     );
-    if (!organization || !organization.is_active) throw new Error("Select an active organization");
+    if (!organization || !organization.is_active) throw new Error("Select an active office");
     const designation = String(body.designation || "").trim();
     if (!designation) throw new Error("Designation is required");
     const dateFrom = strictDate(body.dateFrom, "Start date", true);
@@ -512,7 +546,9 @@ export function createAssignmentHandlers({
         { id, employeeId: data.employeeId, status: data.status },
         req,
       );
-      return json(res, 201, { engagement: await readEngagement(id) });
+      const engagement = await readEngagement(id);
+      await notifyEngagementChange({ engagement, action: "created", actorId: user.id });
+      return json(res, 201, { engagement });
     } catch (error) {
       await connection.rollback().catch(() => {});
       return fail(res, error);
@@ -540,7 +576,9 @@ export function createAssignmentHandlers({
         { id, ...data },
       );
       await logAudit(user.id, "engagement.update", { id }, req);
-      return json(res, 200, { engagement: await readEngagement(id) });
+      const engagement = await readEngagement(id);
+      await notifyEngagementChange({ engagement, action: "updated", actorId: user.id });
+      return json(res, 200, { engagement });
     } catch (error) {
       return fail(res, error);
     }
@@ -584,7 +622,9 @@ export function createAssignmentHandlers({
         connection.release();
       }
       await logAudit(user.id, "engagement.renew", { id, renewalId: newId }, req);
-      return json(res, 201, { engagement: await readEngagement(newId) });
+      const engagement = await readEngagement(newId);
+      await notifyEngagementChange({ engagement, action: "renewed", actorId: user.id });
+      return json(res, 201, { engagement });
     } catch (error) {
       return fail(res, error);
     }
@@ -631,7 +671,13 @@ export function createAssignmentHandlers({
         { id, employeeId: engagement.employee_id, dateTo },
         req,
       );
-      return json(res, 200, { engagement: await readEngagement(id) });
+      const updatedEngagement = await readEngagement(id);
+      await notifyEngagementChange({
+        engagement: updatedEngagement,
+        action: "terminated",
+        actorId: user.id,
+      });
+      return json(res, 200, { engagement: updatedEngagement });
     } catch (error) {
       await connection.rollback().catch(() => {});
       return fail(res, error);
@@ -640,7 +686,23 @@ export function createAssignmentHandlers({
     }
   };
 
-  handlers.processDue = () => refreshEngagementStates(pool);
+  handlers.processDue = async () => {
+    const result = await refreshEngagementStates(pool);
+    if (result.expired || result.activated) {
+      publishRealtime({ kind: "refresh", topic: "engagements", path: "/api/engagements" });
+      publishRealtime({ kind: "refresh", topic: "employees", path: "/api/employees" });
+      await notifyPermission({
+        permission: "engagements.manage",
+        topic: "engagements",
+        title: "Engagement statuses updated",
+        message: `${result.activated} activated and ${result.expired} expired automatically.`,
+        path: "/plantilla",
+        sourceType: "engagement_processor",
+        sourceId: today(),
+      });
+    }
+    return result;
+  };
   handlers.currentAssignment = (employeeId) => readCurrentAssignment(pool, employeeId);
   return handlers;
 }

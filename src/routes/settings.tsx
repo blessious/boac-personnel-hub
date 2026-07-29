@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { type AgencySettings, useSettings } from "@/lib/settings-context";
 import { cn } from "@/lib/utils";
+import { useRealtimeRefresh } from "@/lib/realtime";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -170,6 +171,9 @@ function SettingsPage() {
     setSaved(next);
     setDraft((current) => (agencyEquals(current, previousSaved) ? next : current));
   }, [agency]);
+  useRealtimeRefresh(() => {
+    void loadAgencySettings();
+  }, ["settings"]);
 
   useEffect(() => {
     let alive = true;

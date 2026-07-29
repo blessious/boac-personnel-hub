@@ -3,9 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { LogOut, ChevronLeft, ChevronRight, Stethoscope } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
-import { getDashboard } from "@/lib/employees-api";
 import { listLeaveApplications } from "@/lib/leave-api";
 import { listDtrCorrectionRequests } from "@/lib/attendance-api";
+import { navNotificationCount, useRealtime } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
 import { groupNavItems, navForPermissions } from "@/components/layout/navigation";
 
@@ -17,13 +17,7 @@ export function AppSidebar() {
   const nav = navForPermissions(user?.permissions);
   const navSections = groupNavItems(nav);
   const canSeeLeaveNotifications = hasPermission("approvals.manage");
-  const canSeeEmployeeStats = hasPermission("employees.read");
-
-  const { data: dashboard } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: ({ signal }) => getDashboard({ signal }),
-    enabled: canSeeEmployeeStats,
-  });
+  const { notifications } = useRealtime();
 
   const { data: leaveNotifications } = useQuery({
     queryKey: ["leave-notifications", user?.role],
@@ -109,6 +103,13 @@ export function AppSidebar() {
                 {section.items.map((item) => {
                   const active = isActive(item.to, item.exact);
                   const Icon = item.icon;
+                  const unreadCount = navNotificationCount(notifications, item.to);
+                  const itemNotificationCount =
+                    item.to === "/leave"
+                      ? Math.max(pendingLeaveCount, unreadCount)
+                      : item.to === "/attendance"
+                        ? Math.max(pendingDtrCount, unreadCount)
+                        : unreadCount;
                   return (
                     <Link
                       key={item.to}
@@ -131,29 +132,14 @@ export function AppSidebar() {
                         )}
                       />
                       {!collapsed && <span className="flex-1 leading-snug">{item.label}</span>}
-                      {item.to === "/employees" && !collapsed && dashboard && (
-                        <span className="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold rounded-full bg-primary/20 text-primary shrink-0">
-                          {dashboard.totalEmployees}
-                        </span>
-                      )}
-                      {item.to === "/leave" && pendingLeaveCount > 0 && (
+                      {itemNotificationCount > 0 && (
                         <span
                           className={cn(
                             "inline-flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold shrink-0",
                             collapsed ? "absolute right-2 top-1 h-4 min-w-4 px-1" : "px-2 py-0.5",
                           )}
                         >
-                          {pendingLeaveCount > 99 ? "99+" : pendingLeaveCount}
-                        </span>
-                      )}
-                      {item.to === "/attendance" && pendingDtrCount > 0 && (
-                        <span
-                          className={cn(
-                            "inline-flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold shrink-0",
-                            collapsed ? "absolute right-2 top-1 h-4 min-w-4 px-1" : "px-2 py-0.5",
-                          )}
-                        >
-                          {pendingDtrCount > 99 ? "99+" : pendingDtrCount}
+                          {itemNotificationCount > 99 ? "99+" : itemNotificationCount}
                         </span>
                       )}
                     </Link>

@@ -13,7 +13,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  ChevronsUpDown,
   Copy,
   Eye,
   MoreVertical,
@@ -32,7 +31,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
-import { EmploymentTypeBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -52,15 +50,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Select,
   SelectContent,
@@ -69,6 +59,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TablePagination } from "@/components/ui/table-pagination";
+import {
+  Stepper,
+  StepperIndicator,
+  StepperItem,
+  StepperNav,
+  StepperSeparator,
+  StepperTitle,
+  StepperTrigger,
+} from "@/components/ui/stepper";
 import {
   dataTableBodyClass,
   dataTableCellClass,
@@ -151,6 +150,10 @@ const NON_PLANTILLA_ENGAGEMENT_TYPES: EngagementPayload["engagementType"][] = [
 const optionCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 type OnboardingMode = "plantilla" | "engagement" | "";
 type AddEmployeeStep = "identity" | "assignment";
+const ADD_EMPLOYEE_STEPS = [
+  { id: "identity", title: "Employee information" },
+  { id: "assignment", title: "Employment" },
+];
 type AddFormErrorKey =
   | "mode"
   | "firstname"
@@ -174,11 +177,9 @@ const today = () => {
   return `${year}-${month}-${day}`;
 };
 const employmentStatusForPlantillaType = (plantillaType?: string) => {
-  if (plantillaType === "Elective") return "Elective";
-  if (plantillaType === "Co-term") return "Co-term";
-  if (plantillaType === "Coterminous") return "Coterminous";
-  if (plantillaType === "Casual") return "Casual";
-  return "Permanent";
+  const classification = plantillaType?.trim();
+  if (!classification || classification.toLowerCase() === "plantilla") return "Permanent";
+  return classification;
 };
 const emptyAppointment = () => ({
   targetPlantillaItemId: "",
@@ -219,7 +220,6 @@ function EmployeesPage() {
   const [empStatus, setEmpStatus] = useState("all");
   const [gender, setGender] = useState("all");
   const [archiveScope, setArchiveScope] = useState<"active" | "archived">("active");
-  const [filterDepartmentQuery, setFilterDepartmentQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -312,18 +312,9 @@ function EmployeesPage() {
   const organizationUnits = useMemo(() => {
     const libraries = organizationOptionsQuery.data?.libraries;
     if (!libraries) return [];
-    return [
-      ...libraries.sectors,
-      ...libraries.offices,
-      ...libraries.divisions,
-      ...libraries.sections,
-    ]
+    return libraries.offices
       .filter((row) => row.isActive)
-      .sort(
-        (left, right) =>
-          optionCollator.compare(left.name, right.name) ||
-          optionCollator.compare(left.category, right.category),
-      );
+      .sort((left, right) => optionCollator.compare(left.name, right.name));
   }, [organizationOptionsQuery.data?.libraries]);
   const dashboardData: DashboardResponse | null = dashboardQuery.data ?? null;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -375,11 +366,6 @@ function EmployeesPage() {
         .sort((left, right) => optionCollator.compare(left, right)),
     [options.departments],
   );
-  const filteredFilterDepartments = useMemo(() => {
-    const query = filterDepartmentQuery.trim().toLowerCase();
-    if (!query) return departments;
-    return departments.filter((department) => department.toLowerCase().includes(query));
-  }, [filterDepartmentQuery, departments]);
   const selectedVacancy = vacancies.find((item) => item.id === appointment.targetPlantillaItemId);
   const employeeSalaryOptions = useMemo(
     () =>
@@ -515,7 +501,7 @@ function EmployeesPage() {
 
     if (onboardingMode === "engagement") {
       if (!engagement.engagementType) errors.engagementType = "Select an engagement type.";
-      if (!engagement.organizationId) errors.organization = "Select an official organization.";
+      if (!engagement.organizationId) errors.organization = "Select an office.";
       if (!engagement.designation.trim()) errors.designation = "Select a position or designation.";
       if (!engagement.dateFrom) errors.engagementStart = "Start date is required.";
       if (!engagement.dateTo) errors.engagementEnd = "End date is required.";
@@ -858,7 +844,7 @@ function EmployeesPage() {
               />
             </div>
 
-            <Select
+            <Combobox
               value={dept}
               onValueChange={(value) => {
                 setDept(value);
@@ -868,36 +854,20 @@ function EmployeesPage() {
                   replace: true,
                 });
               }}
-            >
-              <SelectTrigger className="order-1 w-full bg-card text-card-foreground lg:w-[220px]">
-                <SelectValue placeholder="All Departments" />
-              </SelectTrigger>
-              <SelectContent>
-                <div className="sticky top-0 z-10 bg-popover p-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                    <Input
-                      value={filterDepartmentQuery}
-                      onChange={(event) => setFilterDepartmentQuery(event.target.value)}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      placeholder="Search departments..."
-                      className="h-8 pl-9"
-                    />
-                  </div>
-                </div>
-                <SelectItem value="all">All Departments</SelectItem>
-                {filteredFilterDepartments.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {item}
-                  </SelectItem>
-                ))}
-                {filteredFilterDepartments.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">
-                    No departments found.
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
+              placeholder="All Departments"
+              searchPlaceholder="Search departments..."
+              emptyText="No departments found."
+              options={[
+                { value: "all", label: "All Departments" },
+                ...departments.map((department) => ({
+                  value: department,
+                  label: department,
+                })),
+              ]}
+              triggerProps={{
+                className: "order-1 w-full bg-card text-card-foreground lg:w-[220px]",
+              }}
+            />
 
             <Select
               value={status}
@@ -1101,17 +1071,11 @@ function EmployeesPage() {
                               </div>
                             </div>
                           </td>
-                          <td
-                            className={cn(dataTableCellClass, "font-medium text-muted-foreground")}
-                          >
+                          <td className={cn(dataTableCellClass, "font-medium")}>
                             {employee.position || "-"}
                           </td>
-                          <td className={cn(dataTableCellClass, "text-muted-foreground")}>
-                            {employee.department || "-"}
-                          </td>
-                          <td className={dataTableCellClass}>
-                            <EmploymentTypeBadge status={employee.status} />
-                          </td>
+                          <td className={dataTableCellClass}>{employee.department || "-"}</td>
+                          <td className={dataTableCellClass}>{employee.status || "-"}</td>
                           <td
                             className={cn(dataTableCellClass, "text-right")}
                             onDoubleClick={(event) => event.stopPropagation()}
@@ -1233,7 +1197,9 @@ function EmployeesPage() {
                         </div>
                         <div className="flex items-center justify-between gap-3">
                           <span>Type</span>
-                          <EmploymentTypeBadge status={employee.status} />
+                          <span className="text-right font-medium text-foreground">
+                            {employee.status || "-"}
+                          </span>
                         </div>
                       </div>
                       <div className="mt-3 flex items-center justify-end gap-2">
@@ -1310,13 +1276,35 @@ function EmployeesPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="px-4 py-4 sm:px-6">
+              <Stepper
+                steps={ADD_EMPLOYEE_STEPS}
+                value={addEmployeeStep}
+                onValueChange={(value) => setAddEmployeeStep(value as AddEmployeeStep)}
+                className="mb-5"
+              >
+                <StepperNav>
+                  {ADD_EMPLOYEE_STEPS.map((step, index) => (
+                    <StepperItem
+                      key={step.id}
+                      stepId={step.id}
+                      className={index === ADD_EMPLOYEE_STEPS.length - 1 ? "flex-none" : undefined}
+                      disabled={step.id === "assignment" && addEmployeeStep === "identity"}
+                    >
+                      <StepperTrigger>
+                        <StepperIndicator>{index + 1}</StepperIndicator>
+                        <StepperTitle>{step.title}</StepperTitle>
+                      </StepperTrigger>
+                      {index < ADD_EMPLOYEE_STEPS.length - 1 && <StepperSeparator />}
+                    </StepperItem>
+                  ))}
+                </StepperNav>
+              </Stepper>
+
               {addEmployeeStep === "identity" && (
                 <section className="animate-in fade-in slide-in-from-left-2 duration-300">
                   <StepHeading
-                    number={1}
                     title="Employee identity and contact"
                     description="Enter the information used to create the personal record."
-                    showNextStep
                   />
                   <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     <Field htmlFor="add-employee-id" label="Employee ID">
@@ -1463,7 +1451,6 @@ function EmployeesPage() {
                   className="animate-in fade-in slide-in-from-right-2 duration-300"
                 >
                   <StepHeading
-                    number={2}
                     title={
                       onboardingMode === "plantilla" ? "Plantilla appointment" : "Employment path"
                     }
@@ -1686,7 +1673,7 @@ function EmployeesPage() {
                           </Select>
                         </Field>
                         <SearchableSelectField
-                          label="Official organization"
+                          label="Office"
                           required
                           fieldKey="organization"
                           error={addFormErrors.organization}
@@ -1695,8 +1682,8 @@ function EmployeesPage() {
                           }
                           placeholder={
                             organizationOptionsQuery.isLoading
-                              ? "Loading organizations..."
-                              : "Select sector, office, division, or section"
+                              ? "Loading offices..."
+                              : "Select office"
                           }
                           value={engagement.organizationId}
                           set={(value) => {
@@ -1707,12 +1694,7 @@ function EmployeesPage() {
                               organization: undefined,
                             }));
                           }}
-                          rows={organizationUnits.map((row) => [
-                            String(row.id),
-                            `${row.name} (${row.category})`,
-                            row.code,
-                            row.parentName,
-                          ])}
+                          rows={organizationUnits.map((row) => [String(row.id), row.name])}
                         />
                         <SearchableSelectField
                           label="Position / designation"
@@ -1880,10 +1862,7 @@ function EmployeesPage() {
                     }
                     wide
                   />
-                  <ReviewDetail
-                    label="Classification"
-                    value={selectedVacancy?.plantillaTypeName || "Not specified"}
-                  />
+                  <ReviewDetail label="Classification" value={derivedPlantillaStatus} />
                   <ReviewDetail label="Employment status" value={derivedPlantillaStatus} />
                   <ReviewDetail label="Appointment date" value={appointment.effectiveDate || "—"} />
                   <ReviewDetail
@@ -1908,7 +1887,7 @@ function EmployeesPage() {
                   <ReviewDetail label="Engagement type" value={engagement.engagementType || "—"} />
                   <ReviewDetail label="Position" value={engagement.designation || "—"} />
                   <ReviewDetail
-                    label="Organization"
+                    label="Office"
                     value={
                       organizationUnits.find((row) => String(row.id) === engagement.organizationId)
                         ?.name || "—"
@@ -2071,113 +2050,39 @@ function SearchableSelectField({
   disabled?: boolean;
   disabledValues?: ReadonlySet<string>;
 }) {
-  const [open, setOpen] = useState(false);
   const triggerId = useId();
-  const selectedRow = rows.find(([id]) => id === value);
 
   return (
     <Field label={label} htmlFor={triggerId} required={required} error={error}>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            id={triggerId}
-            type="button"
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            aria-invalid={Boolean(error)}
-            disabled={disabled}
-            data-add-field={fieldKey}
-            className="h-9 w-full justify-between px-3 font-normal"
-          >
-            <span className={cn("truncate", !selectedRow && "text-muted-foreground")}>
-              {selectedRow?.[1] || placeholder}
-            </span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          className="w-[--radix-popover-trigger-width] max-h-[min(22rem,calc(100dvh-8rem))] overflow-hidden p-0"
-          onWheelCapture={(event) => event.stopPropagation()}
-          onTouchMoveCapture={(event) => event.stopPropagation()}
-        >
-          <Command
-            className="max-h-[min(22rem,calc(100dvh-8rem))]"
-            filter={(candidateValue, search) => {
-              const row = rows.find(([id]) => id === candidateValue);
-              if (!row) return 0;
-              return row.join(" ").toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
-            }}
-          >
-            <CommandInput placeholder={`Search ${label.replace(/\s+\*$/, "").toLowerCase()}...`} />
-            <CommandList className="max-h-[min(18rem,calc(100dvh-12rem))] overscroll-contain scrollbar-thin">
-              <CommandEmpty>No matches found.</CommandEmpty>
-              <CommandGroup>
-                {rows.map(([id, name, ...details]) => (
-                  <CommandItem
-                    key={id}
-                    value={id}
-                    disabled={disabledValues.has(id)}
-                    onSelect={() => {
-                      set(id);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check className={cn("h-4 w-4", value === id ? "opacity-100" : "opacity-0")} />
-                    <span className="min-w-0">
-                      <span className="block truncate">{name}</span>
-                      {details.filter(Boolean).length > 0 && (
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {details.filter(Boolean).join(" · ")}
-                          {disabledValues.has(id) ? " · Unavailable for selected date" : ""}
-                        </span>
-                      )}
-                    </span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      <Combobox
+        value={value}
+        onValueChange={set}
+        placeholder={placeholder}
+        searchPlaceholder={`Search ${label.replace(/\s+\*$/, "").toLowerCase()}...`}
+        options={rows.map(([id, name, ...details]) => ({
+          value: id,
+          label: name,
+          description: details.filter(Boolean).join(" · "),
+          keywords: details,
+          disabled: disabledValues.has(id),
+          disabledDescription: "Unavailable for selected date",
+        }))}
+        triggerProps={{
+          id: triggerId,
+          "aria-invalid": Boolean(error),
+          disabled,
+          "data-add-field": fieldKey,
+        }}
+      />
     </Field>
   );
 }
 
-function StepHeading({
-  number,
-  title,
-  description,
-  showNextStep = false,
-}: {
-  number: number;
-  title: string;
-  description: string;
-  showNextStep?: boolean;
-}) {
+function StepHeading({ title, description }: { title: string; description: string }) {
   return (
-    <div
-      className={cn("relative flex gap-3", showNextStep && "items-start justify-between")}
-      aria-label={showNextStep ? "Step 1 of 2" : undefined}
-    >
-      {showNextStep && (
-        <div className="absolute left-3.5 right-3.5 top-3.5 h-px bg-border" aria-hidden="true" />
-      )}
-      <div className="relative z-10 flex gap-3">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
-          {number}
-        </div>
-        <div className={cn(showNextStep && "bg-background pr-3")}>
-          <h3 className="font-semibold">{title}</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      {showNextStep && (
-        <div className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-          2
-        </div>
-      )}
+    <div>
+      <h3 className="font-semibold">{title}</h3>
+      <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
     </div>
   );
 }
