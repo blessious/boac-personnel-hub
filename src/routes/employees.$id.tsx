@@ -538,13 +538,13 @@ function PersonalTab({
               placeholder="Device user ID / attendance ID"
             />
           </Field>
-          <Field label="Department" required={!hasPlantillaOccupancy}>
+          <Field label="Office" required={!hasPlantillaOccupancy}>
             <Combobox
               value={form.department}
               onValueChange={(value) => set("department", value)}
-              placeholder="Select department"
-              searchPlaceholder="Search departments..."
-              emptyText="No departments found."
+              placeholder="Select office"
+              searchPlaceholder="Search offices..."
+              emptyText="No offices found."
               options={departments.map((department) => ({
                 value: department,
                 label: department,
@@ -647,16 +647,6 @@ function PersonalTab({
               value={form.dtrSignatory.toUpperCase()}
               onChange={(e) => set("dtrSignatory", e.target.value.toUpperCase())}
               placeholder={formatDtrSignatoryName(form)}
-            />
-          </Field>
-          <Field label="Agency">
-            <Input value={form.agency} onChange={(e) => set("agency", e.target.value)} />
-          </Field>
-          <Field label="Date Separated">
-            <Input
-              type="date"
-              value={form.dateSeparated}
-              onChange={(e) => set("dateSeparated", e.target.value)}
             />
           </Field>
         </FormSection>

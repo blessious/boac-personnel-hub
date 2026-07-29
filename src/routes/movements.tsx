@@ -305,11 +305,21 @@ function MovementsPage() {
     try {
       if (action === "reviewApprove") {
         await transitionMovement(m.id, "review", remarks);
-        await transitionMovement(m.id, "approve", remarks);
-        toast.success("Movement reviewed and approved");
+        const result = await transitionMovement(m.id, "approve", remarks);
+        toast.success(
+          result.movement.status === "Scheduled"
+            ? "Movement reviewed, approved, and scheduled"
+            : "Movement reviewed, approved, and posted",
+        );
       } else {
-        await transitionMovement(m.id, action, remarks);
-        toast.success(`Movement ${action} completed`);
+        const result = await transitionMovement(m.id, action, remarks);
+        toast.success(
+          action === "approve"
+            ? result.movement.status === "Scheduled"
+              ? "Movement approved and scheduled"
+              : "Movement approved and posted"
+            : `Movement ${action} completed`,
+        );
       }
       setDecision(null);
       setDecisionRemarks("");
@@ -741,12 +751,14 @@ function MovementsPage() {
               : decision?.action === "reverse"
                 ? "Reversal restores the recorded before-state and is blocked if a later movement exists."
                 : decision?.action === "reviewApprove"
-                  ? "This records review and approval in sequence. HR can post the movement after approval."
-                  : decision?.action === "return"
-                    ? "Returning to Draft refreshes the source employee/occupancy snapshot and clears prior approvals."
-                    : decision?.action === "reject"
-                      ? "Record the reason for this decision."
-                      : "Confirm this workflow step before the movement continues."}
+                  ? "This records review and final approval in sequence, then immediately posts the movement. A future-effective movement will be scheduled automatically."
+                  : decision?.action === "approve"
+                    ? "Final approval immediately posts the movement. A future-effective movement will be scheduled automatically."
+                    : decision?.action === "return"
+                      ? "Returning to Draft refreshes the source employee/occupancy snapshot and clears prior approvals."
+                      : decision?.action === "reject"
+                        ? "Record the reason for this decision."
+                        : "Confirm this workflow step before the movement continues."}
           </p>
           <div className="space-y-1">
             <Label>
@@ -957,7 +969,7 @@ function MovementDetailDialog({
                       Reject
                     </Button>
                     <Button onClick={() => onDecision(movement, "reviewApprove")}>
-                      Review and approve
+                      Review, approve and post
                     </Button>
                   </>
                 )}
@@ -973,7 +985,9 @@ function MovementDetailDialog({
                     >
                       Reject
                     </Button>
-                    <Button onClick={() => onDecision(movement, "approve")}>Approve</Button>
+                    <Button onClick={() => onDecision(movement, "approve")}>
+                      Approve and post
+                    </Button>
                   </>
                 )}
                 {canPost && canPostMovement(movement) && (
@@ -1387,7 +1401,8 @@ function Status({ value }: { value: string }) {
   return <span className={`rounded-full px-2 py-1 text-xs font-medium ${tone}`}>{value}</span>;
 }
 function actionLabel(x: string) {
-  if (x === "reviewApprove") return "Review and approve";
+  if (x === "reviewApprove") return "Review, approve and post";
+  if (x === "approve") return "Approve and post";
   return titleCase(x);
 }
 function titleCase(x: string) {

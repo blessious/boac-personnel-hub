@@ -612,7 +612,8 @@ export function createPlantillaHandlers({
         dateFrom = date(b.dateFrom, "Assignment date", true);
       await c.beginTransaction();
       const [[i]] = await c.execute(
-        `SELECT pi.*,p.title position_title,COALESCE(sec.name,divi.name,off.name,s.name) organization_name
+        `SELECT pi.*,p.title position_title,off.name office_name,
+                COALESCE(sec.name,divi.name,off.name,s.name) organization_name
          FROM plantilla_items pi
          JOIN positions p ON p.id=pi.position_id
          LEFT JOIN hr_reference_values sec ON sec.id=pi.section_ref_id
@@ -656,11 +657,18 @@ export function createPlantillaHandlers({
         },
       );
       await c.execute(
-        "UPDATE employees SET item_no=:itemNumber,position=:title,department=COALESCE(:department,department),emp_status='Active' WHERE id=:employeeId",
+        `UPDATE employees
+            SET item_no=:itemNumber,
+                position=:title,
+                department=COALESCE(:office,department),
+                date_employed=COALESCE(date_employed,:dateEmployed),
+                emp_status='Active'
+          WHERE id=:employeeId`,
         {
           itemNumber: i.item_number,
           title: i.position_title,
-          department: i.organization_name || null,
+          office: i.office_name || i.organization_name || null,
+          dateEmployed: dateFrom,
           employeeId,
         },
       );

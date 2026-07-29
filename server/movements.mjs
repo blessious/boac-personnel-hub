@@ -719,6 +719,10 @@ export function createMovementHandlers({
           remarks,
           source ? { refreshedSource: source } : null,
         );
+        let automaticPost = null;
+        if (action === "approve") {
+          automaticPost = await handlers.post(req, null, id, user, remarks, { connection });
+        }
         await connection.commit();
         await logAudit(
           user.id,
@@ -726,12 +730,37 @@ export function createMovementHandlers({
           { id, fromStatus: row.status, toStatus },
           req,
         );
+        if (automaticPost) {
+          await logAudit(
+            user.id,
+            automaticPost.status === "Scheduled" ? "movement.schedule" : "movement.post",
+            {
+              id,
+              employeeId: row.employee_id,
+              actionType: row.action_type,
+              ...(automaticPost.effectiveDate
+                ? { effectiveDate: automaticPost.effectiveDate }
+                : {}),
+            },
+            req,
+          );
+        }
         const updatedMovement = await read(id);
         await notifyMovement({
           movement: { ...updatedMovement, prepared_by: row.prepared_by },
-          action,
+          action:
+            automaticPost?.status === "Scheduled"
+              ? "schedule"
+              : automaticPost?.status === "Posted"
+                ? "post"
+                : action,
           actorId: user.id,
         });
+        if (automaticPost) {
+          publishRealtime({ kind: "refresh", topic: "movements", path: "/api/movements" });
+          publishRealtime({ kind: "refresh", topic: "employees", path: "/api/employees" });
+          publishRealtime({ kind: "refresh", topic: "plantilla", path: "/api/plantilla" });
+        }
         return json(res, 200, { movement: updatedMovement });
       } catch (error) {
         await connection.rollback().catch(() => {});
@@ -744,50 +773,23 @@ export function createMovementHandlers({
     if (action === "reverse") return handlers.reverse(req, res, id, user, remarks);
     return json(res, 404, { error: "Unknown movement action" });
   };
-  handlers.post = async (req, res, id, user, remarks) => {
-    const connection = await pool.getConnection();
+  handlers.post = async (req, res, id, user, remarks, options = {}) => {
+    const ownsConnection = !options.connection;
+    const connection = options.connection || (await pool.getConnection());
     try {
-      await connection.beginTransaction();
+      if (ownsConnection) await connection.beginTransaction();
       const [[movement]] = await connection.execute(
         "SELECT * FROM personnel_movements WHERE id=:id FOR UPDATE",
         { id },
       );
       if (!movement) {
+        if (!ownsConnection) throw new Error("Personnel movement not found");
         await connection.rollback();
         return json(res, 404, { error: "Personnel movement not found" });
       }
       if (!["Approved", "Scheduled"].includes(movement.status))
         throw new Error("Only approved or scheduled movements can be posted");
       const effectiveDate = dateOnly(movement.effective_date);
-      const currentDate = today();
-      if (effectiveDate > currentDate) {
-        if (movement.status === "Scheduled") {
-          throw new Error("Scheduled movement cannot be posted before its effective date");
-        }
-        await connection.execute(
-          `UPDATE personnel_movements SET status='Scheduled',posted_by=:userId,scheduled_at=NOW(),
-             activation_error=NULL,decision_remarks=COALESCE(:remarks,decision_remarks) WHERE id=:id`,
-          { id, userId: user.id, remarks: remarks || null },
-        );
-        await event(connection, id, "Scheduled", "Approved", "Scheduled", user.id, remarks, {
-          effectiveDate,
-        });
-        await connection.commit();
-        await logAudit(
-          user.id,
-          "movement.schedule",
-          { id, employeeId: movement.employee_id, effectiveDate },
-          req,
-        );
-        const updatedMovement = await read(id);
-        await notifyMovement({
-          movement: { ...updatedMovement, prepared_by: movement.prepared_by },
-          action: "schedule",
-          actorId: user.id,
-        });
-        publishRealtime({ kind: "refresh", topic: "movements", path: "/api/movements" });
-        return json(res, 200, { movement: updatedMovement });
-      }
       const before = await currentSnapshot(movement.employee_id, connection, true),
         source = parseJson(movement.source_snapshot_json);
       const sourceMatches =
@@ -809,6 +811,36 @@ export function createMovementHandlers({
         throw new Error(
           "Employee or occupancy changed after this movement was prepared; return it to Draft and refresh the source record",
         );
+      const currentDate = today();
+      if (effectiveDate > currentDate) {
+        if (movement.status === "Scheduled") {
+          throw new Error("Scheduled movement cannot be posted before its effective date");
+        }
+        await connection.execute(
+          `UPDATE personnel_movements SET status='Scheduled',posted_by=:userId,scheduled_at=NOW(),
+             activation_error=NULL,decision_remarks=COALESCE(:remarks,decision_remarks) WHERE id=:id`,
+          { id, userId: user.id, remarks: remarks || null },
+        );
+        await event(connection, id, "Scheduled", "Approved", "Scheduled", user.id, remarks, {
+          effectiveDate,
+        });
+        if (!ownsConnection) return { status: "Scheduled", effectiveDate };
+        await connection.commit();
+        await logAudit(
+          user.id,
+          "movement.schedule",
+          { id, employeeId: movement.employee_id, effectiveDate },
+          req,
+        );
+        const updatedMovement = await read(id);
+        await notifyMovement({
+          movement: { ...updatedMovement, prepared_by: movement.prepared_by },
+          action: "schedule",
+          actorId: user.id,
+        });
+        publishRealtime({ kind: "refresh", topic: "movements", path: "/api/movements" });
+        return json(res, 200, { movement: updatedMovement });
+      }
       if (
         before.occupancy?.dateFrom &&
         dateOnly(movement.effective_date) < before.occupancy.dateFrom &&
@@ -837,7 +869,15 @@ export function createMovementHandlers({
         temporaryAssignmentId = null;
       if (ITEM_ACTIONS.has(movement.action_type)) {
         const [[target]] = await connection.execute(
-          `SELECT pi.*,p.title position_title,COALESCE(sec.name,divi.name,off.name,s.name) organization_name FROM plantilla_items pi JOIN positions p ON p.id=pi.position_id LEFT JOIN hr_reference_values sec ON sec.id=pi.section_ref_id LEFT JOIN hr_reference_values divi ON divi.id=pi.division_ref_id LEFT JOIN hr_reference_values off ON off.id=pi.office_ref_id LEFT JOIN hr_reference_values s ON s.id=pi.sector_ref_id WHERE pi.id=:targetId FOR UPDATE`,
+          `SELECT pi.*,p.title position_title,off.name office_name,
+                  COALESCE(sec.name,divi.name,off.name,s.name) organization_name
+             FROM plantilla_items pi
+             JOIN positions p ON p.id=pi.position_id
+             LEFT JOIN hr_reference_values sec ON sec.id=pi.section_ref_id
+             LEFT JOIN hr_reference_values divi ON divi.id=pi.division_ref_id
+             LEFT JOIN hr_reference_values off ON off.id=pi.office_ref_id
+             LEFT JOIN hr_reference_values s ON s.id=pi.sector_ref_id
+            WHERE pi.id=:targetId FOR UPDATE`,
           { targetId: movement.target_plantilla_item_id },
         );
         if (!target || target.item_status !== "Active")
@@ -885,11 +925,18 @@ export function createMovementHandlers({
           );
         }
         await connection.execute(
-          "UPDATE employees SET item_no=:itemNumber,position=:position,department=COALESCE(:department,department),emp_status='Active' WHERE id=:employeeId",
+          `UPDATE employees
+              SET item_no=:itemNumber,
+                  position=:position,
+                  department=COALESCE(:office,department),
+                  date_employed=COALESCE(date_employed,:dateEmployed),
+                  emp_status='Active'
+            WHERE id=:employeeId`,
           {
             itemNumber: target.item_number,
             position: target.position_title,
-            department: target.organization_name || movement.target_department,
+            office: target.office_name || target.organization_name || movement.target_department,
+            dateEmployed: effectiveDate,
             employeeId: movement.employee_id,
           },
         );
@@ -1217,6 +1264,7 @@ export function createMovementHandlers({
         before,
         after,
       });
+      if (!ownsConnection) return { status: "Posted" };
       await connection.commit();
       await logAudit(
         user.id,
@@ -1235,10 +1283,11 @@ export function createMovementHandlers({
       publishRealtime({ kind: "refresh", topic: "plantilla", path: "/api/plantilla" });
       return json(res, 200, { movement: updatedMovement });
     } catch (error) {
+      if (!ownsConnection) throw error;
       await connection.rollback().catch(() => {});
       return fail(res, error);
     } finally {
-      connection.release();
+      if (ownsConnection) connection.release();
     }
   };
   handlers.reverse = async (req, res, id, user, reason) => {
