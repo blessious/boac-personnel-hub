@@ -102,6 +102,8 @@ interface ActivationSummary {
   checked: number;
   updated: number;
   skipped: number;
+  employeeSalaryRecordsCreated: number;
+  movementsSynchronized: number;
 }
 
 interface ConfirmAction {
@@ -109,6 +111,7 @@ interface ConfirmAction {
   description: string;
   confirmLabel: string;
   destructive?: boolean;
+  activationRemarks?: boolean;
   onConfirm: () => Promise<void> | void;
 }
 
@@ -121,6 +124,22 @@ function formatMoney(amount: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+function sanitizeMoneyInput(value: string) {
+  const normalized = value.replace(/,/g, "").replace(/[^\d.]/g, "");
+  const [whole = "", ...decimalParts] = normalized.split(".");
+  const decimal = decimalParts.join("").slice(0, 2);
+
+  return decimalParts.length > 0 ? `${whole}.${decimal}` : whole;
+}
+
+function formatMoneyInput(value: string) {
+  if (!value) return "";
+  const [whole = "", decimal] = value.split(".");
+  const formattedWhole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+  return decimal === undefined ? formattedWhole : `${formattedWhole}.${decimal}`;
 }
 
 function EmployeeReferencesPage() {
@@ -705,9 +724,10 @@ function EmployeeReferencesPage() {
       title: "Activate salary table?",
       description:
         missingCount > 0
-          ? `Activate ${ordinance} effective ${formatDisplayDate(activationDate)}. This table has ${missingCount} open standard grade/step rows; the backend will block activation if any active plantilla item needs one of those rows.`
-          : `Activate ${ordinance} effective ${formatDisplayDate(activationDate)}. This will update active plantilla salaries and add 201 Salary records for affected active employees.`,
+          ? `Activate ${ordinance} effective ${formatDisplayDate(activationDate)}. This table has ${missingCount} open standard grade/step rows; activation will be blocked if any active Plantilla item, including a vacancy, needs one of those rows.`
+          : `Activate ${ordinance} effective ${formatDisplayDate(activationDate)}. This will remap all active Plantilla items, synchronize unposted movements, and add monthly 201 Salary records for active occupants.`,
       confirmLabel: "Activate Table",
+      activationRemarks: true,
       onConfirm: () => activateSalaryTableConfirmed(ordinance),
     });
   };
@@ -716,7 +736,13 @@ function EmployeeReferencesPage() {
     setActivatingOrdinance(ordinance);
     try {
       const result = await api<{
-        summary: { checked: number; updated: number; skipped: number };
+        summary: {
+          checked: number;
+          updated: number;
+          skipped: number;
+          employeeSalaryRecordsCreated: number;
+          movementsSynchronized: number;
+        };
       }>("/api/settings/salary-grades/activate", {
         method: "POST",
         body: JSON.stringify({
@@ -732,6 +758,8 @@ function EmployeeReferencesPage() {
         checked: result.summary.checked,
         updated: result.summary.updated,
         skipped: result.summary.skipped,
+        employeeSalaryRecordsCreated: result.summary.employeeSalaryRecordsCreated,
+        movementsSynchronized: result.summary.movementsSynchronized,
       });
       toast.success(
         `Activated ${ordinance}: ${result.summary.updated} updated, ${result.summary.skipped} skipped`,
@@ -970,18 +998,11 @@ function EmployeeReferencesPage() {
                   </div>
 
                   {selectedOrdinance && (
-                    <div className="grid gap-2 sm:grid-cols-[160px_minmax(180px,1fr)_auto]">
+                    <div className="grid gap-2 sm:grid-cols-[160px_auto]">
                       <Input
                         type="date"
                         value={activationDate}
                         onChange={(event) => setActivationDate(event.target.value)}
-                        disabled={!canManage}
-                        className="h-9"
-                      />
-                      <Input
-                        placeholder="Activation remarks"
-                        value={activationRemarks}
-                        onChange={(event) => setActivationRemarks(event.target.value)}
                         disabled={!canManage}
                         className="h-9"
                       />
@@ -1088,7 +1109,10 @@ function EmployeeReferencesPage() {
                     <ClipboardCheck className="h-4 w-4" />
                     Activated {activationSummary.ordinance} effective{" "}
                     {formatDisplayDate(activationSummary.effectivityDate)}:{" "}
-                    {activationSummary.updated} updated, {activationSummary.skipped} skipped.
+                    {activationSummary.updated} Plantilla items updated,{" "}
+                    {activationSummary.employeeSalaryRecordsCreated} employee salary records created,{" "}
+                    {activationSummary.movementsSynchronized} pending movements synchronized,{" "}
+                    {activationSummary.skipped} skipped.
                   </div>
                 )}
               </div>
@@ -1306,10 +1330,13 @@ function EmployeeReferencesPage() {
                 Amount
                 <Input
                   placeholder="Amount"
-                  type="number"
-                  value={newSalaryGrade.amount}
+                  inputMode="decimal"
+                  value={formatMoneyInput(newSalaryGrade.amount)}
                   onChange={(event) =>
-                    setNewSalaryGrade({ ...newSalaryGrade, amount: event.target.value })
+                    setNewSalaryGrade({
+                      ...newSalaryGrade,
+                      amount: sanitizeMoneyInput(event.target.value),
+                    })
                   }
                   disabled={!canManage}
                 />
@@ -1374,6 +1401,24 @@ function EmployeeReferencesPage() {
             <AlertDialogTitle>{confirmAction?.title}</AlertDialogTitle>
             <AlertDialogDescription>{confirmAction?.description}</AlertDialogDescription>
           </AlertDialogHeader>
+          {confirmAction?.activationRemarks && (
+            <div className="grid gap-2">
+              <label
+                htmlFor="salary-activation-remarks"
+                className="text-sm font-medium text-foreground"
+              >
+                Remarks
+              </label>
+              <Textarea
+                id="salary-activation-remarks"
+                value={activationRemarks}
+                onChange={(event) => setActivationRemarks(event.target.value)}
+                placeholder="Enter remarks for the 201 salary record"
+                disabled={confirmingAction}
+                rows={3}
+              />
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={confirmingAction}>Cancel</AlertDialogCancel>
             <AlertDialogAction

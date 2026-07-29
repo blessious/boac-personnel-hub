@@ -1,7 +1,13 @@
 import crypto from "node:crypto";
 
 const day = (value) => (value ? new Date(value).toISOString().slice(0, 10) : null);
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const value = new Date();
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const date = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${date}`;
+};
 
 function strictDate(value, label, required = false) {
   if (value === null || value === undefined || String(value).trim() === "") {
@@ -131,13 +137,13 @@ export async function readCurrentAssignment(pool, employeeId) {
   const [[plantilla]] = await pool.execute(
     `SELECT po.id,po.date_from,po.movement_type,po.appointment_number,
             pi.id plantilla_item_id,pi.item_number,pi.authorized_salary,
-            p.title position_title,sg.ordinance,sg.grade,sg.step,
+            p.title position_title,sg.ordinance,sg.grade,sg.step,sg.amount monthly_salary,
             ${orgIdSql} org_unit_ref_id,${orgNameSql} organization_name,
             s.name sector_name,off.name office_name,divi.name division_name,sec.name section_name
        FROM plantilla_occupancies po
        JOIN plantilla_items pi ON pi.id=po.plantilla_item_id
        JOIN positions p ON p.id=pi.position_id
-       LEFT JOIN salary_grades sg ON sg.id=pi.salary_grade_id
+       LEFT JOIN salary_grades sg ON sg.id=COALESCE(po.current_salary_grade_id,pi.salary_grade_id)
        LEFT JOIN hr_reference_values s ON s.id=pi.sector_ref_id
        LEFT JOIN hr_reference_values off ON off.id=pi.office_ref_id
        LEFT JOIN hr_reference_values divi ON divi.id=pi.division_ref_id
@@ -181,7 +187,7 @@ export async function readCurrentAssignment(pool, employeeId) {
               ordinance: plantilla.ordinance || "",
               grade: Number(plantilla.grade),
               step: Number(plantilla.step),
-              amount: Number(plantilla.authorized_salary || 0),
+              amount: Number(plantilla.monthly_salary || 0),
             }
           : null,
         dateFrom: day(plantilla.date_from),
@@ -427,22 +433,6 @@ export function createAssignmentHandlers({
   };
 
   const handlers = {};
-
-  handlers.summary = async (req, res) => {
-    if (!(await requireRead(req, res))) return;
-    await refreshEngagementStates(pool);
-    const [[row]] = await pool.query(`SELECT
-      (SELECT COUNT(*) FROM employees e LEFT JOIN plantilla_occupancies po ON po.employee_id=e.id AND po.status='Active'
-        LEFT JOIN non_plantilla_engagements ne ON ne.employee_id=e.id AND ne.status='Active'
-        WHERE e.is_hidden=0 AND po.id IS NULL AND ne.id IS NULL) awaiting_assignment,
-      (SELECT COUNT(*) FROM personnel_movements WHERE status='Scheduled') scheduled_movements,
-      (SELECT COUNT(*) FROM non_plantilla_engagements WHERE status='Active' AND date_to BETWEEN CURDATE() AND DATE_ADD(CURDATE(),INTERVAL 30 DAY)) expiring_engagements`);
-    return json(res, 200, {
-      awaitingAssignment: Number(row.awaiting_assignment || 0),
-      scheduledMovements: Number(row.scheduled_movements || 0),
-      expiringEngagements: Number(row.expiring_engagements || 0),
-    });
-  };
 
   handlers.listEngagements = async (req, res, url) => {
     if (!(await requireRead(req, res))) return;

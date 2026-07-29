@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import {
   Select,
   SelectContent,
@@ -228,10 +229,9 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
         </div>
 
         <div className="max-h-[560px] overflow-auto">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[680px] text-sm">
             <thead className="sticky top-0 bg-card">
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Code</th>
                 <th className="px-4 py-3 font-medium">Name</th>
                 {config.parentCategory && (
                   <th className="px-4 py-3 font-medium">{config.parentLabel}</th>
@@ -247,7 +247,6 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
                   key={row.id}
                   className={cn("border-b border-border/70", index % 2 && "bg-muted/30")}
                 >
-                  <td className="px-4 py-3 font-mono text-xs">{row.code}</td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-foreground">{row.name}</div>
                     {row.description && (
@@ -307,7 +306,7 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
               {filteredRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={config.parentCategory ? 6 : 5}
+                    colSpan={config.parentCategory ? 5 : 4}
                     className="px-4 py-12 text-center text-muted-foreground"
                   >
                     No {config.plural.toLowerCase()} found.
@@ -410,26 +409,22 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
                 />
               </label>
             )}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-xs text-muted-foreground">
-                Effective from
-                <Input
-                  type="date"
-                  value={form.effectiveFrom}
-                  onChange={(e) => setForm({ ...form, effectiveFrom: e.target.value })}
-                  disabled={!canManage || saving}
-                />
-              </label>
-              <label className="grid gap-1 text-xs text-muted-foreground">
-                Effective to
-                <Input
-                  type="date"
-                  value={form.effectiveTo}
-                  onChange={(e) => setForm({ ...form, effectiveTo: e.target.value })}
-                  disabled={!canManage || saving}
-                />
-              </label>
-            </div>
+            <label className="grid gap-1 text-xs text-muted-foreground">
+              Date Range
+              <DateRangePicker
+                from={form.effectiveFrom}
+                to={form.effectiveTo}
+                allowEmpty
+                allowOpenEnded
+                disabled={!canManage || saving}
+                labelFormatter={(from, to) =>
+                  from || to ? [from, to || "Present"].filter(Boolean).join(" - ") : "All dates"
+                }
+                onApply={(effectiveFrom, effectiveTo) =>
+                  setForm({ ...form, effectiveFrom, effectiveTo })
+                }
+              />
+            </label>
           </div>
           <DialogFooter className="flex-row flex-wrap justify-end gap-2 border-t border-border px-5 py-4 sm:space-x-0">
             <Button variant="outline" onClick={closeForm} disabled={saving}>

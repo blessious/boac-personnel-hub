@@ -47,6 +47,7 @@ const pythonScripts = [
   "dtr_pdf.py",
   "leave_form6_excel.py",
   "merge_pdfs.py",
+  "pdf_watermark.py",
   "pds_excel.py",
   "personnel_plantilla_report.py",
   "service_record_export.py",

@@ -15,6 +15,7 @@ type ThemeToggleOrigin = { x: number; y: number };
 
 interface SettingsContextType {
   agency: AgencySettings;
+  agencyLoaded: boolean;
   updateAgency: (settings: Partial<AgencySettings>) => void;
   loadAgencySettings: () => Promise<void>;
   sidebarCollapsed: boolean;
@@ -30,27 +31,70 @@ interface SettingsContextType {
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 const DEFAULT_AGENCY: AgencySettings = {
-  name: "STRH - HRIS",
-  tagline: "DOH Southern Tagalog Regional Hospital",
+  name: "LGU BOAC",
+  tagline: "Municipality of Boac Marinduque",
   logoUrl: "",
   iconUrl: "",
   bannerUrl: "",
 };
 
+const AGENCY_ICON_CACHE_KEY = "pmis_agency_icon_url";
+const MAX_CACHED_ICON_URL_LENGTH = 2_800_000;
+
+function readCachedAgencyIcon() {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(AGENCY_ICON_CACHE_KEY) || "";
+}
+
+function cacheAgencyIcon(iconUrl: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!iconUrl) {
+      localStorage.removeItem(AGENCY_ICON_CACHE_KEY);
+      return;
+    }
+    if (iconUrl.length <= MAX_CACHED_ICON_URL_LENGTH) {
+      localStorage.setItem(AGENCY_ICON_CACHE_KEY, iconUrl);
+    }
+  } catch (error) {
+    console.warn("Failed to cache agency icon", error);
+  }
+}
+
+function applyAgencyFavicon(iconUrl: string) {
+  if (typeof document === "undefined") return;
+  let link = document.querySelector<HTMLLinkElement>("link[data-agency-favicon='true']");
+  if (!iconUrl) {
+    link?.remove();
+    return;
+  }
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    link.type = iconUrl.startsWith("data:image/svg") ? "image/svg+xml" : "image/png";
+    link.setAttribute("data-agency-favicon", "true");
+    document.head.appendChild(link);
+  }
+  link.href = iconUrl;
+}
+
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [agency, setAgency] = useState<AgencySettings>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("pmis_agency_settings");
+      const cachedIconUrl = readCachedAgencyIcon();
       if (saved) {
         try {
-          return { ...DEFAULT_AGENCY, ...JSON.parse(saved) };
+          return { ...DEFAULT_AGENCY, ...JSON.parse(saved), iconUrl: cachedIconUrl };
         } catch (e) {
           console.error("Failed to parse saved settings", e);
         }
       }
+      if (cachedIconUrl) return { ...DEFAULT_AGENCY, iconUrl: cachedIconUrl };
     }
     return DEFAULT_AGENCY;
   });
+  const [agencyLoaded, setAgencyLoaded] = useState(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
@@ -68,9 +112,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== "undefined") {
         localStorage.setItem("pmis_agency_settings", JSON.stringify(textSettings));
       }
+      cacheAgencyIcon(iconUrl);
       // Images are kept in memory only
       return updated;
     });
+    setAgencyLoaded(true);
   };
 
   const loadAgencySettings = useCallback(async () => {
@@ -81,13 +127,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== "undefined") {
         localStorage.setItem("pmis_agency_settings", JSON.stringify(textSettings));
       }
+      cacheAgencyIcon(iconUrl);
       return updated;
     });
+    setAgencyLoaded(true);
   }, []);
 
   useEffect(() => {
     loadAgencySettings().catch((error) => {
       console.error("Failed to load agency settings", error);
+      setAgencyLoaded(true);
     });
   }, [loadAgencySettings]);
 
@@ -115,15 +164,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && agency.iconUrl) {
-      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
-      if (!link) {
-        link = document.createElement("link");
-        link.rel = "icon";
-        document.getElementsByTagName("head")[0].appendChild(link);
-      }
-      link.href = agency.iconUrl;
-    }
+    applyAgencyFavicon(agency.iconUrl);
   }, [agency.iconUrl]);
 
   const toggleTheme = (origin?: ThemeToggleOrigin) => {
@@ -180,6 +221,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     <SettingsContext.Provider
       value={{
         agency,
+        agencyLoaded,
         updateAgency,
         loadAgencySettings,
         sidebarCollapsed,

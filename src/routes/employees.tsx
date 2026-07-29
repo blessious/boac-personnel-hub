@@ -6,10 +6,14 @@ import {
   useNavigate,
   useSearch,
 } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  ChevronsUpDown,
   Copy,
   Eye,
   MoreVertical,
@@ -39,14 +43,24 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -55,6 +69,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TablePagination } from "@/components/ui/table-pagination";
+import {
+  dataTableBodyClass,
+  dataTableCellClass,
+  dataTableClass,
+  dataTableEmptyCellClass,
+  dataTableHeadClass,
+  dataTableHeaderCellClass,
+  dataTableHeadRowClass,
+  dataTableRowClass,
+} from "@/lib/data-table-styles";
 import { useAuth } from "@/lib/auth";
 import {
   createEmployee,
@@ -70,7 +94,13 @@ import {
   type SettingsOptions,
   type DashboardResponse,
 } from "@/lib/employees-api";
-import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
+import {
+  cn,
+  copyTextToClipboard,
+  formatDisplayDate,
+  formatDtrSignatoryName,
+  formatEmployeeName,
+} from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { api } from "@/lib/api";
 import { listPlantilla, type PlantillaItem } from "@/lib/plantilla-api";
@@ -103,38 +133,65 @@ const EMPTY_FORM: Partial<EmployeeRecord> = {
   isDtrNoter: false,
 };
 
-type OnboardingMode = "personal" | "plantilla" | "engagement";
-type AddEngagementForm = Pick<
-  EngagementPayload,
-  "engagementType" | "organizationId" | "designation" | "dateFrom" | "dateTo"
->;
-const today = () => new Date().toISOString().slice(0, 10);
-const engagementTypeForStatus = (status?: string): AddEngagementForm["engagementType"] =>
-  status === "Casual"
-    ? "Casual"
-    : status === "COS" || status === "Contract of Service"
-      ? "COS"
-      : "JO";
-const onboardingModeForStatus = (status?: string): OnboardingMode => {
-  if (status === "Unassigned") return "personal";
-  if (status === "Permanent" || status === "Regular") return "plantilla";
-  return "engagement";
+type AddEngagementForm = Omit<
+  Pick<
+    EngagementPayload,
+    "engagementType" | "organizationId" | "designation" | "dateFrom" | "dateTo"
+  >,
+  "engagementType"
+> & {
+  engagementType: EngagementPayload["engagementType"] | "";
 };
-const EMPTY_APPOINTMENT = {
-  controlNumber: "",
+const NON_PLANTILLA_ENGAGEMENT_TYPES: EngagementPayload["engagementType"][] = [
+  "JO",
+  "COS",
+  "Contractual",
+  "Casual",
+];
+const optionCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+type OnboardingMode = "plantilla" | "engagement" | "";
+type AddEmployeeStep = "identity" | "assignment";
+type AddFormErrorKey =
+  | "mode"
+  | "firstname"
+  | "lastname"
+  | "email"
+  | "plantillaItem"
+  | "appointmentDate"
+  | "salaryStep"
+  | "engagementType"
+  | "organization"
+  | "designation"
+  | "engagementStart"
+  | "engagementEnd";
+type AddFormErrors = Partial<Record<AddFormErrorKey, string>>;
+
+const today = () => {
+  const value = new Date();
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+const employmentStatusForPlantillaType = (plantillaType?: string) => {
+  if (plantillaType === "Elective") return "Elective";
+  if (plantillaType === "Co-term") return "Co-term";
+  if (plantillaType === "Coterminous") return "Coterminous";
+  if (plantillaType === "Casual") return "Casual";
+  return "Permanent";
+};
+const emptyAppointment = () => ({
   targetPlantillaItemId: "",
+  targetSalaryGradeId: "",
   effectiveDate: today(),
-  authorityNumber: "",
-  authorityDate: "",
-  remarks: "",
-};
-const EMPTY_ENGAGEMENT: AddEngagementForm = {
-  engagementType: "JO",
+});
+const emptyEngagement = (): AddEngagementForm => ({
+  engagementType: "",
   organizationId: "",
   designation: "",
   dateFrom: today(),
   dateTo: "",
-};
+});
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debounced, setDebounced] = useState(value);
@@ -152,7 +209,7 @@ function EmployeesPage() {
   const navigate = useNavigate({ from: "/employees" });
   const search = useSearch({ from: "/employees" });
   const queryClient = useQueryClient();
-  const { can } = useAuth();
+  const { can, hasPermission } = useAuth();
   const isMobile = useIsMobile();
   const canEdit = can("edit");
   const [q, setQ] = useState("");
@@ -169,11 +226,18 @@ function EmployeesPage() {
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
 
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showAddReviewDialog, setShowAddReviewDialog] = useState(false);
+  const [addEmployeeStep, setAddEmployeeStep] = useState<AddEmployeeStep>("identity");
   const [form, setForm] = useState<Partial<EmployeeRecord>>(EMPTY_FORM);
-  const [appointment, setAppointment] = useState(EMPTY_APPOINTMENT);
-  const [engagement, setEngagement] = useState<AddEngagementForm>(EMPTY_ENGAGEMENT);
+  const [onboardingMode, setOnboardingMode] = useState<OnboardingMode>("");
+  const [plantillaOrigin, setPlantillaOrigin] = useState(false);
+  const [appointment, setAppointment] = useState(emptyAppointment);
+  const [engagement, setEngagement] = useState<AddEngagementForm>(emptyEngagement);
   const [sameDtrSignatoryAsName, setSameDtrSignatoryAsName] = useState(false);
+  const [addFormErrors, setAddFormErrors] = useState<AddFormErrors>({});
+  const [isAddDialogDirty, setIsAddDialogDirty] = useState(false);
   const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
+  const [credentialsHandled, setCredentialsHandled] = useState(false);
   const [createdAccount, setCreatedAccount] = useState<{
     employeeName: string;
     credentials: EmployeeAccountCredentials;
@@ -206,25 +270,17 @@ function EmployeesPage() {
     queryFn: ({ signal }) => getSettingsOptions({ signal }),
     staleTime: 5 * 60_000,
   });
-  const onboardingQuery = useQuery({
-    queryKey: ["employees", "onboarding-options"],
-    queryFn: async ({ signal }) => {
-      const [plantilla, references] = await Promise.all([
-        listPlantilla("", "Active", "vacant", { signal }),
-        api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references", {
-          signal,
-        }),
-      ]);
-      return {
-        vacancies: plantilla.items.filter((item) => !item.occupant && !item.pendingMovement),
-        organizationUnits: [
-          ...references.libraries.sectors,
-          ...references.libraries.offices,
-          ...references.libraries.divisions,
-          ...references.libraries.sections,
-        ].filter((row) => row.isActive),
-      };
-    },
+  const plantillaOptionsQuery = useQuery({
+    queryKey: ["employees", "onboarding-options", "plantilla"],
+    queryFn: ({ signal }) => listPlantilla("", "Active", "vacant", { signal }),
+    staleTime: 5 * 60_000,
+  });
+  const organizationOptionsQuery = useQuery({
+    queryKey: ["employees", "onboarding-options", "organizations"],
+    queryFn: ({ signal }) =>
+      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references", {
+        signal,
+      }),
     staleTime: 5 * 60_000,
   });
   const dashboardQuery = useQuery({
@@ -241,13 +297,41 @@ function EmployeesPage() {
     positions: [],
     salaryGrades: [],
   };
-  const vacancies = onboardingQuery.data?.vacancies ?? [];
-  const organizationUnits = onboardingQuery.data?.organizationUnits ?? [];
+  const vacancies = useMemo(
+    () =>
+      (plantillaOptionsQuery.data?.items ?? [])
+        .filter((item) => !item.occupant && !item.pendingMovement)
+        .sort(
+          (left, right) =>
+            left.positionTitle.localeCompare(right.positionTitle, undefined, {
+              sensitivity: "base",
+            }) || left.itemNumber.localeCompare(right.itemNumber, undefined, { numeric: true }),
+        ),
+    [plantillaOptionsQuery.data?.items],
+  );
+  const organizationUnits = useMemo(() => {
+    const libraries = organizationOptionsQuery.data?.libraries;
+    if (!libraries) return [];
+    return [
+      ...libraries.sectors,
+      ...libraries.offices,
+      ...libraries.divisions,
+      ...libraries.sections,
+    ]
+      .filter((row) => row.isActive)
+      .sort(
+        (left, right) =>
+          optionCollator.compare(left.name, right.name) ||
+          optionCollator.compare(left.category, right.category),
+      );
+  }, [organizationOptionsQuery.data?.libraries]);
   const dashboardData: DashboardResponse | null = dashboardQuery.data ?? null;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const selectedDepartment = search.department?.trim() || "all";
-  const onboardingMode = onboardingModeForStatus(form.status);
-  const employeeDisplayName = formatEmployeeName(form, "");
+  const employeeDtrSignatoryName = formatDtrSignatoryName(form);
+  const canCreatePlantillaAppointment =
+    canEdit && hasPermission("movements.write") && hasPermission("plantilla.read");
+  const canCreateEngagement = canEdit && hasPermission("engagements.manage");
 
   useEffect(() => {
     setDept(selectedDepartment);
@@ -256,18 +340,28 @@ function EmployeesPage() {
 
   useEffect(() => {
     if (search.onboard !== "plantilla") return;
-    setForm((current) => ({ ...current, status: "Permanent" }));
-    setAppointment((current) => ({
-      ...current,
+    setForm({ ...EMPTY_FORM, status: "Permanent" });
+    setEngagement(emptyEngagement());
+    setAppointment({
+      ...emptyAppointment(),
       targetPlantillaItemId: search.targetPlantillaItemId || "",
-    }));
+    });
+    setOnboardingMode("plantilla");
+    setAddEmployeeStep("identity");
+    setPlantillaOrigin(true);
+    setSameDtrSignatoryAsName(true);
+    setAddFormErrors({});
+    setIsAddDialogDirty(false);
     setShowAddDialog(true);
     navigate({ search: {}, replace: true });
   }, [navigate, search.onboard, search.targetPlantillaItemId]);
 
   useEffect(() => {
     if (!sameDtrSignatoryAsName) return;
-    setForm((current) => ({ ...current, dtrSignatory: formatEmployeeName(current, "") }));
+    setForm((current) => ({
+      ...current,
+      dtrSignatory: formatDtrSignatoryName(current),
+    }));
   }, [form.firstname, form.middlename, form.lastname, sameDtrSignatoryAsName]);
 
   useEffect(() => {
@@ -275,7 +369,10 @@ function EmployeesPage() {
   }, [isMobile]);
 
   const departments = useMemo(
-    () => options.departments.map((department) => department.name),
+    () =>
+      options.departments
+        .map((department) => department.name)
+        .sort((left, right) => optionCollator.compare(left, right)),
     [options.departments],
   );
   const filteredFilterDepartments = useMemo(() => {
@@ -284,11 +381,213 @@ function EmployeesPage() {
     return departments.filter((department) => department.toLowerCase().includes(query));
   }, [filterDepartmentQuery, departments]);
   const selectedVacancy = vacancies.find((item) => item.id === appointment.targetPlantillaItemId);
+  const employeeSalaryOptions = useMemo(
+    () =>
+      selectedVacancy?.salaryGrade
+        ? options.salaryGrades
+            .filter(
+              (row) =>
+                row.isActive &&
+                row.ordinance === selectedVacancy.salaryGrade?.ordinance &&
+                row.grade === selectedVacancy.salaryGrade?.grade,
+            )
+            .sort((left, right) => left.step - right.step || left.amount - right.amount)
+        : [],
+    [options.salaryGrades, selectedVacancy],
+  );
+  const hasPlantillaAssignment =
+    onboardingMode === "plantilla" && Boolean(appointment.targetPlantillaItemId);
+  const derivedPlantillaStatus = employmentStatusForPlantillaType(
+    selectedVacancy?.plantillaTypeName,
+  );
+  const appointmentDateIsWithinItemEffectivity = (item: PlantillaItem, date: string) =>
+    Boolean(
+      date &&
+      (!item.effectiveFrom || date >= item.effectiveFrom) &&
+      (!item.effectiveTo || date <= item.effectiveTo),
+    );
+  const unavailableVacancyIds = useMemo(
+    () =>
+      new Set(
+        vacancies
+          .filter(
+            (item) =>
+              appointment.effectiveDate &&
+              !appointmentDateIsWithinItemEffectivity(item, appointment.effectiveDate),
+          )
+          .map((item) => item.id),
+      ),
+    [appointment.effectiveDate, vacancies],
+  );
+
+  useEffect(() => {
+    if (onboardingMode !== "plantilla" || !appointment.targetPlantillaItemId) return;
+    setForm((current) =>
+      current.status === derivedPlantillaStatus
+        ? current
+        : { ...current, status: derivedPlantillaStatus },
+    );
+  }, [appointment.targetPlantillaItemId, derivedPlantillaStatus, onboardingMode]);
+
+  useEffect(() => {
+    if (onboardingMode !== "plantilla" || !selectedVacancy) return;
+    setAppointment((current) => {
+      if (employeeSalaryOptions.some((row) => String(row.id) === current.targetSalaryGradeId))
+        return current;
+      const stepOne = employeeSalaryOptions.find((row) => row.step === 1);
+      return {
+        ...current,
+        targetSalaryGradeId: stepOne ? String(stepOne.id) : "",
+      };
+    });
+  }, [employeeSalaryOptions, onboardingMode, selectedVacancy]);
 
   if (location.pathname !== "/employees") return <Outlet />;
 
+  const resetAddDialog = () => {
+    setShowAddReviewDialog(false);
+    setForm(EMPTY_FORM);
+    setAddEmployeeStep("identity");
+    setOnboardingMode("");
+    setPlantillaOrigin(false);
+    setAppointment(emptyAppointment());
+    setEngagement(emptyEngagement());
+    setSameDtrSignatoryAsName(true);
+    setAddFormErrors({});
+    setIsAddDialogDirty(false);
+  };
+
+  const openDirectAddDialog = () => {
+    resetAddDialog();
+    setShowAddDialog(true);
+  };
+
+  const requestCloseAddDialog = () => {
+    if (isCreatingEmployee) return;
+    if (
+      isAddDialogDirty &&
+      !window.confirm("Discard the unfinished employee onboarding information?")
+    )
+      return;
+    setShowAddDialog(false);
+    resetAddDialog();
+  };
+
+  const selectOnboardingMode = (mode: Exclude<OnboardingMode, "">) => {
+    if (plantillaOrigin || onboardingMode === mode) return;
+    setOnboardingMode(mode);
+    setAddFormErrors({});
+    setIsAddDialogDirty(true);
+    if (mode === "plantilla") {
+      setEngagement(emptyEngagement());
+      return;
+    }
+    setAppointment(emptyAppointment());
+    setForm((current) => ({ ...current, status: "JO" }));
+  };
+
+  const validateAddForm = () => {
+    const errors: AddFormErrors = {};
+    if (!onboardingMode)
+      errors.mode = "Choose a Plantilla appointment or non-Plantilla engagement.";
+    if (!form.lastname?.trim()) errors.lastname = "Last name is required.";
+    if (!form.firstname?.trim()) errors.firstname = "First name is required.";
+    const email = form.email?.trim() || "";
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      errors.email = "Enter a valid email address.";
+
+    if (onboardingMode === "plantilla") {
+      if (!appointment.targetPlantillaItemId)
+        errors.plantillaItem = "Select a vacant Plantilla item.";
+      else if (!selectedVacancy)
+        errors.plantillaItem = "The selected Plantilla item is no longer available.";
+      if (!appointment.effectiveDate)
+        errors.appointmentDate = "Appointment start date is required.";
+      else if (
+        selectedVacancy &&
+        !appointmentDateIsWithinItemEffectivity(selectedVacancy, appointment.effectiveDate)
+      )
+        errors.appointmentDate =
+          "The appointment date must fall within the Plantilla item's effectivity.";
+      if (!appointment.targetSalaryGradeId)
+        errors.salaryStep = "Select the employee's starting salary step.";
+    }
+
+    if (onboardingMode === "engagement") {
+      if (!engagement.engagementType) errors.engagementType = "Select an engagement type.";
+      if (!engagement.organizationId) errors.organization = "Select an official organization.";
+      if (!engagement.designation.trim()) errors.designation = "Select a position or designation.";
+      if (!engagement.dateFrom) errors.engagementStart = "Start date is required.";
+      if (!engagement.dateTo) errors.engagementEnd = "End date is required.";
+      else if (engagement.dateFrom && engagement.dateTo < engagement.dateFrom)
+        errors.engagementEnd = "End date cannot be before the start date.";
+    }
+    return errors;
+  };
+
+  const validateIdentityStep = () => {
+    const errors: AddFormErrors = {};
+    if (!form.lastname?.trim()) errors.lastname = "Last name is required.";
+    if (!form.firstname?.trim()) errors.firstname = "First name is required.";
+    const email = form.email?.trim() || "";
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      errors.email = "Enter a valid email address.";
+    return errors;
+  };
+
+  const focusFirstAddError = (errors: AddFormErrors) => {
+    const firstKey = Object.keys(errors)[0];
+    if (!firstKey) return;
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(`[data-add-field="${firstKey}"]`)
+        ?.focus({ preventScroll: false });
+    });
+  };
+
+  const continueToAssignment = () => {
+    setAddFormErrors({});
+    setAddEmployeeStep("assignment");
+  };
+
+  const openAddReview = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isCreatingEmployee) return;
+    if (addEmployeeStep === "identity") {
+      continueToAssignment();
+      return;
+    }
+    const errors = validateAddForm();
+    setAddFormErrors(errors);
+    if (Object.keys(errors).length) {
+      const identityErrors = validateIdentityStep();
+      if (Object.keys(identityErrors).length) setAddEmployeeStep("identity");
+      else setAddEmployeeStep("assignment");
+      window.requestAnimationFrame(() =>
+        window.requestAnimationFrame(() => focusFirstAddError(errors)),
+      );
+      return;
+    }
+    setShowAddDialog(false);
+    setShowAddReviewDialog(true);
+  };
+
+  const returnToAddForm = () => {
+    if (isCreatingEmployee) return;
+    setShowAddReviewDialog(false);
+    setShowAddDialog(true);
+  };
+
   const submit = async () => {
     if (isCreatingEmployee) return;
+    const errors = validateAddForm();
+    setAddFormErrors(errors);
+    if (Object.keys(errors).length) {
+      setShowAddReviewDialog(false);
+      setShowAddDialog(true);
+      focusFirstAddError(errors);
+      return;
+    }
     setIsCreatingEmployee(true);
     try {
       const common = {
@@ -297,46 +596,34 @@ function EmployeesPage() {
         position: "",
         itemNo: "",
       };
-      const effectiveEngagement = {
+      const nonPlantillaEngagement = {
         ...engagement,
-        engagementType: engagementTypeForStatus(form.status),
+        engagementType: engagement.engagementType || "JO",
+        contractNumber: "",
       };
       const result =
         onboardingMode === "plantilla"
           ? await createEmployee({
               ...common,
-              status: "Permanent",
+              status: derivedPlantillaStatus,
               empStatus: "Inactive",
               lifecycleState: "Pre-Employment",
               createAccount: true,
-              accountActive: false,
               appointment: {
-                controlNumber: appointment.controlNumber,
                 targetPlantillaItemId: appointment.targetPlantillaItemId,
+                targetSalaryGradeId: appointment.targetSalaryGradeId,
                 effectiveDate: appointment.effectiveDate,
-                authorityNumber: appointment.authorityNumber,
-                authorityDate: appointment.authorityDate,
-                remarks: appointment.remarks,
                 supportingDocuments: [],
               },
             })
-          : onboardingMode === "engagement"
-            ? await createEmployee({
-                ...common,
-                status: effectiveEngagement.engagementType,
-                empStatus: "Inactive",
-                lifecycleState: "Personal Record",
-                createAccount: true,
-                accountActive: effectiveEngagement.dateFrom <= today(),
-                engagement: effectiveEngagement,
-              })
-            : await createEmployee({
-                ...common,
-                status: "Unassigned",
-                empStatus: "Inactive",
-                lifecycleState: "Personal Record",
-                createAccount: false,
-              });
+          : await createEmployee({
+              ...common,
+              status: nonPlantillaEngagement.engagementType,
+              empStatus: "Inactive",
+              lifecycleState: "Personal Record",
+              createAccount: true,
+              engagement: nonPlantillaEngagement,
+            });
       toast.success(
         result.appointmentDraftId
           ? "Personal record and appointment draft created"
@@ -345,16 +632,15 @@ function EmployeesPage() {
             : "Personal record created",
       );
       if (result.account) {
+        setCredentialsHandled(false);
         setCreatedAccount({
           employeeName: formatEmployeeName(result.employee),
           credentials: result.account,
         });
       }
+      setShowAddReviewDialog(false);
       setShowAddDialog(false);
-      setForm(EMPTY_FORM);
-      setAppointment({ ...EMPTY_APPOINTMENT, effectiveDate: today() });
-      setEngagement({ ...EMPTY_ENGAGEMENT, dateFrom: today() });
-      setSameDtrSignatoryAsName(false);
+      resetAddDialog();
       setPage(1);
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -406,7 +692,8 @@ function EmployeesPage() {
   const copyCreatedAccount = async () => {
     if (!accountText) return;
     try {
-      await navigator.clipboard.writeText(accountText);
+      await copyTextToClipboard(accountText);
+      setCredentialsHandled(true);
       toast.success("Temporary credentials copied");
     } catch {
       toast.error("Unable to copy credentials");
@@ -446,6 +733,7 @@ function EmployeesPage() {
     document.body.append(title, details, note);
     printWindow.focus();
     printWindow.print();
+    setCredentialsHandled(true);
   };
 
   // Dashboard calculations
@@ -489,7 +777,7 @@ function EmployeesPage() {
           <div className="mobile-action-row mt-4 flex flex-wrap gap-2 sm:mt-0">
             <Button
               disabled={!canEdit}
-              onClick={() => setShowAddDialog(true)}
+              onClick={openDirectAddDialog}
               className="bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
             >
               <Plus className="mr-1.5 h-4 w-4" /> Add Employee
@@ -500,7 +788,7 @@ function EmployeesPage() {
         <div className="grid gap-2 md:hidden">
           <Button
             disabled={!canEdit}
-            onClick={() => setShowAddDialog(true)}
+            onClick={openDirectAddDialog}
             className="h-11 rounded-xl bg-blue-600 text-white shadow-sm hover:bg-blue-700"
           >
             <Plus className="mr-1.5 h-4 w-4" /> Add Employee
@@ -743,32 +1031,26 @@ function EmployeesPage() {
           {/* Table */}
           {viewMode === "table" ? (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-border/50 text-muted-foreground uppercase tracking-wider">
-                    <th className="px-5 py-4 font-semibold">FULL NAME</th>
-                    <th className="px-5 py-4 font-semibold">POSITION</th>
-                    <th className="px-5 py-4 font-semibold">DEPARTMENT</th>
-                    <th className="px-5 py-4 font-semibold">EMPLOYMENT TYPE</th>
-                    <th className="px-5 py-4 font-semibold text-right">ACTIONS</th>
+              <table className={dataTableClass}>
+                <thead className={dataTableHeadClass}>
+                  <tr className={dataTableHeadRowClass}>
+                    <th className={dataTableHeaderCellClass}>Full name</th>
+                    <th className={dataTableHeaderCellClass}>Position</th>
+                    <th className={dataTableHeaderCellClass}>Department</th>
+                    <th className={dataTableHeaderCellClass}>Employment type</th>
+                    <th className={cn(dataTableHeaderCellClass, "text-right")}>Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/50">
+                <tbody className={dataTableBodyClass}>
                   {loading ? (
                     <tr>
-                      <td
-                        colSpan={5}
-                        className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
-                      >
+                      <td colSpan={5} className={dataTableEmptyCellClass}>
                         Loading employees...
                       </td>
                     </tr>
                   ) : employees.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={5}
-                        className="px-5 py-12 text-center text-muted-foreground/70 text-sm"
-                      >
+                      <td colSpan={5} className={dataTableEmptyCellClass}>
                         No employee records found.
                       </td>
                     </tr>
@@ -788,17 +1070,17 @@ function EmployeesPage() {
                       return (
                         <tr
                           key={employee.id}
-                          className="cursor-pointer transition-colors hover:bg-blue-50/80 dark:hover:bg-white/[0.06]"
+                          className={cn(dataTableRowClass, "cursor-pointer")}
                           title="Double-click to open 201 file"
                           onDoubleClick={() =>
                             navigate({ to: "/employees/$id", params: { id: employee.id } })
                           }
                         >
-                          <td className="px-5 py-4">
+                          <td className={dataTableCellClass}>
                             <div className="flex items-center gap-3">
                               <div
                                 className={cn(
-                                  "grid h-10 w-10 shrink-0 place-items-center rounded-full text-xs font-bold",
+                                  "grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full text-xs font-bold",
                                   avatarColor,
                                 )}
                               >
@@ -819,17 +1101,19 @@ function EmployeesPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-5 py-4 text-muted-foreground font-medium">
+                          <td
+                            className={cn(dataTableCellClass, "font-medium text-muted-foreground")}
+                          >
                             {employee.position || "-"}
                           </td>
-                          <td className="px-5 py-4 text-muted-foreground">
+                          <td className={cn(dataTableCellClass, "text-muted-foreground")}>
                             {employee.department || "-"}
                           </td>
-                          <td className="px-5 py-4">
+                          <td className={dataTableCellClass}>
                             <EmploymentTypeBadge status={employee.status} />
                           </td>
                           <td
-                            className="px-5 py-4 text-right"
+                            className={cn(dataTableCellClass, "text-right")}
                             onDoubleClick={(event) => event.stopPropagation()}
                           >
                             <div className="inline-flex items-center gap-2 justify-end">
@@ -914,7 +1198,7 @@ function EmployeesPage() {
                       <div className="flex items-start gap-3">
                         <div
                           className={cn(
-                            "grid h-11 w-11 shrink-0 place-items-center rounded-full text-xs font-bold",
+                            "grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full text-xs font-bold",
                             avatarColor,
                           )}
                         >
@@ -1008,309 +1292,656 @@ function EmployeesPage() {
       <Dialog
         open={showAddDialog}
         onOpenChange={(open) => {
-          setShowAddDialog(open);
+          if (!open) requestCloseAddDialog();
         }}
       >
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Add Employee</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-1 gap-3 py-2 md:grid-cols-2">
-            <Field label="Employee ID">
-              <Input
-                value={form.employeeId ?? ""}
-                onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
-                placeholder="Auto-generated if blank"
-              />
-            </Field>
-            <Field label="Biometric ID">
-              <Input
-                value={form.biometricId ?? ""}
-                onChange={(e) => setForm({ ...form, biometricId: e.target.value })}
-                placeholder="Attendance device user ID"
-              />
-            </Field>
-            <Field label="First Name *">
-              <Input
-                value={form.firstname ?? ""}
-                onChange={(e) => setForm({ ...form, firstname: e.target.value })}
-              />
-            </Field>
-            <Field label="Middle Name">
-              <Input
-                value={form.middlename ?? ""}
-                onChange={(e) => setForm({ ...form, middlename: e.target.value })}
-              />
-            </Field>
-            <Field label="Last Name *">
-              <Input
-                value={form.lastname ?? ""}
-                onChange={(e) => setForm({ ...form, lastname: e.target.value })}
-              />
-            </Field>
-            <Field label="Employment Status *">
-              <Select
-                value={form.status ?? "Permanent"}
-                onValueChange={(value) => {
-                  const nextStatus = value as EmployeeRecord["status"];
-                  setForm({ ...form, status: nextStatus });
-                  setEngagement((current) => ({
-                    ...current,
-                    engagementType: engagementTypeForStatus(nextStatus),
-                  }));
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {EMPLOYMENT_STATUSES.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Email">
-              <Input
-                type="email"
-                value={form.email ?? ""}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-              />
-            </Field>
-            <Field label="DTR Noter">
-              <Select
-                value={form.isDtrNoter ? "yes" : "no"}
-                onValueChange={(value) => setForm({ ...form, isDtrNoter: value === "yes" })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="no">No</SelectItem>
-                  <SelectItem value="yes">Yes</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <div className="space-y-2">
-              <Field label="DTR Signatory">
-                <Input
-                  value={form.dtrSignatory ?? ""}
-                  onChange={(e) => {
-                    setSameDtrSignatoryAsName(false);
-                    setForm({ ...form, dtrSignatory: e.target.value });
-                  }}
-                  placeholder={employeeDisplayName}
-                />
-              </Field>
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Checkbox
-                  checked={sameDtrSignatoryAsName}
-                  onCheckedChange={(checked) => {
-                    const enabled = checked === true;
-                    setSameDtrSignatoryAsName(enabled);
-                    setForm({
-                      ...form,
-                      dtrSignatory: enabled ? employeeDisplayName : form.dtrSignatory,
-                    });
-                  }}
-                />
-                Same as employee name
-              </label>
-            </div>
-            {onboardingMode === "plantilla" && (
-              <>
-                <Field label="Vacant Plantilla item *">
-                  <Select
-                    value={appointment.targetPlantillaItemId}
-                    onValueChange={(value) =>
-                      setAppointment({ ...appointment, targetPlantillaItemId: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select an authorized vacancy" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {vacancies.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.itemNumber} — {item.positionTitle}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Appointment effective date *">
-                  <Input
-                    type="date"
-                    value={appointment.effectiveDate}
-                    onChange={(event) =>
-                      setAppointment({ ...appointment, effectiveDate: event.target.value })
-                    }
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-4xl">
+          <form className="contents" onSubmit={openAddReview} noValidate>
+            <DialogHeader className="border-b px-4 py-3 pr-12 sm:px-6">
+              <DialogTitle>
+                {plantillaOrigin ? "Onboard Employee to Plantilla Item" : "Add Employee"}
+              </DialogTitle>
+              <DialogDescription>
+                {addEmployeeStep === "identity"
+                  ? "Start with the employee's identity and contact information."
+                  : plantillaOrigin
+                    ? "Complete the appointment details for the selected vacancy."
+                    : "Choose one employment path and complete its assignment details."}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="px-4 py-4 sm:px-6">
+              {addEmployeeStep === "identity" && (
+                <section className="animate-in fade-in slide-in-from-left-2 duration-300">
+                  <StepHeading
+                    number={1}
+                    title="Employee identity and contact"
+                    description="Enter the information used to create the personal record."
+                    showNextStep
                   />
-                </Field>
-                <Field label="Movement control no.">
-                  <Input
-                    placeholder="Leave blank to auto-generate"
-                    value={appointment.controlNumber}
-                    onChange={(event) =>
-                      setAppointment({
-                        ...appointment,
-                        controlNumber: event.target.value.toUpperCase(),
-                      })
-                    }
-                  />
-                </Field>
-                <Field label="Appointment / authority no.">
-                  <Input
-                    placeholder="Appointment, notice, or authority reference"
-                    value={appointment.authorityNumber}
-                    onChange={(event) =>
-                      setAppointment({ ...appointment, authorityNumber: event.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="Authority date">
-                  <Input
-                    type="date"
-                    value={appointment.authorityDate}
-                    onChange={(event) =>
-                      setAppointment({ ...appointment, authorityDate: event.target.value })
-                    }
-                  />
-                </Field>
-                <div className="md:col-span-2">
-                  <Field label="Movement remarks">
-                    <Textarea
-                      value={appointment.remarks}
-                      onChange={(event) =>
-                        setAppointment({ ...appointment, remarks: event.target.value })
-                      }
-                      placeholder="Optional notes for the appointment draft"
-                    />
-                  </Field>
-                </div>
-                {selectedVacancy && (
-                  <div className="md:col-span-2 grid gap-2 rounded-lg border bg-muted/30 p-3 text-sm sm:grid-cols-2">
-                    <div>
-                      <span className="font-medium">Position:</span> {selectedVacancy.positionTitle}
-                    </div>
-                    <div>
-                      <span className="font-medium">Item:</span> {selectedVacancy.itemNumber}
-                    </div>
-                    <div>
-                      <span className="font-medium">Organization:</span>{" "}
-                      {[
-                        selectedVacancy.sectorName,
-                        selectedVacancy.officeName,
-                        selectedVacancy.divisionName,
-                        selectedVacancy.sectionName,
-                      ]
-                        .filter(Boolean)
-                        .join(" / ") || "Not specified"}
-                    </div>
-                    <div>
-                      <span className="font-medium">Salary:</span>{" "}
-                      {selectedVacancy.salaryGrade
-                        ? `SG ${selectedVacancy.salaryGrade.grade}, Step ${selectedVacancy.salaryGrade.step} — PHP ${(selectedVacancy.authorizedSalary ?? selectedVacancy.salaryGrade.amount).toLocaleString()}`
-                        : "Not specified"}
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <Field htmlFor="add-employee-id" label="Employee ID">
+                      <Input
+                        id="add-employee-id"
+                        value={form.employeeId ?? ""}
+                        onChange={(event) => {
+                          setForm({ ...form, employeeId: event.target.value });
+                          setIsAddDialogDirty(true);
+                        }}
+                        placeholder="Auto-generated if blank"
+                      />
+                    </Field>
+                    <Field htmlFor="add-biometric-id" label="Biometric ID">
+                      <Input
+                        id="add-biometric-id"
+                        value={form.biometricId ?? ""}
+                        onChange={(event) => {
+                          setForm({ ...form, biometricId: event.target.value });
+                          setIsAddDialogDirty(true);
+                        }}
+                        placeholder="Attendance device user ID"
+                      />
+                    </Field>
+                    <Field
+                      htmlFor="add-lastname"
+                      label="Last Name"
+                      required
+                      error={addFormErrors.lastname}
+                    >
+                      <Input
+                        id="add-lastname"
+                        data-add-field="lastname"
+                        aria-invalid={Boolean(addFormErrors.lastname)}
+                        value={form.lastname ?? ""}
+                        onChange={(event) => {
+                          setForm({ ...form, lastname: event.target.value });
+                          setIsAddDialogDirty(true);
+                          setAddFormErrors((current) => ({ ...current, lastname: undefined }));
+                        }}
+                      />
+                    </Field>
+                    <Field
+                      htmlFor="add-firstname"
+                      label="First Name"
+                      required
+                      error={addFormErrors.firstname}
+                    >
+                      <Input
+                        id="add-firstname"
+                        data-add-field="firstname"
+                        aria-invalid={Boolean(addFormErrors.firstname)}
+                        value={form.firstname ?? ""}
+                        onChange={(event) => {
+                          setForm({ ...form, firstname: event.target.value });
+                          setIsAddDialogDirty(true);
+                          setAddFormErrors((current) => ({ ...current, firstname: undefined }));
+                        }}
+                      />
+                    </Field>
+                    <Field htmlFor="add-middlename" label="Middle Name">
+                      <Input
+                        id="add-middlename"
+                        value={form.middlename ?? ""}
+                        onChange={(event) => {
+                          setForm({ ...form, middlename: event.target.value });
+                          setIsAddDialogDirty(true);
+                        }}
+                      />
+                    </Field>
+                    <Field htmlFor="add-email" label="Email" error={addFormErrors.email}>
+                      <Input
+                        id="add-email"
+                        data-add-field="email"
+                        type="email"
+                        aria-invalid={Boolean(addFormErrors.email)}
+                        value={form.email ?? ""}
+                        onChange={(event) => {
+                          setForm({ ...form, email: event.target.value });
+                          setIsAddDialogDirty(true);
+                          setAddFormErrors((current) => ({ ...current, email: undefined }));
+                        }}
+                      />
+                    </Field>
+                    <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2 lg:col-span-3">
+                      <Field htmlFor="add-dtr-noter" label="DTR Noter">
+                        <Select
+                          value={form.isDtrNoter ? "yes" : "no"}
+                          onValueChange={(value) => {
+                            setForm({ ...form, isDtrNoter: value === "yes" });
+                            setIsAddDialogDirty(true);
+                          }}
+                        >
+                          <SelectTrigger id="add-dtr-noter">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="no">No</SelectItem>
+                            <SelectItem value="yes">Yes</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <div className="space-y-2">
+                        <Field htmlFor="add-dtr-signatory" label="DTR Signatory">
+                          <Input
+                            id="add-dtr-signatory"
+                            value={form.dtrSignatory ?? ""}
+                            onChange={(e) => {
+                              setSameDtrSignatoryAsName(false);
+                              setForm({ ...form, dtrSignatory: e.target.value.toUpperCase() });
+                              setIsAddDialogDirty(true);
+                            }}
+                            placeholder={
+                              employeeDtrSignatoryName || "NAME SHOWN ON THE DTR SIGNATURE LINE"
+                            }
+                          />
+                        </Field>
+                        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Checkbox
+                            checked={sameDtrSignatoryAsName}
+                            onCheckedChange={(checked) => {
+                              const enabled = checked === true;
+                              setSameDtrSignatoryAsName(enabled);
+                              setForm({
+                                ...form,
+                                dtrSignatory: enabled
+                                  ? employeeDtrSignatoryName
+                                  : form.dtrSignatory,
+                              });
+                              setIsAddDialogDirty(true);
+                            }}
+                          />
+                          Same as employee name
+                        </label>
+                      </div>
                     </div>
                   </div>
-                )}
-              </>
-            )}
-            {onboardingMode === "engagement" && (
-              <>
-                <Field label="Official organization *">
-                  <Select
-                    value={engagement.organizationId}
-                    onValueChange={(value) =>
-                      setEngagement({ ...engagement, organizationId: value })
+                </section>
+              )}
+
+              {addEmployeeStep === "assignment" && (
+                <section
+                  key={onboardingMode || "unselected"}
+                  className="animate-in fade-in slide-in-from-right-2 duration-300"
+                >
+                  <StepHeading
+                    number={2}
+                    title={
+                      onboardingMode === "plantilla" ? "Plantilla appointment" : "Employment path"
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select sector, office, division, or section" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {organizationUnits.map((row) => (
-                        <SelectItem key={row.id} value={String(row.id)}>
-                          {row.name} ({row.category})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Position / designation *">
-                  <Select
-                    value={engagement.designation}
-                    onValueChange={(value) => setEngagement({ ...engagement, designation: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select position" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {options.positions.map((position) => (
-                        <SelectItem key={position.id} value={position.title}>
-                          {position.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Start date *">
-                  <Input
-                    type="date"
-                    value={engagement.dateFrom}
-                    onChange={(event) =>
-                      setEngagement({ ...engagement, dateFrom: event.target.value })
+                    description={
+                      plantillaOrigin
+                        ? "The selected vacancy will be reserved through an appointment draft."
+                        : "Choose exactly one onboarding path before entering assignment details."
                     }
                   />
-                </Field>
-                <Field label="End date *">
-                  <Input
-                    type="date"
-                    value={engagement.dateTo}
-                    onChange={(event) =>
-                      setEngagement({ ...engagement, dateTo: event.target.value })
+                  {!plantillaOrigin && (
+                    <div
+                      className="mt-3 grid gap-3 sm:grid-cols-2"
+                      data-add-field="mode"
+                      tabIndex={-1}
+                    >
+                      <button
+                        type="button"
+                        disabled={!canCreatePlantillaAppointment}
+                        onClick={() => selectOnboardingMode("plantilla")}
+                        className={cn(
+                          "rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                          onboardingMode === "plantilla"
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-500/10"
+                            : "hover:border-blue-300",
+                        )}
+                      >
+                        <div className="font-semibold">Plantilla appointment</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Create a personal record, inactive account, and appointment draft.
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canCreateEngagement}
+                        onClick={() => selectOnboardingMode("engagement")}
+                        className={cn(
+                          "rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                          onboardingMode === "engagement"
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-500/10"
+                            : "hover:border-blue-300",
+                        )}
+                      >
+                        <div className="font-semibold">Non-Plantilla engagement</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Create a personal record, account, and dated engagement.
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                  {addFormErrors.mode && (
+                    <p className="mt-2 text-sm text-destructive">{addFormErrors.mode}</p>
+                  )}
+                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {onboardingMode === "plantilla" && plantillaOptionsQuery.isError && (
+                      <div className="md:col-span-2">
+                        <OptionLoadError
+                          message={
+                            plantillaOptionsQuery.error instanceof Error
+                              ? plantillaOptionsQuery.error.message
+                              : "Unable to load Plantilla vacancies."
+                          }
+                          retry={() => plantillaOptionsQuery.refetch()}
+                        />
+                      </div>
+                    )}
+                    {onboardingMode === "plantilla" && (
+                      <SearchableSelectField
+                        label={
+                          appointment.targetPlantillaItemId
+                            ? "Change vacancy"
+                            : "Vacant Plantilla item"
+                        }
+                        required
+                        fieldKey="plantillaItem"
+                        error={addFormErrors.plantillaItem}
+                        disabled={plantillaOptionsQuery.isLoading || plantillaOptionsQuery.isError}
+                        placeholder={
+                          plantillaOptionsQuery.isLoading
+                            ? "Loading vacancies..."
+                            : "Select an authorized vacancy"
+                        }
+                        value={appointment.targetPlantillaItemId}
+                        set={(value) => {
+                          setAppointment({
+                            ...appointment,
+                            targetPlantillaItemId: value,
+                            targetSalaryGradeId: "",
+                          });
+                          setEngagement(emptyEngagement());
+                          setIsAddDialogDirty(true);
+                          setAddFormErrors((current) => ({ ...current, plantillaItem: undefined }));
+                        }}
+                        disabledValues={unavailableVacancyIds}
+                        rows={vacancies.map((item) => [
+                          item.id,
+                          item.positionTitle,
+                          `Item ${item.itemNumber}`,
+                          [
+                            item.plantillaTypeName,
+                            item.officeName,
+                            item.divisionName,
+                            item.sectionName,
+                          ]
+                            .filter(Boolean)
+                            .join(" / "),
+                          item.effectiveFrom || item.effectiveTo
+                            ? `Effective ${item.effectiveFrom || "open"} to ${item.effectiveTo || "open"}`
+                            : "",
+                        ])}
+                      />
+                    )}
+                    {hasPlantillaAssignment && (
+                      <>
+                        <Field
+                          htmlFor="add-appointment-date"
+                          label="Appointment start date"
+                          required
+                          error={addFormErrors.appointmentDate}
+                        >
+                          <Input
+                            id="add-appointment-date"
+                            data-add-field="appointmentDate"
+                            type="date"
+                            aria-invalid={Boolean(addFormErrors.appointmentDate)}
+                            value={appointment.effectiveDate}
+                            onChange={(event) => {
+                              setAppointment({ ...appointment, effectiveDate: event.target.value });
+                              setIsAddDialogDirty(true);
+                              setAddFormErrors((current) => ({
+                                ...current,
+                                appointmentDate: undefined,
+                              }));
+                            }}
+                          />
+                        </Field>
+                        <SearchableSelectField
+                          label="Salary Step"
+                          required
+                          fieldKey="salaryStep"
+                          error={addFormErrors.salaryStep}
+                          placeholder="Select starting step"
+                          value={appointment.targetSalaryGradeId}
+                          set={(value) => {
+                            setAppointment({ ...appointment, targetSalaryGradeId: value });
+                            setIsAddDialogDirty(true);
+                            setAddFormErrors((current) => ({
+                              ...current,
+                              salaryStep: undefined,
+                            }));
+                          }}
+                          rows={employeeSalaryOptions.map((row) => [
+                            String(row.id),
+                            `Step ${row.step} — PHP ${row.amount.toLocaleString()} monthly`,
+                          ])}
+                        />
+                        <Field label="Employment status">
+                          <div className="flex h-9 items-center rounded-md border bg-muted/30 px-3 text-sm font-medium">
+                            {derivedPlantillaStatus}
+                          </div>
+                        </Field>
+                      </>
+                    )}
+                    {onboardingMode === "engagement" && (
+                      <>
+                        {organizationOptionsQuery.isError && (
+                          <OptionLoadError
+                            message={
+                              organizationOptionsQuery.error instanceof Error
+                                ? organizationOptionsQuery.error.message
+                                : "Unable to load organization references."
+                            }
+                            retry={() => organizationOptionsQuery.refetch()}
+                          />
+                        )}
+                        {settingsQuery.isError && (
+                          <OptionLoadError
+                            message={
+                              settingsQuery.error instanceof Error
+                                ? settingsQuery.error.message
+                                : "Unable to load positions."
+                            }
+                            retry={() => settingsQuery.refetch()}
+                          />
+                        )}
+                        <Field
+                          htmlFor="add-engagement-type"
+                          label="Engagement type"
+                          required
+                          error={addFormErrors.engagementType}
+                        >
+                          <Select
+                            value={engagement.engagementType}
+                            onValueChange={(value) => {
+                              const engagementType = value as AddEngagementForm["engagementType"];
+                              setEngagement({ ...engagement, engagementType });
+                              setForm({ ...form, status: engagementType });
+                              setIsAddDialogDirty(true);
+                              setAddFormErrors((current) => ({
+                                ...current,
+                                engagementType: undefined,
+                              }));
+                            }}
+                          >
+                            <SelectTrigger
+                              id="add-engagement-type"
+                              data-add-field="engagementType"
+                              aria-invalid={Boolean(addFormErrors.engagementType)}
+                            >
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {[...NON_PLANTILLA_ENGAGEMENT_TYPES]
+                                .sort((left, right) => optionCollator.compare(left, right))
+                                .map((item) => (
+                                  <SelectItem key={item} value={item}>
+                                    {item}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                        <SearchableSelectField
+                          label="Official organization"
+                          required
+                          fieldKey="organization"
+                          error={addFormErrors.organization}
+                          disabled={
+                            organizationOptionsQuery.isLoading || organizationOptionsQuery.isError
+                          }
+                          placeholder={
+                            organizationOptionsQuery.isLoading
+                              ? "Loading organizations..."
+                              : "Select sector, office, division, or section"
+                          }
+                          value={engagement.organizationId}
+                          set={(value) => {
+                            setEngagement({ ...engagement, organizationId: value });
+                            setIsAddDialogDirty(true);
+                            setAddFormErrors((current) => ({
+                              ...current,
+                              organization: undefined,
+                            }));
+                          }}
+                          rows={organizationUnits.map((row) => [
+                            String(row.id),
+                            `${row.name} (${row.category})`,
+                            row.code,
+                            row.parentName,
+                          ])}
+                        />
+                        <SearchableSelectField
+                          label="Position / designation"
+                          required
+                          fieldKey="designation"
+                          error={addFormErrors.designation}
+                          disabled={settingsQuery.isLoading || settingsQuery.isError}
+                          placeholder={
+                            settingsQuery.isLoading ? "Loading positions..." : "Select a position"
+                          }
+                          value={engagement.designation}
+                          set={(value) => {
+                            setEngagement({ ...engagement, designation: value });
+                            setIsAddDialogDirty(true);
+                            setAddFormErrors((current) => ({ ...current, designation: undefined }));
+                          }}
+                          rows={[...options.positions]
+                            .sort((left, right) => optionCollator.compare(left.title, right.title))
+                            .map((position) => [position.title, position.title])}
+                        />
+                        <Field
+                          label="Date Range"
+                          required
+                          error={addFormErrors.engagementStart || addFormErrors.engagementEnd}
+                        >
+                          <DateRangePicker
+                            from={engagement.dateFrom}
+                            to={engagement.dateTo}
+                            onApply={(dateFrom, dateTo) => {
+                              setEngagement({ ...engagement, dateFrom, dateTo });
+                              setIsAddDialogDirty(true);
+                              setAddFormErrors((current) => ({
+                                ...current,
+                                engagementStart: undefined,
+                                engagementEnd: undefined,
+                              }));
+                            }}
+                          />
+                        </Field>
+                      </>
+                    )}
+                  </div>
+                </section>
+              )}
+            </div>
+            <DialogFooter className="border-t bg-background px-4 py-3 sm:px-6">
+              {addEmployeeStep === "identity" ? (
+                <>
+                  <Button type="button" variant="outline" onClick={requestCloseAddDialog}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      continueToAssignment();
+                    }}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    Continue to Employment
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setAddEmployeeStep("identity")}
+                  >
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Back
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={
+                      isCreatingEmployee ||
+                      (onboardingMode === "plantilla" && !canCreatePlantillaAppointment) ||
+                      (onboardingMode === "engagement" && !canCreateEngagement)
                     }
-                  />
-                </Field>
-              </>
-            )}
-            {onboardingMode === "personal" && (
-              <div className="md:col-span-2 rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-                This creates a PDS/201 record only. No office, position, Plantilla occupancy,
-                employment status, or login account will be assigned.
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowAddDialog(false);
-              }}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    Review Employee Details
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showAddReviewDialog}
+        onOpenChange={(open) => {
+          if (!open) returnToAddForm();
+        }}
+      >
+        <DialogContent className="grid max-h-[calc(100dvh-1.5rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="border-b px-5 py-4 pr-12">
+            <DialogTitle>Review Employee Details</DialogTitle>
+            <DialogDescription>
+              Confirm the information below before creating the employee records.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 space-y-3 overflow-y-auto px-5 py-4">
+            <ReviewSection title="Employee information">
+              <ReviewDetail
+                label="Full name"
+                value={
+                  [form.firstname, form.middlename, form.lastname]
+                    .map((value) => value?.trim())
+                    .filter(Boolean)
+                    .join(" ") || "—"
+                }
+                wide
+              />
+              <ReviewDetail
+                label="Employee ID"
+                value={form.employeeId?.trim() || "Auto-generated"}
+              />
+              <ReviewDetail
+                label="Biometric ID"
+                value={form.biometricId?.trim() || "Not provided"}
+              />
+              <ReviewDetail label="Email" value={form.email?.trim() || "Not provided"} />
+              <ReviewDetail label="DTR Noter" value={form.isDtrNoter ? "Yes" : "No"} />
+              <ReviewDetail
+                label="DTR Signatory"
+                value={form.dtrSignatory?.trim() || "Not provided"}
+                wide
+              />
+            </ReviewSection>
+
+            <ReviewSection
+              title={
+                onboardingMode === "plantilla"
+                  ? "Plantilla appointment"
+                  : "Non-Plantilla engagement"
+              }
             >
-              Cancel
+              {onboardingMode === "plantilla" ? (
+                <>
+                  <ReviewDetail
+                    label="Plantilla item"
+                    value={
+                      selectedVacancy
+                        ? `${selectedVacancy.positionTitle} — Item ${selectedVacancy.itemNumber}`
+                        : "—"
+                    }
+                    wide
+                  />
+                  <ReviewDetail
+                    label="Organization"
+                    value={
+                      selectedVacancy
+                        ? [
+                            selectedVacancy.officeName,
+                            selectedVacancy.divisionName,
+                            selectedVacancy.sectionName,
+                          ]
+                            .filter(Boolean)
+                            .join(" / ") || "Not specified"
+                        : "—"
+                    }
+                    wide
+                  />
+                  <ReviewDetail
+                    label="Classification"
+                    value={selectedVacancy?.plantillaTypeName || "Not specified"}
+                  />
+                  <ReviewDetail label="Employment status" value={derivedPlantillaStatus} />
+                  <ReviewDetail label="Appointment date" value={appointment.effectiveDate || "—"} />
+                  <ReviewDetail
+                    label="Salary step"
+                    value={(() => {
+                      const salary = employeeSalaryOptions.find(
+                        (row) => String(row.id) === appointment.targetSalaryGradeId,
+                      );
+                      return salary
+                        ? `Step ${salary.step} — PHP ${salary.amount.toLocaleString()} monthly`
+                        : "—";
+                    })()}
+                  />
+                  <ReviewDetail
+                    label="Employee account"
+                    value="Inactive until the appointment is posted and effective"
+                    wide
+                  />
+                </>
+              ) : (
+                <>
+                  <ReviewDetail label="Engagement type" value={engagement.engagementType || "—"} />
+                  <ReviewDetail label="Position" value={engagement.designation || "—"} />
+                  <ReviewDetail
+                    label="Organization"
+                    value={
+                      organizationUnits.find((row) => String(row.id) === engagement.organizationId)
+                        ?.name || "—"
+                    }
+                    wide
+                  />
+                  <ReviewDetail label="Start date" value={engagement.dateFrom || "—"} />
+                  <ReviewDetail label="End date" value={engagement.dateTo || "—"} />
+                  <ReviewDetail
+                    label="Employee account"
+                    value="Activation follows the engagement dates"
+                    wide
+                  />
+                </>
+              )}
+            </ReviewSection>
+          </div>
+          <DialogFooter className="border-t bg-background px-5 py-3">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isCreatingEmployee}
+              onClick={returnToAddForm}
+            >
+              Back to Edit
             </Button>
             <Button
-              disabled={
-                !canEdit ||
-                isCreatingEmployee ||
-                !form.firstname?.trim() ||
-                !form.lastname?.trim() ||
-                (onboardingMode === "plantilla" &&
-                  (!appointment.targetPlantillaItemId || !appointment.effectiveDate)) ||
-                (onboardingMode === "engagement" &&
-                  (!engagement.organizationId ||
-                    !engagement.designation.trim() ||
-                    !engagement.dateFrom ||
-                    !engagement.dateTo))
-              }
-              onClick={submit}
+              type="button"
+              disabled={isCreatingEmployee}
               className="bg-blue-600 text-white hover:bg-blue-700"
+              onClick={submit}
             >
-              {isCreatingEmployee ? "Adding..." : "Add"}
+              {isCreatingEmployee ? "Creating..." : "Confirm & Create"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1318,7 +1949,14 @@ function EmployeesPage() {
 
       <Dialog
         open={Boolean(createdAccount)}
-        onOpenChange={(open) => !open && setCreatedAccount(null)}
+        onOpenChange={(open) => {
+          if (open) return;
+          if (!credentialsHandled) {
+            toast.error("Copy, print, or acknowledge the temporary credentials before closing");
+            return;
+          }
+          setCreatedAccount(null);
+        }}
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -1344,6 +1982,13 @@ function EmployeesPage() {
                     " The account will remain inactive until the approved appointment becomes effective."}
                 </p>
               </div>
+              <label className="flex items-start gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={credentialsHandled}
+                  onCheckedChange={(checked) => setCredentialsHandled(checked === true)}
+                />
+                I have copied, printed, or securely recorded these temporary credentials.
+              </label>
             </div>
           )}
           <DialogFooter className="gap-2 sm:justify-between">
@@ -1357,7 +2002,15 @@ function EmployeesPage() {
                 Print
               </Button>
             </div>
-            <Button onClick={() => setCreatedAccount(null)}>Done</Button>
+            <Button
+              disabled={!credentialsHandled}
+              onClick={() => {
+                setCreatedAccount(null);
+                setCredentialsHandled(false);
+              }}
+            >
+              Done
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1365,11 +2018,203 @@ function EmployeesPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  required = false,
+  error,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  required?: boolean;
+  error?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="space-y-1">
-      <Label>{label}</Label>
+      <Label htmlFor={htmlFor}>
+        {label}
+        {required && (
+          <>
+            <span aria-hidden="true"> *</span>
+            <span className="sr-only"> required</span>
+          </>
+        )}
+      </Label>
       {children}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+function SearchableSelectField({
+  label,
+  value,
+  set,
+  rows,
+  placeholder = "Select...",
+  fieldKey,
+  required = false,
+  error,
+  disabled = false,
+  disabledValues = new Set<string>(),
+}: {
+  label: string;
+  value: string;
+  set: (value: string) => void;
+  rows: readonly (readonly string[])[];
+  placeholder?: string;
+  fieldKey?: AddFormErrorKey;
+  required?: boolean;
+  error?: string;
+  disabled?: boolean;
+  disabledValues?: ReadonlySet<string>;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerId = useId();
+  const selectedRow = rows.find(([id]) => id === value);
+
+  return (
+    <Field label={label} htmlFor={triggerId} required={required} error={error}>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            id={triggerId}
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            aria-invalid={Boolean(error)}
+            disabled={disabled}
+            data-add-field={fieldKey}
+            className="h-9 w-full justify-between px-3 font-normal"
+          >
+            <span className={cn("truncate", !selectedRow && "text-muted-foreground")}>
+              {selectedRow?.[1] || placeholder}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          className="w-[--radix-popover-trigger-width] max-h-[min(22rem,calc(100dvh-8rem))] overflow-hidden p-0"
+          onWheelCapture={(event) => event.stopPropagation()}
+          onTouchMoveCapture={(event) => event.stopPropagation()}
+        >
+          <Command
+            className="max-h-[min(22rem,calc(100dvh-8rem))]"
+            filter={(candidateValue, search) => {
+              const row = rows.find(([id]) => id === candidateValue);
+              if (!row) return 0;
+              return row.join(" ").toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
+            }}
+          >
+            <CommandInput placeholder={`Search ${label.replace(/\s+\*$/, "").toLowerCase()}...`} />
+            <CommandList className="max-h-[min(18rem,calc(100dvh-12rem))] overscroll-contain scrollbar-thin">
+              <CommandEmpty>No matches found.</CommandEmpty>
+              <CommandGroup>
+                {rows.map(([id, name, ...details]) => (
+                  <CommandItem
+                    key={id}
+                    value={id}
+                    disabled={disabledValues.has(id)}
+                    onSelect={() => {
+                      set(id);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check className={cn("h-4 w-4", value === id ? "opacity-100" : "opacity-0")} />
+                    <span className="min-w-0">
+                      <span className="block truncate">{name}</span>
+                      {details.filter(Boolean).length > 0 && (
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {details.filter(Boolean).join(" · ")}
+                          {disabledValues.has(id) ? " · Unavailable for selected date" : ""}
+                        </span>
+                      )}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </Field>
+  );
+}
+
+function StepHeading({
+  number,
+  title,
+  description,
+  showNextStep = false,
+}: {
+  number: number;
+  title: string;
+  description: string;
+  showNextStep?: boolean;
+}) {
+  return (
+    <div
+      className={cn("relative flex gap-3", showNextStep && "items-start justify-between")}
+      aria-label={showNextStep ? "Step 1 of 2" : undefined}
+    >
+      {showNextStep && (
+        <div className="absolute left-3.5 right-3.5 top-3.5 h-px bg-border" aria-hidden="true" />
+      )}
+      <div className="relative z-10 flex gap-3">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+          {number}
+        </div>
+        <div className={cn(showNextStep && "bg-background pr-3")}>
+          <h3 className="font-semibold">{title}</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      {showNextStep && (
+        <div className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+          2
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="overflow-hidden rounded-lg border bg-card">
+      <h3 className="border-b bg-muted/30 px-4 py-2.5 text-sm font-semibold">{title}</h3>
+      <dl className="grid sm:grid-cols-2">{children}</dl>
+    </section>
+  );
+}
+
+function ReviewDetail({
+  label,
+  value,
+  wide = false,
+}: {
+  label: string;
+  value: string;
+  wide?: boolean;
+}) {
+  return (
+    <div className={cn("border-b px-4 py-2.5 last:border-b-0", wide && "sm:col-span-2")}>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 break-words text-sm font-medium text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+function OptionLoadError({ message, retry }: { message: string; retry: () => void }) {
+  return (
+    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+      <p className="text-destructive">{message}</p>
+      <Button type="button" variant="outline" size="sm" className="mt-2" onClick={retry}>
+        Retry
+      </Button>
     </div>
   );
 }

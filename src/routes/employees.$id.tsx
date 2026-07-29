@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WorkflowStatusBadge } from "@/components/ui/status-badge";
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -62,7 +63,7 @@ import {
   type EmployeeLeaveResponse,
   type LeaveBalance,
 } from "@/lib/leave-api";
-import { cn, formatDisplayDate, formatEmployeeName } from "@/lib/utils";
+import { cn, formatDisplayDate, formatDtrSignatoryName, formatEmployeeName } from "@/lib/utils";
 
 export const Route = createFileRoute("/employees/$id")({
   component: EmployeeFile,
@@ -248,6 +249,15 @@ const SECTION_FIELDS: Record<string, FieldConfig[]> = {
   ],
 };
 
+const SECTION_DATE_RANGES: Record<
+  string,
+  { from: string; to: string; label: string; allowOpenEnded?: boolean }
+> = {
+  work: { from: "dateFrom", to: "dateTo", label: "Date Range", allowOpenEnded: true },
+  service: { from: "from", to: "to", label: "Date Range", allowOpenEnded: true },
+  ipcr: { from: "from", to: "to", label: "Date Range" },
+};
+
 function EmployeeFile() {
   const { id } = useParams({ from: "/employees/$id" });
   const { can, hasPermission, user } = useAuth();
@@ -311,7 +321,8 @@ function EmployeeFile() {
     );
   }
 
-  const canEditOwnProfile = hasPermission("self_service.access") && user?.employeeId === employee.id;
+  const canEditOwnProfile =
+    hasPermission("self_service.access") && user?.employeeId === employee.id;
   const canEditProfile = canManageEmployees || canEditOwnProfile;
   const canEditSection =
     canManageEmployees || (canEditOwnProfile && SECTION_BY_TAB[active] === "work");
@@ -326,6 +337,13 @@ function EmployeeFile() {
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <Avatar className="h-9 w-9 shrink-0">
+          {employee.photoUrl && (
+            <AvatarImage
+              src={employee.photoUrl}
+              alt={formatEmployeeName(employee)}
+              className="object-cover"
+            />
+          )}
           <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
             {employee.firstname[0] || "?"}
             {employee.lastname[0] || "?"}
@@ -442,7 +460,7 @@ function CurrentAssignmentCard({
             label="Salary / rate"
             value={
               substantive.salaryGrade
-                ? `SG ${substantive.salaryGrade.grade}, Step ${substantive.salaryGrade.step} · PHP ${substantive.salaryGrade.amount.toLocaleString()}`
+                ? `SG ${substantive.salaryGrade.grade}, Step ${substantive.salaryGrade.step} · Monthly PHP ${substantive.salaryGrade.amount.toLocaleString()}`
                 : substantive.rate != null
                   ? `PHP ${substantive.rate.toLocaleString()}`
                   : "-"
@@ -687,9 +705,9 @@ function PersonalTab({
           </Field>
           <Field label="DTR Signatory">
             <Input
-              value={form.dtrSignatory}
-              onChange={(e) => set("dtrSignatory", e.target.value)}
-              placeholder={formatEmployeeName(form, "")}
+              value={form.dtrSignatory.toUpperCase()}
+              onChange={(e) => set("dtrSignatory", e.target.value.toUpperCase())}
+              placeholder={formatDtrSignatoryName(form)}
             />
           </Field>
           <Field label="Agency">
@@ -773,36 +791,50 @@ function PersonalTab({
           </div>
           <Field label="Photo" className="justify-self-start xl:justify-self-end xl:pt-1">
             <div className="flex flex-col items-start gap-2">
-              <div className="grid h-24 w-24 place-items-center overflow-hidden rounded-lg border border-dashed border-border bg-muted/30">
+              <div className="grid h-24 w-24 place-items-center overflow-hidden rounded-full border border-dashed border-border bg-muted/30">
                 {form.photoUrl ? (
-                  <img src={form.photoUrl} alt="Employee" className="h-full w-full object-cover" />
+                  <img
+                    src={form.photoUrl}
+                    alt={formatEmployeeName(form)}
+                    className="h-full w-full rounded-full object-cover"
+                  />
                 ) : (
                   <span className="px-2 text-center text-xs text-muted-foreground">No photo</span>
                 )}
               </div>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
-                <Upload className="h-4 w-4" /> Upload
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
-                    if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
-                      toast.error("Photo must be PNG, JPEG, WebP, or GIF");
-                      return;
-                    }
-                    if (file.size > MAX_PROFILE_IMAGE_BYTES) {
-                      toast.error("Photo must be 2 MB or smaller");
-                      return;
-                    }
-                    const reader = new FileReader();
-                    reader.onload = () => set("photoUrl", String(reader.result || ""));
-                    reader.readAsDataURL(file);
-                  }}
-                />
-              </label>
+              <div className="flex flex-wrap gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
+                  <Upload className="h-4 w-4" /> Upload
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
+                        toast.error("Photo must be PNG, JPEG, WebP, or GIF");
+                        return;
+                      }
+                      if (file.size > MAX_PROFILE_IMAGE_BYTES) {
+                        toast.error("Photo must be 2 MB or smaller");
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => set("photoUrl", String(reader.result || ""));
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={!canEdit || !form.photoUrl}
+                  onClick={() => set("photoUrl", "")}
+                  className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Trash2 className="h-4 w-4" /> Clear photo
+                </button>
+              </div>
             </div>
           </Field>
         </div>
@@ -930,6 +962,7 @@ function SectionTab({
   onChange: () => void;
 }) {
   const fields = useMemo(() => SECTION_FIELDS[section] || [], [section]);
+  const dateRange = SECTION_DATE_RANGES[section];
   const blank = useMemo(() => Object.fromEntries(fields.map((field) => [field.key, ""])), [fields]);
   const [form, setForm] = useState<Record<string, string | number | boolean | null>>(blank);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1059,20 +1092,41 @@ function SectionTab({
           </DialogHeader>
           <div className="overflow-y-auto px-5 py-4">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {fields.map((field) => (
-                <Field
-                  key={field.key}
-                  label={field.label}
-                  className={field.type === "textarea" ? "md:col-span-2" : undefined}
-                >
-                  <SectionInput
-                    field={field}
-                    value={String(form[field.key] ?? "")}
-                    onChange={(value) => set(field.key, value)}
-                    onFileChange={(file) => setFile(field.key, file)}
-                  />
-                </Field>
-              ))}
+              {fields.map((field) => {
+                if (dateRange && field.key === dateRange.to) return null;
+                if (dateRange && field.key === dateRange.from) {
+                  return (
+                    <Field key={field.key} label={dateRange.label} className="md:col-span-2">
+                      <DateRangePicker
+                        from={String(form[dateRange.from] ?? "")}
+                        to={String(form[dateRange.to] ?? "")}
+                        allowOpenEnded={dateRange.allowOpenEnded}
+                        onApply={(from, to) =>
+                          setForm((current) => ({
+                            ...current,
+                            [dateRange.from]: from,
+                            [dateRange.to]: to,
+                          }))
+                        }
+                      />
+                    </Field>
+                  );
+                }
+                return (
+                  <Field
+                    key={field.key}
+                    label={field.label}
+                    className={field.type === "textarea" ? "md:col-span-2" : undefined}
+                  >
+                    <SectionInput
+                      field={field}
+                      value={String(form[field.key] ?? "")}
+                      onChange={(value) => set(field.key, value)}
+                      onFileChange={(file) => setFile(field.key, file)}
+                    />
+                  </Field>
+                );
+              })}
             </div>
           </div>
           <DialogFooter className="flex-row flex-wrap justify-end gap-2 border-t border-border px-5 py-4 sm:space-x-0">

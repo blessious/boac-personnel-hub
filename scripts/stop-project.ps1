@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$ports = @(47100, 47101)
+$ports = @(47101, 47102)
 $seen = @{}
 $targets = New-Object System.Collections.Generic.List[object]
 
@@ -35,7 +35,7 @@ function Is-ProjectProcess($commandLine) {
     $normalizedCommand.Contains("server\dev.mjs") -or
     $normalizedCommand.Contains("server/index.mjs") -or
     $normalizedCommand.Contains("server\index.mjs") -or
-    ($normalizedCommand.Contains("vite") -and $normalizedCommand.Contains("47100"))
+    ($normalizedCommand.Contains("vite") -and $normalizedCommand.Contains("47101"))
   )
 }
 
@@ -63,7 +63,7 @@ foreach ($port in $ports) {
 }
 
 if ($targets.Count -eq 0) {
-  Write-Host "[INFO] No HRIS dev listeners found on ports 47100 or 47101."
+  Write-Host "[INFO] No HRIS dev listeners found on ports 47101 or 47102."
   exit 0
 }
 

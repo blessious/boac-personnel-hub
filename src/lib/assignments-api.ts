@@ -1,11 +1,5 @@
 import { api } from "@/lib/api";
 
-export type AssignmentSummary = {
-  awaitingAssignment: number;
-  scheduledMovements: number;
-  expiringEngagements: number;
-};
-
 export type NonPlantillaEngagement = {
   id: string;
   employeeId: string;
@@ -41,9 +35,6 @@ export type EngagementPayload = {
   supervisor: string;
   remarks: string;
 };
-
-export const getAssignmentSummary = (options: RequestInit = {}) =>
-  api<AssignmentSummary>("/api/assignments/summary", options);
 
 export const listEngagements = (employeeId = "", status = "all", options: RequestInit = {}) =>
   api<{ engagements: NonPlantillaEngagement[] }>(

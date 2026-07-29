@@ -18,6 +18,13 @@ export const MOVEMENT_ACTION_TYPES = [
 ];
 const ITEM_ACTIONS = new Set(["Original Appointment", "Promotion", "Transfer"]);
 const PROFILE_ACTIONS = new Set(["Detail", "Designation"]);
+const today = () => {
+  const value = new Date();
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const date = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${date}`;
+};
 const TEMPORARY_ACTIONS = new Set(["Detail", "Designation", "Reassignment", "Job Rotation"]);
 const SEPARATION_ACTIONS = new Set(["Resignation", "Retirement", "Termination", "Death"]);
 const dateOnly = (value) => (value ? new Date(value).toISOString().slice(0, 10) : null);
@@ -128,7 +135,7 @@ export async function initializeMovementSchema(pool, employeeIdDefinition) {
     actor_id INT UNSIGNED NULL,
     remarks TEXT NULL,
     snapshot_json JSON NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     INDEX idx_movement_events (movement_id,created_at),
     FOREIGN KEY (movement_id) REFERENCES personnel_movements(id) ON DELETE RESTRICT,
     FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
@@ -187,6 +194,7 @@ const movementRow = (row) => ({
   sourceSnapshot: parseJson(row.source_snapshot_json),
   beforeSnapshot: parseJson(row.posted_before_snapshot_json),
   afterSnapshot: parseJson(row.posted_after_snapshot_json),
+  preparedById: row.prepared_by ? Number(row.prepared_by) : null,
   preparedBy: row.prepared_by_name || "",
   reviewedBy: row.reviewed_by_name || "",
   approvedBy: row.approved_by_name || "",
@@ -228,7 +236,15 @@ export function createMovementHandlers({
     );
     if (!employee) throw new Error("Select a valid employee");
     const [[occupancy]] = await connection.execute(
-      `SELECT po.id,po.plantilla_item_id,po.date_from,pi.item_number,pi.position_id,pi.salary_grade_id,pi.authorized_salary FROM plantilla_occupancies po JOIN plantilla_items pi ON pi.id=po.plantilla_item_id WHERE po.employee_id=:employeeId AND po.status='Active' ${lock ? "FOR UPDATE" : ""}`,
+      `SELECT po.id,po.plantilla_item_id,po.date_from,pi.item_number,pi.position_id,
+              pi.salary_grade_id item_salary_grade_id,pi.authorized_salary item_authorized_salary,
+              COALESCE(po.current_salary_grade_id,pi.salary_grade_id) salary_grade_id,
+              current_sg.amount*12 authorized_salary
+         FROM plantilla_occupancies po
+         JOIN plantilla_items pi ON pi.id=po.plantilla_item_id
+         LEFT JOIN salary_grades current_sg
+           ON current_sg.id=COALESCE(po.current_salary_grade_id,pi.salary_grade_id)
+        WHERE po.employee_id=:employeeId AND po.status='Active' ${lock ? "FOR UPDATE" : ""}`,
       { employeeId },
     );
     const [[engagement]] = await connection.execute(
@@ -259,6 +275,13 @@ export function createMovementHandlers({
             salaryGradeId: occupancy.salary_grade_id ? Number(occupancy.salary_grade_id) : null,
             authorizedSalary:
               occupancy.authorized_salary === null ? null : Number(occupancy.authorized_salary),
+            itemSalaryGradeId: occupancy.item_salary_grade_id
+              ? Number(occupancy.item_salary_grade_id)
+              : null,
+            itemAuthorizedSalary:
+              occupancy.item_authorized_salary === null
+                ? null
+                : Number(occupancy.item_authorized_salary),
           }
         : null,
       engagement: engagement
@@ -318,6 +341,8 @@ export function createMovementHandlers({
     const targetSalaryGradeId = positiveId(body.targetSalaryGradeId, "target salary grade");
     if (ITEM_ACTIONS.has(actionType) && !targetPlantillaItemId)
       throw new Error(`${actionType} requires a target plantilla item`);
+    if (ITEM_ACTIONS.has(actionType) && !targetSalaryGradeId)
+      throw new Error(`${actionType} requires an employee salary step`);
     if (PROFILE_ACTIONS.has(actionType) && !targetPositionId)
       throw new Error(`${actionType} requires a target position`);
     if (actionType === "Reclassification" && (!targetPositionId || !targetSalaryGradeId))
@@ -333,12 +358,16 @@ export function createMovementHandlers({
       throw new Error(`${actionType} requires a target organizational assignment`);
     if (actionType === "Step Increment" && !targetSalaryGradeId)
       throw new Error("Step Increment requires a target salary grade and step");
+    let targetItem = null;
     if (targetPlantillaItemId) {
-      const [[item]] = await pool.execute(
-        "SELECT id,item_status FROM plantilla_items WHERE id=:targetPlantillaItemId",
+      [[targetItem]] = await pool.execute(
+        `SELECT pi.id,pi.item_status,sg.ordinance,sg.grade
+           FROM plantilla_items pi
+           LEFT JOIN salary_grades sg ON sg.id=pi.salary_grade_id
+          WHERE pi.id=:targetPlantillaItemId`,
         { targetPlantillaItemId },
       );
-      if (!item || item.item_status !== "Active")
+      if (!targetItem || targetItem.item_status !== "Active")
         throw new Error("Select an active target plantilla item");
       const params = { targetPlantillaItemId };
       let excludeSql = "";
@@ -369,15 +398,37 @@ export function createMovementHandlers({
       )[0][0]
     )
       throw new Error("Select a valid target position");
-    if (
-      targetSalaryGradeId &&
-      !(
-        await pool.execute("SELECT id FROM salary_grades WHERE id=:targetSalaryGradeId", {
-          targetSalaryGradeId,
-        })
-      )[0][0]
-    )
-      throw new Error("Select a valid target salary grade");
+    if (targetSalaryGradeId) {
+      const [[targetSalaryGrade]] = await pool.execute(
+        "SELECT id,ordinance,grade,step,is_active FROM salary_grades WHERE id=:targetSalaryGradeId",
+        { targetSalaryGradeId },
+      );
+      if (!targetSalaryGrade) throw new Error("Select a valid target salary grade");
+      if (!targetSalaryGrade.is_active)
+        throw new Error("Select a target salary grade from the active salary table");
+      if (
+        ITEM_ACTIONS.has(actionType) &&
+        (targetSalaryGrade.ordinance !== targetItem?.ordinance ||
+          Number(targetSalaryGrade.grade) !== Number(targetItem?.grade))
+      )
+        throw new Error("Employee salary step must use the target Plantilla item's salary grade");
+      if (actionType === "Step Increment") {
+        const source = await currentSnapshot(employeeId);
+        if (!source.occupancy?.salaryGradeId)
+          throw new Error("Step Increment requires an active Plantilla salary assignment");
+        const [[currentSalaryGrade]] = await pool.execute(
+          "SELECT ordinance,grade,step FROM salary_grades WHERE id=:id",
+          { id: source.occupancy.salaryGradeId },
+        );
+        if (
+          !currentSalaryGrade ||
+          targetSalaryGrade.ordinance !== currentSalaryGrade.ordinance ||
+          Number(targetSalaryGrade.grade) !== Number(currentSalaryGrade.grade) ||
+          Number(targetSalaryGrade.step) !== Number(currentSalaryGrade.step) + 1
+        )
+          throw new Error("Select the next step in the employee's current salary grade");
+      }
+    }
     const documents = Array.isArray(body.supportingDocuments)
       ? body.supportingDocuments
           .map((x) => ({
@@ -453,7 +504,23 @@ export function createMovementHandlers({
   handlers.events = async (req, res, id) => {
     if (!(await requireEmployeeRead(req, res))) return;
     const [rows] = await pool.execute(
-      "SELECT ev.*,u.name actor_name FROM personnel_movement_events ev LEFT JOIN users u ON u.id=ev.actor_id WHERE movement_id=:id ORDER BY created_at DESC,id DESC",
+      `SELECT ev.*,u.name actor_name
+         FROM personnel_movement_events ev
+    LEFT JOIN users u ON u.id=ev.actor_id
+        WHERE movement_id=:id
+        ORDER BY ev.created_at DESC,
+          CASE ev.to_status
+            WHEN 'Reversed' THEN 80
+            WHEN 'Posted' THEN 70
+            WHEN 'Scheduled' THEN 60
+            WHEN 'Approved' THEN 50
+            WHEN 'Reviewed' THEN 40
+            WHEN 'Submitted' THEN 30
+            WHEN 'Draft' THEN 20
+            WHEN 'Rejected' THEN 10
+            ELSE 0
+          END DESC,
+          ev.id DESC`,
       { id },
     );
     return json(res, 200, {
@@ -556,7 +623,11 @@ export function createMovementHandlers({
         const allowed = Array.isArray(fromAllowed) ? fromAllowed : [fromAllowed];
         if (!allowed.includes(row.status))
           throw new Error(`A ${row.status} movement cannot be ${action}ed`);
-        if (["review", "approve"].includes(action) && Number(row.prepared_by) === Number(user.id))
+        if (
+          ["review", "approve"].includes(action) &&
+          Number(row.prepared_by) === Number(user.id) &&
+          user.role !== "Super Admin"
+        )
           throw new Error("The movement preparer cannot review or approve the same transaction");
         if (action === "reject" && !remarks) throw new Error("Rejection remarks are required");
         if (action === "return" && !remarks)
@@ -633,7 +704,7 @@ export function createMovementHandlers({
       if (!["Approved", "Scheduled"].includes(movement.status))
         throw new Error("Only approved or scheduled movements can be posted");
       const effectiveDate = dateOnly(movement.effective_date);
-      const currentDate = new Date().toISOString().slice(0, 10);
+      const currentDate = today();
       if (effectiveDate > currentDate) {
         if (movement.status === "Scheduled") {
           throw new Error("Scheduled movement cannot be posted before its effective date");
@@ -669,6 +740,8 @@ export function createMovementHandlers({
           "currentOrganizationId",
         ].every((field) => before.employee[field] === source.employee[field]) &&
         before.occupancy?.id === source.occupancy?.id &&
+        before.occupancy?.salaryGradeId === source.occupancy?.salaryGradeId &&
+        before.occupancy?.itemSalaryGradeId === source.occupancy?.itemSalaryGradeId &&
         before.engagement?.id === source.engagement?.id;
       if (!sourceMatches)
         throw new Error(
@@ -698,6 +771,7 @@ export function createMovementHandlers({
         throw new Error("Effective date cannot be earlier than the active engagement start date");
       let postedOccupancyId = null,
         changedItem = null,
+        changedOccupancySalary = null,
         temporaryAssignmentId = null;
       if (ITEM_ACTIONS.has(movement.action_type)) {
         const [[target]] = await connection.execute(
@@ -706,6 +780,16 @@ export function createMovementHandlers({
         );
         if (!target || target.item_status !== "Active")
           throw new Error("Target plantilla item is no longer active");
+        const targetEffectiveFrom = dateOnly(target.effective_from);
+        const targetEffectiveTo = dateOnly(target.effective_to);
+        if (targetEffectiveFrom && effectiveDate < targetEffectiveFrom)
+          throw new Error(
+            `Movement effective date cannot be before the Plantilla item effectivity (${targetEffectiveFrom})`,
+          );
+        if (targetEffectiveTo && effectiveDate > targetEffectiveTo)
+          throw new Error(
+            `Movement effective date cannot be after the Plantilla item effectivity (${targetEffectiveTo})`,
+          );
         const [[busy]] = await connection.execute(
           "SELECT id FROM plantilla_occupancies WHERE plantilla_item_id=:targetId AND status='Active' FOR UPDATE",
           { targetId: target.id },
@@ -724,11 +808,12 @@ export function createMovementHandlers({
         if (!before.occupancy || before.occupancy.itemId !== target.id) {
           postedOccupancyId = crypto.randomUUID();
           await connection.execute(
-            "INSERT INTO plantilla_occupancies(id,plantilla_item_id,employee_id,date_from,movement_type,appointment_number,remarks,created_by) VALUES(:oid,:itemId,:employeeId,:dateFrom,:movementType,:authority,:remarks,:userId)",
+            "INSERT INTO plantilla_occupancies(id,plantilla_item_id,employee_id,current_salary_grade_id,date_from,movement_type,appointment_number,remarks,created_by) VALUES(:oid,:itemId,:employeeId,:salaryGradeId,:dateFrom,:movementType,:authority,:remarks,:userId)",
             {
               oid: postedOccupancyId,
               itemId: target.id,
               employeeId: movement.employee_id,
+              salaryGradeId: movement.target_salary_grade_id,
               dateFrom: dateOnly(movement.effective_date),
               movementType: movement.action_type,
               authority: movement.authority_number,
@@ -776,10 +861,10 @@ export function createMovementHandlers({
             userId: user.id,
           },
         );
-        if (target.salary_grade_id) {
+        if (movement.target_salary_grade_id) {
           const [[grade]] = await connection.execute(
             "SELECT ordinance,grade,step,amount FROM salary_grades WHERE id=:id",
-            { id: target.salary_grade_id },
+            { id: movement.target_salary_grade_id },
           );
           await connection.execute(
             "INSERT INTO employee_salary_records(id,employee_id,payload) VALUES(:id,:employeeId,:payload)",
@@ -792,8 +877,8 @@ export function createMovementHandlers({
                 ordinance: grade?.ordinance || "",
                 grade: Number(grade?.grade || 0),
                 step: Number(grade?.step || 0),
-                amount: Number(target.authorized_salary ?? grade?.amount ?? 0),
-                gross: Number(target.authorized_salary ?? grade?.amount ?? 0),
+                amount: Number(grade?.amount || 0),
+                gross: Number(grade?.amount || 0),
                 type: movement.action_type,
                 movementId: id,
                 remarks: movement.remarks || "",
@@ -911,9 +996,15 @@ export function createMovementHandlers({
         if (!before.occupancy)
           throw new Error("Reclassification requires an active Plantilla occupancy");
         const [[classification]] = await connection.execute(
-          `SELECT p.id position_id,p.title position_title,sg.id salary_grade_id,
-                  sg.ordinance,sg.grade,sg.step,sg.amount
-             FROM positions p JOIN salary_grades sg ON sg.id=:salaryGradeId
+          `SELECT p.id position_id,p.title position_title,selected.id salary_grade_id,
+                  selected.ordinance,selected.grade,selected.step,selected.amount,
+                  base.id item_salary_grade_id,base.amount item_base_amount
+             FROM positions p
+             JOIN salary_grades selected ON selected.id=:salaryGradeId
+             JOIN salary_grades base
+               ON base.ordinance=selected.ordinance
+              AND base.grade=selected.grade
+              AND base.step=1
             WHERE p.id=:positionId`,
           {
             positionId: movement.target_position_id,
@@ -921,19 +1012,28 @@ export function createMovementHandlers({
           },
         );
         if (!classification) throw new Error("Target classification no longer exists");
+        const [[previousGrade]] = await connection.execute(
+          "SELECT amount FROM salary_grades WHERE id=:id",
+          { id: before.occupancy.salaryGradeId },
+        );
+        const previousMonthlyAmount = Number(previousGrade?.amount || 0);
         changedItem = {
           itemId: before.occupancy.itemId,
           positionId: before.occupancy.positionId,
+          salaryGradeId: before.occupancy.itemSalaryGradeId,
+          authorizedSalary: before.occupancy.itemAuthorizedSalary,
+        };
+        changedOccupancySalary = {
+          occupancyId: before.occupancy.id,
           salaryGradeId: before.occupancy.salaryGradeId,
-          authorizedSalary: before.occupancy.authorizedSalary,
         };
         await connection.execute(
           `UPDATE plantilla_items SET position_id=:positionId,salary_grade_id=:salaryGradeId,
              authorized_salary=:amount,updated_by=:userId WHERE id=:itemId`,
           {
             positionId: classification.position_id,
-            salaryGradeId: classification.salary_grade_id,
-            amount: classification.amount,
+            salaryGradeId: classification.item_salary_grade_id,
+            amount: Number(classification.item_base_amount || 0) * 12,
             userId: user.id,
             itemId: before.occupancy.itemId,
           },
@@ -953,8 +1053,9 @@ export function createMovementHandlers({
               before: changedItem,
               after: {
                 positionId: classification.position_id,
-                salaryGradeId: classification.salary_grade_id,
-                authorizedSalary: Number(classification.amount || 0),
+                salaryGradeId: classification.item_salary_grade_id,
+                authorizedSalary: Number(classification.item_base_amount || 0) * 12,
+                employeeSalaryGradeId: classification.salary_grade_id,
               },
             }),
             userId: user.id,
@@ -971,7 +1072,7 @@ export function createMovementHandlers({
               ordinance: classification.ordinance || "",
               grade: Number(classification.grade || 0),
               step: Number(classification.step || 0),
-              previousAmount: Number(before.occupancy.authorizedSalary || 0),
+              previousAmount: previousMonthlyAmount,
               amount: Number(classification.amount || 0),
               gross: Number(classification.amount || 0),
               type: "Reclassification",
@@ -988,19 +1089,22 @@ export function createMovementHandlers({
           { id: movement.target_salary_grade_id },
         );
         if (!grade) throw new Error("Target salary grade no longer exists");
-        changedItem = {
-          itemId: before.occupancy.itemId,
-          positionId: before.occupancy.positionId,
+        const [[previousGrade]] = await connection.execute(
+          "SELECT amount FROM salary_grades WHERE id=:id",
+          { id: before.occupancy.salaryGradeId },
+        );
+        const previousMonthlyAmount = Number(previousGrade?.amount || 0);
+        changedOccupancySalary = {
+          occupancyId: before.occupancy.id,
           salaryGradeId: before.occupancy.salaryGradeId,
-          authorizedSalary: before.occupancy.authorizedSalary,
         };
         await connection.execute(
-          "UPDATE plantilla_items SET salary_grade_id=:gradeId,authorized_salary=:amount,updated_by=:userId WHERE id=:itemId",
+          `UPDATE plantilla_occupancies
+              SET current_salary_grade_id=:gradeId
+            WHERE id=:occupancyId`,
           {
             gradeId: grade.id,
-            amount: grade.amount,
-            userId: user.id,
-            itemId: before.occupancy.itemId,
+            occupancyId: before.occupancy.id,
           },
         );
         await connection.execute(
@@ -1014,7 +1118,7 @@ export function createMovementHandlers({
               ordinance: grade.ordinance || "",
               grade: Number(grade.grade || 0),
               step: Number(grade.step || 0),
-              previousAmount: Number(before.occupancy.authorizedSalary || 0),
+              previousAmount: previousMonthlyAmount,
               amount: Number(grade.amount || 0),
               gross: Number(grade.amount || 0),
               type: "Step Increment",
@@ -1035,6 +1139,7 @@ export function createMovementHandlers({
       const after = await currentSnapshot(movement.employee_id, connection, false);
       after.postedOccupancyId = postedOccupancyId;
       after.changedItem = changedItem;
+      after.changedOccupancySalary = changedOccupancySalary;
       after.temporaryAssignmentId = temporaryAssignmentId;
       await connection.execute(
         "UPDATE personnel_movements SET status='Posted',posted_by=:userId,posted_at=NOW(),activation_error=NULL,posted_before_snapshot_json=:before,posted_after_snapshot_json=:after,decision_remarks=COALESCE(:remarks,decision_remarks) WHERE id=:id",
@@ -1129,6 +1234,13 @@ export function createMovementHandlers({
           "UPDATE plantilla_items SET position_id=COALESCE(:positionId,position_id),salary_grade_id=:salaryGradeId,authorized_salary=:authorizedSalary,updated_by=:userId WHERE id=:itemId",
           { ...after.changedItem, userId: user.id },
         );
+      if (after.changedOccupancySalary)
+        await connection.execute(
+          `UPDATE plantilla_occupancies
+              SET current_salary_grade_id=:salaryGradeId
+            WHERE id=:occupancyId`,
+          after.changedOccupancySalary,
+        );
       if (after.temporaryAssignmentId)
         await connection.execute(
           "UPDATE temporary_assignments SET status='Reversed',ended_by=:userId,ended_at=NOW() WHERE id=:id AND status='Active'",
@@ -1211,6 +1323,15 @@ export function createMovementHandlers({
           {
             id: movement.id,
             error: String(body?.error || "Scheduled activation failed").slice(0, 2000),
+          },
+        );
+        await connection.execute(
+          `UPDATE plantilla_occupancies
+              SET current_salary_grade_id=:salaryGradeId
+            WHERE id=:occupancyId`,
+          {
+            salaryGradeId: classification.salary_grade_id,
+            occupancyId: before.occupancy.id,
           },
         );
         await notifyRoles({

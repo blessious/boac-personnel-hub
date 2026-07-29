@@ -23,6 +23,10 @@ type DateRangePickerProps = {
   disabled?: boolean;
   className?: string;
   labelFormatter?: (from: string, to: string) => string;
+  min?: string;
+  max?: string;
+  allowEmpty?: boolean;
+  allowOpenEnded?: boolean;
 };
 
 export function DateRangePicker({
@@ -33,6 +37,10 @@ export function DateRangePicker({
   disabled,
   className,
   labelFormatter = formatDisplayDateRange,
+  min,
+  max,
+  allowEmpty = false,
+  allowOpenEnded = false,
 }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [draftFrom, setDraftFrom] = useState(from);
@@ -40,12 +48,22 @@ export function DateRangePicker({
   const pickerPresets = useMemo(() => presets || getDefaultDateRangePresets(), [presets]);
   const draftFromDate = parseLocalDate(draftFrom);
   const draftToDate = parseLocalDate(draftTo);
+  const minDate = parseLocalDate(min || "");
+  const maxDate = parseLocalDate(max || "");
   const selectedRange: DateRange | undefined = draftFromDate
     ? { from: draftFromDate, to: draftToDate || draftFromDate }
     : undefined;
-  const rangeIsValid = Boolean(
-    draftFromDate && draftToDate && draftFromDate.getTime() <= draftToDate.getTime(),
+  const emptyRangeIsValid = allowEmpty && !draftFrom && !draftTo;
+  const selectedDatesAreValid = Boolean(
+    draftFromDate &&
+    (allowOpenEnded || draftToDate) &&
+    (!draftToDate || draftFromDate.getTime() <= draftToDate.getTime()) &&
+    (!minDate || draftFromDate.getTime() >= minDate.getTime()) &&
+    (!maxDate || draftFromDate.getTime() <= maxDate.getTime()) &&
+    (!draftToDate || !minDate || draftToDate.getTime() >= minDate.getTime()) &&
+    (!draftToDate || !maxDate || draftToDate.getTime() <= maxDate.getTime()),
   );
+  const rangeIsValid = emptyRangeIsValid || selectedDatesAreValid;
 
   const resetDraft = () => {
     setDraftFrom(from);
@@ -111,15 +129,21 @@ export function DateRangePicker({
                 <Label className="text-xs uppercase text-muted-foreground">From</Label>
                 <Input
                   type="date"
+                  min={min}
+                  max={max}
                   value={draftFrom}
                   onChange={(event) => setDraftFrom(event.target.value)}
                   className="h-9"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs uppercase text-muted-foreground">To</Label>
+                <Label className="text-xs uppercase text-muted-foreground">
+                  To{allowOpenEnded ? " (optional)" : ""}
+                </Label>
                 <Input
                   type="date"
+                  min={draftFrom || min}
+                  max={max}
                   value={draftTo}
                   onChange={(event) => setDraftTo(event.target.value)}
                   className="h-9"
@@ -141,17 +165,38 @@ export function DateRangePicker({
                   setDraftFrom(formatLocalDate(range.from));
                   setDraftTo(formatLocalDate(range.to || range.from));
                 }}
+                disabled={
+                  minDate || maxDate
+                    ? (date) =>
+                        Boolean(
+                          (minDate && date.getTime() < minDate.getTime()) ||
+                          (maxDate && date.getTime() > maxDate.getTime()),
+                        )
+                    : undefined
+                }
                 className="mx-auto"
               />
             </div>
 
             {!rangeIsValid && (
               <p className="mt-2 text-xs font-medium text-destructive">
-                Select a start date that is not after the end date.
+                Select a valid date range.
               </p>
             )}
 
             <div className="mt-3 flex justify-end gap-2">
+              {allowEmpty && (draftFrom || draftTo) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setDraftFrom("");
+                    setDraftTo("");
+                  }}
+                >
+                  Clear
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"

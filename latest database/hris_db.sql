@@ -1571,6 +1571,7 @@ CREATE TABLE `plantilla_occupancies` (
   `id` char(36) NOT NULL,
   `plantilla_item_id` char(36) NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `current_salary_grade_id` int unsigned DEFAULT NULL,
   `date_from` date NOT NULL,
   `date_to` date DEFAULT NULL,
   `status` enum('Active','Ended') NOT NULL DEFAULT 'Active',
@@ -1588,10 +1589,12 @@ CREATE TABLE `plantilla_occupancies` (
   UNIQUE KEY `uniq_active_employee` (`active_employee_id`),
   KEY `idx_occupancy_history` (`plantilla_item_id`,`date_from`,`date_to`),
   KEY `employee_id` (`employee_id`),
+  KEY `current_salary_grade_id` (`current_salary_grade_id`),
   KEY `created_by` (`created_by`),
   KEY `ended_by` (`ended_by`),
   CONSTRAINT `plantilla_occupancies_ibfk_1` FOREIGN KEY (`plantilla_item_id`) REFERENCES `plantilla_items` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `plantilla_occupancies_ibfk_2` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `plantilla_occupancies_ibfk_5` FOREIGN KEY (`current_salary_grade_id`) REFERENCES `salary_grades` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `plantilla_occupancies_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `plantilla_occupancies_ibfk_4` FOREIGN KEY (`ended_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

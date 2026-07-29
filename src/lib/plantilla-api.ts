@@ -81,6 +81,7 @@ export const listPlantilla = (
   status = "all",
   occupancy = "all",
   options: RequestInit = {},
+  officeId = "",
 ) =>
   api<{
     items: PlantillaItem[];
@@ -91,7 +92,10 @@ export const listPlantilla = (
       occupied: number;
       vacant: number;
     };
-  }>(`/api/plantilla?q=${encodeURIComponent(q)}&status=${status}&occupancy=${occupancy}`, options);
+  }>(
+    `/api/plantilla?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}&occupancy=${encodeURIComponent(occupancy)}&officeId=${encodeURIComponent(officeId)}`,
+    options,
+  );
 export const savePlantilla = (value: PlantillaPayload, id?: string) =>
   api<{ item: PlantillaItem }>(id ? `/api/plantilla/${id}` : "/api/plantilla", {
     method: id ? "PATCH" : "POST",

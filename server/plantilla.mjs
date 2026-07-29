@@ -23,6 +23,7 @@ export async function initializePlantillaSchema(pool, employeeIdDefinition) {
   ) ENGINE=InnoDB`);
   await pool.query(`CREATE TABLE IF NOT EXISTS plantilla_occupancies (
     id CHAR(36) NOT NULL PRIMARY KEY, plantilla_item_id CHAR(36) NOT NULL, employee_id ${employeeIdDefinition},
+    current_salary_grade_id INT UNSIGNED NULL,
     date_from DATE NOT NULL, date_to DATE NULL, status ENUM('Active','Ended') NOT NULL DEFAULT 'Active',
     movement_type VARCHAR(80) NULL, appointment_number VARCHAR(120) NULL, remarks TEXT NULL,
     created_by INT UNSIGNED NULL, ended_by INT UNSIGNED NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ended_at DATETIME NULL,
@@ -32,14 +33,76 @@ export async function initializePlantillaSchema(pool, employeeIdDefinition) {
     INDEX idx_occupancy_history (plantilla_item_id,date_from,date_to),
     FOREIGN KEY (plantilla_item_id) REFERENCES plantilla_items(id) ON DELETE RESTRICT,
     FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE RESTRICT,
+    FOREIGN KEY (current_salary_grade_id) REFERENCES salary_grades(id) ON DELETE RESTRICT,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL, FOREIGN KEY (ended_by) REFERENCES users(id) ON DELETE SET NULL
   ) ENGINE=InnoDB`);
+  const [[salaryColumn]] = await pool.query(
+    `SELECT COUNT(*) count FROM information_schema.columns
+      WHERE table_schema=DATABASE() AND table_name='plantilla_occupancies'
+        AND column_name='current_salary_grade_id'`,
+  );
+  if (!Number(salaryColumn.count)) {
+    await pool.query(
+      `ALTER TABLE plantilla_occupancies
+       ADD COLUMN current_salary_grade_id INT UNSIGNED NULL AFTER employee_id`,
+    );
+  }
+  const [[salaryForeignKey]] = await pool.query(
+    `SELECT COUNT(*) count FROM information_schema.key_column_usage
+      WHERE table_schema=DATABASE() AND table_name='plantilla_occupancies'
+        AND column_name='current_salary_grade_id' AND referenced_table_name='salary_grades'`,
+  );
+  if (!Number(salaryForeignKey.count)) {
+    await pool.query(
+      `ALTER TABLE plantilla_occupancies
+       ADD CONSTRAINT fk_plantilla_occupancy_current_salary
+       FOREIGN KEY (current_salary_grade_id) REFERENCES salary_grades(id) ON DELETE RESTRICT`,
+    );
+  }
+  await pool.query(
+    `UPDATE plantilla_occupancies po
+      JOIN plantilla_items pi ON pi.id=po.plantilla_item_id
+       SET po.current_salary_grade_id=pi.salary_grade_id
+     WHERE po.current_salary_grade_id IS NULL`,
+  );
   await pool.query(`CREATE TABLE IF NOT EXISTS plantilla_item_history (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, plantilla_item_id CHAR(36) NOT NULL, action VARCHAR(40) NOT NULL,
     snapshot_json JSON NOT NULL, changed_by INT UNSIGNED NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_item_history (plantilla_item_id,created_at), FOREIGN KEY (plantilla_item_id) REFERENCES plantilla_items(id) ON DELETE RESTRICT,
     FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
   ) ENGINE=InnoDB`);
+  await pool.query(
+    `INSERT INTO plantilla_item_history(plantilla_item_id,action,snapshot_json,changed_by)
+     SELECT pi.id,'Salary Basis Normalized',
+            JSON_OBJECT(
+              'reason','Plantilla items use the authorized Step 1 salary basis',
+              'beforeSalaryGradeId',current_sg.id,
+              'beforeStep',current_sg.step,
+              'beforeAuthorizedSalary',pi.authorized_salary,
+              'afterSalaryGradeId',base_sg.id,
+              'afterStep',base_sg.step,
+              'afterAuthorizedSalary',base_sg.amount*12
+            ),
+            NULL
+       FROM plantilla_items pi
+       JOIN salary_grades current_sg ON current_sg.id=pi.salary_grade_id
+       JOIN salary_grades base_sg
+         ON base_sg.ordinance=current_sg.ordinance
+        AND base_sg.grade=current_sg.grade
+        AND base_sg.step=1
+      WHERE current_sg.step<>1`,
+  );
+  await pool.query(
+    `UPDATE plantilla_items pi
+      JOIN salary_grades current_sg ON current_sg.id=pi.salary_grade_id
+      JOIN salary_grades base_sg
+        ON base_sg.ordinance=current_sg.ordinance
+       AND base_sg.grade=current_sg.grade
+       AND base_sg.step=1
+       SET pi.salary_grade_id=base_sg.id,
+           pi.authorized_salary=base_sg.amount*12
+     WHERE current_sg.step<>1`,
+  );
 }
 
 const selectSql = `SELECT pi.*,p.title position_title,sg.ordinance,sg.grade,sg.step,sg.amount salary_amount,
@@ -82,6 +145,10 @@ const selectSql = `SELECT pi.*,p.title position_title,sg.ordinance,sg.grade,sg.s
    LIMIT 1
  )
  LEFT JOIN employees pe ON pe.id=pm.employee_id`;
+const itemNumberCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
 const day = (v) => (v ? new Date(v).toISOString().slice(0, 10) : null);
 const directAssignmentActions = new Set([
   "Original Appointment",
@@ -112,7 +179,11 @@ const employeeSnapshot = (employee, occupancy = null) => ({
         itemId: occupancy.plantilla_item_id,
         itemNumber: occupancy.item_number,
         dateFrom: day(occupancy.date_from),
-        salaryGradeId: occupancy.salary_grade_id ? Number(occupancy.salary_grade_id) : null,
+        salaryGradeId: occupancy.current_salary_grade_id
+          ? Number(occupancy.current_salary_grade_id)
+          : occupancy.salary_grade_id
+            ? Number(occupancy.salary_grade_id)
+            : null,
         authorizedSalary:
           occupancy.authorized_salary === null ? null : Number(occupancy.authorized_salary),
       }
@@ -287,20 +358,29 @@ export function createPlantillaHandlers({
       .toUpperCase();
     if (!itemNumber || itemNumber.length > 120) throw Error("A valid item number is required");
     const positionId = num(body.positionId, "position", true),
-      salaryGradeId = num(body.salaryGradeId, "salary grade");
+      requestedSalaryGradeId = num(body.salaryGradeId, "salary grade");
     if (
       !(await pool.execute("SELECT id FROM positions WHERE id=:positionId", { positionId }))[0][0]
     )
       throw Error("Select a valid position");
-    if (
-      salaryGradeId &&
-      !(
-        await pool.execute("SELECT id FROM salary_grades WHERE id=:salaryGradeId", {
-          salaryGradeId,
-        })
-      )[0][0]
-    )
-      throw Error("Select a valid salary grade");
+    let salaryGrade = null;
+    let salaryGradeId = null;
+    if (requestedSalaryGradeId) {
+      [[salaryGrade]] = await pool.execute(
+        `SELECT base.id,base.amount,base.is_active
+           FROM salary_grades selected
+           JOIN salary_grades base
+             ON base.ordinance=selected.ordinance
+            AND base.grade=selected.grade
+            AND base.step=1
+          WHERE selected.id=:salaryGradeId`,
+        { salaryGradeId: requestedSalaryGradeId },
+      );
+      if (!salaryGrade) throw Error("Select a valid salary grade");
+      salaryGradeId = Number(salaryGrade.id);
+      if (!salaryGrade.is_active && Number(existing?.salaryGradeId) !== salaryGradeId)
+        throw Error("Select a salary grade from the active salary table");
+    }
     const defs = [
         ["sectorId", "sectors", "Sector"],
         ["officeId", "offices", "Office"],
@@ -322,7 +402,7 @@ export function createPlantillaHandlers({
         rows[f] = rr[0];
       }
     }
-    if (refs.officeId && Number(rows.officeId.parent_id) !== refs.sectorId)
+    if (refs.officeId && refs.sectorId && Number(rows.officeId.parent_id) !== refs.sectorId)
       throw Error("Office must belong to the selected sector");
     if (refs.divisionId && Number(rows.divisionId.parent_id) !== refs.officeId)
       throw Error("Division must belong to the selected office");
@@ -337,12 +417,7 @@ export function createPlantillaHandlers({
       effectiveTo = date(body.effectiveTo, "Effective-to date");
     if (effectiveFrom && effectiveTo && effectiveTo < effectiveFrom)
       throw Error("Effective-to date cannot be earlier than effective-from date");
-    const authorizedSalary =
-      body.authorizedSalary == null || body.authorizedSalary === ""
-        ? null
-        : Number(body.authorizedSalary);
-    if (authorizedSalary !== null && (!Number.isFinite(authorizedSalary) || authorizedSalary < 0))
-      throw Error("Authorized salary must be non-negative");
+    const authorizedSalary = salaryGrade ? Number(salaryGrade.amount) * 12 : null;
     return {
       itemNumber,
       positionId,
@@ -362,7 +437,8 @@ export function createPlantillaHandlers({
       p = {};
     const q = String(url.searchParams.get("q") || "").trim(),
       status = String(url.searchParams.get("status") || ""),
-      occ = String(url.searchParams.get("occupancy") || "");
+      occ = String(url.searchParams.get("occupancy") || ""),
+      officeId = String(url.searchParams.get("officeId") || "").trim();
     if (q) {
       where.push(
         "(pi.item_number LIKE :q OR p.title LIKE :q OR e.employee_no LIKE :q OR e.firstname LIKE :q OR e.lastname LIKE :q)",
@@ -375,6 +451,11 @@ export function createPlantillaHandlers({
     }
     if (occ === "occupied") where.push("po.id IS NOT NULL");
     if (occ === "vacant") where.push("po.id IS NULL AND pi.item_status='Active'");
+    if (officeId && officeId !== "all") {
+      if (!/^\d+$/.test(officeId)) return json(res, 400, { error: "Invalid office filter" });
+      where.push("pi.office_ref_id=:officeId");
+      p.officeId = Number(officeId);
+    }
     const [rs] = await pool.execute(
       selectSql +
         (where.length ? " WHERE " + where.join(" AND ") : "") +
@@ -385,7 +466,7 @@ export function createPlantillaHandlers({
       "SELECT COUNT(*) authorized,SUM(item_status='Active') active,SUM(item_status<>'Active') inactive,SUM(item_status='Active' AND po.id IS NOT NULL) occupied,SUM(item_status='Active' AND po.id IS NULL) vacant FROM plantilla_items pi LEFT JOIN plantilla_occupancies po ON po.plantilla_item_id=pi.id AND po.status='Active'",
     );
     return json(res, 200, {
-      items: rs.map(map),
+      items: rs.map(map).sort((a, b) => itemNumberCollator.compare(a.itemNumber, b.itemNumber)),
       summary: Object.fromEntries(Object.entries(s).map(([k, v]) => [k, Number(v || 0)])),
     });
   };
@@ -530,11 +611,12 @@ export function createPlantillaHandlers({
       const before = employeeSnapshot(e, null);
       const occupancyId = crypto.randomUUID();
       await c.execute(
-        `INSERT INTO plantilla_occupancies(id,plantilla_item_id,employee_id,date_from,movement_type,appointment_number,remarks,created_by) VALUES(:occupancyId,:id,:employeeId,:dateFrom,:movementType,:appointmentNumber,:remarks,:userId)`,
+        `INSERT INTO plantilla_occupancies(id,plantilla_item_id,employee_id,current_salary_grade_id,date_from,movement_type,appointment_number,remarks,created_by) VALUES(:occupancyId,:id,:employeeId,:salaryGradeId,:dateFrom,:movementType,:appointmentNumber,:remarks,:userId)`,
         {
           occupancyId,
           id,
           employeeId,
+          salaryGradeId: i.salary_grade_id,
           dateFrom,
           movementType: assignmentAction,
           appointmentNumber: String(b.appointmentNumber || "").trim() || null,
@@ -561,6 +643,7 @@ export function createPlantillaHandlers({
         item_number: i.item_number,
         date_from: dateFrom,
         salary_grade_id: i.salary_grade_id,
+        current_salary_grade_id: i.salary_grade_id,
         authorized_salary: i.authorized_salary,
       });
       await postedMovement(c, {

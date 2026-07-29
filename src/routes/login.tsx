@@ -137,7 +137,7 @@ function allowedRedirectForUser(redirect: string, user: AuthUser) {
 
 function LoginPage() {
   const { user, login } = useAuth();
-  const { agency } = useSettings();
+  const { agency, agencyLoaded } = useSettings();
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
   const [submitting, setSubmitting] = useState(false);
@@ -162,9 +162,10 @@ function LoginPage() {
     },
   });
   const passwordField = form.register("password");
-  const logoSrc = agency.logoUrl || strhLogo;
-  const bannerSrc = agency.bannerUrl || strhCover;
-  const agencyName = agency.tagline || "SOUTHERN TAGALOG REGIONAL HOSPITAL";
+  const logoSrc = agencyLoaded ? agency.logoUrl || strhLogo : "";
+  const bannerSrc = agencyLoaded ? agency.bannerUrl || strhCover : "";
+  const agencyLabel = agency.name || "LGU BOAC";
+  const agencyName = agency.tagline || "Municipality of Boac Marinduque";
 
   useEffect(() => {
     let alive = true;
@@ -268,9 +269,9 @@ function LoginPage() {
     >
       <div
         className="absolute inset-x-0 top-0 h-[52dvh] bg-cover bg-center opacity-100 transition-opacity duration-500 dark:opacity-40 md:inset-0 md:h-auto md:bg-left-bottom md:opacity-85 md:dark:opacity-30"
-        style={{ backgroundImage: `url(${bannerSrc})` }}
+        style={bannerSrc ? { backgroundImage: `url(${bannerSrc})` } : undefined}
       />
-      <div className="absolute inset-x-0 top-0 h-[52dvh] bg-[linear-gradient(180deg,rgba(246,250,255,0.68)_0%,rgba(246,250,255,0.58)_42%,rgba(246,250,255,0.90)_100%)] dark:bg-[linear-gradient(180deg,rgba(7,17,31,0.35)_0%,rgba(7,17,31,0.62)_48%,rgba(7,17,31,0.98)_100%)] md:inset-0 md:h-auto md:bg-[linear-gradient(100deg,rgba(246,250,255,0.98)_0%,rgba(246,250,255,0.94)_39%,rgba(246,250,255,0.78)_57%,rgba(246,250,255,0.98)_74%,rgba(246,250,255,1)_100%)] md:dark:bg-[linear-gradient(100deg,rgba(7,17,31,0.98)_0%,rgba(7,17,31,0.92)_42%,rgba(7,17,31,0.70)_60%,rgba(7,17,31,0.95)_78%,rgba(7,17,31,1)_100%)]" />
+      <div className="absolute inset-x-0 top-0 h-[52dvh] bg-[linear-gradient(180deg,rgba(246,250,255,0.60)_0%,rgba(246,250,255,0.50)_42%,rgba(246,250,255,0.86)_100%)] dark:bg-[linear-gradient(180deg,rgba(7,17,31,0.30)_0%,rgba(7,17,31,0.56)_48%,rgba(7,17,31,0.96)_100%)] md:inset-0 md:h-auto md:bg-[linear-gradient(100deg,rgba(246,250,255,0.94)_0%,rgba(246,250,255,0.88)_39%,rgba(246,250,255,0.70)_57%,rgba(246,250,255,0.94)_74%,rgba(246,250,255,0.98)_100%)] md:dark:bg-[linear-gradient(100deg,rgba(7,17,31,0.94)_0%,rgba(7,17,31,0.86)_42%,rgba(7,17,31,0.62)_60%,rgba(7,17,31,0.90)_78%,rgba(7,17,31,0.98)_100%)]" />
       <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_38%_18%,rgba(0,75,170,0.10),transparent_28%),linear-gradient(135deg,rgba(255,255,255,0)_0%,rgba(0,65,160,0.04)_100%)] dark:bg-[radial-gradient(circle_at_38%_18%,rgba(37,99,235,0.16),transparent_30%),linear-gradient(135deg,rgba(7,17,31,0)_0%,rgba(2,6,23,0.35)_100%)] md:block" />
       <div className="absolute -bottom-12 left-0 right-0 hidden h-24 rotate-[-2deg] bg-[#0047c7] md:block" />
       <div className="absolute -bottom-20 left-0 right-0 hidden h-24 rotate-[1.5deg] bg-[#0036a5] md:block" />
@@ -281,14 +282,18 @@ function LoginPage() {
           className={`flex min-h-[52dvh] flex-col justify-between px-6 pb-9 pt-8 text-[#08275b] dark:text-slate-100 md:h-full md:min-h-[22rem] md:px-0 md:py-2 lg:py-6${exiting ? " login-exit-left" : " login-enter-left"}`}
         >
           <div className="flex items-center gap-3">
-            <img
-              src={logoSrc}
-              alt={agencyName}
-              className="h-11 w-11 rounded-full object-contain shadow-sm"
-            />
+            {logoSrc ? (
+              <img
+                src={logoSrc}
+                alt={agencyName}
+                className="h-11 w-11 rounded-full object-contain shadow-sm"
+              />
+            ) : (
+              <div className="h-11 w-11 rounded-full bg-white/55 shadow-sm dark:bg-white/10" />
+            )}
             <div className="max-w-64 leading-tight">
               <div className="text-sm font-extrabold text-[#0b3f98] dark:text-blue-200">
-                STRH HRIS
+                {agencyLabel} HRIS
               </div>
               <div className="text-[0.62rem] font-extrabold uppercase text-[#0b3f98] dark:text-blue-200">
                 {agencyName}
@@ -520,13 +525,13 @@ function LoginPage() {
             )}
 
             <div className="mt-9 text-center text-[0.72rem] font-semibold text-[#6c7890] dark:text-slate-500 md:hidden">
-              41 Information Technology Services © {new Date().getFullYear()}
+              Municipality of Boac © {new Date().getFullYear()}
             </div>
           </div>
         </div>
 
         <div className="absolute bottom-11 left-1/2 hidden -translate-x-1/2 text-[0.68rem] font-semibold text-[#526b91] dark:text-slate-500 lg:block">
-          41 Information Technology Services © {new Date().getFullYear()}
+          Municipality of Boac © {new Date().getFullYear()}
         </div>
       </section>
     </main>

@@ -13,6 +13,7 @@ import { initializeMovementSchema, createMovementHandlers } from "./movements.mj
 import { initializeServiceRecordSchema, createServiceRecordHandlers } from "./service-records.mjs";
 import { createReportHandlers } from "./reports.mjs";
 import { initializeAssignmentSchema, createAssignmentHandlers } from "./assignments.mjs";
+import { employeeLifecycleTransition } from "./employee-lifecycle.mjs";
 
 const SERVER_DIR = path.join(process.cwd(), "server");
 const SERVER_ENV_LOCAL_PATH = path.join(SERVER_DIR, ".env.local");
@@ -65,11 +66,11 @@ function loadServerEnv() {
 
 loadServerEnv();
 
-const PORT = Number(process.env.HRIS_API_PORT || 47101);
+const PORT = Number(process.env.HRIS_API_PORT || 47102);
 const DB_HOST = process.env.HRIS_DB_HOST || "localhost";
 const DB_USER = process.env.HRIS_DB_USER || "root";
 const DB_PASSWORD = process.env.HRIS_DB_PASSWORD || "";
-const DB_NAME = process.env.HRIS_DB_NAME || "hris_db";
+const DB_NAME = process.env.HRIS_DB_NAME || "hris_muni";
 const DB_PORT = Number(process.env.HRIS_DB_PORT || 3306);
 const SESSION_COOKIE = "hris_session";
 const SESSION_HOURS = 8;
@@ -88,6 +89,7 @@ const LEAVE_FORM6_TEMPLATE_XLSX = path.join(
   "CS Form No. 6, Revised 2020 (Application for Leave) (Fillable).xlsx",
 );
 const LEAVE_FORM6_EXCEL_SCRIPT = path.join(process.cwd(), "server", "leave_form6_excel.py");
+const PDF_WATERMARK_SCRIPT = path.join(process.cwd(), "server", "pdf_watermark.py");
 const PDS_TEMPLATE_XLSX = path.join(
   process.cwd(),
   "Personal Data Sheet",
@@ -104,7 +106,7 @@ const PERSONNEL_PLANTILLA_REPORT_SCRIPT = path.join(
 );
 const BIOMETRIC_FETCH_SCRIPT = path.join(process.cwd(), "server", "fetch_biometric.py");
 const ADMS_PORT = Number(process.env.HRIS_ADMS_PORT || 6000);
-const CLIENT_PORT = Number(process.env.HRIS_CLIENT_PORT || 47100);
+const CLIENT_PORT = Number(process.env.HRIS_CLIENT_PORT || 47101);
 const ALLOWED_MUTATION_ORIGINS = new Set(
   String(process.env.HRIS_ALLOWED_ORIGINS || process.env.HRIS_CLIENT_ORIGINS || "")
     .split(",")
@@ -114,7 +116,8 @@ const ALLOWED_MUTATION_ORIGINS = new Set(
 const LOCAL_MUTATION_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 for (const addresses of Object.values(os.networkInterfaces())) {
   for (const address of addresses || []) {
-    if (!address.internal && address.address) LOCAL_MUTATION_HOSTS.add(address.address.toLowerCase());
+    if (!address.internal && address.address)
+      LOCAL_MUTATION_HOSTS.add(address.address.toLowerCase());
   }
 }
 const LIBREOFFICE_CANDIDATES = [
@@ -127,7 +130,7 @@ const LIBREOFFICE_CANDIDATES = [
   "soffice",
 ].filter(Boolean);
 const LIBREOFFICE_PROFILE_DIR = path.join(EXPORT_DIR, "lo-profile");
-const PREVIEW_FILE_MAX_AGE_MS = 5 * 60 * 1000;
+const PREVIEW_FILE_MAX_AGE_MS = 15 * 60 * 1000;
 const PYTHON_CANDIDATES = [
   process.env.HRIS_PYTHON_EXE,
   process.env.PYTHON_EXE,
@@ -472,373 +475,378 @@ const REFERENCE_LIBRARY_TYPES = {
   "budget-codes": { label: "Budget Code" },
 };
 const DEFAULT_AGENCY = {
-  name: "STRH - HRIS",
-  tagline: "DOH Southern Tagalog Regional Hospital",
+  name: "LGU BOAC",
+  tagline: "Municipality of Boac Marinduque",
   logoUrl: "",
   iconUrl: "",
   bannerUrl: "",
 };
 const DEFAULT_DEPARTMENTS = [
-  "Hospital Operation and Patient Support Division",
-  "Medical Division",
-  "Nursing Division",
+  "Office of the Mayor",
+  "Office of the Vice Mayor",
+  "Sangguniang Bayan",
+  "Municipal Administrator's Office",
+  "Municipal Human Resource Management Office",
+  "Municipal Budget Office",
+  "Municipal Accounting Office",
+  "Municipal Treasurer Office",
+  "Municipal Assessor Office",
+  "Municipal Planning and Development Office",
+  "Municipal Civil Registrar's Office",
+  "Municipal Engineering Office",
+  "Municipal Health Office",
+  "Municipal Social Welfare and Development Office",
+  "Municipal Agriculture Office",
+  "Municipal Disaster Risk Reduction and Management Office",
 ];
 const DEFAULT_POSITIONS = [
-  "Accountant II",
-  "Accountant III",
-  "Administrative Aide III",
-  "Administrative Aide III (Utility Worker II)",
-  "Administrative Aide IV",
-  "Administrative Aide IV (Driver II)",
+  "Zoning Officer I",
+  "Administrative Assistant II (Clerk IV)",
   "Administrative Aide VI (Clerk III)",
-  "Administrative Aide VI (Clerk III) (SAO)",
-  "Administrative Aide VI (Disbursing Officer I)",
-  "Administrative Aide VI (Utility Foreman)",
-  "Administrative Assistant I (Computer Operator I)",
-  "Administrative Assistant I (Computer Operator I) (MM)",
-  "Administrative Assistant I (Computer Operator I) (Proc)",
-  "Administrative Assistant I (Pharmacy)",
-  "Administrative Assistant I (Records)",
-  "Administrative Assistant I (Secretary I)",
-  "Administrative Assistant II (Accounting Clerk III)",
-  "Administrative Assistant II (Administrative Assistant)",
-  "Administrative Assistant II (Budgeting Assistant)",
-  "Administrative Assistant II (Cash Clerk III)",
-  "Administrative Assistant III (Buyer III)",
-  "Administrative Assistant III (Secretary II)",
-  "Administrative Officer I (Cashier I)",
-  "Administrative Officer I (Records Officer I)",
-  "Administrative Officer II (Budget Officer I)",
-  "Administrative Officer II (HRMO I)",
-  "Administrative Officer II (Information Officer I)",
-  "Administrative Officer III (Supply Officer II)",
-  "Administrative Officer IV (Financial Analyst II)",
-  "Administrative Officer IV (HRMO II)",
-  "Administrative Officer IV (Information Officer II)",
-  "Administrative Officer V (Administrative Officer III)",
-  "Administrative Officer V (Budget Officer III)",
-  "Administrative Officer V (Cashier III)",
-  "Administrative Officer V (HRMO III)",
-  "Administrative Officer V (Supply Officer III)",
-  "Chemist II",
-  "Chief of Medical professional Staff II",
-  "Computer Maintenance Technologist I",
-  "Computer Maintenance Technologist II",
-  "Cook II",
-  "Data Controller II",
-  "Dental Aide",
-  "Dentist II",
-  "Dentist IV",
-  "Engineer II",
+  "Administrative Aide III (Utility Worker II)",
+  "Municipal Engineer",
   "Engineer III",
-  "Health Education and Promotion Officer II",
-  "Hospital Housekeeper",
-  "Laboratory Aide II",
-  "Laundry Worker II",
-  "Medical Center Chief II",
-  "Medical Equipment Technician I",
-  "Medical Equipment Technician II",
-  "Medical Officer III",
-  "Medical Officer III (ER)",
-  "Medical Officer III (IM)",
-  "Medical Officer III (OB)",
-  "Medical Officer III (Pedia)",
-  "Medical Officer III (Surgeon)",
-  "Medical Officer IV",
-  "Medical Specialist II (Anesthesiologist)",
-  "Medical Specialist II (Internist)",
-  "Medical Specialist II (Obstretician)",
-  "Medical Specialist II (OPD)",
-  "Medical Specialist II (Pathologist)",
-  "Medical Specialist II (Pediatrician)",
-  "Medical Specialist II (Radiologist)",
-  "Medical Specialist II (Surgeon)",
-  "Medical Specialist III (Anesthesiologist)",
-  "Medical Specialist III (ER)",
-  "Medical Specialist III (Internal Medicine)",
-  "Medical Specialist III (Obstetrician)",
-  "Medical Specialist III (Part-time) (Cardiologist)",
-  "Medical Specialist III (Part-time) (IDS)",
-  "Medical Specialist III (Part-time) (Neonatologist)",
-  "Medical Specialist III (Part-time) (Nephrologist)",
-  "Medical Specialist III (Part-time) (Neurologist)",
-  "Medical Specialist III (Part-time) (Pediatric Intensivist)",
-  "Medical Specialist III (Part-time) (Pulmonolgist)",
-  "Medical Specialist III (Part-time) (Sonologist)",
-  "Medical Specialist III (Pathologist)",
-  "Medical Specialist III (Pediatrician)",
-  "Medical Specialist III (Surgeon)",
-  "Medical Technologist I",
-  "Medical Technologist II",
-  "Medical Technologist III",
-  "Midwife I",
-  "Nurse I",
+  "Draftsman I",
+  "Administrative Aide IV (Clerk II)",
+  "Administrative Aide IV (Driver II)",
+  "Administrative Assistant II (Labor General Foreman)",
+  "Administrative Aide III (Laborer II)",
+  "Administrative Aide IV (Electrician I)",
+  "Const. & Maintenance General Foreman",
+  "Administrative Aide V (Carpenter II)",
+  "Administrative Aide V (Mason II)",
+  "Administrative Aide VI",
+  "Administrative Aide V",
+  "Meter Reader I",
+  "Municipal Health Officer",
+  "Rural Health Physician",
+  "Dentist II",
   "Nurse II",
-  "Nurse III",
-  "Nurse IV",
-  "Nurse V",
-  "Nurse VI",
-  "Nursing Attendant I",
-  "Nursing Attendant II",
-  "Nutritionist-Dietitian I",
-  "Nutritionist-Dietitian III",
-  "Pharmacist I",
-  "Pharmacist III",
-  "Psychologist II",
-  "Radiologic Technologist I",
+  "Medical Technologist II",
+  "Midwife III",
+  "Midwife II",
+  "Sanitation Inspector I",
+  "Dental Aide",
+  "Barangay Health Aide",
   "Radiologic Technologist II",
-  "Radiologic Technologist III",
-  "Respiratory Therapist I",
-  "Respiratory Therapist II",
-  "Seamstress",
-  "Social Welfare Assistant",
-  "Social Welfare Officer I",
+  "Nutrition Officer II",
+  "Municipal Civil Registrar",
+  "Registration Officer II",
+  "Administrative Assistant II (Assistant Registration Officer)",
+  "Municipal Agricultural Officer",
+  "Agricultural Technologist",
+  "Municipal Government Department Head I (Municipal Social Welfare and Development Officer)",
   "Social Welfare Officer III",
-  "Statistician II",
-  "Supervising Administrative Officer",
-  "Warehouseman II",
+  "Social Welfare Assistant",
+  "Local Disaster Risk Reduction & Management Officer III",
+  "Municipal Disaster Risk Reduction & Management Officer I",
+  "Local Disaster Risk Reduction & Management Officer I",
+  "Municipal Administrator",
+  "Market Supervisor II",
+  "Market Specialist I",
+  "Market Inspector II",
+  "Meat Inspector III",
 ];
 
 const DEFAULT_REFERENCE_VALUES = [
   {
     category: "sectors",
-    code: "EXEC",
-    name: "Executive Office",
-    description: "Top-level executive and hospital leadership offices.",
+    code: "EXEC_ADMIN",
+    name: "Executive and Administrative Governance",
+    description:
+      "Office of the mayor, municipal administration, HR, records, ICT, and general services.",
     sortOrder: 1,
   },
   {
     category: "sectors",
-    code: "MED",
-    name: "Medical Services Sector",
-    description: "Medical care, clinical departments, and physician services.",
+    code: "LEGISLATIVE",
+    name: "Legislative Services",
+    description: "Office of the vice mayor, Sangguniang Bayan, and legislative support services.",
     sortOrder: 2,
   },
   {
     category: "sectors",
-    code: "NURS",
-    name: "Nursing Services Sector",
-    description: "Nursing service, ward operations, and nursing supervision.",
+    code: "FINANCE",
+    name: "Finance and Revenue Services",
+    description: "Budget, accounting, treasury, assessment, and revenue administration.",
     sortOrder: 3,
   },
   {
     category: "sectors",
-    code: "HOPSS",
-    name: "Hospital Operations and Patient Support Sector",
-    description: "Ancillary, patient support, facility, and hospital operations services.",
+    code: "PLANNING_DEV",
+    name: "Planning and Development Services",
+    description:
+      "Planning, development coordination, engineering, infrastructure, zoning, and public works.",
     sortOrder: 4,
   },
   {
     category: "sectors",
-    code: "ADMIN",
-    name: "Finance and Administrative Sector",
-    description: "Administrative, finance, HR, records, procurement, and general services.",
+    code: "SOCIAL_HEALTH",
+    name: "Social, Health, and Community Services",
+    description:
+      "Municipal health, nutrition, social welfare, civil registration, and community programs.",
     sortOrder: 5,
   },
   {
-    category: "offices",
-    code: "OMCC",
-    name: "Office of the Medical Center Chief",
-    description: "Office responsible for overall hospital management and direction.",
-    parentCategory: "sectors",
-    parentCode: "EXEC",
-    sortOrder: 1,
-  },
-  {
-    category: "offices",
-    code: "MED-OFF",
-    name: "Medical Office",
-    description: "Office grouping medical departments and physician services.",
-    parentCategory: "sectors",
-    parentCode: "MED",
-    sortOrder: 2,
-  },
-  {
-    category: "offices",
-    code: "NURS-OFF",
-    name: "Nursing Office",
-    description: "Office grouping nursing divisions, wards, and nursing units.",
-    parentCategory: "sectors",
-    parentCode: "NURS",
-    sortOrder: 3,
-  },
-  {
-    category: "offices",
-    code: "HOPSS-OFF",
-    name: "Hospital Operations and Patient Support Office",
-    description: "Office grouping patient support and operational service units.",
-    parentCategory: "sectors",
-    parentCode: "HOPSS",
-    sortOrder: 4,
-  },
-  {
-    category: "offices",
-    code: "ADMIN-OFF",
-    name: "Finance and Administrative Office",
-    description: "Office grouping finance, HR, supply, records, and administrative units.",
-    parentCategory: "sectors",
-    parentCode: "ADMIN",
-    sortOrder: 5,
-  },
-  {
-    category: "divisions",
-    code: "MCC-DIV",
-    name: "Executive Management Division",
-    parentCategory: "offices",
-    parentCode: "OMCC",
-    sortOrder: 1,
-  },
-  {
-    category: "divisions",
-    code: "MED-DIV",
-    name: "Medical Division",
-    parentCategory: "offices",
-    parentCode: "MED-OFF",
-    sortOrder: 2,
-  },
-  {
-    category: "divisions",
-    code: "NURS-DIV",
-    name: "Nursing Division",
-    parentCategory: "offices",
-    parentCode: "NURS-OFF",
-    sortOrder: 3,
-  },
-  {
-    category: "divisions",
-    code: "ANC-DIV",
-    name: "Ancillary Services Division",
-    parentCategory: "offices",
-    parentCode: "HOPSS-OFF",
-    sortOrder: 4,
-  },
-  {
-    category: "divisions",
-    code: "SUP-DIV",
-    name: "Support Services Division",
-    parentCategory: "offices",
-    parentCode: "HOPSS-OFF",
-    sortOrder: 5,
-  },
-  {
-    category: "divisions",
-    code: "ADMIN-DIV",
-    name: "Administrative Division",
-    parentCategory: "offices",
-    parentCode: "ADMIN-OFF",
+    category: "sectors",
+    code: "ECONOMIC_PUBLIC",
+    name: "Economic, Agriculture, and Public Safety Services",
+    description:
+      "Agriculture, market, licensing, traffic, disaster risk reduction, waterworks, and public order support.",
     sortOrder: 6,
   },
   {
-    category: "divisions",
-    code: "FIN-DIV",
-    name: "Finance Division",
-    parentCategory: "offices",
-    parentCode: "ADMIN-OFF",
+    category: "sectors",
+    code: "ATTACHED_AGENCIES",
+    name: "Attached and National Agency Offices",
+    description: "National or attached agency offices included in the local HR reference list.",
     sortOrder: 7,
   },
   {
-    category: "sections",
-    code: "ER",
-    name: "Emergency Room Unit",
-    parentCategory: "divisions",
-    parentCode: "MED-DIV",
+    category: "offices",
+    code: "OFFICE_OF_THE_MAYOR",
+    name: "Office of the Mayor",
+    description: "Chief executive office of the municipal government.",
+    parentCategory: "sectors",
+    parentCode: "EXEC_ADMIN",
     sortOrder: 1,
   },
   {
-    category: "sections",
-    code: "OPD",
-    name: "Outpatient Department Unit",
-    parentCategory: "divisions",
-    parentCode: "MED-DIV",
+    category: "offices",
+    code: "OFFICE_OF_THE_VICE_MAYOR",
+    name: "Office of the Vice Mayor",
+    description: "Office of the presiding officer of the Sangguniang Bayan.",
+    parentCategory: "sectors",
+    parentCode: "LEGISLATIVE",
     sortOrder: 2,
   },
   {
-    category: "sections",
-    code: "WARD",
-    name: "Ward Nursing Unit",
-    parentCategory: "divisions",
-    parentCode: "NURS-DIV",
+    category: "offices",
+    code: "SB_LEGISLATIVE_OFFICE",
+    name: "SB Legislative Office",
+    description: "Legislative office and support for municipal council functions.",
+    parentCategory: "sectors",
+    parentCode: "LEGISLATIVE",
     sortOrder: 3,
   },
   {
-    category: "sections",
-    code: "PHARM",
-    name: "Pharmacy Section",
-    parentCategory: "divisions",
-    parentCode: "ANC-DIV",
+    category: "offices",
+    code: "MUNICIPAL_ADMINISTRATOR_S_OFFICE",
+    name: "Municipal Administrator's Office",
+    description: "Municipal administration, coordination, and executive support.",
+    parentCategory: "sectors",
+    parentCode: "EXEC_ADMIN",
+    sortOrder: 4,
+  },
+  {
+    category: "offices",
+    code: "MUNICIPAL_ACCOUNTING_OFFICE",
+    name: "Municipal Accounting Office",
+    description: "Accounting and financial reporting office.",
+    parentCategory: "sectors",
+    parentCode: "FINANCE",
+    sortOrder: 5,
+  },
+  {
+    category: "offices",
+    code: "MUNICIPAL_TREASURER_OFFICE",
+    name: "Municipal Treasurer Office",
+    description: "Treasury, collections, and revenue administration.",
+    parentCategory: "sectors",
+    parentCode: "FINANCE",
+    sortOrder: 6,
+  },
+  {
+    category: "offices",
+    code: "MUNICIPAL_ASSESSOR_OFFICE",
+    name: "Municipal Assessor Office",
+    description: "Real property assessment and related services.",
+    parentCategory: "sectors",
+    parentCode: "FINANCE",
+    sortOrder: 7,
+  },
+  {
+    category: "offices",
+    code: "MUNICIPAL_PLANNING_AND_DEVELOPMENT_OFFICE",
+    name: "Municipal Planning and Development Office",
+    description: "Planning, development coordination, and project monitoring.",
+    parentCategory: "sectors",
+    parentCode: "PLANNING_DEV",
+    sortOrder: 8,
+  },
+  {
+    category: "offices",
+    code: "MUNICIPAL_ENGINEERING_OFFICE",
+    name: "Municipal Engineering Office",
+    description: "Engineering, infrastructure, facilities, roads, and related works.",
+    parentCategory: "sectors",
+    parentCode: "PLANNING_DEV",
+    sortOrder: 9,
+  },
+  {
+    category: "offices",
+    code: "MUNICIPAL_HEALTH_OFFICE",
+    name: "Municipal Health Office",
+    description: "Local public health services and community health programs.",
+    parentCategory: "sectors",
+    parentCode: "SOCIAL_HEALTH",
+    sortOrder: 10,
+  },
+  {
+    category: "offices",
+    code: "MUNICIPAL_SOCIAL_WELFARE_AND_DEVELOPMENT_OFFICE",
+    name: "Municipal Social Welfare and Development Office",
+    description: "Social welfare and development programs.",
+    parentCategory: "sectors",
+    parentCode: "SOCIAL_HEALTH",
+    sortOrder: 11,
+  },
+  {
+    category: "offices",
+    code: "MUNICIPAL_CIVIL_REGISTRAR_S_OFFICE",
+    name: "Municipal Civil Registrar's Office",
+    description: "Civil registration services.",
+    parentCategory: "sectors",
+    parentCode: "SOCIAL_HEALTH",
+    sortOrder: 12,
+  },
+  {
+    category: "offices",
+    code: "MUNICIPAL_AGRICULTURE_OFFICE",
+    name: "Municipal Agriculture Office",
+    description: "Agriculture, fisheries, and livelihood support services.",
+    parentCategory: "sectors",
+    parentCode: "ECONOMIC_PUBLIC",
+    sortOrder: 13,
+  },
+  {
+    category: "offices",
+    code: "MUNICIPAL_DISASTER_RISK_REDUCTION_AND_MANAGEMENT_OFFICE",
+    name: "Municipal Disaster Risk Reduction and Management Office",
+    description: "Disaster risk reduction, preparedness, response, and resilience programs.",
+    parentCategory: "sectors",
+    parentCode: "ECONOMIC_PUBLIC",
+    sortOrder: 14,
+  },
+  {
+    category: "divisions",
+    code: "EXEC_ADMIN_DIV",
+    name: "Executive and Administrative Division",
+    parentCategory: "offices",
+    parentCode: "OFFICE_OF_THE_MAYOR",
+    sortOrder: 1,
+  },
+  {
+    category: "divisions",
+    code: "FINANCE_DIV",
+    name: "Finance and Revenue Division",
+    parentCategory: "offices",
+    parentCode: "MUNICIPAL_ACCOUNTING_OFFICE",
+    sortOrder: 2,
+  },
+  {
+    category: "divisions",
+    code: "COMMUNITY_SERVICES_DIV",
+    name: "Community Services Division",
+    parentCategory: "offices",
+    parentCode: "MUNICIPAL_SOCIAL_WELFARE_AND_DEVELOPMENT_OFFICE",
+    sortOrder: 3,
+  },
+  {
+    category: "divisions",
+    code: "ENGINEERING_WORKS_DIV",
+    name: "Engineering and Public Works Division",
+    parentCategory: "offices",
+    parentCode: "MUNICIPAL_ENGINEERING_OFFICE",
     sortOrder: 4,
   },
   {
     category: "sections",
-    code: "LAB",
-    name: "Laboratory Section",
-    parentCategory: "divisions",
-    parentCode: "ANC-DIV",
-    sortOrder: 5,
-  },
-  {
-    category: "sections",
-    code: "RAD",
-    name: "Radiology Section",
-    parentCategory: "divisions",
-    parentCode: "ANC-DIV",
-    sortOrder: 6,
-  },
-  {
-    category: "sections",
-    code: "HR",
+    code: "HRMO",
     name: "Human Resource Management Section",
     parentCategory: "divisions",
-    parentCode: "ADMIN-DIV",
-    sortOrder: 7,
+    parentCode: "EXEC_ADMIN_DIV",
+    sortOrder: 1,
   },
   {
     category: "sections",
     code: "RECORDS",
-    name: "Records Section",
+    name: "Records and Archives Section",
     parentCategory: "divisions",
-    parentCode: "ADMIN-DIV",
-    sortOrder: 8,
+    parentCode: "EXEC_ADMIN_DIV",
+    sortOrder: 2,
+  },
+  {
+    category: "sections",
+    code: "ICT",
+    name: "Information and Communications Technology Section",
+    parentCategory: "divisions",
+    parentCode: "EXEC_ADMIN_DIV",
+    sortOrder: 3,
   },
   {
     category: "sections",
     code: "SUPPLY",
     name: "Supply and Property Section",
     parentCategory: "divisions",
-    parentCode: "ADMIN-DIV",
-    sortOrder: 9,
+    parentCode: "EXEC_ADMIN_DIV",
+    sortOrder: 4,
   },
   {
     category: "sections",
     code: "BUDGET",
     name: "Budget Section",
     parentCategory: "divisions",
-    parentCode: "FIN-DIV",
-    sortOrder: 10,
+    parentCode: "FINANCE_DIV",
+    sortOrder: 5,
   },
   {
     category: "sections",
     code: "ACCOUNTING",
     name: "Accounting Section",
     parentCategory: "divisions",
-    parentCode: "FIN-DIV",
-    sortOrder: 11,
+    parentCode: "FINANCE_DIV",
+    sortOrder: 6,
   },
   {
     category: "sections",
     code: "CASH",
-    name: "Cashier Section",
+    name: "Cash and Collection Section",
     parentCategory: "divisions",
-    parentCode: "FIN-DIV",
-    sortOrder: 12,
+    parentCode: "FINANCE_DIV",
+    sortOrder: 7,
   },
   {
     category: "sections",
-    code: "GSS",
-    name: "General Services Section",
+    code: "SOCIAL_WELFARE",
+    name: "Social Welfare Services Section",
     parentCategory: "divisions",
-    parentCode: "SUP-DIV",
-    sortOrder: 13,
+    parentCode: "COMMUNITY_SERVICES_DIV",
+    sortOrder: 8,
+  },
+  {
+    category: "sections",
+    code: "NUTRITION",
+    name: "Nutrition Services Section",
+    parentCategory: "divisions",
+    parentCode: "COMMUNITY_SERVICES_DIV",
+    sortOrder: 9,
+  },
+  {
+    category: "sections",
+    code: "ROADS_BRIDGES",
+    name: "Roads and Bridges Section",
+    parentCategory: "divisions",
+    parentCode: "ENGINEERING_WORKS_DIV",
+    sortOrder: 10,
+  },
+  {
+    category: "sections",
+    code: "SOLID_WASTE",
+    name: "Solid Waste and General Services Section",
+    parentCategory: "divisions",
+    parentCode: "ENGINEERING_WORKS_DIV",
+    sortOrder: 11,
   },
   {
     category: "eligibilities",
@@ -905,31 +913,45 @@ const DEFAULT_REFERENCE_VALUES = [
   },
   {
     category: "employment-statuses",
+    code: "COTERM",
+    name: "Co-term",
+    description: "Co-terminous employment status.",
+    sortOrder: 4,
+  },
+  {
+    category: "employment-statuses",
+    code: "ELECTIVE",
+    name: "Elective",
+    description: "Elective official or elective appointment status.",
+    sortOrder: 5,
+  },
+  {
+    category: "employment-statuses",
     code: "CASUAL",
     name: "Casual",
     description: "Casual employment status.",
-    sortOrder: 4,
+    sortOrder: 6,
   },
   {
     category: "employment-statuses",
     code: "CONTRACT",
     name: "Contractual",
     description: "Contractual employment status.",
-    sortOrder: 5,
+    sortOrder: 7,
   },
   {
     category: "employment-statuses",
     code: "JO",
     name: "Job Order",
     description: "Job order engagement.",
-    sortOrder: 6,
+    sortOrder: 8,
   },
   {
     category: "employment-statuses",
     code: "COS",
     name: "Contract of Service",
     description: "Contract of service engagement.",
-    sortOrder: 7,
+    sortOrder: 9,
   },
   {
     category: "job-levels",
@@ -982,31 +1004,45 @@ const DEFAULT_REFERENCE_VALUES = [
   },
   {
     category: "plantilla-types",
+    code: "ELECTIVE",
+    name: "Elective",
+    description: "Elective plantilla item.",
+    sortOrder: 2,
+  },
+  {
+    category: "plantilla-types",
+    code: "COTER",
+    name: "Coterminous",
+    description: "Coterminous plantilla item.",
+    sortOrder: 3,
+  },
+  {
+    category: "plantilla-types",
     code: "NON-PLANTILLA",
     name: "Non-Plantilla",
     description: "Position or engagement not tied to a plantilla item.",
-    sortOrder: 2,
+    sortOrder: 4,
   },
   {
     category: "plantilla-types",
     code: "CASUAL",
     name: "Casual",
     description: "Casual item or engagement.",
-    sortOrder: 3,
+    sortOrder: 5,
   },
   {
     category: "plantilla-types",
     code: "JO",
     name: "Job Order",
     description: "Job order classification.",
-    sortOrder: 4,
+    sortOrder: 6,
   },
   {
     category: "plantilla-types",
     code: "COS",
     name: "Contract of Service",
     description: "Contract of service classification.",
-    sortOrder: 5,
+    sortOrder: 7,
   },
   {
     category: "budget-codes",
@@ -1031,19 +1067,105 @@ const DEFAULT_REFERENCE_VALUES = [
   },
   {
     category: "budget-codes",
-    code: "INCOME",
-    name: "Hospital Income",
-    description: "Hospital income or internally generated fund source.",
+    code: "GENERAL-FUND",
+    name: "General Fund",
+    description: "Municipal general fund source.",
     sortOrder: 4,
   },
   {
     category: "budget-codes",
-    code: "DOH-GAA",
-    name: "DOH GAA",
-    description: "Department of Health General Appropriations Act source.",
+    code: "SEF",
+    name: "Special Education Fund",
+    description: "Special Education Fund source, when applicable.",
     sortOrder: 5,
   },
 ];
+
+const OBSOLETE_HOSPITAL_REFERENCE_VALUES = [
+  ["sectors", "EXEC"],
+  ["sectors", "MED"],
+  ["sectors", "NURS"],
+  ["sectors", "HOPSS"],
+  ["sectors", "ADMIN"],
+  ["offices", "OMCC"],
+  ["offices", "MED-OFF"],
+  ["offices", "NURS-OFF"],
+  ["offices", "HOPSS-OFF"],
+  ["offices", "ADMIN-OFF"],
+  ["divisions", "MCC-DIV"],
+  ["divisions", "MED-DIV"],
+  ["divisions", "NURS-DIV"],
+  ["divisions", "ANC-DIV"],
+  ["divisions", "SUP-DIV"],
+  ["divisions", "ADMIN-DIV"],
+  ["divisions", "FIN-DIV"],
+  ["sections", "ER"],
+  ["sections", "OPD"],
+  ["sections", "WARD"],
+  ["sections", "PHARM"],
+  ["sections", "LAB"],
+  ["sections", "RAD"],
+  ["sections", "HR"],
+  ["sections", "GSS"],
+  ["budget-codes", "INCOME"],
+  ["budget-codes", "DOH-GAA"],
+];
+
+const OFFICE_SECTOR_PARENT_CODES = {
+  EXEC_ADMIN: [
+    "CAO",
+    "MO_HUMAN_RESOURCE_AND_MANAGEMENT_SECTION",
+    "MO_INFORMATION_AND_COMMUNICATIONS_TECHNOLOGY_SECTOR",
+    "MO_MUNICIPAL_INFORMATION_AND_LIBRARY_SERVICES_SECTION",
+    "MUNICIPAL_ADMINISTRATOR_S_OFFICE",
+    "OFFICE_OF_THE_MAYOR",
+  ],
+  LEGISLATIVE: [
+    "OFFICE_OF_THE_VICE_MAYOR",
+    "SB_LEGISLATIVE_CAPITOL",
+    "SB_LEGISLATIVE_OFFICE",
+    "SB_LEGISLATIVE_OFFICE_LIGA",
+    "SB_SECRETARIAT_OFFICE",
+  ],
+  FINANCE: [
+    "BUDGET_OFFICE",
+    "MUNICIPAL_ACCOUNTING_OFFICE",
+    "MUNICIPAL_ASSESSOR_OFFICE",
+    "MUNICIPAL_TREASURER_OFFICE",
+  ],
+  PLANNING_DEV: [
+    "MEO_PLAZA_PARKS_AND_MONUMENT_SECTION",
+    "MEO_GARBAGE_COLLECTION_SERVICES",
+    "MEO_MAINT_OF_ROADS_AND_BRIDGES",
+    "MEO_STREET_CLEANING_SERVICES",
+    "MEO_STREET_LIGHTING_SERVICES",
+    "MUNICIPAL_ENGINEERING_OFFICE",
+    "MUNICIPAL_PLANNING_AND_DEVELOPMENT_OFFICE",
+    "OPERATION_OF_WATERWORK_SYSTEM",
+  ],
+  SOCIAL_HEALTH: [
+    "MO_NUTRITION_CENTER",
+    "MO_SPORTS_AND_GAMES_SECTION",
+    "MUNICIPAL_CIVIL_REGISTRAR_S_OFFICE",
+    "MUNICIPAL_HEALTH_OFFICE",
+    "MUNICIPAL_HEALTH_OFFICE_RHU_II",
+    "MUNICIPAL_NUTRITION_OFFICE",
+    "MUNICIPAL_SOCIAL_WELFARE_AND_DEVELOPMENT_OFFICE",
+  ],
+  ECONOMIC_PUBLIC: [
+    "MO_BUSINESS_PRINTING_AND_LICENSING_SECTION",
+    "MPOC_TRAFFIC_AIDE",
+    "MUNICIPAL_AGRICULTURE_OFFICE",
+    "MUNICIPAL_DISASTER_RISK_REDUCTION_AND_MANAGEMENT_OFFICE",
+    "OPERATIONS_OF_MARKET",
+    "SLAUGHTERHOUSE",
+  ],
+  ATTACHED_AGENCIES: [
+    "COMMISSION_ON_ELECTIONS",
+    "DEPARTMENT_OF_THE_INTERIOR_AND_LOCAL_GOVERNMENT",
+    "PNP",
+  ],
+};
 
 const DEFAULT_LEAVE_TYPES = [
   {
@@ -1545,11 +1667,12 @@ async function registerDocumentExport(fileName, employeeId, userId, exportType) 
   );
 }
 
-async function authorizeDocumentExport(user, fileName) {
+async function authorizeDocumentExport(user, fileName, { singleUse = true } = {}) {
   const [[record]] = await pool.execute(
     `SELECT employee_id, created_by
        FROM document_export_jobs
-      WHERE file_name=:fileName AND expires_at > NOW() AND downloaded_at IS NULL
+      WHERE file_name=:fileName AND expires_at > NOW()
+        ${singleUse ? "AND downloaded_at IS NULL" : ""}
       LIMIT 1`,
     { fileName },
   );
@@ -1561,8 +1684,9 @@ async function authorizeDocumentExport(user, fileName) {
   if (!allowed) return false;
   const [result] = await pool.execute(
     `UPDATE document_export_jobs
-        SET downloaded_at=NOW(), download_count=download_count+1
-      WHERE file_name=:fileName AND expires_at > NOW() AND downloaded_at IS NULL`,
+        SET downloaded_at=COALESCE(downloaded_at, NOW()), download_count=download_count+1
+      WHERE file_name=:fileName AND expires_at > NOW()
+        ${singleUse ? "AND downloaded_at IS NULL" : ""}`,
     { fileName },
   );
   return result.affectedRows === 1;
@@ -1852,6 +1976,19 @@ function sendInlinePdfAndDelete(res, filePath, fileName) {
     if (!res.headersSent) json(res, 500, { error: "Failed to read DTR PDF" });
   });
   res.on("close", cleanup);
+  stream.pipe(res);
+}
+
+function sendInlinePdf(res, filePath, fileName) {
+  res.writeHead(200, {
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `inline; filename="${fileName}"`,
+    "Cache-Control": "no-store",
+  });
+  const stream = createReadStream(filePath);
+  stream.on("error", () => {
+    if (!res.headersSent) json(res, 500, { error: "Failed to read PDF" });
+  });
   stream.pipe(res);
 }
 
@@ -2276,6 +2413,22 @@ function formatEmployeeName(employee, fallback = "Employee") {
   return name || fallback;
 }
 
+function formatDtrSignatoryName(employee, fallback = "") {
+  const middleName = String(employee?.middlename || "").trim();
+  const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
+  const name = [
+    employee?.firstname,
+    middleInitial,
+    employee?.lastname,
+    employee?.nameExt ?? employee?.name_ext,
+  ]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .toUpperCase();
+  return name || fallback;
+}
+
 function isNonPlantillaEmploymentStatus(status) {
   return ["JO", "COS", "JO/COS", "Job Order", "Contract of Service", "Contractual"].includes(
     String(status || "").trim(),
@@ -2365,9 +2518,9 @@ function readImageDimensions(buffer, mime) {
       const length = buffer.readUInt16BE(offset + 2);
       if (length < 2) break;
       if (
-        [
-          0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
-        ].includes(marker)
+        [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(
+          marker,
+        )
       ) {
         return { width: buffer.readUInt16BE(offset + 7), height: buffer.readUInt16BE(offset + 5) };
       }
@@ -2418,10 +2571,20 @@ function validateImageDataUrl(value, label, maxBytes, dimensions) {
     throw new Error(`${label} must be ${Math.round(maxBytes / 1024 / 1024)} MB or smaller`);
   }
   const signatures = {
-    "image/png": buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
-    "image/jpeg": buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[buffer.length - 2] === 0xff && buffer[buffer.length - 1] === 0xd9,
-    "image/gif": buffer.subarray(0, 6).toString("ascii") === "GIF87a" || buffer.subarray(0, 6).toString("ascii") === "GIF89a",
-    "image/webp": buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP",
+    "image/png": buffer
+      .subarray(0, 8)
+      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+    "image/jpeg":
+      buffer[0] === 0xff &&
+      buffer[1] === 0xd8 &&
+      buffer[buffer.length - 2] === 0xff &&
+      buffer[buffer.length - 1] === 0xd9,
+    "image/gif":
+      buffer.subarray(0, 6).toString("ascii") === "GIF87a" ||
+      buffer.subarray(0, 6).toString("ascii") === "GIF89a",
+    "image/webp":
+      buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+      buffer.subarray(8, 12).toString("ascii") === "WEBP",
   };
   if (!signatures[mime]) throw new Error(`${label} content does not match its image type`);
   if (dimensions) {
@@ -2493,9 +2656,9 @@ function employeeDbPayload(body, existing = {}) {
     schedulePmOut: normalizeTimeInput(
       body.schedulePmOut ?? body.schedule_pm_out ?? existing.schedulePmOut ?? "17:00",
     ),
-    dtrSignatory: String(
-      body.dtrSignatory ?? body.dtr_signatory ?? existing.dtrSignatory ?? "",
-    ).trim(),
+    dtrSignatory: String(body.dtrSignatory ?? body.dtr_signatory ?? existing.dtrSignatory ?? "")
+      .trim()
+      .toUpperCase(),
     dtrNoterId: body.dtrNoterId || body.dtr_noter_id || existing.dtrNoterId || null,
     isDtrNoter: Boolean(body.isDtrNoter ?? body.is_dtr_noter ?? existing.isDtrNoter ?? false),
     regular:
@@ -3206,8 +3369,8 @@ async function requireApproval(req, res) {
   return user;
 }
 
-async function ensureLeaveBalance(employeeId, leaveTypeId) {
-  await pool.execute(
+async function ensureLeaveBalance(employeeId, leaveTypeId, db = pool) {
+  await db.execute(
     `INSERT INTO leave_balances (employee_id, leave_type_id)
      VALUES (:employeeId, :leaveTypeId)
      ON DUPLICATE KEY UPDATE employee_id = employee_id`,
@@ -3225,7 +3388,7 @@ async function changeLeaveBalance(
   db = pool,
 ) {
   if (!["earned", "used", "adjusted"].includes(column)) throw new Error("Invalid balance column");
-  await ensureLeaveBalance(employeeId, leaveTypeId);
+  await ensureLeaveBalance(employeeId, leaveTypeId, db);
   await db.execute(
     `UPDATE leave_balances
      SET ${column} = ${column} + :amount,
@@ -3346,14 +3509,16 @@ function validateSectionPayload(section, payload, existingPayload = {}) {
   const allowed = new Set(allowedFields);
   const normalized = {};
   const source = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
-  const allowedKeys = new Set(allowedFields.flatMap((field) => [field, `${field}Data`, `${field}Type`, `${field}Size`]));
+  const allowedKeys = new Set(
+    allowedFields.flatMap((field) => [field, `${field}Data`, `${field}Type`, `${field}Size`]),
+  );
   const unknown = Object.keys(source).filter((key) => !allowedKeys.has(key));
   if (unknown.length) throw new Error(`Unsupported ${section} field: ${unknown[0]}`);
 
   for (const field of allowedFields) {
     const value = Object.prototype.hasOwnProperty.call(source, field)
       ? source[field]
-      : existingPayload[field] ?? "";
+      : (existingPayload[field] ?? "");
     if (EMPLOYEE_SECTION_FILE_FIELDS.has(field)) {
       const fileName = String(value || "").trim();
       const fileData = Object.prototype.hasOwnProperty.call(source, `${field}Data`)
@@ -3366,10 +3531,13 @@ function validateSectionPayload(section, payload, existingPayload = {}) {
         ? Number(source[`${field}Size`] || 0)
         : Number(existingPayload[`${field}Size`] || 0);
       if (fileData) {
-        const match = fileData.match(/^data:([A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+);base64,([A-Za-z0-9+/=\s]+)$/);
+        const match = fileData.match(
+          /^data:([A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+);base64,([A-Za-z0-9+/=\s]+)$/,
+        );
         if (!match) throw new Error(`${field} attachment data is invalid`);
         const byteLength = Buffer.from(match[2].replace(/\s/g, ""), "base64").length;
-        if (byteLength > MAX_SECTION_FILE_BYTES) throw new Error(`${field} attachment must be 8 MB or smaller`);
+        if (byteLength > MAX_SECTION_FILE_BYTES)
+          throw new Error(`${field} attachment must be 8 MB or smaller`);
         normalized[`${field}Data`] = fileData;
         normalized[`${field}Type`] = fileType || match[1];
         normalized[`${field}Size`] = String(fileSize || byteLength);
@@ -3388,7 +3556,11 @@ function validateSectionPayload(section, payload, existingPayload = {}) {
       continue;
     }
     const textValue = String(value ?? "").trim();
-    if (EMPLOYEE_SECTION_DATE_FIELDS.has(field) && textValue && !/^\d{4}-\d{2}-\d{2}$/.test(textValue)) {
+    if (
+      EMPLOYEE_SECTION_DATE_FIELDS.has(field) &&
+      textValue &&
+      !/^\d{4}-\d{2}-\d{2}$/.test(textValue)
+    ) {
       throw new Error(`${field} must be a valid date`);
     }
     if (textValue.length > MAX_SECTION_TEXT_LENGTH) {
@@ -4582,6 +4754,26 @@ async function seedConfigTables() {
     }
   }
 
+  const obsoleteConditions = OBSOLETE_HOSPITAL_REFERENCE_VALUES.map(
+    () => "(category = ? AND code = ?)",
+  ).join(" OR ");
+  const obsoleteParams = OBSOLETE_HOSPITAL_REFERENCE_VALUES.flat();
+  await pool.query(
+    `UPDATE hr_reference_values
+     SET parent_id = NULL
+     WHERE parent_id IN (
+       SELECT id FROM (
+         SELECT id FROM hr_reference_values WHERE ${obsoleteConditions}
+       ) obsolete
+     )`,
+    obsoleteParams,
+  );
+  await pool.query(
+    `DELETE FROM hr_reference_values
+     WHERE ${obsoleteConditions}`,
+    obsoleteParams,
+  );
+
   for (const value of DEFAULT_REFERENCE_VALUES) {
     await pool.execute(
       `INSERT INTO hr_reference_values (
@@ -4590,7 +4782,11 @@ async function seedConfigTables() {
        VALUES (
          :category, :code, :name, :description, 1, NULL, NULL, :sortOrder
        )
-       ON DUPLICATE KEY UPDATE code = code`,
+       ON DUPLICATE KEY UPDATE
+         name = VALUES(name),
+         description = VALUES(description),
+         is_active = VALUES(is_active),
+         sort_order = VALUES(sort_order)`,
       {
         category: value.category,
         code: value.code,
@@ -4608,8 +4804,7 @@ async function seedConfigTables() {
          ON parent.category = :parentCategory AND parent.code = :parentCode
        SET child.parent_id = parent.id
        WHERE child.category = :category
-         AND child.code = :code
-         AND child.parent_id IS NULL`,
+         AND child.code = :code`,
       {
         category: value.category,
         code: value.code,
@@ -4618,6 +4813,39 @@ async function seedConfigTables() {
       },
     );
   }
+
+  for (const [sectorCode, officeCodes] of Object.entries(OFFICE_SECTOR_PARENT_CODES)) {
+    await pool.query(
+      `UPDATE hr_reference_values child
+       JOIN hr_reference_values parent
+         ON parent.category = 'sectors' AND parent.code = ?
+       SET child.parent_id = parent.id
+       WHERE child.category = 'offices'
+         AND child.code IN (${officeCodes.map(() => "?").join(",")})`,
+      [sectorCode, ...officeCodes],
+    );
+  }
+  await pool.execute(
+    `UPDATE plantilla_items pi
+     JOIN hr_reference_values office_ref ON office_ref.id = pi.office_ref_id
+     SET pi.sector_ref_id = office_ref.parent_id
+     WHERE pi.office_ref_id IS NOT NULL
+       AND office_ref.parent_id IS NOT NULL`,
+  );
+  await pool.execute(
+    `UPDATE plantilla_items pi
+     LEFT JOIN hr_reference_values sector_ref ON sector_ref.id = pi.sector_ref_id
+     SET pi.sector_ref_id = NULL
+     WHERE pi.office_ref_id IS NULL
+       AND sector_ref.category = 'sectors'
+       AND sector_ref.code = 'MUNICIPAL'`,
+  );
+  await pool.execute(
+    `UPDATE hr_reference_values
+     SET is_active = 0
+     WHERE category = 'sectors'
+       AND code = 'MUNICIPAL'`,
+  );
 
   for (const leaveType of DEFAULT_LEAVE_TYPES) {
     await pool.execute(
@@ -5501,7 +5729,11 @@ async function handleListEmployees(req, res, url) {
   const pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get("pageSize") || 10)));
   const offset = (page - 1) * pageSize;
   const where =
-    archiveScope === "archived" ? [`is_hidden = 1`] : archiveScope === "all" ? [] : [`is_hidden = 0`];
+    archiveScope === "archived"
+      ? [`is_hidden = 1`]
+      : archiveScope === "all"
+        ? []
+        : [`is_hidden = 0`];
   const params = {};
 
   if (q) {
@@ -6269,7 +6501,7 @@ function dtrNoterRow(row) {
     name: row.name || "",
     position: row.position || "",
     office: row.office || "",
-    signatory: row.signatory || row.name || "",
+    signatory: String(row.signatory || row.name || "").toUpperCase(),
     isActive: row.is_active === undefined ? true : Boolean(row.is_active),
   };
 }
@@ -6305,9 +6537,9 @@ async function handleListDtrNoters(req, res) {
        COALESCE(NULLIF(dtr_signatory, ''), TRIM(CONCAT_WS(' ',
          NULLIF(TRIM(firstname), ''),
          CASE
-           WHEN CHAR_LENGTH(TRIM(COALESCE(middlename, ''))) = 1
-             THEN CONCAT(UPPER(TRIM(middlename)), '.')
-           ELSE NULLIF(TRIM(middlename), '')
+           WHEN TRIM(COALESCE(middlename, '')) <> ''
+             THEN CONCAT(UPPER(LEFT(TRIM(middlename), 1)), '.')
+           ELSE NULL
          END,
          NULLIF(TRIM(lastname), ''),
          NULLIF(TRIM(name_ext), '')
@@ -6327,7 +6559,9 @@ async function handleCreateDtrNoter(req, res) {
   const name = String(body.name || body.signatory || "").trim();
   const position = String(body.position || "").trim();
   const office = String(body.office || "").trim();
-  const signatory = String(body.signatory || name).trim();
+  const signatory = String(body.signatory || name)
+    .trim()
+    .toUpperCase();
   if (!name || !position || !signatory) {
     return json(res, 400, { error: "Name, signatory, and position are required" });
   }
@@ -8154,10 +8388,17 @@ async function prepareDtrExport(req, res) {
     limit: 1000,
   });
   const employeeName = formatEmployeeName(employee);
+  const defaultDtrSignatory = formatDtrSignatoryName(employee, employeeName.toUpperCase());
   const noter = {
     signatory: String(
-      body.noterSignatory || body.noter_signatory || employee.dtrSignatory || employeeName || "",
-    ).trim(),
+      body.noterSignatory ||
+        body.noter_signatory ||
+        employee.dtrSignatory ||
+        defaultDtrSignatory ||
+        "",
+    )
+      .trim()
+      .toUpperCase(),
     position: String(body.noterPosition || body.noter_position || "Immediate Supervisor").trim(),
   };
   const payload = {
@@ -8166,7 +8407,7 @@ async function prepareDtrExport(req, res) {
       name: employeeName,
       position: employee.position,
       department: employee.department,
-      signatory: employee.dtrSignatory || employeeName,
+      signatory: String(employee.dtrSignatory || defaultDtrSignatory).toUpperCase(),
       scheduleAmIn: employee.scheduleAmIn,
       scheduleAmOut: employee.scheduleAmOut,
       schedulePmIn: employee.schedulePmIn,
@@ -8366,13 +8607,14 @@ async function handleGenerateMassDtrPdf(req, res) {
       });
       rowCount += rows.length;
       const employeeName = formatEmployeeName(employee);
+      const defaultDtrSignatory = formatDtrSignatoryName(employee, employeeName.toUpperCase());
       const payload = {
         employee: {
           id: employee.id,
           name: employeeName,
           position: employee.position,
           department: employee.department,
-          signatory: employee.dtrSignatory || employeeName,
+          signatory: String(employee.dtrSignatory || defaultDtrSignatory).toUpperCase(),
           scheduleAmIn: employee.scheduleAmIn,
           scheduleAmOut: employee.scheduleAmOut,
           schedulePmIn: employee.schedulePmIn,
@@ -8383,9 +8625,11 @@ async function handleGenerateMassDtrPdf(req, res) {
             body.noterSignatory ||
               body.noter_signatory ||
               employee.dtrSignatory ||
-              employeeName ||
+              defaultDtrSignatory ||
               "",
-          ).trim(),
+          )
+            .trim()
+            .toUpperCase(),
           position: String(
             body.noterPosition || body.noter_position || "Immediate Supervisor",
           ).trim(),
@@ -9456,6 +9700,12 @@ async function handleCreateEmployee(req, res) {
   if (!user) return;
 
   const body = await readBody(req);
+  if (body.appointment && !(await hasPermission(user, "movements.write"))) {
+    return json(res, 403, { error: "Employee movement management access required" });
+  }
+  if (body.engagement && !(await hasPermission(user, "engagements.manage"))) {
+    return json(res, 403, { error: "Non-Plantilla engagement access required" });
+  }
   let data;
   try {
     data = employeeDbPayload(body);
@@ -9465,7 +9715,8 @@ async function handleCreateEmployee(req, res) {
   const id = crypto.randomUUID();
   const employeeNo = data.employeeNo || `EMP-${Date.now()}`;
   const createAccount = body.createAccount !== false;
-  const accountActive = body.accountActive !== false;
+  let accountActive =
+    !body.appointment && !body.engagement ? body.accountActive !== false : false;
 
   let connection;
   let committed = false;
@@ -9492,26 +9743,6 @@ async function handleCreateEmployee(req, res) {
 
     let account = null;
     let accountResult = null;
-    if (createAccount) {
-      const username = await generateEmployeeUsername(connection, data);
-      const temporaryPassword = generateTemporaryPassword();
-      const passwordHash = hashPassword(temporaryPassword);
-      const accountName = formatEmployeeName(data);
-      [accountResult] = await connection.execute(
-        `INSERT INTO users (username, password_hash, name, role, employee_id, must_change_password, is_active)
-         VALUES (:username, :passwordHash, :name, 'Employee', :employeeId, 1, :isActive)`,
-        {
-          username,
-          passwordHash,
-          name: accountName,
-          employeeId: id,
-          isActive: accountActive ? 1 : 0,
-        },
-      );
-      await recordPasswordHistory(accountResult.insertId, passwordHash, connection);
-      account = { username, temporaryPassword, active: accountActive };
-    }
-
     let appointmentDraftId = null;
     let engagementId = null;
     if (body.appointment && body.engagement)
@@ -9519,13 +9750,19 @@ async function handleCreateEmployee(req, res) {
     if (body.appointment) {
       const appointment = body.appointment;
       const targetPlantillaItemId = String(appointment.targetPlantillaItemId || "").trim();
+      const requestedSalaryGradeId = Number(
+        appointment.targetSalaryGradeId || appointment.salaryGradeId || 0,
+      );
       const effectiveDate = String(appointment.effectiveDate || "").trim();
       if (!targetPlantillaItemId) throw httpError(400, "Target Plantilla item is required");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate))
         throw httpError(400, "Appointment effective date is required");
       const [[target]] = await connection.execute(
-        `SELECT pi.*,p.title position_title,COALESCE(sec.name,divi.name,off.name,s.name) organization_name
+        `SELECT pi.*,p.title position_title,
+                item_sg.ordinance item_salary_ordinance,item_sg.grade item_salary_grade,
+                COALESCE(sec.name,divi.name,off.name,s.name) organization_name
            FROM plantilla_items pi JOIN positions p ON p.id=pi.position_id
+           LEFT JOIN salary_grades item_sg ON item_sg.id=pi.salary_grade_id
            LEFT JOIN hr_reference_values sec ON sec.id=pi.section_ref_id
            LEFT JOIN hr_reference_values divi ON divi.id=pi.division_ref_id
            LEFT JOIN hr_reference_values off ON off.id=pi.office_ref_id
@@ -9535,6 +9772,39 @@ async function handleCreateEmployee(req, res) {
       );
       if (!target || target.item_status !== "Active")
         throw httpError(409, "Target Plantilla item is not active");
+      const targetSalaryGradeId = requestedSalaryGradeId || Number(target.salary_grade_id || 0);
+      const [[appointmentSalary]] = await connection.execute(
+        `SELECT selected.id
+           FROM salary_grades selected
+          WHERE selected.id=:salaryGradeId
+            AND selected.is_active=1
+            AND selected.ordinance=:ordinance
+            AND selected.grade=:grade`,
+        {
+          salaryGradeId: targetSalaryGradeId,
+          ordinance: target.item_salary_ordinance,
+          grade: target.item_salary_grade,
+        },
+      );
+      if (!appointmentSalary)
+        throw httpError(
+          409,
+          "Select an active employee salary step for the Plantilla item's salary grade",
+        );
+      const itemEffectiveFrom = normalizeDate(target.effective_from);
+      const itemEffectiveTo = normalizeDate(target.effective_to);
+      if (itemEffectiveFrom && effectiveDate < itemEffectiveFrom) {
+        throw httpError(
+          409,
+          `Appointment date cannot be before the Plantilla item effectivity (${itemEffectiveFrom})`,
+        );
+      }
+      if (itemEffectiveTo && effectiveDate > itemEffectiveTo) {
+        throw httpError(
+          409,
+          `Appointment date cannot be after the Plantilla item effectivity (${itemEffectiveTo})`,
+        );
+      }
       const [[occupied]] = await connection.execute(
         "SELECT id FROM plantilla_occupancies WHERE plantilla_item_id=:id AND status='Active' FOR UPDATE",
         { id: targetPlantillaItemId },
@@ -9592,7 +9862,7 @@ async function handleCreateEmployee(req, res) {
           authorityDate: appointment.authorityDate || null,
           targetPlantillaItemId,
           targetPositionId: target.position_id,
-          targetSalaryGradeId: target.salary_grade_id,
+          targetSalaryGradeId,
           targetDepartment: target.organization_name || null,
           remarks: String(appointment.remarks || "").trim() || null,
           supportingDocuments: JSON.stringify(supportingDocuments),
@@ -9634,9 +9904,10 @@ async function handleCreateEmployee(req, res) {
         throw httpError(400, "Engagement start and end dates are required");
       if (dateTo < dateFrom)
         throw httpError(400, "Engagement end date cannot be before its start date");
-      const currentDate = new Date().toISOString().slice(0, 10);
+      const currentDate = formatLocalDate(new Date());
       const engagementStatus =
         dateFrom > currentDate ? "Scheduled" : dateTo < currentDate ? "Expired" : "Active";
+      accountActive = engagementStatus === "Active";
       const rate =
         engagement.rate === "" || engagement.rate == null ? null : Number(engagement.rate);
       if (rate !== null && (!Number.isFinite(rate) || rate < 0))
@@ -9678,6 +9949,26 @@ async function handleCreateEmployee(req, res) {
           },
         );
       }
+    }
+
+    if (createAccount) {
+      const username = await generateEmployeeUsername(connection, data);
+      const temporaryPassword = generateTemporaryPassword();
+      const passwordHash = hashPassword(temporaryPassword);
+      const accountName = formatEmployeeName(data);
+      [accountResult] = await connection.execute(
+        `INSERT INTO users (username, password_hash, name, role, employee_id, must_change_password, is_active)
+         VALUES (:username, :passwordHash, :name, 'Employee', :employeeId, 1, :isActive)`,
+        {
+          username,
+          passwordHash,
+          name: accountName,
+          employeeId: id,
+          isActive: accountActive ? 1 : 0,
+        },
+      );
+      await recordPasswordHistory(accountResult.insertId, passwordHash, connection);
+      account = { username, temporaryPassword, active: accountActive };
     }
 
     await connection.commit();
@@ -9831,7 +10122,12 @@ async function generateEmployeePdsExcelFile(id, user, req) {
   const result = parseJson(scriptOutput, {});
   const warnings = Array.isArray(result.warnings) ? result.warnings : [];
   await registerDocumentExport(fileName, id, user.id, "pds_excel");
-  await logAudit(user.id, "employees.pds_excel_generate", { employeeId: id, fileName, warnings }, req);
+  await logAudit(
+    user.id,
+    "employees.pds_excel_generate",
+    { employeeId: id, fileName, warnings },
+    req,
+  );
   return { fileName, outputPath, payload, warnings };
 }
 
@@ -9997,8 +10293,22 @@ async function handleUpdateEmployee(req, res, id) {
   }
   const employeeNo = data.employeeNo || existing.employeeId || `EMP-${Date.now()}`;
 
+  let connection;
+  let committed = false;
   try {
-    await pool.execute(
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [[currentEmployeeState]] = await connection.execute(
+      `SELECT emp_status FROM employees WHERE id = :id FOR UPDATE`,
+      { id },
+    );
+    const lifecycleTransition = canManage
+      ? employeeLifecycleTransition(currentEmployeeState.emp_status, data.empStatus)
+      : null;
+    if (lifecycleTransition) {
+      data.lifecycleState = lifecycleTransition.lifecycleState;
+    }
+    await connection.execute(
       `UPDATE employees SET
         employee_no = :employeeNo,
         biometric_id = :biometricId,
@@ -10035,7 +10345,24 @@ async function handleUpdateEmployee(req, res, id) {
        WHERE id = :id`,
       { id, ...data, employeeNo },
     );
-    const updated = await readEmployeeById(id);
+    if (lifecycleTransition) {
+      await connection.execute(
+        `UPDATE users
+            SET is_active = :accountActive
+          WHERE employee_id = :employeeId`,
+        {
+          employeeId: id,
+          accountActive: lifecycleTransition.accountActive,
+        },
+      );
+    }
+    const [updatedRows] = await connection.execute(
+      `SELECT * FROM employees WHERE id = :id LIMIT 1`,
+      { id },
+    );
+    const updated = employeeRow(updatedRows[0]);
+    await connection.commit();
+    committed = true;
     const changes = auditDiff(existing, updated);
     await logAudit(
       user.id,
@@ -10050,9 +10377,12 @@ async function handleUpdateEmployee(req, res, id) {
     );
     return json(res, 200, { employee: updated });
   } catch (error) {
+    if (connection && !committed) await connection.rollback().catch(() => {});
     if (error?.code === "ER_DUP_ENTRY")
       return json(res, 409, { error: "Employee ID already exists" });
     throw error;
+  } finally {
+    connection?.release();
   }
 }
 
@@ -10060,9 +10390,12 @@ async function handleDeleteEmployee(req, res, id) {
   const user = await requireEmployeeWrite(req, res);
   if (!user) return;
 
-  const [[employee]] = await pool.execute(`SELECT id, is_hidden FROM employees WHERE id = :id LIMIT 1`, {
-    id,
-  });
+  const [[employee]] = await pool.execute(
+    `SELECT id, is_hidden FROM employees WHERE id = :id LIMIT 1`,
+    {
+      id,
+    },
+  );
   if (!employee) return json(res, 404, { error: "Employee not found" });
   if (employee.is_hidden) return json(res, 200, { ok: true });
 
@@ -10075,9 +10408,12 @@ async function handleRestoreEmployee(req, res, id) {
   const user = await requireEmployeeWrite(req, res);
   if (!user) return;
 
-  const [[employee]] = await pool.execute(`SELECT id, is_hidden FROM employees WHERE id = :id LIMIT 1`, {
-    id,
-  });
+  const [[employee]] = await pool.execute(
+    `SELECT id, is_hidden FROM employees WHERE id = :id LIMIT 1`,
+    {
+      id,
+    },
+  );
   if (!employee) return json(res, 404, { error: "Employee not found" });
   if (!employee.is_hidden) return json(res, 200, { ok: true });
 
@@ -10091,7 +10427,9 @@ async function handleCreateSectionRow(req, res, employeeId, section) {
   if (!user) return;
   const canManage = await canManageEmployeeRecord(user);
   const isSelfService =
-    !canManage && user.employeeId === employeeId && (await hasPermission(user, "self_service.access"));
+    !canManage &&
+    user.employeeId === employeeId &&
+    (await hasPermission(user, "self_service.access"));
   if (!canManage && !isSelfService) {
     return json(res, 403, { error: "You can only update your own 201 records" });
   }
@@ -10157,7 +10495,9 @@ async function handleUpdateSectionRow(req, res, employeeId, section, rowId, supp
   if (!user) return;
   const canManage = await canManageEmployeeRecord(user);
   const isSelfService =
-    !canManage && user.employeeId === employeeId && (await hasPermission(user, "self_service.access"));
+    !canManage &&
+    user.employeeId === employeeId &&
+    (await hasPermission(user, "self_service.access"));
   if (!canManage && !isSelfService) {
     return json(res, 403, { error: "You can only update your own 201 records" });
   }
@@ -10216,7 +10556,9 @@ async function handleDeleteSectionRow(req, res, employeeId, section, rowId) {
   if (!user) return;
   const canManage = await canManageEmployeeRecord(user);
   const isSelfService =
-    !canManage && user.employeeId === employeeId && (await hasPermission(user, "self_service.access"));
+    !canManage &&
+    user.employeeId === employeeId &&
+    (await hasPermission(user, "self_service.access"));
   if (!canManage && !isSelfService) {
     return json(res, 403, { error: "You can only update your own 201 records" });
   }
@@ -10599,12 +10941,7 @@ async function handleCreateLeaveApplication(req, res) {
       : {};
   const formPayload =
     body.formPayload && typeof body.formPayload === "object" ? body.formPayload : {};
-  if (
-    !employeeId ||
-    !Number.isInteger(leaveTypeId) ||
-    !dateFrom ||
-    !dateTo
-  ) {
+  if (!employeeId || !Number.isInteger(leaveTypeId) || !dateFrom || !dateTo) {
     return json(res, 400, {
       error: "Employee, leave type, and leave dates are required",
     });
@@ -10952,20 +11289,20 @@ async function handleDeleteLeaveApplication(req, res, id) {
         : Number(existing.approved_credit_charge_days || 0);
     const chargedLeaveTypeId = Number(existing.charged_leave_type_id || existing.leave_type_id);
     if (chargeDays > 0) {
-    await changeLeaveBalance(
-      existing.employee_id,
-      chargedLeaveTypeId,
-      -chargeDays,
-      "used",
-      chargeDays,
-      {
-        entryType: "DeleteReversal",
-        sourceType: "leave_application",
-        sourceId: id,
-        description: "Reversed approved leave because application was deleted",
-        createdBy: user.id,
-      },
-    );
+      await changeLeaveBalance(
+        existing.employee_id,
+        chargedLeaveTypeId,
+        -chargeDays,
+        "used",
+        chargeDays,
+        {
+          entryType: "DeleteReversal",
+          sourceType: "leave_application",
+          sourceId: id,
+          description: "Reversed approved leave because application was deleted",
+          createdBy: user.id,
+        },
+      );
     }
   }
   await pool.execute(`DELETE FROM leave_applications WHERE id = :id`, { id });
@@ -10998,7 +11335,12 @@ async function handleCancelLeaveApplication(req, res, id) {
      WHERE id = :id AND status = 'Pending'`,
     { id, remarks: "Request withdrawn by employee" },
   );
-  await logAudit(user.id, "leave.application_cancel", { id, employeeId: existing.employee_id }, req);
+  await logAudit(
+    user.id,
+    "leave.application_cancel",
+    { id, employeeId: existing.employee_id },
+    req,
+  );
   const application = await readLeaveApplication(id);
   return json(res, 200, { application });
 }
@@ -11216,6 +11558,7 @@ async function handleGenerateLeaveForm6Pdf(req, res, id) {
   try {
     const { fileName, outputPath } = await generateLeaveForm6ExcelFile(id, user, req);
     const pdfPath = await convertSpreadsheetToPdf(outputPath);
+    await runPython([PDF_WATERMARK_SCRIPT, pdfPath, "PREVIEW"]);
     await fs.rm(outputPath, { force: true }).catch(() => {});
     const pdfFileName = fileName.replace(/\.xlsx$/i, ".pdf");
     await registerDocumentExport(
@@ -11276,13 +11619,13 @@ async function handlePreviewLeaveForm6Pdf(req, res, fileName) {
   } catch {
     return json(res, 404, { error: "Leave form PDF not found" });
   }
-  if (!(await authorizeDocumentExport(user, decoded))) {
+  if (!(await authorizeDocumentExport(user, decoded, { singleUse: false }))) {
     return json(res, 403, {
       error: "This leave export is not available to your account or has expired",
     });
   }
   await logAudit(user.id, "leave.form6_pdf_preview", { fileName: decoded }, req);
-  return sendInlinePdfAndDelete(res, resolved, decoded);
+  return sendInlinePdf(res, resolved, decoded);
 }
 
 async function handleGetConfig(req, res) {
@@ -11388,12 +11731,7 @@ async function handleUpdateAgency(req, res) {
           : "",
       bannerUrl:
         body.bannerUrl !== undefined
-          ? validateImageDataUrl(
-              body.bannerUrl,
-              "Cover photo",
-              null,
-              null,
-            )
+          ? validateImageDataUrl(body.bannerUrl, "Cover photo", null, null)
           : "",
     };
   } catch (error) {
@@ -11592,11 +11930,13 @@ async function salaryGradeUsage(id) {
   const [[usage]] = await pool.execute(
     `SELECT
        (SELECT COUNT(*) FROM plantilla_items WHERE salary_grade_id = :id) plantilla_count,
+       (SELECT COUNT(*) FROM plantilla_occupancies WHERE current_salary_grade_id = :id) occupancy_count,
        (SELECT COUNT(*) FROM personnel_movements WHERE target_salary_grade_id = :id) movement_count`,
     { id },
   );
   return {
     plantillaCount: Number(usage.plantilla_count || 0),
+    occupancyCount: Number(usage.occupancy_count || 0),
     movementCount: Number(usage.movement_count || 0),
   };
 }
@@ -11619,7 +11959,8 @@ async function handleUpdateSalaryGrade(req, res, id) {
   }
 
   const usage = await salaryGradeUsage(id);
-  const isUsed = usage.plantillaCount > 0 || usage.movementCount > 0;
+  const isUsed =
+    usage.plantillaCount > 0 || usage.occupancyCount > 0 || usage.movementCount > 0;
   if (Number(salaryGrade.is_active) === 1 || isUsed) {
     return json(res, 409, {
       error:
@@ -11775,6 +12116,10 @@ async function handleDeleteSalaryGradeTable(req, res, url) {
             JOIN salary_grades sg ON sg.id = pi.salary_grade_id
            WHERE sg.ordinance = :ordinance) plantilla_count,
          (SELECT COUNT(*)
+            FROM plantilla_occupancies po
+            JOIN salary_grades sg ON sg.id=po.current_salary_grade_id
+           WHERE sg.ordinance=:ordinance) occupancy_count,
+         (SELECT COUNT(*)
             FROM personnel_movements pm
             JOIN salary_grades sg ON sg.id = pm.target_salary_grade_id
            WHERE sg.ordinance = :ordinance) movement_count,
@@ -11785,14 +12130,15 @@ async function handleDeleteSalaryGradeTable(req, res, url) {
       { ordinance },
     );
     const plantillaCount = Number(usage.plantilla_count || 0);
+    const occupancyCount = Number(usage.occupancy_count || 0);
     const movementCount = Number(usage.movement_count || 0);
     const salaryRecordCount = Number(usage.salary_record_count || 0);
-    if (plantillaCount || movementCount || salaryRecordCount) {
+    if (plantillaCount || occupancyCount || movementCount || salaryRecordCount) {
       await connection.rollback();
       return json(res, 409, {
         error:
           "Cannot delete this salary table because it is already referenced by plantilla, movements, or 201 salary records.",
-        usage: { plantillaCount, movementCount, salaryRecordCount },
+        usage: { plantillaCount, occupancyCount, movementCount, salaryRecordCount },
       });
     }
 
@@ -11840,75 +12186,100 @@ async function handleActivateSalaryGradeTable(req, res) {
 
   const connection = await pool.getConnection();
   const results = [];
-  let updated = 0;
+  let itemsUpdated = 0;
+  let employeeSalaryRecordsCreated = 0;
+  let movementsSynchronized = 0;
   try {
     await connection.beginTransaction();
 
-    const [tableRows] = await connection.execute(
-      `SELECT COUNT(*) AS count FROM salary_grades WHERE ordinance = :ordinance`,
+    const [targetTableRows] = await connection.execute(
+      `SELECT id, is_active
+         FROM salary_grades
+        WHERE ordinance = :ordinance
+        FOR UPDATE`,
       { ordinance },
     );
-    if (Number(tableRows[0]?.count || 0) === 0) {
+    if (!targetTableRows.length) {
       await connection.rollback();
       return json(res, 404, { error: "Salary grade table not found" });
     }
+    if (targetTableRows.some((row) => Number(row.is_active) === 1)) {
+      await connection.rollback();
+      return json(res, 409, { error: "This salary grade table is already active" });
+    }
 
-    const [employees] = await connection.execute(
-      `SELECT e.id employee_id,
-              e.employee_no,
-              e.firstname,
-              e.middlename,
-              e.lastname,
-              e.name_ext,
-              pi.id plantilla_item_id,
+    const [items] = await connection.execute(
+      `SELECT pi.id plantilla_item_id,
               pi.item_number,
               pi.salary_grade_id old_salary_grade_id,
               pi.authorized_salary old_authorized_salary,
               old_sg.ordinance old_ordinance,
               old_sg.grade old_grade,
               old_sg.step old_step,
-              old_sg.amount old_salary_grade_amount,
+              old_sg.amount old_monthly_amount,
               new_sg.id new_salary_grade_id,
-              new_sg.amount new_amount
-         FROM plantilla_occupancies po
-         JOIN employees e ON e.id = po.employee_id
-         JOIN plantilla_items pi ON pi.id = po.plantilla_item_id
+              new_sg.amount new_monthly_amount,
+              po.id occupancy_id,
+              COALESCE(po.current_salary_grade_id,pi.salary_grade_id) employee_salary_grade_id,
+              employee_sg.ordinance employee_old_ordinance,
+              employee_sg.grade employee_grade,
+              employee_sg.step employee_step,
+              employee_sg.amount employee_old_monthly_amount,
+              new_employee_sg.id new_employee_salary_grade_id,
+              new_employee_sg.amount employee_new_monthly_amount,
+              e.id employee_id,
+              e.employee_no,
+              e.firstname,
+              e.middlename,
+              e.lastname,
+              e.name_ext
+         FROM plantilla_items pi
     LEFT JOIN salary_grades old_sg ON old_sg.id = pi.salary_grade_id
     LEFT JOIN salary_grades new_sg
            ON new_sg.ordinance = :ordinance
           AND new_sg.grade = old_sg.grade
           AND new_sg.step = old_sg.step
-        WHERE po.status = 'Active'
-          AND pi.item_status = 'Active'
-          AND e.is_hidden = 0
-          AND e.emp_status = 'Active'
-        ORDER BY e.lastname ASC, e.firstname ASC
+    LEFT JOIN plantilla_occupancies po
+           ON po.plantilla_item_id = pi.id
+          AND po.status = 'Active'
+    LEFT JOIN salary_grades employee_sg
+           ON employee_sg.id=COALESCE(po.current_salary_grade_id,pi.salary_grade_id)
+    LEFT JOIN salary_grades new_employee_sg
+           ON new_employee_sg.ordinance=:ordinance
+          AND new_employee_sg.grade=employee_sg.grade
+          AND new_employee_sg.step=employee_sg.step
+    LEFT JOIN employees e ON e.id = po.employee_id
+        WHERE pi.item_status = 'Active'
+        ORDER BY pi.item_number ASC
         FOR UPDATE`,
       { ordinance },
     );
 
-    const missingRequiredRows = employees
+    const missingRequiredRows = items
       .filter(
-        (employee) =>
-          employee.old_salary_grade_id &&
-          employee.old_grade &&
-          employee.old_step &&
-          !employee.new_salary_grade_id,
+        (item) =>
+          !item.old_salary_grade_id ||
+          item.old_grade == null ||
+          item.old_step == null ||
+          !item.new_salary_grade_id ||
+          (item.employee_id && !item.new_employee_salary_grade_id),
       )
-      .map((employee) => ({
-        employeeId: employee.employee_id,
-        employeeNo: employee.employee_no,
-        employeeName: formatEmployeeName(employee),
-        itemNumber: employee.item_number,
-        grade: Number(employee.old_grade),
-        step: Number(employee.old_step),
+      .map((item) => ({
+        plantillaItemId: item.plantilla_item_id,
+        itemNumber: item.item_number,
+        grade: item.old_grade == null ? null : Number(item.old_grade),
+        step: item.old_step == null ? null : Number(item.old_step),
         status: "blocked",
-        reason: `No SG-${employee.old_grade} Step ${employee.old_step} row in ${ordinance}`,
+        reason: !item.old_salary_grade_id
+          ? "Plantilla item has no current salary grade"
+          : item.employee_id && !item.new_employee_salary_grade_id
+            ? `No employee SG-${item.employee_grade} Step ${item.employee_step} row in ${ordinance}`
+            : `No SG-${item.old_grade} Step ${item.old_step} row in ${ordinance}`,
       }));
     if (missingRequiredRows.length) {
       await connection.rollback();
       return json(res, 409, {
-        error: `Activation blocked: ${missingRequiredRows.length} active plantilla item(s) have no matching salary grade/step in ${ordinance}. Add the missing rows before activating this table.`,
+        error: `Activation blocked: ${missingRequiredRows.length} active Plantilla item(s) cannot be mapped to ${ordinance}. Add the missing salary grade/step rows before activating this table.`,
         results: missingRequiredRows,
       });
     }
@@ -11921,94 +12292,44 @@ async function handleActivateSalaryGradeTable(req, res) {
       },
     );
 
-    for (const employee of employees) {
-      const employeeName = formatEmployeeName(employee);
+    for (const item of items) {
+      const employeeName = item.employee_id ? formatEmployeeName(item) : "";
+      const oldMonthlyAmount = Number(item.old_monthly_amount || 0);
+      const newMonthlyAmount = Number(item.new_monthly_amount || 0);
+      const oldAnnualAmount =
+        item.old_authorized_salary == null
+          ? oldMonthlyAmount * 12
+          : Number(item.old_authorized_salary);
+      const newAnnualAmount = newMonthlyAmount * 12;
+      const employeeOldMonthlyAmount = Number(item.employee_old_monthly_amount || 0);
+      const employeeNewMonthlyAmount = Number(item.employee_new_monthly_amount || 0);
       const baseResult = {
-        employeeId: employee.employee_id,
-        employeeNo: employee.employee_no,
+        plantillaItemId: item.plantilla_item_id,
+        itemNumber: item.item_number,
+        employeeId: item.employee_id || null,
+        employeeNo: item.employee_no || "",
         employeeName,
-        itemNumber: employee.item_number,
-        grade: employee.old_grade == null ? null : Number(employee.old_grade),
-        step: employee.old_step == null ? null : Number(employee.old_step),
+        grade: Number(item.old_grade),
+        step: Number(item.old_step),
+        oldSalaryGradeId: Number(item.old_salary_grade_id),
+        newSalaryGradeId: Number(item.new_salary_grade_id),
+        oldMonthlyAmount,
+        newMonthlyAmount,
+        oldAnnualAmount,
+        newAnnualAmount,
       };
-
-      if (!employee.old_salary_grade_id || !employee.old_grade || !employee.old_step) {
-        results.push({
-          ...baseResult,
-          status: "skipped",
-          reason: "Plantilla item has no salary grade",
-        });
-        continue;
-      }
-      if (!employee.new_salary_grade_id) {
-        results.push({
-          ...baseResult,
-          status: "skipped",
-          reason: `No SG-${employee.old_grade} Step ${employee.old_step} row in ${ordinance}`,
-        });
-        continue;
-      }
-
-      const oldAmount =
-        employee.old_authorized_salary == null
-          ? Number(employee.old_salary_grade_amount || 0)
-          : Number(employee.old_authorized_salary);
-      const newAmount = Number(employee.new_amount);
-
-      const [duplicates] = await connection.execute(
-        `SELECT id
-           FROM employee_salary_records
-          WHERE employee_id = :employeeId
-            AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) = 'Salary Grade Table Activation'
-            AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.ordinance')) = :ordinance
-            AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.date')) = :effectivityDate
-          LIMIT 1`,
-        { employeeId: employee.employee_id, ordinance, effectivityDate },
-      );
-      if (duplicates.length) {
-        results.push({
-          ...baseResult,
-          oldAmount,
-          newAmount,
-          status: "skipped",
-          reason: "Already applied to this employee for the same ordinance and effectivity date",
-        });
-        continue;
-      }
 
       await connection.execute(
         `UPDATE plantilla_items
             SET salary_grade_id = :salaryGradeId,
-                authorized_salary = :amount,
+                authorized_salary = :annualAmount,
                 updated_by = :userId
           WHERE id = :plantillaItemId`,
         {
-          salaryGradeId: employee.new_salary_grade_id,
-          amount: newAmount,
+          salaryGradeId: item.new_salary_grade_id,
+          annualAmount: newAnnualAmount,
           userId: user.id,
-          plantillaItemId: employee.plantilla_item_id,
-        },
-      );
-
-      await connection.execute(
-        `INSERT INTO employee_salary_records (id, employee_id, payload)
-         VALUES (:id, :employeeId, :payload)`,
-        {
-          id: crypto.randomUUID(),
-          employeeId: employee.employee_id,
-          payload: JSON.stringify({
-            date: effectivityDate,
-            description: "Salary grade table activation",
-            ordinance,
-            previousOrdinance: employee.old_ordinance || "",
-            grade: Number(employee.old_grade),
-            step: Number(employee.old_step),
-            previousAmount: oldAmount,
-            amount: newAmount,
-            gross: newAmount,
-            type: "Salary Grade Table Activation",
-            remarks,
-          }),
+          plantillaItemId: item.plantilla_item_id,
         },
       );
 
@@ -12016,28 +12337,129 @@ async function handleActivateSalaryGradeTable(req, res) {
         `INSERT INTO plantilla_item_history (plantilla_item_id, action, snapshot_json, changed_by)
          VALUES (:plantillaItemId, 'Salary Grade Table Activation', :snapshot, :userId)`,
         {
-          plantillaItemId: employee.plantilla_item_id,
+          plantillaItemId: item.plantilla_item_id,
           userId: user.id,
           snapshot: JSON.stringify({
             ordinance,
             effectivityDate,
-            oldSalaryGradeId: employee.old_salary_grade_id,
-            newSalaryGradeId: employee.new_salary_grade_id,
-            oldAmount,
-            newAmount,
-            employeeId: employee.employee_id,
+            previousOrdinance: item.old_ordinance || "",
+            oldSalaryGradeId: item.old_salary_grade_id,
+            newSalaryGradeId: item.new_salary_grade_id,
+            oldMonthlyAmount,
+            newMonthlyAmount,
+            oldAnnualAmount,
+            newAnnualAmount,
+            employeeId: item.employee_id || null,
             remarks,
           }),
         },
       );
 
-      updated += 1;
+      let salaryRecordCreated = false;
+      if (item.employee_id) {
+        await connection.execute(
+          `UPDATE plantilla_occupancies
+              SET current_salary_grade_id=:salaryGradeId
+            WHERE id=:occupancyId`,
+          {
+            salaryGradeId: item.new_employee_salary_grade_id,
+            occupancyId: item.occupancy_id,
+          },
+        );
+        const [duplicates] = await connection.execute(
+          `SELECT id
+             FROM employee_salary_records
+            WHERE employee_id = :employeeId
+              AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) = 'Salary Grade Table Activation'
+              AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.ordinance')) = :ordinance
+              AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.date')) = :effectivityDate
+            LIMIT 1`,
+          { employeeId: item.employee_id, ordinance, effectivityDate },
+        );
+        if (!duplicates.length) {
+          await connection.execute(
+            `INSERT INTO employee_salary_records (id, employee_id, payload)
+             VALUES (:id, :employeeId, :payload)`,
+            {
+              id: crypto.randomUUID(),
+              employeeId: item.employee_id,
+              payload: JSON.stringify({
+                date: effectivityDate,
+                description: "Salary grade table activation",
+                ordinance,
+                previousOrdinance: item.employee_old_ordinance || item.old_ordinance || "",
+                grade: Number(item.employee_grade),
+                step: Number(item.employee_step),
+                previousAmount: employeeOldMonthlyAmount,
+                amount: employeeNewMonthlyAmount,
+                gross: employeeNewMonthlyAmount,
+                type: "Salary Grade Table Activation",
+                remarks,
+              }),
+            },
+          );
+          salaryRecordCreated = true;
+          employeeSalaryRecordsCreated += 1;
+        }
+      }
+
+      const [pendingMovements] = await connection.execute(
+        `SELECT m.id,m.control_number,m.status,m.target_salary_grade_id,
+                new_target.id new_target_salary_grade_id
+           FROM personnel_movements m
+           LEFT JOIN salary_grades old_target ON old_target.id=m.target_salary_grade_id
+           LEFT JOIN salary_grades new_target
+             ON new_target.ordinance=:ordinance
+            AND new_target.grade=old_target.grade
+            AND new_target.step=old_target.step
+          WHERE m.target_plantilla_item_id = :plantillaItemId
+            AND m.status IN ('Draft','Submitted','Reviewed','Approved','Scheduled')
+          FOR UPDATE`,
+        { plantillaItemId: item.plantilla_item_id, ordinance },
+      );
+      for (const movement of pendingMovements) {
+        const synchronizedSalaryGradeId =
+          movement.new_target_salary_grade_id || item.new_salary_grade_id;
+        await connection.execute(
+          `UPDATE personnel_movements
+              SET target_salary_grade_id = :salaryGradeId,
+                  version = version + 1
+            WHERE id = :movementId`,
+          { movementId: movement.id, salaryGradeId: synchronizedSalaryGradeId },
+        );
+        await connection.execute(
+          `INSERT INTO personnel_movement_events
+             (id, movement_id, event_type, from_status, to_status, actor_id, remarks, snapshot_json)
+           VALUES
+             (:id, :movementId, 'Salary Table Synced', :status, :status, :actorId, :remarks, :snapshot)`,
+          {
+            id: crypto.randomUUID(),
+            movementId: movement.id,
+            status: movement.status,
+            actorId: user.id,
+            remarks: remarks || null,
+            snapshot: JSON.stringify({
+              ordinance,
+              effectivityDate,
+              controlNumber: movement.control_number,
+              oldSalaryGradeId: movement.target_salary_grade_id,
+              newSalaryGradeId: synchronizedSalaryGradeId,
+              oldMonthlyAmount,
+              newMonthlyAmount,
+              oldAnnualAmount,
+              newAnnualAmount,
+            }),
+          },
+        );
+        movementsSynchronized += 1;
+      }
+
+      itemsUpdated += 1;
       results.push({
         ...baseResult,
-        oldAmount,
-        newAmount,
         status: "updated",
-        reason: "",
+        salaryRecordCreated,
+        movementsSynchronized: pendingMovements.length,
       });
     }
 
@@ -12045,16 +12467,28 @@ async function handleActivateSalaryGradeTable(req, res) {
     await logAudit(
       user.id,
       "config.salary_grade_table_activate",
-      { ordinance, effectivityDate, updated, skipped: results.length - updated },
+      {
+        ordinance,
+        effectivityDate,
+        itemsChecked: items.length,
+        itemsUpdated,
+        employeeSalaryRecordsCreated,
+        movementsSynchronized,
+        skipped: items.length - itemsUpdated,
+      },
       req,
     );
     return json(res, 200, {
       activeOrdinance: ordinance,
       effectivityDate,
       summary: {
-        checked: results.length,
-        updated,
-        skipped: results.length - updated,
+        checked: items.length,
+        updated: itemsUpdated,
+        skipped: items.length - itemsUpdated,
+        itemsChecked: items.length,
+        itemsUpdated,
+        employeeSalaryRecordsCreated,
+        movementsSynchronized,
       },
       results,
     });
@@ -12078,7 +12512,7 @@ async function handleDeleteSalaryGrade(req, res, id) {
     return json(res, 409, { error: "Cannot delete a row from the active salary grade table" });
   }
   const usage = await salaryGradeUsage(id);
-  if (usage.plantillaCount > 0 || usage.movementCount > 0) {
+  if (usage.plantillaCount > 0 || usage.occupancyCount > 0 || usage.movementCount > 0) {
     return json(res, 409, {
       error: "Cannot delete a salary grade row already used by plantilla or movements",
     });
@@ -12344,8 +12778,12 @@ async function handleListAuditLogs(req, res) {
   const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
   const pageSize = Math.min(200, Math.max(10, Number(url.searchParams.get("pageSize")) || 50));
   const offset = (page - 1) * pageSize;
-  const q = String(url.searchParams.get("q") || "").trim().slice(0, 100);
-  const action = String(url.searchParams.get("action") || "").trim().slice(0, 100);
+  const q = String(url.searchParams.get("q") || "")
+    .trim()
+    .slice(0, 100);
+  const action = String(url.searchParams.get("action") || "")
+    .trim()
+    .slice(0, 100);
   const from = normalizeDate(url.searchParams.get("from"));
   const to = normalizeDate(url.searchParams.get("to"));
   const where = [];
@@ -12419,7 +12857,9 @@ async function handleListErrorLogs(req, res) {
     Math.max(10, Number(url.searchParams.get("importPageSize")) || pageSize),
   );
   const importOffset = (importPage - 1) * importPageSize;
-  const q = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+  const q = String(url.searchParams.get("q") || "")
+    .trim()
+    .slice(0, 100);
   const from = normalizeDate(url.searchParams.get("from"));
   const to = normalizeDate(url.searchParams.get("to"));
   const importLevel = String(url.searchParams.get("importLevel") || "").trim();
@@ -12707,8 +13147,6 @@ async function route(req, res) {
     });
   }
   if (req.method === "GET" && url.pathname === "/api/dashboard") return handleDashboard(req, res);
-  if (req.method === "GET" && url.pathname === "/api/assignments/summary")
-    return assignmentHandlers.summary(req, res);
   if (req.method === "GET" && url.pathname === "/api/reports/personnel-plantilla")
     return reportHandlers.personnelPlantilla(req, res);
   if (req.method === "POST" && reportExportMatch)

@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import {
   Select,
   SelectContent,
@@ -785,20 +786,12 @@ function EmployeeServicesHome() {
                 Counted automatically from weekdays in the selected range.
               </p>
             </FormField>
-            <FormField label="From">
-              <Input
-                type="date"
+            <FormField label="Date Range" className="sm:col-span-2">
+              <DateRangePicker
+                from={leaveForm.dateFrom}
+                to={leaveForm.dateTo}
                 min={minimumLeaveDate}
-                value={leaveForm.dateFrom}
-                onChange={(event) => setLeaveForm({ ...leaveForm, dateFrom: event.target.value })}
-              />
-            </FormField>
-            <FormField label="To">
-              <Input
-                type="date"
-                min={leaveForm.dateFrom || minimumLeaveDate}
-                value={leaveForm.dateTo}
-                onChange={(event) => setLeaveForm({ ...leaveForm, dateTo: event.target.value })}
+                onApply={(dateFrom, dateTo) => setLeaveForm({ ...leaveForm, dateFrom, dateTo })}
               />
             </FormField>
             <FormField label="Reason" className="sm:col-span-2">
@@ -1371,27 +1364,39 @@ function WorkExperienceSheetPanel({
           </DialogHeader>
           <div className="overflow-y-auto px-5 py-4">
             <div className="grid gap-3 md:grid-cols-2">
-              {WES_FIELDS.map((field) => (
-                <FormField
-                  key={field.key}
-                  label={field.label}
-                  className={field.type === "textarea" ? "md:col-span-2" : undefined}
-                >
-                  {field.type === "textarea" ? (
-                    <Textarea
-                      value={form[field.key] || ""}
-                      onChange={(event) => set(field.key, event.target.value)}
-                      rows={4}
-                    />
-                  ) : (
-                    <Input
-                      type={field.type || "text"}
-                      value={form[field.key] || ""}
-                      onChange={(event) => set(field.key, event.target.value)}
-                    />
-                  )}
-                </FormField>
-              ))}
+              <FormField label="Date Range" className="md:col-span-2">
+                <DateRangePicker
+                  from={form.dateFrom || ""}
+                  to={form.dateTo || ""}
+                  allowOpenEnded
+                  onApply={(dateFrom, dateTo) =>
+                    setForm((current) => ({ ...current, dateFrom, dateTo }))
+                  }
+                />
+              </FormField>
+              {WES_FIELDS.filter((field) => field.key !== "dateFrom" && field.key !== "dateTo").map(
+                (field) => (
+                  <FormField
+                    key={field.key}
+                    label={field.label}
+                    className={field.type === "textarea" ? "md:col-span-2" : undefined}
+                  >
+                    {field.type === "textarea" ? (
+                      <Textarea
+                        value={form[field.key] || ""}
+                        onChange={(event) => set(field.key, event.target.value)}
+                        rows={4}
+                      />
+                    ) : (
+                      <Input
+                        type={field.type || "text"}
+                        value={form[field.key] || ""}
+                        onChange={(event) => set(field.key, event.target.value)}
+                      />
+                    )}
+                  </FormField>
+                ),
+              )}
             </div>
           </div>
           <DialogFooter className="flex-row flex-wrap justify-end gap-2 border-t border-border px-5 py-4 sm:space-x-0">

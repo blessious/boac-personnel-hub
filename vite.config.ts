@@ -13,7 +13,7 @@ export default defineConfig({
         ignored: ["**/server/exports/**"],
       },
       proxy: {
-        "/api": "http://localhost:47101",
+        "/api": "http://localhost:47102",
       },
     },
   },

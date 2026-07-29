@@ -40,6 +40,8 @@ function Dashboard() {
   });
   const loading = isLoading || (isFetching && !data);
   const errorMessage = error instanceof Error ? error.message : "";
+  const showInitialLoading = !data && !error;
+  const showBlockingError = !data && Boolean(error);
   const quickLinks = [
     ...(hasPermission("admin.users") ||
     hasPermission("admin.audit") ||
@@ -50,7 +52,7 @@ function Dashboard() {
             to: "/admin" as const,
             icon: <ShieldCheck className="h-5 w-5 text-fuchsia-600" />,
             label: "System Admin",
-            bg: "bg-fuchsia-50",
+            bg: "bg-fuchsia-50 dark:bg-fuchsia-500/15",
           },
         ]
       : []),
@@ -60,7 +62,7 @@ function Dashboard() {
             to: "/settings" as const,
             icon: <Settings className="h-5 w-5 text-slate-600" />,
             label: "Settings",
-            bg: "bg-slate-50",
+            bg: "bg-slate-50 dark:bg-slate-500/15",
           },
         ]
       : []),
@@ -70,7 +72,7 @@ function Dashboard() {
             to: "/employees" as const,
             icon: <UserPlus className="h-5 w-5 text-blue-600" />,
             label: "Add Employee",
-            bg: "bg-blue-50",
+            bg: "bg-blue-50 dark:bg-blue-500/15",
           },
         ]
       : []),
@@ -80,7 +82,7 @@ function Dashboard() {
             to: "/leave" as const,
             icon: <CalendarIcon className="h-5 w-5 text-emerald-600" />,
             label: "Leave Requests",
-            bg: "bg-emerald-50",
+            bg: "bg-emerald-50 dark:bg-emerald-500/15",
           },
         ]
       : []),
@@ -90,7 +92,7 @@ function Dashboard() {
             to: "/employees" as const,
             icon: <FileText className="h-5 w-5 text-purple-600" />,
             label: "Employee Directory",
-            bg: "bg-purple-50",
+            bg: "bg-purple-50 dark:bg-purple-500/15",
           },
         ]
       : []),
@@ -100,7 +102,7 @@ function Dashboard() {
             to: "/reports" as const,
             icon: <BarChart3 className="h-5 w-5 text-amber-600" />,
             label: "Reports",
-            bg: "bg-amber-50",
+            bg: "bg-amber-50 dark:bg-amber-500/15",
           },
         ]
       : []),
@@ -110,7 +112,7 @@ function Dashboard() {
             to: "/attendance" as const,
             icon: <Clock className="h-5 w-5 text-teal-600" />,
             label: "Attendance",
-            bg: "bg-teal-50",
+            bg: "bg-teal-50 dark:bg-teal-500/15",
           },
         ]
       : []),
@@ -160,7 +162,7 @@ function Dashboard() {
   const femalePct = genderTotal > 0 ? Math.round((femaleTotal / genderTotal) * 100) : 0;
   const malePct = genderTotal > 0 ? Math.round((maleTotal / genderTotal) * 100) : 0;
 
-  const divisions = [...(data?.byDivision ?? [])].sort((a, b) => b.total - a.total).slice(0, 4);
+  const offices = [...(data?.byDivision ?? [])].sort((a, b) => b.total - a.total).slice(0, 4);
   const firstName = getFirstName(user?.employeeName || user?.name || user?.username);
   const currentDate = formatDisplayDate(now);
   const currentTime = new Intl.DateTimeFormat("en-US", {
@@ -170,7 +172,7 @@ function Dashboard() {
   }).format(now);
   const greeting = getGreeting(now);
 
-  if ((loading && !data) || errorMessage || (!loading && !data)) {
+  if (showInitialLoading || showBlockingError) {
     return (
       <AppShell title="" subtitle="">
         <div className="flex flex-col space-y-6 pb-8">
@@ -180,7 +182,7 @@ function Dashboard() {
             currentTime={currentTime}
             currentDate={currentDate}
           />
-          {loading && !data ? (
+          {showInitialLoading ? (
             <DashboardLoadingPanel />
           ) : (
             <DashboardErrorPanel
@@ -249,51 +251,6 @@ function Dashboard() {
           </div>
         </div>
 
-        <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="font-semibold">Authoritative staffing</h2>
-              <p className="text-xs text-muted-foreground">
-                Plantilla vacancy and headcount totals are based on active assignments, not employee
-                labels.
-              </p>
-            </div>
-            <Link to="/plantilla" className="text-sm font-medium text-blue-600 hover:underline">
-              Open Plantilla
-            </Link>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-            <StaffingMetric
-              label="Authorized"
-              value={data?.assignmentTotals.authorizedPlantilla ?? 0}
-            />
-            <StaffingMetric label="Filled" value={data?.assignmentTotals.filledPlantilla ?? 0} />
-            <StaffingMetric
-              label="Vacant"
-              value={data?.assignmentTotals.vacantPlantilla ?? 0}
-              attention
-            />
-            <StaffingMetric
-              label="Non-Plantilla"
-              value={data?.assignmentTotals.activeNonPlantilla ?? 0}
-            />
-            <StaffingMetric
-              label="Awaiting match"
-              value={data?.assignmentTotals.awaitingAssignment ?? 0}
-              attention
-            />
-            <StaffingMetric
-              label="Scheduled"
-              value={data?.assignmentTotals.scheduledAppointments ?? 0}
-            />
-            <StaffingMetric
-              label="Expiring soon"
-              value={data?.assignmentTotals.expiringEngagements ?? 0}
-              attention
-            />
-          </div>
-        </section>
-
         <div className="grid grid-cols-2 gap-3 md:gap-6 lg:grid-cols-12">
           <section className="dash-card-stagger col-span-2 flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-5">
             <div className="mb-6">
@@ -334,7 +291,8 @@ function Dashboard() {
                     cy="50"
                     r="40"
                     fill="transparent"
-                    stroke="#f3f4f6"
+                    className="text-muted/40"
+                    stroke="currentColor"
                     strokeWidth="20"
                   />
                   <circle
@@ -377,7 +335,7 @@ function Dashboard() {
                   percent={`(${percentOf(joCosTotal, totalEmployees)}%)`}
                 />
                 <LegendItem
-                  color="bg-gray-300"
+                  color="bg-gray-300 dark:bg-gray-500/40"
                   label="Other Types"
                   value={otherTotal}
                   percent={`(${percentOf(otherTotal, totalEmployees)}%)`}
@@ -388,29 +346,29 @@ function Dashboard() {
 
           <section className="dash-card-stagger flex h-full flex-col rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-4">
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Employees by Division</h3>
+              <h3 className="text-sm font-semibold text-foreground">Employees by Office / Unit</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Distribution across hospital divisions.
+                Distribution across offices, departments, and assigned units.
               </p>
             </div>
             <div className="mt-5 flex-1 space-y-4">
-              {divisions.map((division, index) => {
-                const pct = percentOf(division.total, totalEmployees);
+              {offices.map((office, index) => {
+                const pct = percentOf(office.total, totalEmployees);
                 const colors = ["bg-blue-500", "bg-amber-500", "bg-emerald-500", "bg-purple-500"];
                 return (
                   <ProgressBar
-                    key={division.department || "Unassigned"}
-                    label={division.department || "Unassigned"}
-                    value={division.total}
+                    key={office.department || "Unassigned"}
+                    label={office.department || "Unassigned"}
+                    value={office.total}
                     percent={`${pct}%`}
                     width={`${pct}%`}
                     color={colors[index % colors.length]}
                   />
                 );
               })}
-              {divisions.length === 0 && (
+              {offices.length === 0 && (
                 <div className="py-4 text-center text-sm text-muted-foreground/70">
-                  No division data available
+                  No office or unit data available
                 </div>
               )}
             </div>
@@ -485,39 +443,6 @@ function Dashboard() {
         </div>
       </div>
     </AppShell>
-  );
-}
-
-function StaffingMetric({
-  label,
-  value,
-  attention = false,
-}: {
-  label: string;
-  value: number;
-  attention?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-lg border p-3",
-        attention && value > 0
-          ? "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-100"
-          : "bg-muted/30",
-      )}
-    >
-      <div className="text-xl font-bold">{value}</div>
-      <div
-        className={cn(
-          "text-xs",
-          attention && value > 0
-            ? "text-amber-900/80 dark:text-amber-200/85"
-            : "text-muted-foreground",
-        )}
-      >
-        {label}
-      </div>
-    </div>
   );
 }
 

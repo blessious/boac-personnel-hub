@@ -66,14 +66,14 @@ $previewErr = Join-Path $exportsDir "scheduled-preview.err.log"
 Start-HrisProcess `
     -Name "HRIS API" `
     -NpmArgs @("run", "api") `
-    -Port 47101 `
+    -Port 47102 `
     -StdOutPath $apiOut `
     -StdErrPath $apiErr
 
 Start-HrisProcess `
     -Name "HRIS frontend preview" `
     -NpmArgs @("run", "preview") `
-    -Port 47100 `
+    -Port 47101 `
     -StdOutPath $previewOut `
     -StdErrPath $previewErr
 

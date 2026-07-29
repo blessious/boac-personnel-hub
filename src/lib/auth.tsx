@@ -89,6 +89,8 @@ interface AuthCtx {
   hasPermission: (permission: PermissionKey) => boolean;
   can: (action: "edit" | "delete" | "manageUsers" | "approve" | "configureSystem") => boolean;
   ready: boolean;
+  bootstrapError: string | null;
+  reloadSession: () => void;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -182,36 +184,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user?.permissions],
   );
 
-  if (!ready) {
-    return <SessionSkeleton />;
-  }
-  if (bootstrapError) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center bg-background px-4">
-        <div className="max-w-md text-center" role="alert">
-          <h1 className="text-xl font-semibold text-foreground">Session unavailable</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{bootstrapError}</p>
-          <button
-            type="button"
-            className="mt-5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-            onClick={loadSession}
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
   return (
     <Ctx.Provider
-      value={{ user, login, logout, updateProfile, changePassword, hasPermission, can, ready }}
+      value={{
+        user,
+        login,
+        logout,
+        updateProfile,
+        changePassword,
+        hasPermission,
+        can,
+        ready,
+        bootstrapError,
+        reloadSession: loadSession,
+      }}
     >
       {children}
     </Ctx.Provider>
   );
 }
 
-function SessionSkeleton() {
+export function SessionSkeleton() {
   return (
     <div className="flex min-h-dvh bg-background" role="status" aria-live="polite">
       <span className="sr-only">Loading your session...</span>

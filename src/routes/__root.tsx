@@ -8,7 +8,7 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
-import { AuthProvider, useAuth, type PermissionKey } from "@/lib/auth";
+import { AuthProvider, SessionSkeleton, useAuth, type PermissionKey } from "@/lib/auth";
 import { SettingsProvider } from "@/lib/settings-context";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppHeader } from "@/components/layout/AppHeader";
@@ -19,7 +19,6 @@ import { useEffect } from "react";
 import { RealtimeProvider } from "@/lib/realtime";
 
 import appCss from "../styles.css?url";
-import appIcon from "../assets/branding/STRH-logo.png";
 
 function NotFoundComponent() {
   return (
@@ -74,17 +73,41 @@ function RedirectingToLoginComponent() {
   );
 }
 
+function SessionUnavailableComponent({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
+      <div className="max-w-md text-center" role="alert">
+        <h1 className="text-xl font-semibold text-foreground">Session unavailable</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{message}</p>
+        <button
+          type="button"
+          className="mt-5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          onClick={onRetry}
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export const Route = createRootRoute({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "STRH HRIS — Human Resource Information System" },
+      { title: "LGU BOAC HRIS — Human Resource Information System" },
       {
         name: "description",
-        content: "Human Resource Information System for DOH Southern Tagalog Regional Hospital.",
+        content: "Human Resource Information System for the Municipality of Boac Marinduque.",
       },
-      { property: "og:title", content: "STRH HRIS" },
+      { property: "og:title", content: "LGU BOAC HRIS" },
       {
         property: "og:description",
         content: "Personnel records, attendance, leave and HR management.",
@@ -94,7 +117,6 @@ export const Route = createRootRoute({
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", type: "image/png", href: appIcon },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "" },
       {
@@ -116,6 +138,12 @@ function RootShell({ children }: { children: React.ReactNode }) {
           dangerouslySetInnerHTML={{
             __html:
               'try{if(localStorage.getItem("pmis_theme")==="dark")document.documentElement.classList.add("dark")}catch(e){}',
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{var i=localStorage.getItem("pmis_agency_icon_url");if(i){var l=document.createElement("link");l.rel="icon";l.type=i.indexOf("data:image/svg")===0?"image/svg+xml":"image/png";l.href=i;l.setAttribute("data-agency-favicon","true");document.head.appendChild(l)}}catch(e){}',
           }}
         />
         <HeadContent />
@@ -158,7 +186,7 @@ function RootComponent() {
 function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, ready, bootstrapError, reloadSession } = useAuth();
   const { title, subtitle } = useSettings();
   const deviceProfile = useDeviceProfile();
   const requestedPath = location.href || location.pathname || "/";
@@ -171,6 +199,9 @@ function AppLayout() {
     canAccessPath(user.permissions || [], location.pathname, user.employeeId);
 
   useEffect(() => {
+    if (!ready || bootstrapError) {
+      return;
+    }
     if (!user && !isLoginPage) {
       navigate({
         to: "/login",
@@ -191,13 +222,28 @@ function AppLayout() {
       // Keep the requested URL visible so the user gets a clear 403 state.
       return;
     }
-  }, [user, isLoginPage, isChangePasswordPage, location.pathname, navigate, requestedPath]);
+  }, [
+    user,
+    ready,
+    bootstrapError,
+    isLoginPage,
+    isChangePasswordPage,
+    location.pathname,
+    navigate,
+    requestedPath,
+  ]);
 
   useEffect(() => {
     document.body.dataset.device = deviceProfile.device;
     document.body.dataset.touch = String(deviceProfile.isTouch);
   }, [deviceProfile.device, deviceProfile.isTouch]);
 
+  if (!ready) {
+    return isLoginPage ? <Outlet /> : <SessionSkeleton />;
+  }
+  if (bootstrapError && !isLoginPage) {
+    return <SessionUnavailableComponent message={bootstrapError} onRetry={reloadSession} />;
+  }
   if (!user && !isLoginPage) return <RedirectingToLoginComponent />;
   if (!authorized) return <AccessDeniedComponent />;
 
@@ -211,7 +257,7 @@ function AppLayout() {
             <AppSidebar />
           </div>
           <div className="dash-content-enter flex min-w-0 flex-1 flex-col">
-            <AppHeader title={title || "STRH HRIS"} subtitle={subtitle} />
+            <AppHeader title={title || "LGU BOAC HRIS"} subtitle={subtitle} />
             <main className="mobile-app-content min-w-0 flex-1 p-3 sm:p-4 xl:p-5">
               <Outlet />
             </main>

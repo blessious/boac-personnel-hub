@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Command,
@@ -54,6 +55,17 @@ import {
 } from "@/lib/movements-api";
 import { listPlantilla, type PlantillaItem } from "@/lib/plantilla-api";
 import type { ReferenceCategory, ReferenceRow } from "@/lib/reference-libraries";
+import {
+  dataTableBodyClass,
+  dataTableCellClass,
+  dataTableClass,
+  dataTableEmptyCellClass,
+  dataTableHeadClass,
+  dataTableHeaderCellClass,
+  dataTableHeadRowClass,
+  dataTableRowClass,
+  dataTableShellClass,
+} from "@/lib/data-table-styles";
 
 type MovementEvent = {
   id: string;
@@ -118,17 +130,21 @@ function MovementsPage() {
   const [movements, setMovements] = useState<Movement[]>([]),
     [summary, setSummary] = useState<Record<string, number>>({}),
     [q, setQ] = useState(""),
-    [status, setStatus] = useState(prepareSearch.status || "all"),
+    [status, setStatus] = useState(prepareSearch.status || "needs-action"),
     [actionFilter, setActionFilter] = useState("all"),
-    [didSetApproverQueue, setDidSetApproverQueue] = useState(false),
-    [didSetHrQueue, setDidSetHrQueue] = useState(false),
     [loadError, setLoadError] = useState("");
   const apiStatus = DERIVED_QUEUE_STATUSES.has(status) ? "all" : status;
   const queueStatuses = useMemo(() => {
-    if (canPrepare) return ["preparation", "ready-post", ...BASE_QUEUE_STATUSES];
-    if (canApprove) return ["needs-action", ...BASE_QUEUE_STATUSES];
-    return BASE_QUEUE_STATUSES;
-  }, [canApprove, canPrepare]);
+    if (canPrepare)
+      return [
+        "needs-action",
+        "preparation",
+        "ready-post",
+        "activation-failed",
+        ...BASE_QUEUE_STATUSES,
+      ];
+    return ["needs-action", ...BASE_QUEUE_STATUSES];
+  }, [canPrepare]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]),
     [items, setItems] = useState<PlantillaItem[]>([]),
     [organizationUnits, setOrganizationUnits] = useState<ReferenceRow[]>([]),
@@ -171,16 +187,6 @@ function MovementsPage() {
       controller.abort();
     };
   }, [load, user]);
-  useEffect(() => {
-    if (didSetApproverQueue || !canApprove || canPrepare) return;
-    setStatus("needs-action");
-    setDidSetApproverQueue(true);
-  }, [canApprove, canPrepare, didSetApproverQueue]);
-  useEffect(() => {
-    if (didSetHrQueue || !canPrepare) return;
-    setStatus("preparation");
-    setDidSetHrQueue(true);
-  }, [canPrepare, didSetHrQueue]);
   useEffect(() => {
     if (!user) return;
     const controller = new AbortController();
@@ -259,6 +265,33 @@ function MovementsPage() {
     prepareSearch.employeeId,
     prepareSearch.prepare,
     prepareSearch.targetPlantillaItemId,
+  ]);
+  useEffect(() => {
+    if (
+      edit === undefined ||
+      !ITEM_ACTIONS.has(form.actionType) ||
+      !form.targetPlantillaItemId ||
+      form.targetSalaryGradeId
+    )
+      return;
+    const item = items.find((candidate) => candidate.id === form.targetPlantillaItemId);
+    const stepOne = item?.salaryGrade
+      ? settings.salaryGrades.find(
+          (row) =>
+            row.isActive &&
+            row.ordinance === item.salaryGrade?.ordinance &&
+            row.grade === item.salaryGrade?.grade &&
+            row.step === 1,
+        )
+      : null;
+    if (stepOne) setForm((current) => ({ ...current, targetSalaryGradeId: String(stepOne.id) }));
+  }, [
+    edit,
+    form.actionType,
+    form.targetPlantillaItemId,
+    form.targetSalaryGradeId,
+    items,
+    settings.salaryGrades,
   ]);
   const save = async () => {
     setBusy(true);
@@ -342,9 +375,25 @@ function MovementsPage() {
     }
     return m.targetDepartment || "";
   };
+  const canUserApproveMovement = useCallback(
+    (movement: Movement) =>
+      canApprove &&
+      (!movement.preparedById || !user?.id || Number(movement.preparedById) !== Number(user.id)),
+    [canApprove, user?.id],
+  );
+  const requiresUserAction = useCallback(
+    (movement: Movement) =>
+      (canPrepare &&
+        (["Draft", "Rejected", "Approved"].includes(movement.status) ||
+          (movement.status === "Scheduled" &&
+            (Boolean(movement.activationError) || movement.effectiveDate <= today())))) ||
+      (canUserApproveMovement(movement) &&
+        (movement.status === "Submitted" || movement.status === "Reviewed")),
+    [canPrepare, canUserApproveMovement],
+  );
   const displayedMovements = useMemo(() => {
     if (status === "needs-action") {
-      return movements.filter((m) => m.status === "Submitted" || m.status === "Reviewed");
+      return movements.filter(requiresUserAction);
     }
     if (status === "preparation") {
       return movements.filter((m) => m.status === "Draft" || m.status === "Rejected");
@@ -356,14 +405,14 @@ function MovementsPage() {
       return movements.filter((m) => Boolean(m.activationError));
     }
     return movements;
-  }, [movements, status]);
+  }, [movements, requiresUserAction, status]);
   const activationFailureCount = useMemo(
     () => movements.filter((movement) => Boolean(movement.activationError)).length,
     [movements],
   );
   const queueLabel = (queueStatus: string) =>
     queueStatus === "needs-action"
-      ? "Needs action"
+      ? "Action needed"
       : queueStatus === "preparation"
         ? "Preparation"
         : queueStatus === "ready-post"
@@ -377,7 +426,9 @@ function MovementsPage() {
     <>
       <Button size="sm" variant="outline" onClick={() => openDetails(m)}>
         <Eye className="mr-1.5 h-4 w-4" />
-        {canApprove && ["Submitted", "Reviewed"].includes(m.status) ? "Review" : "Details"}
+        {canUserApproveMovement(m) && ["Submitted", "Reviewed"].includes(m.status)
+          ? "Review"
+          : "Details"}
       </Button>
       {canPrepare && ["Draft", "Rejected"].includes(m.status) && (
         <Button size="sm" variant={variant} onClick={() => openForm(m)}>
@@ -589,10 +640,10 @@ function MovementsPage() {
           </div>
         )}
       </div>
-      <div className="mobile-desktop-table mt-4 overflow-x-auto rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left">
-            <tr>
+      <div className={cn("mobile-desktop-table mt-4", dataTableShellClass)}>
+        <table className={dataTableClass}>
+          <thead className={dataTableHeadClass}>
+            <tr className={dataTableHeadRowClass}>
               {[
                 "Control no.",
                 "Employee",
@@ -603,30 +654,32 @@ function MovementsPage() {
                 "Status",
                 "Actions",
               ].map((x) => (
-                <th className="p-3" key={x}>
+                <th className={dataTableHeaderCellClass} key={x}>
                   {x}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className={dataTableBodyClass}>
             {displayedMovements.map((m) => (
-              <tr className="border-t" key={m.id}>
-                <td className="whitespace-nowrap p-3 font-medium">{m.controlNumber}</td>
-                <td className="p-3">{m.employeeName}</td>
-                <td className="p-3">
+              <tr className={dataTableRowClass} key={m.id}>
+                <td className={cn(dataTableCellClass, "whitespace-nowrap font-medium")}>
+                  {m.controlNumber}
+                </td>
+                <td className={dataTableCellClass}>{m.employeeName}</td>
+                <td className={dataTableCellClass}>
                   {m.actionType}
                   <div className="text-xs text-muted-foreground">{m.authorityNumber || "-"}</div>
                 </td>
-                <td className="p-3">
+                <td className={dataTableCellClass}>
                   <div className="font-medium">{fromText(m)}</div>
                   <div className="text-xs text-muted-foreground">{fromMeta(m)}</div>
                 </td>
-                <td className="p-3">
+                <td className={dataTableCellClass}>
                   <div className="font-medium">{toText(m)}</div>
                   {toMeta(m) && <div className="text-xs text-muted-foreground">{toMeta(m)}</div>}
                 </td>
-                <td className="whitespace-nowrap p-3">
+                <td className={cn(dataTableCellClass, "whitespace-nowrap")}>
                   {formatDisplayDate(m.effectiveDate)}
                   {m.endDate && (
                     <div className="text-xs text-muted-foreground">
@@ -634,7 +687,7 @@ function MovementsPage() {
                     </div>
                   )}
                 </td>
-                <td className="p-3">
+                <td className={dataTableCellClass}>
                   <Status value={m.status} />
                   {m.activationError && (
                     <div className="mt-1 flex items-center gap-1 text-xs font-medium text-red-600">
@@ -643,14 +696,14 @@ function MovementsPage() {
                     </div>
                   )}
                 </td>
-                <td className="p-3">
+                <td className={dataTableCellClass}>
                   <div className="flex flex-wrap gap-1">{actionButtons(m, "ghost")}</div>
                 </td>
               </tr>
             ))}
             {!displayedMovements.length && (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                <td colSpan={8} className={dataTableEmptyCellClass}>
                   No personnel movements found.
                 </td>
               </tr>
@@ -674,7 +727,7 @@ function MovementsPage() {
       <MovementDetailDialog
         movement={detailMovement}
         events={events}
-        canApprove={canApprove}
+        canApprove={detailMovement ? canUserApproveMovement(detailMovement) : false}
         canPost={canPost}
         onClose={() => setDetailMovement(null)}
         onDecision={openDecision}
@@ -1022,12 +1075,14 @@ function MovementDialog({
   close: () => void;
   save: () => void;
 }) {
+  const selectedItem = items.find((item) => item.id === form.targetPlantillaItemId);
   const needsItem = ITEM_ACTIONS.has(form.actionType),
     needsPosition = PROFILE_ACTIONS.has(form.actionType) || form.actionType === "Reclassification",
-    needsGrade = ["Step Increment", "Reclassification"].includes(form.actionType),
+    needsGrade =
+      ITEM_ACTIONS.has(form.actionType) ||
+      ["Step Increment", "Reclassification"].includes(form.actionType),
     separation = SEPARATIONS.has(form.actionType);
   const selectedEmployee = employees.find((employee) => employee.id === form.employeeId);
-  const selectedItem = items.find((item) => item.id === form.targetPlantillaItemId);
   const contextTitle =
     form.actionType === "Original Appointment" && selectedItem
       ? "Filling vacancy"
@@ -1096,19 +1151,21 @@ function MovementDialog({
             }
             rows={MOVEMENT_TYPES.map((x) => [x, x])}
           />
-          <Field label="Effective date">
-            <Input
-              type="date"
-              value={form.effectiveDate}
-              onChange={(e) => setForm({ ...form, effectiveDate: e.target.value })}
-            />
-          </Field>
-          {(TEMPORARY_ACTIONS.has(form.actionType) || form.actionType === "Renewal") && (
-            <Field label={form.actionType === "Reassignment" ? "End date (optional)" : "End date"}>
+          {TEMPORARY_ACTIONS.has(form.actionType) || form.actionType === "Renewal" ? (
+            <Field label="Date Range">
+              <DateRangePicker
+                from={form.effectiveDate}
+                to={form.endDate}
+                allowOpenEnded={form.actionType === "Reassignment"}
+                onApply={(effectiveDate, endDate) => setForm({ ...form, effectiveDate, endDate })}
+              />
+            </Field>
+          ) : (
+            <Field label="Effective date">
               <Input
                 type="date"
-                value={form.endDate}
-                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                value={form.effectiveDate}
+                onChange={(e) => setForm({ ...form, effectiveDate: e.target.value })}
               />
             </Field>
           )}
@@ -1129,7 +1186,23 @@ function MovementDialog({
             <SelectField
               label="Target vacant plantilla item"
               value={form.targetPlantillaItemId}
-              set={(v) => setForm({ ...form, targetPlantillaItemId: v })}
+              set={(v) => {
+                const item = items.find((candidate) => candidate.id === v);
+                const stepOne = item?.salaryGrade
+                  ? settings.salaryGrades.find(
+                      (row) =>
+                        row.isActive &&
+                        row.ordinance === item.salaryGrade?.ordinance &&
+                        row.grade === item.salaryGrade?.grade &&
+                        row.step === 1,
+                    )
+                  : null;
+                setForm({
+                  ...form,
+                  targetPlantillaItemId: v,
+                  targetSalaryGradeId: stepOne ? String(stepOne.id) : "",
+                });
+              }}
               rows={items
                 .filter((i) => !i.occupant)
                 .map((i) => [i.id, `${i.itemNumber} - ${i.positionTitle}`])}
@@ -1145,13 +1218,26 @@ function MovementDialog({
           )}{" "}
           {needsGrade && (
             <SelectField
-              label="Target salary grade / step"
+              label={
+                ITEM_ACTIONS.has(form.actionType)
+                  ? "Employee salary step"
+                  : "Target salary grade / step"
+              }
               value={form.targetSalaryGradeId}
               set={(v) => setForm({ ...form, targetSalaryGradeId: v })}
-              rows={settings.salaryGrades.map((s) => [
-                String(s.id),
-                `SG ${s.grade}, Step ${s.step} - PHP ${s.amount.toLocaleString()}`,
-              ])}
+              rows={settings.salaryGrades
+                .filter(
+                  (s) =>
+                    (s.isActive || String(s.id) === form.targetSalaryGradeId) &&
+                    (!ITEM_ACTIONS.has(form.actionType) ||
+                      (selectedItem?.salaryGrade &&
+                        s.ordinance === selectedItem.salaryGrade.ordinance &&
+                        s.grade === selectedItem.salaryGrade.grade)),
+                )
+                .map((s) => [
+                  String(s.id),
+                  `SG ${s.grade}, Step ${s.step} - PHP ${s.amount.toLocaleString()} monthly`,
+                ])}
             />
           )}{" "}
           {TEMPORARY_ACTIONS.has(form.actionType) && (

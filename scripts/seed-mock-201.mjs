@@ -36,7 +36,7 @@ if (process.env.HRIS_ALLOW_MOCK_SEED !== "1") {
 const DB_HOST = process.env.HRIS_DB_HOST || "localhost";
 const DB_USER = process.env.HRIS_DB_USER || "root";
 const DB_PASSWORD = process.env.HRIS_DB_PASSWORD || "";
-const DB_NAME = process.env.HRIS_DB_NAME || "hris_db";
+const DB_NAME = process.env.HRIS_DB_NAME || "hris_muni";
 
 const SECTION_TABLES = {
   family: { table: "employee_family_records", single: true },

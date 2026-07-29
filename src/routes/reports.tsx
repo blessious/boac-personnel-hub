@@ -83,7 +83,7 @@ function ReportsPage() {
                 Personnel Statistics & Plantilla Analytics
               </div>
               <h2 className="mt-1 text-xl font-semibold text-foreground">
-                {data?.agency.name || "STRH HRIS"} Management Report
+                {data?.agency.name || "LGU BOAC HRIS"} Management Report
               </h2>
               <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
                 Current workforce distribution, employment profile, Plantilla authorization,

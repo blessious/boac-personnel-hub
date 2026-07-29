@@ -60,6 +60,7 @@ export type Movement = {
   sourceSnapshot: MovementSnapshot;
   beforeSnapshot: MovementSnapshot;
   afterSnapshot: MovementSnapshot;
+  preparedById: number | null;
   preparedBy: string;
   reviewedBy: string;
   approvedBy: string;

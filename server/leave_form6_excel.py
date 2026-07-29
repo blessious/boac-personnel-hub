@@ -37,6 +37,13 @@ DETAIL_CHECKBOXES = {
     "recommend_for_disapproval": "_x0000_s1051",
 }
 
+SHEET_NS = {
+    "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
+    "x14ac": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac",
+}
+
 
 def text(value):
     return "" if value is None else str(value)
@@ -215,18 +222,44 @@ def write_xlsx(template_path, output_path, cells, selected_ids):
 
 
 def patch_sheet(sheet_xml, cells):
-    ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
-    ET.register_namespace("", ns["main"])
-    ET.register_namespace("r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships")
-    ET.register_namespace("mc", "http://schemas.openxmlformats.org/markup-compatibility/2006")
-    ET.register_namespace("x14ac", "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac")
+    register_sheet_namespaces(sheet_xml)
     root = ET.fromstring(sheet_xml)
-    sheet_data = root.find("main:sheetData", ns)
+    sheet_data = root.find("main:sheetData", SHEET_NS)
     if sheet_data is None:
         return sheet_xml
     for ref, value in cells.items():
-        set_cell_inline_string(sheet_data, ref, value, ns)
-    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+        set_cell_inline_string(sheet_data, ref, value, SHEET_NS)
+    patched_xml = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    return restore_namespace_declarations(sheet_xml, patched_xml)
+
+
+def register_sheet_namespaces(sheet_xml):
+    xml_text = sheet_xml.decode("utf-8", errors="ignore")
+    ET.register_namespace("", SHEET_NS["main"])
+    for prefix, uri in re.findall(r'xmlns:([A-Za-z0-9]+)="([^"]+)"', xml_text):
+        if prefix != "xml":
+            try:
+                ET.register_namespace(prefix, uri)
+            except ValueError:
+                pass
+
+
+def restore_namespace_declarations(source_xml, patched_xml):
+    source_text = source_xml.decode("utf-8", errors="ignore")
+    patched_text = patched_xml.decode("utf-8")
+    root_start = patched_text.find("<worksheet")
+    root_end = patched_text.find(">", root_start)
+    if root_start < 0 or root_end < 0:
+        return patched_xml
+
+    root_tag = patched_text[root_start:root_end]
+    missing = []
+    for prefix, uri in re.findall(r'xmlns:([A-Za-z0-9]+)="([^"]+)"', source_text):
+        if f"xmlns:{prefix}=" not in root_tag:
+            missing.append(f' xmlns:{prefix}="{uri}"')
+    if not missing:
+        return patched_xml
+    return (patched_text[:root_end] + "".join(missing) + patched_text[root_end:]).encode("utf-8")
 
 
 def set_cell_inline_string(sheet_data, ref, value, ns):

@@ -38,6 +38,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useAuth } from "@/lib/auth";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 import {
@@ -682,12 +683,16 @@ function ServiceDialog({
           movements.
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field l="Service from">
-            <Input type="date" value={form.serviceFrom} onChange={f("serviceFrom")} />
-          </Field>
-          <Field l="Service to">
-            <Input type="date" value={form.serviceTo} onChange={f("serviceTo")} />
-          </Field>
+          <div className="sm:col-span-2">
+            <Field l="Date Range">
+              <DateRangePicker
+                from={form.serviceFrom}
+                to={form.serviceTo}
+                allowOpenEnded
+                onApply={(serviceFrom, serviceTo) => setForm({ ...form, serviceFrom, serviceTo })}
+              />
+            </Field>
+          </div>
           <Field l="Position / designation">
             <Input
               value={form.positionTitle}

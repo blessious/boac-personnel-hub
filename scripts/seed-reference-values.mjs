@@ -22,7 +22,7 @@ function loadEnv() {
 }
 
 const env = loadEnv();
-const database = env.HRIS_DB_NAME || "hris_db";
+const database = env.HRIS_DB_NAME || "hris_muni";
 const connection = await mysql.createConnection({
   host: env.HRIS_DB_HOST || "localhost",
   user: env.HRIS_DB_USER || "root",

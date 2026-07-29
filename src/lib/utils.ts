@@ -5,6 +5,35 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fall back for denied clipboard permission and non-secure LAN access.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("Clipboard copy was rejected");
+    }
+  } finally {
+    textarea.remove();
+  }
+}
+
 export function formatDisplayDate(value?: string | Date | null, fallback = "-") {
   const date = parseDisplayDate(value);
   if (!date) return value ? String(value) : fallback;
@@ -76,5 +105,25 @@ export function formatEmployeeName(
     .map((part) => String(part || "").trim())
     .filter(Boolean)
     .join(" ");
+  return name || fallback;
+}
+
+export function formatDtrSignatoryName(
+  employee?: {
+    firstname?: string | null;
+    middlename?: string | null;
+    lastname?: string | null;
+    nameExt?: string | null;
+  } | null,
+  fallback = "",
+) {
+  if (!employee) return fallback;
+  const middleName = String(employee.middlename || "").trim();
+  const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
+  const name = [employee.firstname, middleInitial, employee.lastname, employee.nameExt]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .toUpperCase();
   return name || fallback;
 }

@@ -26,7 +26,7 @@ const connection = await mysql.createConnection({
   host: env.HRIS_DB_HOST || "localhost",
   user: env.HRIS_DB_USER || "root",
   password: env.HRIS_DB_PASSWORD || "",
-  database: env.HRIS_DB_NAME || "hris_db",
+  database: env.HRIS_DB_NAME || "hris_muni",
   multipleStatements: true,
 });
 

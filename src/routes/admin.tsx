@@ -22,6 +22,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -48,7 +49,13 @@ import {
 } from "@/lib/auth";
 import { api } from "@/lib/api";
 import type { EmployeeRecord } from "@/lib/employees-api";
-import { cn, formatDisplayDateTime, formatEmployeeName } from "@/lib/utils";
+import {
+  cn,
+  copyTextToClipboard,
+  formatDisplayDateRange,
+  formatDisplayDateTime,
+  formatEmployeeName,
+} from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
@@ -318,9 +325,7 @@ function AdminPage() {
         importLogs: ImportLog[];
         pagination: LogPagination;
         importPagination: LogPagination;
-      }>(
-        `/api/admin/error-logs?${query.toString()}`,
-      );
+      }>(`/api/admin/error-logs?${query.toString()}`);
       setErrorLogs(result.logs);
       setImportLogs(result.importLogs || []);
       setErrorPagination(result.pagination);
@@ -610,7 +615,7 @@ function AdminPage() {
   const copyBulkEmployeeAccounts = async () => {
     if (!bulkAccountText) return;
     try {
-      await navigator.clipboard.writeText(
+      await copyTextToClipboard(
         `${bulkAccountText}\n\nEmployees must change these passwords on first login.`,
       );
       toast.success("Bulk credentials copied");
@@ -1187,7 +1192,7 @@ function AdminPage() {
               <RefreshCw className={cn("h-4 w-4", loadingAudit && "animate-spin")} /> Refresh
             </Button>
           </div>
-          <div className="grid gap-2 border-b border-border p-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_10rem_10rem]">
+          <div className="grid gap-2 border-b border-border p-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(14rem,1fr)]">
             <Input
               value={auditFilters.q}
               onChange={(event) => resetAuditPage({ q: event.target.value })}
@@ -1198,16 +1203,16 @@ function AdminPage() {
               onChange={(event) => resetAuditPage({ action: event.target.value })}
               placeholder="Action contains"
             />
-            <Input
-              type="date"
-              value={auditFilters.from}
-              onChange={(event) => resetAuditPage({ from: event.target.value })}
-            />
-            <Input
-              type="date"
-              value={auditFilters.to}
-              onChange={(event) => resetAuditPage({ to: event.target.value })}
-            />
+            <div>
+              <Label className="sr-only">Date Range</Label>
+              <DateRangePicker
+                from={auditFilters.from}
+                to={auditFilters.to}
+                allowEmpty
+                labelFormatter={(from, to) => formatDisplayDateRange(from, to, "All dates")}
+                onApply={(from, to) => resetAuditPage({ from, to })}
+              />
+            </div>
           </div>
           {auditError ? (
             <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -1299,22 +1304,22 @@ function AdminPage() {
                 <RefreshCw className={cn("h-4 w-4", loadingErrors && "animate-spin")} /> Refresh
               </Button>
             </div>
-            <div className="grid gap-2 border-b border-border p-4 md:grid-cols-[minmax(0,1.2fr)_10rem_10rem_10rem]">
+            <div className="grid gap-2 border-b border-border p-4 md:grid-cols-[minmax(0,1.2fr)_minmax(14rem,1fr)_10rem]">
               <Input
                 value={errorFilters.q}
                 onChange={(event) => resetErrorPage({ q: event.target.value })}
                 placeholder="Search path, message, user, file, employee"
               />
-              <Input
-                type="date"
-                value={errorFilters.from}
-                onChange={(event) => resetErrorPage({ from: event.target.value })}
-              />
-              <Input
-                type="date"
-                value={errorFilters.to}
-                onChange={(event) => resetErrorPage({ to: event.target.value })}
-              />
+              <div>
+                <Label className="sr-only">Date Range</Label>
+                <DateRangePicker
+                  from={errorFilters.from}
+                  to={errorFilters.to}
+                  allowEmpty
+                  labelFormatter={(from, to) => formatDisplayDateRange(from, to, "All dates")}
+                  onApply={(from, to) => resetErrorPage({ from, to })}
+                />
+              </div>
               <Select
                 value={errorFilters.importLevel}
                 onValueChange={(value) => resetErrorPage({ importLevel: value })}

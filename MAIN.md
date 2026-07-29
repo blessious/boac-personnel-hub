@@ -14,11 +14,11 @@ The application is built as a React/TanStack Router frontend served by Vite, wit
 
 ## Important Ports
 
-- Frontend dev server: `http://localhost:47100`
-- API server: `http://localhost:47101`
+- Frontend dev server: `http://localhost:47101`
+- API server: `http://localhost:47102`
 - Biometric ADMS port default: `6000`
 
-Vite proxies `/api` requests to `http://localhost:47101`.
+Vite proxies `/api` requests to `http://localhost:47102`.
 
 ## Project Structure
 
@@ -61,8 +61,8 @@ Common variables:
 HRIS_DB_HOST=localhost
 HRIS_DB_USER=root
 HRIS_DB_PASSWORD=
-HRIS_DB_NAME=hris_db
-HRIS_API_PORT=47101
+HRIS_DB_NAME=hris_muni
+HRIS_API_PORT=47102
 HRIS_ADMS_PORT=6000
 HRIS_PYTHON_EXE=.venv\Scripts\python.exe
 HRIS_BIOMETRIC_PYTHON_EXE=python
@@ -105,11 +105,11 @@ npm run dev
 ## Available NPM Scripts
 
 - `npm run dev` - starts `server/index.mjs` and the Vite client together.
-- `npm run dev:client` - starts only the Vite client on port `47100`.
+- `npm run dev:client` - starts only the Vite client on port `47101`.
 - `npm run api` - starts only the API server.
 - `npm run build` - production Vite build.
 - `npm run build:dev` - development-mode Vite build.
-- `npm run preview` - serves the built app on port `47100`.
+- `npm run preview` - serves the built app on port `47101`.
 - `npm run lint` - runs ESLint.
 - `npm run format` - formats the repository with Prettier.
 

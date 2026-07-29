@@ -2818,18 +2818,15 @@ function AttendancePage() {
                 </div>
               )}
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <Field
-                  label="Start Date"
-                  type="date"
-                  value={importStartDate}
-                  onChange={setImportStartDate}
-                />
-                <Field
-                  label="End Date"
-                  type="date"
-                  value={importEndDate}
-                  onChange={setImportEndDate}
+              <div className="space-y-1.5">
+                <Label>Date Range</Label>
+                <DateRangePicker
+                  from={importStartDate}
+                  to={importEndDate}
+                  onApply={(startDate, endDate) => {
+                    setImportStartDate(startDate);
+                    setImportEndDate(endDate);
+                  }}
                 />
               </div>
             </div>
@@ -2945,18 +2942,15 @@ function AttendancePage() {
               </div>
             )}
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field
-                label="Start Date"
-                type="date"
-                value={massImportStartDate}
-                onChange={setMassImportStartDate}
-              />
-              <Field
-                label="End Date"
-                type="date"
-                value={massImportEndDate}
-                onChange={setMassImportEndDate}
+            <div className="space-y-1.5">
+              <Label>Date Range</Label>
+              <DateRangePicker
+                from={massImportStartDate}
+                to={massImportEndDate}
+                onApply={(startDate, endDate) => {
+                  setMassImportStartDate(startDate);
+                  setMassImportEndDate(endDate);
+                }}
               />
             </div>
 
@@ -3263,18 +3257,14 @@ function AttendancePage() {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field
-                label="Start Date"
-                type="date"
-                value={exportForm.firstStartDate}
-                onChange={(firstStartDate) => setExportForm({ ...exportForm, firstStartDate })}
-              />
-              <Field
-                label="End Date"
-                type="date"
-                value={exportForm.firstEndDate}
-                onChange={(firstEndDate) => setExportForm({ ...exportForm, firstEndDate })}
+            <div className="space-y-1.5">
+              <Label>Date Range</Label>
+              <DateRangePicker
+                from={exportForm.firstStartDate}
+                to={exportForm.firstEndDate}
+                onApply={(firstStartDate, firstEndDate) =>
+                  setExportForm({ ...exportForm, firstStartDate, firstEndDate })
+                }
               />
             </div>
 
@@ -3290,18 +3280,14 @@ function AttendancePage() {
             </label>
 
             {exportForm.useSecondPeriod && (
-              <div className="grid gap-3 md:grid-cols-2">
-                <Field
-                  label="Second Start Date"
-                  type="date"
-                  value={exportForm.secondStartDate}
-                  onChange={(secondStartDate) => setExportForm({ ...exportForm, secondStartDate })}
-                />
-                <Field
-                  label="Second End Date"
-                  type="date"
-                  value={exportForm.secondEndDate}
-                  onChange={(secondEndDate) => setExportForm({ ...exportForm, secondEndDate })}
+              <div className="space-y-1.5">
+                <Label>Second Date Range</Label>
+                <DateRangePicker
+                  from={exportForm.secondStartDate}
+                  to={exportForm.secondEndDate}
+                  onApply={(secondStartDate, secondEndDate) =>
+                    setExportForm({ ...exportForm, secondStartDate, secondEndDate })
+                  }
                 />
               </div>
             )}
@@ -3473,19 +3459,17 @@ function AttendancePage() {
                 </Select>
               </div>
               {scheduleForm.target === "override" && (
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Field
-                    label="Start Date"
-                    type="date"
-                    value={scheduleForm.startDate}
-                    onChange={(startDate) => setScheduleForm({ ...scheduleForm, startDate })}
-                  />
-                  <Field
-                    label="End Date"
-                    type="date"
-                    value={scheduleForm.endDate}
-                    onChange={(endDate) => setScheduleForm({ ...scheduleForm, endDate })}
-                  />
+                <div className="grid gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Date Range</Label>
+                    <DateRangePicker
+                      from={scheduleForm.startDate}
+                      to={scheduleForm.endDate}
+                      onApply={(startDate, endDate) =>
+                        setScheduleForm({ ...scheduleForm, startDate, endDate })
+                      }
+                    />
+                  </div>
                   <label className="flex items-center gap-2 text-sm md:col-span-2">
                     <input
                       type="checkbox"

@@ -285,7 +285,7 @@ def build_manual():
     add_para(doc, "1. Testing Preparation", "Heading 1")
     add_para(
         doc,
-        "Before testing, confirm that the system is running and that HR has been given test accounts. For local development, the project launcher starts the application at http://localhost:47100. For STRH testing through port forwarding, use the forwarded URL provided by the system administrator.",
+        "Before testing, confirm that the system is running and that HR has been given test accounts. For local development, the project launcher starts the application at http://localhost:47101. For STRH testing through port forwarding, use the forwarded URL provided by the system administrator.",
     )
     add_checklist_table(
         doc,

@@ -21,8 +21,8 @@ if errorlevel 1 (
 
 echo.
 echo [INFO] HRIS startup command completed.
-echo [INFO] Open http://localhost:47100/login on this PC.
-echo [INFO] From another PC, use http://SERVER-PC-IP:47100/login
+echo [INFO] Open http://localhost:47101/login on this PC.
+echo [INFO] From another PC, use http://SERVER-PC-IP:47101/login
 echo.
 pause
 exit /b 0

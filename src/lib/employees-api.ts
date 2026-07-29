@@ -4,7 +4,12 @@ export const EMPLOYMENT_STATUSES = [
   "Unassigned",
   "Permanent",
   "Regular",
+  "Elective",
+  "Co-term",
+  "Coterminous",
+  "Temporary",
   "Casual",
+  "Contractual",
   "JO",
   "COS",
 ] as const;
@@ -191,6 +196,7 @@ export type SettingsOptions = {
     grade: number;
     step: number;
     amount: number;
+    isActive: boolean;
   }>;
 };
 
@@ -248,11 +254,12 @@ export type CreateEmployeeInput = Partial<EmployeeRecord> & {
   appointment?: {
     controlNumber?: string;
     targetPlantillaItemId: string;
+    targetSalaryGradeId: string;
     effectiveDate: string;
-    authorityNumber: string;
-    authorityDate: string;
-    remarks: string;
-    supportingDocuments: Array<{ name: string; reference: string }>;
+    authorityNumber?: string;
+    authorityDate?: string;
+    remarks?: string;
+    supportingDocuments?: Array<{ name: string; reference: string }>;
   };
   engagement?: {
     engagementType: "JO" | "COS" | "Casual" | "Contractual" | "Other";

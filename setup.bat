@@ -164,8 +164,8 @@ if not exist "server\.env.local" (
     >>"server\.env.local" echo HRIS_DB_HOST=localhost
     >>"server\.env.local" echo HRIS_DB_USER=root
     >>"server\.env.local" echo HRIS_DB_PASSWORD=
-    >>"server\.env.local" echo HRIS_DB_NAME=hris_db
-    >>"server\.env.local" echo HRIS_API_PORT=47101
+    >>"server\.env.local" echo HRIS_DB_NAME=hris_muni
+    >>"server\.env.local" echo HRIS_API_PORT=47102
     >>"server\.env.local" echo HRIS_ADMS_PORT=6000
     >>"server\.env.local" echo HRIS_PYTHON_EXE=%VENV_PYTHON%
     echo [INFO] Created server\.env.local with default local settings.
@@ -178,7 +178,7 @@ echo [INFO] Checking MySQL availability...
 where mysql >nul 2>nul
 if errorlevel 1 (
     echo [WARN] MySQL command-line client was not found in PATH.
-    echo [WARN] Install MySQL Server or XAMPP/MariaDB, then create/import the hris_db database.
+    echo [WARN] Install MySQL Server or XAMPP/MariaDB, then create/import the hris_muni database.
     echo [WARN] If your database password is not blank, update server\.env.local.
 ) else (
     echo [INFO] MySQL client found.
@@ -186,11 +186,11 @@ if errorlevel 1 (
     set /p IMPORT_DB="Import latest database\hris_db.sql into local MySQL now? (Y/N): "
     if /i "!IMPORT_DB!"=="Y" (
         set "DB_USER=root"
-        set "DB_NAME=hris_db"
+        set "DB_NAME=hris_muni"
         set /p DB_USER="MySQL user [root]: "
         if "!DB_USER!"=="" set "DB_USER=root"
-        set /p DB_NAME="Database name [hris_db]: "
-        if "!DB_NAME!"=="" set "DB_NAME=hris_db"
+        set /p DB_NAME="Database name [hris_muni]: "
+        if "!DB_NAME!"=="" set "DB_NAME=hris_muni"
 
         echo.
         echo [INFO] Enter your MySQL password when prompted. Press Enter if it is blank.

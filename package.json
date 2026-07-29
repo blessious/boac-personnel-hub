@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "node server/dev.mjs",
-    "dev:client": "vite dev --host --port 47100",
+    "dev:client": "vite dev --host --port 47101",
     "api": "node server/index.mjs",
     "build": "vite build && node scripts/prepare-preview.mjs",
     "build:dev": "vite build --mode development",
+    "test:lifecycle": "node --test server/employee-lifecycle.test.mjs",
     "test:permissions": "node scripts/permission-matrix-audit.mjs",
     "test:exports": "node scripts/export-smoke-test.mjs",
-    "preview": "vite preview --host --port 47100",
+    "preview": "vite preview --host --port 47101",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

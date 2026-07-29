@@ -502,7 +502,7 @@ function SettingsPage() {
                 id="db-name"
                 value={databaseDraft.database}
                 onChange={(e) => setDatabaseDraftField("database", e.target.value)}
-                placeholder="hris_db"
+                placeholder="hris_muni"
                 disabled={loadingDatabase || savingDatabase}
               />
             </div>

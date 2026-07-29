@@ -1,0 +1,2 @@
+ALTER TABLE personnel_movement_events
+  MODIFY created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);

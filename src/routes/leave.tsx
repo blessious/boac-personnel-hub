@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import {
   Select,
   SelectContent,
@@ -127,11 +128,7 @@ function LeavePage() {
   const load = () => {
     setLoading(true);
     setLoadError("");
-    Promise.all([
-      listLeaveApplications({ status, q }),
-      listLeaveTypes(),
-      listAllLeaveEmployees(),
-    ])
+    Promise.all([listLeaveApplications({ status, q }), listLeaveTypes(), listAllLeaveEmployees()])
       .then(([leaveResult, typeResult, employeeResult]) => {
         setApplications(leaveResult.applications);
         setSummary(leaveResult.summary);
@@ -372,7 +369,9 @@ function LeavePage() {
             getEmployeeLeave(ledgerEmployeeId)
               .then(setLedgerData)
               .catch((error) =>
-                setLedgerError(error instanceof Error ? error.message : "Unable to load leave ledger"),
+                setLedgerError(
+                  error instanceof Error ? error.message : "Unable to load leave ledger",
+                ),
               )
               .finally(() => setLedgerLoading(false));
           }}
@@ -796,22 +795,14 @@ function LeavePage() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Date From">
-              <Input
-                type="date"
+            <Field label="Date Range" className="sm:col-span-2">
+              <DateRangePicker
+                from={applicationForm.dateFrom}
+                to={applicationForm.dateTo}
                 min={minimumLeaveDate}
-                value={applicationForm.dateFrom}
-                onChange={(e) =>
-                  setApplicationForm({ ...applicationForm, dateFrom: e.target.value })
+                onApply={(dateFrom, dateTo) =>
+                  setApplicationForm({ ...applicationForm, dateFrom, dateTo })
                 }
-              />
-            </Field>
-            <Field label="Date To">
-              <Input
-                type="date"
-                min={applicationForm.dateFrom || minimumLeaveDate}
-                value={applicationForm.dateTo}
-                onChange={(e) => setApplicationForm({ ...applicationForm, dateTo: e.target.value })}
               />
             </Field>
             <Field label="Days Requested">
