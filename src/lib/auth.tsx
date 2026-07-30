@@ -85,7 +85,7 @@ interface AuthCtx {
   login: (u: string, p: string, expectedRole?: Role) => Promise<User>;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<User>;
-  changePassword: (currentPassword: string, newPassword: string) => Promise<User>;
+  changePassword: (newPassword: string, confirmPassword: string) => Promise<User>;
   hasPermission: (permission: PermissionKey) => boolean;
   can: (action: "edit" | "delete" | "manageUsers" | "approve" | "configureSystem") => boolean;
   ready: boolean;
@@ -160,10 +160,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result.user;
   };
 
-  const changePassword = async (currentPassword: string, newPassword: string) => {
+  const changePassword = async (newPassword: string, confirmPassword: string) => {
     const result = await api<{ user: User }>("/api/auth/change-password", {
       method: "POST",
-      body: JSON.stringify({ currentPassword, newPassword }),
+      body: JSON.stringify({ newPassword, confirmPassword }),
     });
     setUser(result.user);
     return result.user;

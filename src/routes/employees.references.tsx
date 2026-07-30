@@ -1,13 +1,21 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
+  BadgeCheck,
   BriefcaseBusiness,
   Building2,
   CheckCircle2,
+  ChevronRight,
   ClipboardCheck,
   FileCheck2,
+  Layers3,
+  Landmark,
   Loader2,
+  Menu,
+  Network,
+  PanelsTopLeft,
   Pencil,
   Plus,
   Power,
@@ -15,6 +23,8 @@ import {
   Search,
   Table2,
   Trash2,
+  UserCheck,
+  WalletCards,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -52,7 +62,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
 import { api, isAbortError } from "@/lib/api";
@@ -119,6 +129,62 @@ const EXPECTED_SALARY_GRADES = 33;
 const EXPECTED_SALARY_STEPS = 8;
 const EXPECTED_SALARY_ROWS = EXPECTED_SALARY_GRADES * EXPECTED_SALARY_STEPS;
 
+type ReferenceSectionMeta = {
+  description: string;
+  icon: ComponentType<{ className?: string }>;
+};
+
+const REFERENCE_SECTION_META: Record<string, ReferenceSectionMeta> = {
+  departments: {
+    description: "Department names available in employee records and related filters.",
+    icon: Building2,
+  },
+  positions: {
+    description: "Official position titles used in Plantilla, employee profiles, and movements.",
+    icon: BriefcaseBusiness,
+  },
+  salary: {
+    description: "Salary ordinances, grades, steps, effectivity, and activation status.",
+    icon: Table2,
+  },
+  sectors: {
+    description: "Top-level organizational sectors used to group offices.",
+    icon: Landmark,
+  },
+  offices: {
+    description: "Official offices available throughout employee and Plantilla workflows.",
+    icon: Building2,
+  },
+  divisions: {
+    description: "Divisions maintained under their corresponding offices.",
+    icon: Network,
+  },
+  sections: {
+    description: "Sections and units maintained under their corresponding divisions.",
+    icon: PanelsTopLeft,
+  },
+  eligibilities: {
+    description: "Civil service and professional eligibility reference values.",
+    icon: BadgeCheck,
+  },
+  "employment-statuses": {
+    description: "Employment status values used across employee records.",
+    icon: UserCheck,
+  },
+  "job-levels": {
+    description: "Job and career-level classifications for employee records.",
+    icon: Layers3,
+  },
+  "plantilla-types": {
+    description: "Plantilla item classifications used in staffing records.",
+    icon: FileCheck2,
+  },
+  "budget-codes": {
+    description: "Budget and funding codes available to staffing workflows.",
+    icon: WalletCards,
+  },
+};
+
 function formatMoney(amount: number) {
   return `PHP ${amount.toLocaleString("en-PH", {
     minimumFractionDigits: 2,
@@ -153,10 +219,9 @@ function EmployeeReferencesPage() {
     Record<ReferenceCategory, ReferenceRow[]>
   >(
     () =>
-      Object.fromEntries(REFERENCE_LIBRARY_CONFIG.map((config) => [config.category, []])) as Record<
-        ReferenceCategory,
-        ReferenceRow[]
-      >,
+      Object.fromEntries(
+        REFERENCE_LIBRARY_CONFIG.map((config) => [config.category, []]),
+      ) as unknown as Record<ReferenceCategory, ReferenceRow[]>,
   );
   const [newDept, setNewDept] = useState("");
   const [newPos, setNewPos] = useState("");
@@ -188,6 +253,8 @@ function EmployeeReferencesPage() {
   const [activationSummary, setActivationSummary] = useState<ActivationSummary | null>(null);
   const [showSalaryBuilder, setShowSalaryBuilder] = useState(false);
   const [activeReferenceTab, setActiveReferenceTab] = useState("departments");
+  const [mobileReferenceNavOpen, setMobileReferenceNavOpen] = useState(false);
+  const [addReferenceRequest, setAddReferenceRequest] = useState(0);
   const [loading, setLoading] = useState(true);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [confirmingAction, setConfirmingAction] = useState(false);
@@ -279,20 +346,37 @@ function EmployeeReferencesPage() {
   }, [selectedSalaryRows]);
   const referenceTabOptions = useMemo(
     () => [
-      { value: "departments", label: "Departments", count: depts.length },
-      { value: "positions", label: "Positions", count: pos.length },
-      { value: "salary", label: "Salary Grades", count: salaryGradeTables.length },
+      {
+        value: "departments",
+        label: "Departments",
+        count: depts.length,
+        ...REFERENCE_SECTION_META.departments,
+      },
+      {
+        value: "positions",
+        label: "Positions",
+        count: pos.length,
+        ...REFERENCE_SECTION_META.positions,
+      },
+      {
+        value: "salary",
+        label: "Salary Grades",
+        count: salaryGradeTables.length,
+        ...REFERENCE_SECTION_META.salary,
+      },
       ...REFERENCE_LIBRARY_CONFIG.map((config) => ({
         value: config.category,
         label: config.plural,
         count: referenceLibraries[config.category]?.length || 0,
+        ...REFERENCE_SECTION_META[config.category],
       })),
     ],
     [depts.length, pos.length, referenceLibraries, salaryGradeTables.length],
   );
-  const activeReferenceLabel =
-    referenceTabOptions.find((tab) => tab.value === activeReferenceTab)?.label ||
-    "Employee References";
+  const activeReference =
+    referenceTabOptions.find((tab) => tab.value === activeReferenceTab) || referenceTabOptions[0];
+  const activeReferenceLabel = activeReference?.label || "Employee References";
+  const ActiveReferenceIcon = activeReference?.icon || Building2;
 
   const loadReferences = async (signal?: AbortSignal) => {
     setLoading(true);
@@ -383,6 +467,23 @@ function EmployeeReferencesPage() {
     }
   };
 
+  const updateDepartment = async (id: number, name: string) => {
+    try {
+      const result = await api<{ department: DepartmentRow }>(`/api/settings/departments/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      });
+      setDepts((prev) =>
+        prev.map((department) => (department.id === id ? result.department : department)),
+      );
+      toast.success("Department updated");
+      return true;
+    } catch (error) {
+      toast.error((error as Error).message);
+      return false;
+    }
+  };
+
   const deleteDepartment = async (id: number) => {
     try {
       await api<{ ok: boolean }>(`/api/settings/departments/${id}`, { method: "DELETE" });
@@ -413,6 +514,21 @@ function EmployeeReferencesPage() {
       setPos((prev) => [...prev, result.position]);
       setNewPos("");
       toast.success("Position added");
+      return true;
+    } catch (error) {
+      toast.error((error as Error).message);
+      return false;
+    }
+  };
+
+  const updatePosition = async (id: number, title: string) => {
+    try {
+      const result = await api<{ position: PositionRow }>(`/api/settings/positions/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title }),
+      });
+      setPos((prev) => prev.map((position) => (position.id === id ? result.position : position)));
+      toast.success("Position updated");
       return true;
     } catch (error) {
       toast.error((error as Error).message);
@@ -787,504 +903,599 @@ function EmployeeReferencesPage() {
       title="Employee References"
       subtitle="Manage the table-driven organization, employment, position, and compensation libraries"
     >
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <ReferenceMetric
-          icon={Building2}
-          label="Departments"
-          value={depts.length}
-          detail={`${filteredDepts.length} visible`}
-        />
-        <ReferenceMetric
-          icon={BriefcaseBusiness}
-          label="Positions"
-          value={pos.length}
-          detail={`${filteredPos.length} visible`}
-        />
-        <ReferenceMetric
-          icon={Table2}
-          label="Salary Tables"
-          value={salaryGradeTables.length}
-          detail={activeSalaryTable ? `Active: ${activeSalaryTable}` : "No active table"}
-        />
-        <ReferenceMetric
-          icon={CheckCircle2}
-          label="Active Library Values"
-          value={activeLibraryCount}
-          detail={canManage ? "Editing enabled" : "View only"}
-        />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <nav
+          aria-label="Breadcrumb"
+          className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground"
+        >
+          <Link
+            to="/employees"
+            search={{ department: undefined, onboard: undefined, targetPlantillaItemId: undefined }}
+            className="inline-flex items-center gap-1.5 hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Employees
+          </Link>
+          <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate font-medium text-foreground">Employee References</span>
+        </nav>
+        {canManage && (
+          <Button
+            onClick={() => {
+              if (activeReferenceTab === "salary") setShowSalaryBuilder(true);
+              else setAddReferenceRequest((current) => current + 1);
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            {activeReferenceTab === "salary" ? "Add Salary Rows" : "Add Reference"}
+          </Button>
+        )}
       </div>
+
+      <section className="mb-4 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex items-center gap-4">
+            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+              <ClipboardCheck className="h-6 w-6" />
+            </span>
+            <div>
+              <h1 className="text-lg font-semibold sm:text-xl">Employee Reference Library</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Organization, employment, position, and compensation values used across HRIS.
+              </p>
+            </div>
+          </div>
+          <Badge
+            variant={canManage ? "default" : "secondary"}
+            className="self-start sm:self-center"
+          >
+            {canManage ? "Editing enabled" : "View only"}
+          </Badge>
+        </div>
+        <div className="grid border-t border-border sm:grid-cols-2 xl:grid-cols-4">
+          <ReferenceMetric
+            icon={Building2}
+            label="Departments"
+            value={depts.length}
+            detail={`${filteredDepts.length} visible`}
+          />
+          <ReferenceMetric
+            icon={BriefcaseBusiness}
+            label="Positions"
+            value={pos.length}
+            detail={`${filteredPos.length} visible`}
+          />
+          <ReferenceMetric
+            icon={Table2}
+            label="Salary Tables"
+            value={salaryGradeTables.length}
+            detail={activeSalaryTable ? `Active: ${activeSalaryTable}` : "No active table"}
+          />
+          <ReferenceMetric
+            icon={CheckCircle2}
+            label="Active Library Values"
+            value={activeLibraryCount}
+            detail={`${REFERENCE_LIBRARY_CONFIG.length} managed libraries`}
+          />
+        </div>
+      </section>
+
       {loading && (
         <div className="mb-3 flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Refreshing {activeReferenceLabel.toLowerCase()}...
         </div>
       )}
+
       <Tabs value={activeReferenceTab} onValueChange={setActiveReferenceTab}>
-        <div className="mb-4 md:hidden">
-          <Select value={activeReferenceTab} onValueChange={setActiveReferenceTab}>
-            <SelectTrigger className="bg-card">
-              <SelectValue placeholder="Select reference" />
-            </SelectTrigger>
-            <SelectContent>
-              {referenceTabOptions.map((tab) => (
-                <SelectItem key={tab.value} value={tab.value}>
-                  {tab.label} ({tab.count})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="hidden md:block">
-          <TabsList className="flex h-auto min-h-9 w-full flex-wrap justify-start gap-1 border border-border bg-card p-1">
-            {referenceTabOptions.map((tab) => (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="min-h-8 flex-none gap-2 px-3 text-sm"
-              >
-                <span>{tab.label}</span>
-                <span className="rounded bg-background/80 px-1.5 py-0.5 text-[11px] text-muted-foreground group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white">
-                  {tab.count}
+        <div className="grid items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="lg:sticky lg:top-20">
+            <button
+              type="button"
+              aria-expanded={mobileReferenceNavOpen}
+              aria-controls="employee-reference-mobile-sections"
+              onClick={() => setMobileReferenceNavOpen((current) => !current)}
+              className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-sm lg:hidden"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                <ActiveReferenceIcon className="h-4 w-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-medium text-muted-foreground">
+                  Reference section
                 </span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
-
-        <TabsContent value="departments" className="mt-4">
-          <SimpleReferenceSection
-            title="Legacy Departments"
-            description="Read-only migration labels. Maintain the official hierarchy under sectors, offices, divisions, and sections."
-            itemLabel="department"
-            addPlaceholder="New department name"
-            searchPlaceholder="Search departments..."
-            value={newDept}
-            query={deptQuery}
-            items={filteredDepts.map((department) => ({
-              id: department.id,
-              label: department.name,
-              onDelete: () => requestDeleteDepartment(department),
-            }))}
-            totalCount={depts.length}
-            canManage={false}
-            onValueChange={setNewDept}
-            onQueryChange={setDeptQuery}
-            onAdd={addDepartment}
-          />
-        </TabsContent>
-
-        <TabsContent value="positions" className="mt-4">
-          <SimpleReferenceSection
-            title="Positions"
-            description="Official position titles used in plantilla, employee profiles, and movements."
-            itemLabel="position"
-            addPlaceholder="New position title"
-            searchPlaceholder="Search positions..."
-            value={newPos}
-            query={posQuery}
-            items={filteredPos.map((position) => ({
-              id: position.id,
-              label: position.title,
-              onDelete: () => requestDeletePosition(position),
-            }))}
-            totalCount={pos.length}
-            canManage={canManage}
-            onValueChange={setNewPos}
-            onQueryChange={setPosQuery}
-            onAdd={addPosition}
-          />
-        </TabsContent>
-
-        <TabsContent value="salary" className="mt-4">
-          <div className="space-y-4">
-            <section className="rounded-lg border border-border bg-card shadow-sm">
-              <div className="flex items-center justify-between gap-3 border-b border-border p-4">
-                <div>
-                  <h2 className="text-base font-semibold">Salary Tables</h2>
-                  <p className="text-xs text-muted-foreground">
-                    One ordinance or schedule at a time.
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => setShowSalaryBuilder(true)}
-                  disabled={!canManage}
-                  className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                >
-                  <Plus className="mr-1 h-4 w-4" />
-                  Add Rows
-                </Button>
+                <span className="block truncate text-sm font-semibold">{activeReferenceLabel}</span>
+              </span>
+              <Menu className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <div
+              id="employee-reference-mobile-sections"
+              className={cn(
+                "mt-2 rounded-xl border border-border bg-card p-3 shadow-sm lg:mt-0 lg:block",
+                mobileReferenceNavOpen ? "block" : "hidden",
+              )}
+            >
+              <div className="mb-3 px-2">
+                <h2 className="text-sm font-semibold">Reference Sections</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Select a library to review or maintain.
+                </p>
               </div>
+              <ReferenceSectionStepper
+                options={referenceTabOptions}
+                active={activeReferenceTab}
+                onChange={(value) => {
+                  setActiveReferenceTab(value);
+                  setMobileReferenceNavOpen(false);
+                }}
+              />
+            </div>
+          </aside>
 
-              <div className="grid max-h-[360px] gap-2 overflow-auto p-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {salaryGradeTables.map((table) => {
-                  const selected = selectedOrdinance === table.ordinance;
-                  const readiness = salaryTableReadiness.get(table.ordinance);
-                  return (
-                    <button
-                      key={table.ordinance}
-                      type="button"
-                      onClick={() => selectSalaryTable(table.ordinance)}
-                      className={cn(
-                        "min-h-20 w-full rounded-md border px-3 py-2.5 text-left transition-colors",
-                        selected
-                          ? "border-[#2563eb] bg-[#eff6ff] text-blue-950 ring-1 ring-[#2563eb]/25 dark:border-blue-400/70 dark:bg-blue-500/15 dark:text-blue-50"
-                          : "border-border bg-background hover:bg-muted/40",
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold">{table.ordinance}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {table.rowCount}/{EXPECTED_SALARY_ROWS} rows
-                            {readiness?.missingCount ? `, ${readiness.missingCount} open` : ""}
-                          </div>
+          <section className="min-w-0 rounded-xl border border-border bg-card shadow-sm">
+            <header className="flex items-start gap-3 border-b border-border px-4 py-4 sm:px-5">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                <ActiveReferenceIcon className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold">{activeReferenceLabel}</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {activeReference?.description}
+                </p>
+              </div>
+            </header>
+
+            <div className="p-3 sm:p-4">
+              <TabsContent value="departments" className="mt-0">
+                <SimpleReferenceSection
+                  title="Departments"
+                  description="Department names available in employee records and related filters."
+                  itemLabel="department"
+                  addPlaceholder="New department name"
+                  searchPlaceholder="Search departments..."
+                  value={newDept}
+                  query={deptQuery}
+                  items={filteredDepts.map((department) => ({
+                    id: department.id,
+                    label: department.name,
+                    onEdit: (name) => updateDepartment(department.id, name),
+                    onDelete: () => requestDeleteDepartment(department),
+                  }))}
+                  totalCount={depts.length}
+                  canManage={canManage}
+                  onValueChange={setNewDept}
+                  onQueryChange={setDeptQuery}
+                  onAdd={addDepartment}
+                  addRequestKey={activeReferenceTab === "departments" ? addReferenceRequest : 0}
+                  showAddAction={false}
+                />
+              </TabsContent>
+
+              <TabsContent value="positions" className="mt-0">
+                <SimpleReferenceSection
+                  title="Positions"
+                  description="Official position titles used in plantilla, employee profiles, and movements."
+                  itemLabel="position"
+                  addPlaceholder="New position title"
+                  searchPlaceholder="Search positions..."
+                  value={newPos}
+                  query={posQuery}
+                  items={filteredPos.map((position) => ({
+                    id: position.id,
+                    label: position.title,
+                    onEdit: (title) => updatePosition(position.id, title),
+                    onDelete: () => requestDeletePosition(position),
+                  }))}
+                  totalCount={pos.length}
+                  canManage={canManage}
+                  onValueChange={setNewPos}
+                  onQueryChange={setPosQuery}
+                  onAdd={addPosition}
+                  addRequestKey={activeReferenceTab === "positions" ? addReferenceRequest : 0}
+                  showAddAction={false}
+                />
+              </TabsContent>
+
+              <TabsContent value="salary" className="mt-0">
+                <div className="space-y-4">
+                  <section className="rounded-lg border border-border bg-card shadow-sm">
+                    <div className="flex items-center justify-between gap-3 border-b border-border p-4">
+                      <div>
+                        <h2 className="text-base font-semibold">Salary Tables</h2>
+                        <p className="text-xs text-muted-foreground">
+                          One ordinance or schedule at a time.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid max-h-[360px] gap-2 overflow-auto p-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                      {salaryGradeTables.map((table) => {
+                        const selected = selectedOrdinance === table.ordinance;
+                        const readiness = salaryTableReadiness.get(table.ordinance);
+                        return (
+                          <button
+                            key={table.ordinance}
+                            type="button"
+                            onClick={() => selectSalaryTable(table.ordinance)}
+                            className={cn(
+                              "min-h-20 w-full rounded-md border px-3 py-2.5 text-left transition-colors",
+                              selected
+                                ? "border-[#2563eb] bg-[#eff6ff] text-blue-950 ring-1 ring-[#2563eb]/25 dark:border-blue-400/70 dark:bg-blue-500/15 dark:text-blue-50"
+                                : "border-border bg-background hover:bg-muted/40",
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold">
+                                  {table.ordinance}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {table.rowCount}/{EXPECTED_SALARY_ROWS} rows
+                                  {readiness?.missingCount
+                                    ? `, ${readiness.missingCount} open`
+                                    : ""}
+                                </div>
+                              </div>
+                              {table.isActive ? (
+                                <Badge className="shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/20">
+                                  Active
+                                </Badge>
+                              ) : readiness?.complete ? (
+                                <Badge variant="outline" className="shrink-0 text-[#2563eb]">
+                                  Ready
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="shrink-0 text-amber-700">
+                                  Draft
+                                </Badge>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {salaryGradeTables.length === 0 && (
+                        <div className="rounded-md border border-dashed border-border p-5 text-sm text-muted-foreground">
+                          No salary tables yet. Use Add Rows to create the first table.
                         </div>
-                        {table.isActive ? (
-                          <Badge className="shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/20">
-                            Active
-                          </Badge>
-                        ) : readiness?.complete ? (
-                          <Badge variant="outline" className="shrink-0 text-[#2563eb]">
-                            Ready
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="shrink-0 text-amber-700">
-                            Draft
-                          </Badge>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-border bg-card shadow-sm">
+                    <div className="border-b border-border p-5">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="truncate text-lg font-semibold">
+                              {selectedOrdinance || "Select a salary table"}
+                            </h2>
+                            {selectedSalaryTable?.isActive ? (
+                              <Badge className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/20">
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                Active
+                              </Badge>
+                            ) : selectedSalaryReadiness.complete ? (
+                              <Badge
+                                variant="outline"
+                                className="gap-1 border-[#bfdbfe] text-[#2563eb]"
+                              >
+                                <FileCheck2 className="h-3.5 w-3.5" />
+                                Ready
+                              </Badge>
+                            ) : selectedOrdinance ? (
+                              <Badge
+                                variant="outline"
+                                className="gap-1 border-amber-200 text-amber-700"
+                              >
+                                <AlertTriangle className="h-3.5 w-3.5" />
+                                Draft
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {selectedOrdinance
+                              ? "Review the schedule. Activate only after the ordinance and effectivity date are final."
+                              : "Choose a table from the list to review or activate."}
+                          </p>
+                        </div>
+
+                        {selectedOrdinance && (
+                          <div className="grid gap-2 sm:grid-cols-[160px_auto]">
+                            <Input
+                              type="date"
+                              value={activationDate}
+                              onChange={(event) => setActivationDate(event.target.value)}
+                              disabled={!canManage}
+                              className="h-9"
+                            />
+                            <Button
+                              size="sm"
+                              disabled={
+                                !canManage ||
+                                activeSalaryTable === selectedOrdinance ||
+                                activatingOrdinance === selectedOrdinance ||
+                                selectedSalaryRows.length === 0
+                              }
+                              onClick={() => activateSalaryTable(selectedOrdinance)}
+                              className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+                            >
+                              {activatingOrdinance === selectedOrdinance ? (
+                                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Power className="mr-1 h-4 w-4" />
+                              )}
+                              Activate
+                            </Button>
+                          </div>
                         )}
                       </div>
-                    </button>
-                  );
-                })}
-                {salaryGradeTables.length === 0 && (
-                  <div className="rounded-md border border-dashed border-border p-5 text-sm text-muted-foreground">
-                    No salary tables yet. Use Add Rows to create the first table.
-                  </div>
-                )}
-              </div>
-            </section>
 
-            <section className="rounded-lg border border-border bg-card shadow-sm">
-              <div className="border-b border-border p-5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="truncate text-lg font-semibold">
-                        {selectedOrdinance || "Select a salary table"}
-                      </h2>
-                      {selectedSalaryTable?.isActive ? (
-                        <Badge className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/20">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Active
-                        </Badge>
-                      ) : selectedSalaryReadiness.complete ? (
-                        <Badge variant="outline" className="gap-1 border-[#bfdbfe] text-[#2563eb]">
-                          <FileCheck2 className="h-3.5 w-3.5" />
-                          Ready
-                        </Badge>
-                      ) : selectedOrdinance ? (
-                        <Badge variant="outline" className="gap-1 border-amber-200 text-amber-700">
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                          Draft
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {selectedOrdinance
-                        ? "Review the schedule. Activate only after the ordinance and effectivity date are final."
-                        : "Choose a table from the list to review or activate."}
-                    </p>
-                  </div>
-
-                  {selectedOrdinance && (
-                    <div className="grid gap-2 sm:grid-cols-[160px_auto]">
-                      <Input
-                        type="date"
-                        value={activationDate}
-                        onChange={(event) => setActivationDate(event.target.value)}
-                        disabled={!canManage}
-                        className="h-9"
-                      />
-                      <Button
-                        size="sm"
-                        disabled={
-                          !canManage ||
-                          activeSalaryTable === selectedOrdinance ||
-                          activatingOrdinance === selectedOrdinance ||
-                          selectedSalaryRows.length === 0
-                        }
-                        onClick={() => activateSalaryTable(selectedOrdinance)}
-                        className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                      >
-                        {activatingOrdinance === selectedOrdinance ? (
-                          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Power className="mr-1 h-4 w-4" />
-                        )}
-                        Activate
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {selectedOrdinance && (
-                  <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-                    <Badge variant="outline">{selectedSalaryRows.length} rows</Badge>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        selectedSalaryReadiness.missingRows.length
-                          ? "border-amber-200 text-amber-700"
-                          : "border-emerald-200 text-emerald-700",
-                      )}
-                    >
-                      {selectedSalaryReadiness.missingRows.length
-                        ? `${selectedSalaryReadiness.missingRows.length} open rows`
-                        : "Complete"}
-                    </Badge>
-                    {selectedSalaryTable?.minGrade && selectedSalaryTable?.maxGrade && (
-                      <Badge variant="outline">
-                        SG-{selectedSalaryTable.minGrade} to SG-{selectedSalaryTable.maxGrade}
-                      </Badge>
-                    )}
-                    <div className="ml-auto flex w-full flex-col gap-2 sm:w-auto sm:min-w-[420px] sm:flex-row">
-                      <Input
-                        value={renameOrdinance}
-                        onChange={(event) => setRenameOrdinance(event.target.value)}
-                        disabled={!canManage || renamingTable}
-                        className="h-8"
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={
-                          !canManage ||
-                          renamingTable ||
-                          !renameOrdinance.trim() ||
-                          renameOrdinance.trim() === selectedOrdinance
-                        }
-                        onClick={renameSalaryTable}
-                      >
-                        {renamingTable ? (
-                          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="mr-1 h-4 w-4" />
-                        )}
-                        Rename
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={
-                          !canManage || deletingTable || Boolean(selectedSalaryTable?.isActive)
-                        }
-                        onClick={() => deleteSalaryTable(selectedOrdinance)}
-                        className="border-destructive/30 text-destructive hover:bg-destructive/10"
-                      >
-                        {deletingTable ? (
-                          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="mr-1 h-4 w-4" />
-                        )}
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {selectedOrdinance && selectedSalaryReadiness.missingRows.length > 0 && (
-                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200">
-                    Open rows:{" "}
-                    {selectedSalaryReadiness.missingRows
-                      .slice(0, 8)
-                      .map((row) => `SG-${row.grade} Step ${row.step}`)
-                      .join(", ")}
-                    {selectedSalaryReadiness.missingRows.length > 8 ? "..." : ""}
-                  </div>
-                )}
-
-                {activationSummary && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200">
-                    <ClipboardCheck className="h-4 w-4" />
-                    Activated {activationSummary.ordinance} effective{" "}
-                    {formatDisplayDate(activationSummary.effectivityDate)}:{" "}
-                    {activationSummary.updated} Plantilla items updated,{" "}
-                    {activationSummary.employeeSalaryRecordsCreated} employee salary records created,{" "}
-                    {activationSummary.movementsSynchronized} pending movements synchronized,{" "}
-                    {activationSummary.skipped} skipped.
-                  </div>
-                )}
-              </div>
-
-              <div className="p-5">
-                <div className="max-h-[70vh] overflow-auto rounded-lg border border-border">
-                  <table className="w-full min-w-[1280px] text-sm">
-                    <thead className="sticky top-0 z-10 bg-card">
-                      <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                        <th className="w-24 px-4 py-3 font-medium">Grade</th>
-                        {Array.from({ length: EXPECTED_SALARY_STEPS }, (_unused, index) => (
-                          <th key={index + 1} className="px-4 py-3 text-right font-medium">
-                            Step {index + 1}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedOrdinance ? (
-                        salaryRowsByGrade.map((gradeRow) => (
-                          <tr key={gradeRow.grade} className="border-b border-border/70">
-                            <td className="sticky left-0 bg-card px-4 py-2.5 font-semibold">
-                              SG-{gradeRow.grade}
-                            </td>
-                            {gradeRow.steps.map(({ step, row }) => (
-                              <td
-                                key={step}
-                                className={cn(
-                                  "group min-w-36 px-3 py-2.5 align-top",
-                                  row
-                                    ? "bg-background"
-                                    : "bg-amber-50/60 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200",
-                                )}
-                              >
-                                {row ? (
-                                  editingSalaryGrade.id === row.id ? (
-                                    <div className="space-y-2">
-                                      <div className="grid grid-cols-3 gap-1">
-                                        <Input
-                                          value={editingSalaryGrade.grade}
-                                          onChange={(event) =>
-                                            setEditingSalaryGrade({
-                                              ...editingSalaryGrade,
-                                              grade: event.target.value,
-                                            })
-                                          }
-                                          className="h-8 text-xs"
-                                        />
-                                        <Input
-                                          value={editingSalaryGrade.step}
-                                          onChange={(event) =>
-                                            setEditingSalaryGrade({
-                                              ...editingSalaryGrade,
-                                              step: event.target.value,
-                                            })
-                                          }
-                                          className="h-8 text-xs"
-                                        />
-                                        <Input
-                                          type="number"
-                                          value={editingSalaryGrade.amount}
-                                          onChange={(event) =>
-                                            setEditingSalaryGrade({
-                                              ...editingSalaryGrade,
-                                              amount: event.target.value,
-                                            })
-                                          }
-                                          className="h-8 text-right text-xs"
-                                        />
-                                      </div>
-                                      <div className="flex justify-end gap-2">
-                                        <button
-                                          disabled={savingSalaryGradeId === row.id}
-                                          onClick={updateSalaryGrade}
-                                          className="text-muted-foreground hover:text-[#2563eb] disabled:opacity-30"
-                                          title="Save correction"
-                                        >
-                                          {savingSalaryGradeId === row.id ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                          ) : (
-                                            <Save className="h-4 w-4" />
-                                          )}
-                                        </button>
-                                        <button
-                                          disabled={savingSalaryGradeId === row.id}
-                                          onClick={() =>
-                                            setEditingSalaryGrade({
-                                              id: 0,
-                                              ordinance: "",
-                                              grade: "",
-                                              step: "",
-                                              amount: "",
-                                            })
-                                          }
-                                          className="text-muted-foreground hover:text-destructive disabled:opacity-30"
-                                          title="Cancel"
-                                        >
-                                          <X className="h-4 w-4" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="text-right">
-                                      <div className="font-mono text-sm">
-                                        {formatMoney(row.amount)}
-                                      </div>
-                                      <div className="mt-1 flex justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                                        <button
-                                          disabled={!canManage || row.isActive}
-                                          onClick={() => startSalaryGradeEdit(row)}
-                                          className="text-muted-foreground hover:text-[#2563eb] disabled:opacity-30"
-                                          title={
-                                            row.isActive
-                                              ? "Rows from the active salary table cannot be edited"
-                                              : "Correct row"
-                                          }
-                                        >
-                                          <Pencil className="h-3.5 w-3.5" />
-                                        </button>
-                                        <button
-                                          disabled={!canManage || row.isActive}
-                                          onClick={() => requestDeleteSalaryGrade(row)}
-                                          className="text-muted-foreground hover:text-destructive disabled:opacity-30"
-                                          title={
-                                            row.isActive
-                                              ? "Rows from the active salary table cannot be deleted"
-                                              : "Delete row"
-                                          }
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )
-                                ) : (
-                                  <div className="text-right text-sm text-muted-foreground">-</div>
-                                )}
-                              </td>
-                            ))}
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan={EXPECTED_SALARY_STEPS + 1}
-                            className="px-4 py-12 text-center text-muted-foreground"
+                      {selectedOrdinance && (
+                        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+                          <Badge variant="outline">{selectedSalaryRows.length} rows</Badge>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              selectedSalaryReadiness.missingRows.length
+                                ? "border-amber-200 text-amber-700"
+                                : "border-emerald-200 text-emerald-700",
+                            )}
                           >
-                            Select a salary table to review it.
-                          </td>
-                        </tr>
+                            {selectedSalaryReadiness.missingRows.length
+                              ? `${selectedSalaryReadiness.missingRows.length} open rows`
+                              : "Complete"}
+                          </Badge>
+                          {selectedSalaryTable?.minGrade && selectedSalaryTable?.maxGrade && (
+                            <Badge variant="outline">
+                              SG-{selectedSalaryTable.minGrade} to SG-{selectedSalaryTable.maxGrade}
+                            </Badge>
+                          )}
+                          <div className="ml-auto flex w-full flex-col gap-2 sm:w-auto sm:min-w-[420px] sm:flex-row">
+                            <Input
+                              value={renameOrdinance}
+                              onChange={(event) => setRenameOrdinance(event.target.value)}
+                              disabled={!canManage || renamingTable}
+                              className="h-8"
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                !canManage ||
+                                renamingTable ||
+                                !renameOrdinance.trim() ||
+                                renameOrdinance.trim() === selectedOrdinance
+                              }
+                              onClick={renameSalaryTable}
+                            >
+                              {renamingTable ? (
+                                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Save className="mr-1 h-4 w-4" />
+                              )}
+                              Rename
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                !canManage ||
+                                deletingTable ||
+                                Boolean(selectedSalaryTable?.isActive)
+                              }
+                              onClick={() => deleteSalaryTable(selectedOrdinance)}
+                              className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                            >
+                              {deletingTable ? (
+                                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="mr-1 h-4 w-4" />
+                              )}
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
                       )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </section>
-          </div>
-        </TabsContent>
 
-        {REFERENCE_LIBRARY_CONFIG.map((config) => (
-          <TabsContent key={config.category} value={config.category} className="mt-4">
-            <ReferenceLibraryPanel
-              config={config}
-              rows={referenceLibraries[config.category] || []}
-              parentRows={
-                config.parentCategory ? referenceLibraries[config.parentCategory] || [] : []
-              }
-              canManage={canManage}
-              onChanged={loadReferences}
-            />
-          </TabsContent>
-        ))}
+                      {selectedOrdinance && selectedSalaryReadiness.missingRows.length > 0 && (
+                        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200">
+                          Open rows:{" "}
+                          {selectedSalaryReadiness.missingRows
+                            .slice(0, 8)
+                            .map((row) => `SG-${row.grade} Step ${row.step}`)
+                            .join(", ")}
+                          {selectedSalaryReadiness.missingRows.length > 8 ? "..." : ""}
+                        </div>
+                      )}
+
+                      {activationSummary && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200">
+                          <ClipboardCheck className="h-4 w-4" />
+                          Activated {activationSummary.ordinance} effective{" "}
+                          {formatDisplayDate(activationSummary.effectivityDate)}:{" "}
+                          {activationSummary.updated} Plantilla items updated,{" "}
+                          {activationSummary.employeeSalaryRecordsCreated} employee salary records
+                          created, {activationSummary.movementsSynchronized} pending movements
+                          synchronized, {activationSummary.skipped} skipped.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-5">
+                      <div className="max-h-[70vh] overflow-auto rounded-lg border border-border">
+                        <table className="w-full min-w-[1280px] text-sm">
+                          <thead className="sticky top-0 z-10 bg-card">
+                            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                              <th className="w-24 px-4 py-3 font-medium">Grade</th>
+                              {Array.from({ length: EXPECTED_SALARY_STEPS }, (_unused, index) => (
+                                <th key={index + 1} className="px-4 py-3 text-right font-medium">
+                                  Step {index + 1}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedOrdinance ? (
+                              salaryRowsByGrade.map((gradeRow) => (
+                                <tr key={gradeRow.grade} className="border-b border-border/70">
+                                  <td className="sticky left-0 bg-card px-4 py-2.5 font-semibold">
+                                    SG-{gradeRow.grade}
+                                  </td>
+                                  {gradeRow.steps.map(({ step, row }) => (
+                                    <td
+                                      key={step}
+                                      className={cn(
+                                        "group min-w-36 px-3 py-2.5 align-top",
+                                        row
+                                          ? "bg-background"
+                                          : "bg-amber-50/60 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200",
+                                      )}
+                                    >
+                                      {row ? (
+                                        editingSalaryGrade.id === row.id ? (
+                                          <div className="space-y-2">
+                                            <div className="grid grid-cols-3 gap-1">
+                                              <Input
+                                                value={editingSalaryGrade.grade}
+                                                onChange={(event) =>
+                                                  setEditingSalaryGrade({
+                                                    ...editingSalaryGrade,
+                                                    grade: event.target.value,
+                                                  })
+                                                }
+                                                className="h-8 text-xs"
+                                              />
+                                              <Input
+                                                value={editingSalaryGrade.step}
+                                                onChange={(event) =>
+                                                  setEditingSalaryGrade({
+                                                    ...editingSalaryGrade,
+                                                    step: event.target.value,
+                                                  })
+                                                }
+                                                className="h-8 text-xs"
+                                              />
+                                              <Input
+                                                type="number"
+                                                value={editingSalaryGrade.amount}
+                                                onChange={(event) =>
+                                                  setEditingSalaryGrade({
+                                                    ...editingSalaryGrade,
+                                                    amount: event.target.value,
+                                                  })
+                                                }
+                                                className="h-8 text-right text-xs"
+                                              />
+                                            </div>
+                                            <div className="flex justify-end gap-2">
+                                              <button
+                                                disabled={savingSalaryGradeId === row.id}
+                                                onClick={updateSalaryGrade}
+                                                className="text-muted-foreground hover:text-[#2563eb] disabled:opacity-30"
+                                                title="Save correction"
+                                              >
+                                                {savingSalaryGradeId === row.id ? (
+                                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                  <Save className="h-4 w-4" />
+                                                )}
+                                              </button>
+                                              <button
+                                                disabled={savingSalaryGradeId === row.id}
+                                                onClick={() =>
+                                                  setEditingSalaryGrade({
+                                                    id: 0,
+                                                    ordinance: "",
+                                                    grade: "",
+                                                    step: "",
+                                                    amount: "",
+                                                  })
+                                                }
+                                                className="text-muted-foreground hover:text-destructive disabled:opacity-30"
+                                                title="Cancel"
+                                              >
+                                                <X className="h-4 w-4" />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div className="text-right">
+                                            <div className="font-mono text-sm">
+                                              {formatMoney(row.amount)}
+                                            </div>
+                                            <div className="mt-1 flex justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                                              <button
+                                                disabled={!canManage || row.isActive}
+                                                onClick={() => startSalaryGradeEdit(row)}
+                                                className="text-muted-foreground hover:text-[#2563eb] disabled:opacity-30"
+                                                title={
+                                                  row.isActive
+                                                    ? "Rows from the active salary table cannot be edited"
+                                                    : "Correct row"
+                                                }
+                                              >
+                                                <Pencil className="h-3.5 w-3.5" />
+                                              </button>
+                                              <button
+                                                disabled={!canManage || row.isActive}
+                                                onClick={() => requestDeleteSalaryGrade(row)}
+                                                className="text-muted-foreground hover:text-destructive disabled:opacity-30"
+                                                title={
+                                                  row.isActive
+                                                    ? "Rows from the active salary table cannot be deleted"
+                                                    : "Delete row"
+                                                }
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )
+                                      ) : (
+                                        <div className="text-right text-sm text-muted-foreground">
+                                          -
+                                        </div>
+                                      )}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td
+                                  colSpan={EXPECTED_SALARY_STEPS + 1}
+                                  className="px-4 py-12 text-center text-muted-foreground"
+                                >
+                                  Select a salary table to review it.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </TabsContent>
+
+              {REFERENCE_LIBRARY_CONFIG.map((config) => (
+                <TabsContent key={config.category} value={config.category} className="mt-0">
+                  <ReferenceLibraryPanel
+                    config={config}
+                    rows={referenceLibraries[config.category] || []}
+                    parentRows={
+                      config.parentCategory ? referenceLibraries[config.parentCategory] || [] : []
+                    }
+                    canManage={canManage}
+                    onChanged={loadReferences}
+                    addRequestKey={activeReferenceTab === config.category ? addReferenceRequest : 0}
+                    showAddAction={false}
+                  />
+                </TabsContent>
+              ))}
+            </div>
+          </section>
+        </div>
       </Tabs>
       <Dialog open={showSalaryBuilder} onOpenChange={setShowSalaryBuilder}>
         <DialogContent className="grid max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-h-[90vh] sm:max-w-2xl">
@@ -1450,9 +1661,75 @@ interface ReferenceMetricProps {
   detail: string;
 }
 
+function ReferenceSectionStepper({
+  options,
+  active,
+  onChange,
+}: {
+  options: Array<{
+    value: string;
+    label: string;
+    count: number;
+    description: string;
+    icon: ComponentType<{ className?: string }>;
+  }>;
+  active: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <nav aria-label="Employee reference sections" className="space-y-0.5">
+      {options.map((option, index) => {
+        const Icon = option.icon;
+        const isActive = option.value === active;
+        return (
+          <div key={option.value} className="relative">
+            {index < options.length - 1 && (
+              <span
+                aria-hidden="true"
+                className="absolute left-[21px] top-10 h-[calc(100%-24px)] w-px bg-border"
+              />
+            )}
+            <button
+              type="button"
+              aria-current={isActive ? "step" : undefined}
+              onClick={() => onChange(option.value)}
+              className={cn(
+                "relative z-[1] flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm transition-colors",
+                isActive
+                  ? "bg-primary/10 font-semibold text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <span
+                className={cn(
+                  "grid h-7 w-7 shrink-0 place-items-center rounded-full border bg-card transition-colors",
+                  isActive
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground",
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              <span
+                className={cn(
+                  "rounded-md px-1.5 py-0.5 text-[11px] font-medium",
+                  isActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
+                )}
+              >
+                {option.count}
+              </span>
+            </button>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
 function ReferenceMetric({ icon: Icon, label, value, detail }: ReferenceMetricProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className="border-b border-border p-4 last:border-b-0 sm:border-r sm:[&:nth-child(2n)]:border-r-0 xl:border-b-0 xl:[&:nth-child(2n)]:border-r xl:last:border-r-0">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -1472,6 +1749,7 @@ function ReferenceMetric({ icon: Icon, label, value, detail }: ReferenceMetricPr
 interface SimpleReferenceItem {
   id: number;
   label: string;
+  onEdit?: (label: string) => Promise<boolean> | boolean;
   onDelete: () => void;
 }
 
@@ -1489,6 +1767,8 @@ interface SimpleReferenceSectionProps {
   onValueChange: (value: string) => void;
   onQueryChange: (value: string) => void;
   onAdd: () => Promise<boolean> | boolean;
+  addRequestKey?: number;
+  showAddAction?: boolean;
 }
 
 function SimpleReferenceSection({
@@ -1505,9 +1785,18 @@ function SimpleReferenceSection({
   onValueChange,
   onQueryChange,
   onAdd,
+  addRequestKey = 0,
+  showAddAction = true,
 }: SimpleReferenceSectionProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [editingItem, setEditingItem] = useState<SimpleReferenceItem | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  useEffect(() => {
+    if (addRequestKey > 0 && canManage) setAddOpen(true);
+  }, [addRequestKey, canManage]);
 
   const submitAdd = async () => {
     if (!value.trim()) return;
@@ -1517,6 +1806,22 @@ function SimpleReferenceSection({
       if (saved) setAddOpen(false);
     } finally {
       setAdding(false);
+    }
+  };
+
+  const startEdit = (item: SimpleReferenceItem) => {
+    setEditingItem(item);
+    setEditValue(item.label);
+  };
+
+  const submitEdit = async () => {
+    if (!editingItem?.onEdit || !editValue.trim()) return;
+    setSavingEdit(true);
+    try {
+      const saved = await editingItem.onEdit(editValue.trim());
+      if (saved) setEditingItem(null);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -1533,14 +1838,16 @@ function SimpleReferenceSection({
               <Badge variant="outline">
                 {items.length} of {totalCount}
               </Badge>
-              <Button
-                size="sm"
-                disabled={!canManage}
-                onClick={() => setAddOpen(true)}
-                className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-              >
-                <Plus className="mr-1 h-4 w-4" /> Add
-              </Button>
+              {showAddAction && (
+                <Button
+                  size="sm"
+                  disabled={!canManage}
+                  onClick={() => setAddOpen(true)}
+                  className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+                >
+                  <Plus className="mr-1 h-4 w-4" /> Add
+                </Button>
+              )}
             </div>
           </div>
           <div className="relative mt-4 max-w-sm">
@@ -1561,16 +1868,30 @@ function SimpleReferenceSection({
               className="flex items-center justify-between gap-3 px-5 py-3 text-sm transition-colors hover:bg-muted/30"
             >
               <span className="min-w-0 truncate font-medium text-foreground">{item.label}</span>
-              <Button
-                size="icon"
-                variant="ghost"
-                disabled={!canManage}
-                onClick={item.onDelete}
-                className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                title={`Delete ${itemLabel}`}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                {item.onEdit && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    disabled={!canManage}
+                    onClick={() => startEdit(item)}
+                    className="text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                    title={`Edit ${itemLabel}`}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={!canManage}
+                  onClick={item.onDelete}
+                  className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  title={`Delete ${itemLabel}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </li>
           ))}
           {items.length === 0 && (
@@ -1611,6 +1932,49 @@ function SimpleReferenceSection({
                 <Plus className="mr-1 h-4 w-4" />
               )}
               Add
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(editingItem)}
+        onOpenChange={(open) => {
+          if (!open && !savingEdit) setEditingItem(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit {itemLabel}</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            placeholder={addPlaceholder}
+            value={editValue}
+            onChange={(event) => setEditValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") submitEdit();
+            }}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingItem(null)} disabled={savingEdit}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                !canManage ||
+                savingEdit ||
+                !editValue.trim() ||
+                editValue.trim() === editingItem?.label
+              }
+              onClick={submitEdit}
+              className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+            >
+              {savingEdit ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-1 h-4 w-4" />
+              )}
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>

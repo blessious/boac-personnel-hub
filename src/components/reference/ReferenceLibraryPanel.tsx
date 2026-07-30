@@ -1,5 +1,6 @@
 ﻿import { useMemo, useState } from "react";
 import { Loader2, Pencil, Plus, Power, Save, Search, Trash2 } from "lucide-react";
+import { useEffect } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -62,9 +63,19 @@ interface Props {
   parentRows: ReferenceRow[];
   canManage: boolean;
   onChanged: () => Promise<void> | void;
+  addRequestKey?: number;
+  showAddAction?: boolean;
 }
 
-export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onChanged }: Props) {
+export function ReferenceLibraryPanel({
+  config,
+  rows,
+  parentRows,
+  canManage,
+  onChanged,
+  addRequestKey = 0,
+  showAddAction = true,
+}: Props) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
@@ -95,6 +106,13 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
     resetForm();
     setFormOpen(true);
   };
+
+  useEffect(() => {
+    if (addRequestKey <= 0 || !canManage) return;
+    setForm(EMPTY_FORM);
+    setEditingId(null);
+    setFormOpen(true);
+  }, [addRequestKey, canManage]);
 
   const editRow = (row: ReferenceRow) => {
     setEditingId(row.id);
@@ -199,15 +217,17 @@ export function ReferenceLibraryPanel({ config, rows, parentRows, canManage, onC
                 {activeCount} active
               </Badge>
               {inactiveCount > 0 && <Badge variant="secondary">{inactiveCount} inactive</Badge>}
-              <Button
-                size="sm"
-                disabled={!canManage}
-                onClick={openAdd}
-                className="bg-blue-600 text-white hover:bg-blue-700"
-              >
-                <Plus className="mr-1 h-4 w-4" />
-                Add
-              </Button>
+              {showAddAction && (
+                <Button
+                  size="sm"
+                  disabled={!canManage}
+                  onClick={openAdd}
+                  className="bg-blue-600 text-white hover:bg-blue-700"
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  Add
+                </Button>
+              )}
             </div>
           </div>
 

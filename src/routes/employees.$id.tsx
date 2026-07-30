@@ -1,6 +1,30 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronDown, Download, Pencil, Plus, Save, Trash2, Upload } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type RefObject } from "react";
+import {
+  ArrowLeft,
+  BriefcaseBusiness,
+  Building2,
+  CalendarDays,
+  ChevronDown,
+  ChevronRight,
+  CircleDollarSign,
+  ClipboardCheck,
+  Download,
+  GraduationCap,
+  HeartHandshake,
+  IdCard,
+  Landmark,
+  Menu,
+  Pencil,
+  Plus,
+  Save,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  UserRound,
+  UsersRound,
+  WalletCards,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -29,6 +53,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FormSection } from "@/components/forms/Field";
+import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import {
@@ -48,6 +73,7 @@ import {
   type SectionRow,
   type SettingsOptions,
 } from "@/lib/employees-api";
+import type { ReferenceCategory, ReferenceRow } from "@/lib/reference-libraries";
 import {
   createLeaveAdjustment,
   getEmployeeLeave,
@@ -88,6 +114,88 @@ const TABS: Tab[] = [
   "LEAVE BALANCE",
   "IPCR",
 ];
+
+type TabDetails = {
+  label: string;
+  number: string;
+  description: string;
+  icon: ComponentType<{ className?: string }>;
+};
+
+const TAB_DETAILS: Record<Tab, TabDetails> = {
+  PERSONAL: {
+    label: "Personal Information",
+    number: "I",
+    description: "Personal, employment, contact, and government identification details.",
+    icon: UserRound,
+  },
+  FAMILY: {
+    label: "Family",
+    number: "II",
+    description: "Spouse, parents, and immediate family information.",
+    icon: HeartHandshake,
+  },
+  CHILDREN: {
+    label: "Children",
+    number: "III",
+    description: "Children and dependent information.",
+    icon: UsersRound,
+  },
+  EDUCATIONAL: {
+    label: "Educational",
+    number: "IV",
+    description: "Educational background, degrees, and academic honors.",
+    icon: GraduationCap,
+  },
+  "CIVIL SERVICE": {
+    label: "Civil Service",
+    number: "V",
+    description: "Eligibility, examination, and professional license records.",
+    icon: ShieldCheck,
+  },
+  "WORK EXPERIENCE": {
+    label: "Work Experience",
+    number: "VI",
+    description: "Government and private-sector employment history.",
+    icon: BriefcaseBusiness,
+  },
+  ORGANIZATION: {
+    label: "Organization",
+    number: "VII",
+    description: "Memberships, affiliations, and organization participation.",
+    icon: Building2,
+  },
+  TRAINING: {
+    label: "Training",
+    number: "VIII",
+    description: "Learning, development, seminar, and training records.",
+    icon: ClipboardCheck,
+  },
+  SALARY: {
+    label: "Salary",
+    number: "IX",
+    description: "Salary grade, step, and compensation history.",
+    icon: CircleDollarSign,
+  },
+  "SERVICE RECORD": {
+    label: "Service Record",
+    number: "X",
+    description: "Government service history and separation information.",
+    icon: Landmark,
+  },
+  "LEAVE BALANCE": {
+    label: "Leave Balance",
+    number: "XI",
+    description: "Current leave credits, ledger activity, and adjustments.",
+    icon: WalletCards,
+  },
+  IPCR: {
+    label: "IPCR",
+    number: "XII",
+    description: "Individual performance ratings and supporting attachments.",
+    icon: IdCard,
+  },
+};
 
 const SECTION_BY_TAB: Partial<Record<Tab, string>> = {
   FAMILY: "family",
@@ -265,8 +373,18 @@ function EmployeeFile() {
     positions: [],
     salaryGrades: [],
   });
+  const [offices, setOffices] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sectionActionRequest, setSectionActionRequest] = useState<{
+    tab: Tab | null;
+    nonce: number;
+  }>({ tab: null, nonce: 0 });
+  const [workDownloadRequest, setWorkDownloadRequest] = useState(0);
+  const [leaveAdjustmentRequest, setLeaveAdjustmentRequest] = useState(0);
+  const [photoSaving, setPhotoSaving] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const load = () => {
     setLoading(true);
@@ -284,9 +402,23 @@ function EmployeeFile() {
   useEffect(load, [id]);
   useRealtimeRefresh(load, ["employees", "settings"]);
   useEffect(() => {
-    getSettingsOptions()
-      .then(setOptions)
-      .catch(() => setOptions({ departments: [], positions: [], salaryGrades: [] }));
+    Promise.all([
+      getSettingsOptions(),
+      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references"),
+    ])
+      .then(([settings, references]) => {
+        setOptions(settings);
+        setOffices(
+          references.libraries.offices
+            .filter((office) => office.isActive)
+            .map((office) => office.name)
+            .sort((left, right) => left.localeCompare(right)),
+        );
+      })
+      .catch(() => {
+        setOptions({ departments: [], positions: [], salaryGrades: [] });
+        setOffices([]);
+      });
   }, []);
 
   if (loading) {
@@ -304,7 +436,11 @@ function EmployeeFile() {
       <AppShell title="Employee Not Found">
         <div className="rounded-xl border border-border bg-card p-12 text-center">
           <p className="text-muted-foreground">{error || `No employee with ID ${id}`}</p>
-          <Link to="/employees" className="mt-4 inline-block text-sm text-primary">
+          <Link
+            to="/employees"
+            search={{ department: undefined, onboard: undefined, targetPlantillaItemId: undefined }}
+            className="mt-4 inline-block text-sm text-primary"
+          >
             Back to list
           </Link>
         </div>
@@ -317,40 +453,132 @@ function EmployeeFile() {
   const canEditProfile = canManageEmployees || canEditOwnProfile;
   const canEditSection =
     canManageEmployees || (canEditOwnProfile && SECTION_BY_TAB[active] === "work");
+  const activeDetails = TAB_DETAILS[active];
+  const ActiveSectionIcon = activeDetails.icon;
+
+  const saveHeaderPhoto = async (file: File | null) => {
+    if (!file || !canEditProfile) return;
+    if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
+      toast.error("Photo must be PNG, JPEG, WebP, or GIF");
+      return;
+    }
+    if (file.size > MAX_PROFILE_IMAGE_BYTES) {
+      toast.error("Photo must be 2 MB or smaller");
+      return;
+    }
+
+    setPhotoSaving(true);
+    try {
+      const photoUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Unable to read the selected photo"));
+        reader.readAsDataURL(file);
+      });
+      const result = await updateEmployee(employee.id, { photoUrl });
+      setEmployee(result.employee);
+      toast.success("Employee photo updated");
+    } catch (photoError) {
+      toast.error(photoError instanceof Error ? photoError.message : "Unable to update photo");
+    } finally {
+      setPhotoSaving(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  };
+
+  const deleteHeaderPhoto = async () => {
+    if (!canEditProfile || !employee.photoUrl || photoSaving) return;
+    if (!window.confirm("Delete this employee photo?")) return;
+
+    setPhotoSaving(true);
+    try {
+      const result = await updateEmployee(employee.id, { photoUrl: "" });
+      setEmployee(result.employee);
+      toast.success("Employee photo deleted");
+    } catch (photoError) {
+      toast.error(photoError instanceof Error ? photoError.message : "Unable to delete photo");
+    } finally {
+      setPhotoSaving(false);
+    }
+  };
+
+  const requestSectionAdd = () =>
+    setSectionActionRequest((current) => ({
+      tab: active,
+      nonce: current.nonce + 1,
+    }));
 
   return (
-    <AppShell title="201 File" subtitle="Personnel record management">
-      <div className="sticky top-16 z-10 -mx-3 flex items-center gap-3 border-b border-border bg-background/95 px-3 py-3 backdrop-blur sm:-mx-4 sm:px-4 xl:-mx-5 xl:px-5">
-        <Link
-          to="/employees"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-accent"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <Avatar className="h-9 w-9 shrink-0">
-          {employee.photoUrl && (
-            <AvatarImage
-              src={employee.photoUrl}
-              alt={formatEmployeeName(employee)}
-              className="object-cover"
-            />
-          )}
-          <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-            {employee.firstname[0] || "?"}
-            {employee.lastname[0] || "?"}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <div className="hidden font-mono text-xs text-muted-foreground sm:block">
-            {employee.employeeId}
-          </div>
-          <div className="truncate text-sm font-semibold sm:text-base">
-            {formatEmployeeName(employee)}
+    <AppShell
+      title="201 File – Personal Data Record"
+      subtitle={`${employee.employeeId} · ${formatEmployeeName(employee)}`}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <nav
+            aria-label="Breadcrumb"
+            className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground"
+          >
+            <Link
+              to="/employees"
+              search={{
+                department: undefined,
+                onboard: undefined,
+                targetPlantillaItemId: undefined,
+              }}
+              className="inline-flex items-center gap-1.5 hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              201 Files
+            </Link>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">My 201 Files</span>
+            <ChevronRight className="hidden h-3.5 w-3.5 shrink-0 sm:block" aria-hidden="true" />
+            <span className="hidden max-w-[360px] truncate font-medium text-foreground sm:block">
+              {formatEmployeeName(employee)}
+            </span>
+          </nav>
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {active === "WORK EXPERIENCE" && (
+              <Button
+                variant="outline"
+                onClick={() => setWorkDownloadRequest((current) => current + 1)}
+              >
+                <Download className="h-4 w-4" />
+                Generate WES
+              </Button>
+            )}
+            {active === "PERSONAL" && canEditProfile ? (
+              <Button type="submit" form="employee-personal-form">
+                <Pencil className="h-4 w-4" />
+                Update
+              </Button>
+            ) : active === "LEAVE BALANCE" && canManageEmployees ? (
+              <Button onClick={() => setLeaveAdjustmentRequest((current) => current + 1)}>
+                <Plus className="h-4 w-4" />
+                Adjust Credits
+              </Button>
+            ) : SECTION_BY_TAB[active] && canEditSection ? (
+              <Button onClick={requestSectionAdd}>
+                <Plus className="h-4 w-4" />
+                Add Record
+              </Button>
+            ) : null}
           </div>
         </div>
+
+        <EmployeeSummaryCard
+          assignment={currentAssignment}
+          employee={employee}
+          canEditPhoto={canEditProfile}
+          photoSaving={photoSaving}
+          photoInputRef={photoInputRef}
+          onPhotoSelected={saveHeaderPhoto}
+          onDeletePhoto={deleteHeaderPhoto}
+        />
       </div>
 
-      <CurrentAssignmentCard assignment={currentAssignment} employee={employee} />
       {employee.isHidden && (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           This employee is archived and excluded from active workforce lists, dashboard totals, and
@@ -358,117 +586,283 @@ function EmployeeFile() {
         </div>
       )}
 
-      <div className="mt-4 border-b border-border">
-        <div className="flex flex-wrap gap-x-1 sm:gap-x-2">
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActive(tab)}
-              className={cn(
-                "relative px-3 py-2.5 text-xs font-medium transition-colors sm:text-sm",
-                "after:absolute after:bottom-0 after:left-1 after:right-1 after:h-[2px] after:rounded-full",
-                active === tab
-                  ? "text-primary after:bg-primary"
-                  : "text-muted-foreground after:bg-transparent hover:text-foreground",
-              )}
-            >
-              {tab === "IPCR"
-                ? "IPCR"
-                : tab
-                    .split(" ")
-                    .map((word) => word[0] + word.slice(1).toLowerCase())
-                    .join(" ")}
-            </button>
-          ))}
-        </div>
-      </div>
+      <div className="mt-4 grid items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <aside className="lg:sticky lg:top-20">
+          <button
+            type="button"
+            aria-expanded={mobileNavOpen}
+            aria-controls="employee-file-mobile-sections"
+            onClick={() => setMobileNavOpen((current) => !current)}
+            className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-sm lg:hidden"
+          >
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+              <ActiveSectionIcon className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-medium text-muted-foreground">Form section</span>
+              <span className="block truncate text-sm font-semibold">{activeDetails.label}</span>
+            </span>
+            <Menu className="h-4 w-4 text-muted-foreground" />
+          </button>
+          <div
+            id="employee-file-mobile-sections"
+            className={cn(
+              "mt-2 rounded-xl border border-border bg-card p-3 shadow-sm lg:mt-0 lg:block",
+              mobileNavOpen ? "block" : "hidden",
+            )}
+          >
+            <div className="mb-3 px-2">
+              <h2 className="text-sm font-semibold">Form Sections</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Select a section of the employee record.
+              </p>
+            </div>
+            <EmployeeFileStepper
+              active={active}
+              onChange={(next) => {
+                setActive(next);
+                setMobileNavOpen(false);
+              }}
+            />
+          </div>
+        </aside>
 
-      <div className="mt-4">
-        {active === "PERSONAL" ? (
-          <PersonalTab
-            employee={employee}
-            options={options}
-            canEdit={canEditProfile}
-            selfService={Boolean(canEditOwnProfile && !canManageEmployees)}
-            currentAssignment={currentAssignment}
-            onSaved={(updated) => setEmployee(updated)}
-          />
-        ) : active === "LEAVE BALANCE" ? (
-          <LeaveBalanceTab employeeId={employee.id} canEdit={canManageEmployees} />
-        ) : (
-          <SectionTab
-            employeeId={employee.id}
-            section={SECTION_BY_TAB[active] || ""}
-            title={active}
-            rows={sections[SECTION_BY_TAB[active] || ""] || []}
-            canEdit={canEditSection}
-            onChange={load}
-          />
-        )}
+        <section className="min-w-0 rounded-xl border border-border bg-card shadow-sm">
+          <header className="flex items-start gap-3 border-b border-border px-4 py-4 sm:px-5">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+              <ActiveSectionIcon className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold">
+                {activeDetails.number}. {activeDetails.label}
+              </h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">{activeDetails.description}</p>
+            </div>
+          </header>
+
+          <div className="p-3 sm:p-4">
+            {active === "PERSONAL" ? (
+              <PersonalTab
+                employee={employee}
+                options={options}
+                offices={offices}
+                canEdit={canEditProfile}
+                selfService={Boolean(canEditOwnProfile && !canManageEmployees)}
+                currentAssignment={currentAssignment}
+                onSaved={(updated) => setEmployee(updated)}
+              />
+            ) : active === "LEAVE BALANCE" ? (
+              <LeaveBalanceTab
+                employeeId={employee.id}
+                canEdit={canManageEmployees}
+                adjustmentRequestKey={leaveAdjustmentRequest}
+              />
+            ) : (
+              <SectionTab
+                employeeId={employee.id}
+                section={SECTION_BY_TAB[active] || ""}
+                title={activeDetails.label}
+                rows={sections[SECTION_BY_TAB[active] || ""] || []}
+                canEdit={canEditSection}
+                onChange={load}
+                addRequestKey={sectionActionRequest.tab === active ? sectionActionRequest.nonce : 0}
+                downloadRequestKey={active === "WORK EXPERIENCE" ? workDownloadRequest : 0}
+              />
+            )}
+          </div>
+        </section>
       </div>
     </AppShell>
   );
 }
 
-function CurrentAssignmentCard({
+function EmployeeFileStepper({ active, onChange }: { active: Tab; onChange: (tab: Tab) => void }) {
+  return (
+    <nav aria-label="201 File sections" className="space-y-0.5">
+      {TABS.map((tab, index) => {
+        const details = TAB_DETAILS[tab];
+        const Icon = details.icon;
+        const isActive = tab === active;
+        return (
+          <div key={tab} className="relative">
+            {index < TABS.length - 1 && (
+              <span
+                aria-hidden="true"
+                className="absolute left-[21px] top-10 h-[calc(100%-24px)] w-px bg-border"
+              />
+            )}
+            <button
+              type="button"
+              aria-current={isActive ? "step" : undefined}
+              onClick={() => onChange(tab)}
+              className={cn(
+                "relative z-[1] flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm transition-colors",
+                isActive
+                  ? "bg-primary/10 font-semibold text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <span
+                className={cn(
+                  "grid h-7 w-7 shrink-0 place-items-center rounded-full border bg-card transition-colors",
+                  isActive
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground",
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </span>
+              <span className="truncate">{details.label}</span>
+            </button>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+function EmployeeSummaryCard({
   assignment,
   employee,
+  canEditPhoto,
+  photoSaving,
+  photoInputRef,
+  onPhotoSelected,
+  onDeletePhoto,
 }: {
   assignment: CurrentAssignment;
   employee: EmployeeRecord;
+  canEditPhoto: boolean;
+  photoSaving: boolean;
+  photoInputRef: RefObject<HTMLInputElement | null>;
+  onPhotoSelected: (file: File | null) => void;
+  onDeletePhoto: () => void;
 }) {
   const substantive = assignment.substantive;
   return (
-    <div className="mt-4 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Current assignment
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <div className="group relative shrink-0">
+            <Avatar className="h-20 w-20 border border-border ring-4 ring-muted/60">
+              {employee.photoUrl && (
+                <AvatarImage
+                  src={employee.photoUrl}
+                  alt={formatEmployeeName(employee)}
+                  className="object-cover"
+                />
+              )}
+              <AvatarFallback className="bg-primary/10 text-lg font-semibold text-primary">
+                {employee.firstname[0] || "?"}
+                {employee.lastname[0] || "?"}
+              </AvatarFallback>
+              {canEditPhoto && (
+                <span className="absolute inset-x-0 bottom-0 z-10 flex bg-slate-950/80 text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                  <button
+                    type="button"
+                    disabled={photoSaving}
+                    onClick={() => photoInputRef.current?.click()}
+                    aria-label="Upload employee photo"
+                    title="Upload photo"
+                    className="grid h-7 flex-1 place-items-center hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white disabled:opacity-50"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={photoSaving || !employee.photoUrl}
+                    onClick={onDeletePhoto}
+                    aria-label="Delete employee photo"
+                    title="Delete photo"
+                    className="grid h-7 flex-1 place-items-center border-l border-white/25 hover:bg-red-600/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white disabled:opacity-40"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              )}
+            </Avatar>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="hidden"
+              disabled={!canEditPhoto || photoSaving}
+              onChange={(event) => onPhotoSelected(event.currentTarget.files?.[0] || null)}
+            />
           </div>
-          <div className="mt-1 text-lg font-semibold">
-            {substantive?.position || "No active assignment"}
+          <div className="min-w-0 sm:flex sm:items-center sm:gap-5">
+            <div className="shrink-0 border-border sm:border-r sm:pr-5">
+              <p className="text-xs font-medium text-muted-foreground">Employee ID</p>
+              <p className="mt-1 font-mono text-base font-semibold">{employee.employeeId || "-"}</p>
+            </div>
+            <div className="mt-2 min-w-0 sm:mt-0">
+              <h1 className="truncate text-lg font-semibold sm:text-xl">
+                {formatEmployeeName(employee)}
+              </h1>
+              <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                {substantive?.position || employee.position || "No active assignment"}
+              </p>
+            </div>
           </div>
         </div>
-        <Badge variant={substantive ? "default" : "secondary"}>
+        <Badge
+          variant={substantive ? "default" : "secondary"}
+          className="self-start sm:self-center"
+        >
           {substantive?.kind || employee.lifecycleState || "Personal record"}
         </Badge>
       </div>
-      {substantive ? (
-        <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <AssignmentValue
-            label={substantive.kind === "Plantilla" ? "Plantilla item" : "Engagement"}
-            value={substantive.itemNumber || substantive.engagementType || "-"}
-          />
+
+      <div className="grid border-t border-border sm:grid-cols-2 xl:grid-cols-3">
+        <SummaryGroup icon={Building2}>
           <AssignmentValue
             label="Organization"
-            value={substantive.organizationPath?.join(" / ") || substantive.organization || "-"}
+            value={
+              substantive?.organizationPath?.join(" / ") ||
+              substantive?.organization ||
+              employee.department ||
+              "-"
+            }
           />
           <AssignmentValue
-            label="Effectivity"
-            value={`${formatDisplayDate(substantive.dateFrom)}${substantive.dateTo ? ` to ${formatDisplayDate(substantive.dateTo)}` : ""}`}
+            label="Appointment type"
+            value={substantive?.appointmentType || employee.status || "-"}
           />
+        </SummaryGroup>
+        <SummaryGroup icon={CalendarDays}>
+          <AssignmentValue
+            label="Effectivity date"
+            value={
+              substantive
+                ? `${formatDisplayDate(substantive.dateFrom)}${substantive.dateTo ? ` to ${formatDisplayDate(substantive.dateTo)}` : ""}`
+                : formatDisplayDate(employee.dateEmployed || employee.dateHired, "-")
+            }
+          />
+          <AssignmentValue label="Authority" value={substantive?.authorityNumber || "-"} />
+        </SummaryGroup>
+        <SummaryGroup icon={CircleDollarSign} className="sm:col-span-2 xl:col-span-1">
           <AssignmentValue
             label="Salary / rate"
             value={
-              substantive.salaryGrade
+              substantive?.salaryGrade
                 ? `SG ${substantive.salaryGrade.grade}, Step ${substantive.salaryGrade.step} · Monthly PHP ${substantive.salaryGrade.amount.toLocaleString()}`
-                : substantive.rate != null
+                : substantive?.rate != null
                   ? `PHP ${substantive.rate.toLocaleString()}`
                   : "-"
             }
           />
-          <AssignmentValue label="Appointment type" value={substantive.appointmentType || "-"} />
-          <AssignmentValue label="Authority" value={substantive.authorityNumber || "-"} />
-          <AssignmentValue label="Funding" value={substantive.fundingSource || "-"} />
+          <AssignmentValue label="Funding" value={substantive?.fundingSource || "-"} />
+        </SummaryGroup>
+      </div>
+
+      {!substantive && (
+        <div className="border-t border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground sm:px-5">
+          This person has no active Plantilla occupancy or non-Plantilla engagement. Legacy office,
+          position, and item values are shown only as record context.
         </div>
-      ) : (
-        <p className="mt-2 text-sm text-muted-foreground">
-          This person has no active Plantilla occupancy or non-Plantilla engagement. Legacy
-          department, position, and item values below are shown only as migration context.
-        </p>
       )}
       {assignment.temporary && (
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+        <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:px-5">
           <strong>{assignment.temporary.type}:</strong>{" "}
           {assignment.temporary.position || "Temporary assignment"}
           {assignment.temporary.organization
@@ -477,15 +871,37 @@ function CurrentAssignmentCard({
           {formatDisplayDate(assignment.temporary.dateTo)}
         </div>
       )}
+    </section>
+  );
+}
+
+function SummaryGroup({
+  icon: Icon,
+  className,
+  children,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex gap-3 border-b border-border p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0",
+        className,
+      )}
+    >
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="grid min-w-0 flex-1 gap-3">{children}</div>
     </div>
   );
 }
 
 function AssignmentValue({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-0.5 font-medium">{value}</div>
+      <div className="mt-0.5 break-words text-sm font-medium">{value}</div>
     </div>
   );
 }
@@ -493,6 +909,7 @@ function AssignmentValue({ label, value }: { label: string; value: string }) {
 function PersonalTab({
   employee,
   options,
+  offices,
   canEdit,
   selfService,
   currentAssignment,
@@ -500,13 +917,24 @@ function PersonalTab({
 }: {
   employee: EmployeeRecord;
   options: SettingsOptions;
+  offices: string[];
   canEdit: boolean;
   selfService: boolean;
   currentAssignment: CurrentAssignment;
   onSaved: (employee: EmployeeRecord) => void;
 }) {
   const [form, setForm] = useState<EmployeeRecord>(employee);
-  const departments = options.departments.map((department) => department.name);
+  const officeOptions = Array.from(
+    new Set(
+      [
+        ...offices,
+        employee.department,
+        currentAssignment.substantive?.kind === "Plantilla"
+          ? currentAssignment.substantive.organization
+          : "",
+      ].filter(Boolean),
+    ),
+  );
   const positions = options.positions.map((position) => position.title);
   const hasPlantillaOccupancy = currentAssignment.substantive?.kind === "Plantilla";
 
@@ -515,7 +943,7 @@ function PersonalTab({
 
   const save = async () => {
     try {
-      const result = await updateEmployee(employee.id, form);
+      const result = await updateEmployee(employee.id, { ...form, photoUrl: undefined });
       onSaved(result.employee);
       setForm(result.employee);
       toast.success("Personal information saved");
@@ -525,7 +953,13 @@ function PersonalTab({
   };
 
   return (
-    <div>
+    <form
+      id="employee-personal-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (canEdit) void save();
+      }}
+    >
       {!selfService && (
         <FormSection title="Employment">
           <Field label="Employee ID">
@@ -545,9 +979,9 @@ function PersonalTab({
               placeholder="Select office"
               searchPlaceholder="Search offices..."
               emptyText="No offices found."
-              options={departments.map((department) => ({
-                value: department,
-                label: department,
+              options={officeOptions.map((office) => ({
+                value: office,
+                label: office,
               }))}
               triggerProps={{ disabled: hasPlantillaOccupancy }}
             />
@@ -652,122 +1086,66 @@ function PersonalTab({
         </FormSection>
       )}
 
-      <section className="mb-3 rounded-xl border border-border bg-card/50 p-3">
-        <h4 className="mb-2.5 text-sm font-semibold text-foreground">Identity</h4>
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_164px] xl:items-start">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <Field label="Lastname" required>
-              <Input value={form.lastname} onChange={(e) => set("lastname", e.target.value)} />
-            </Field>
-            <Field label="Firstname" required>
-              <Input value={form.firstname} onChange={(e) => set("firstname", e.target.value)} />
-            </Field>
-            <Field label="Middlename">
-              <Input value={form.middlename} onChange={(e) => set("middlename", e.target.value)} />
-            </Field>
-            <Field label="Name Extension">
-              <Input value={form.nameExt} onChange={(e) => set("nameExt", e.target.value)} />
-            </Field>
-            <Field label="Birthday">
-              <Input
-                type="date"
-                value={form.birthday}
-                onChange={(e) => set("birthday", e.target.value)}
-              />
-            </Field>
-            <Field label="Gender">
-              <RadioGroup
-                value={form.gender}
-                onValueChange={(value) => set("gender", value)}
-                className="flex gap-3 pt-1"
-              >
-                {GENDERS.map((item) => (
-                  <RadioItem key={item} id={`gender-${item}`} value={item} label={item} />
-                ))}
-              </RadioGroup>
-            </Field>
-            <Field label="Civil Status">
-              <Select
-                value={form.civilStatus || "none"}
-                onValueChange={(value) => set("civilStatus", value === "none" ? "" : value)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Not specified</SelectItem>
-                  {CIVIL_STATUSES.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Citizenship">
-              <Input
-                value={form.citizenship}
-                onChange={(e) => set("citizenship", e.target.value)}
-              />
-            </Field>
-            <Field label="Place of Birth" className="md:col-span-2 xl:col-span-3">
-              <Textarea
-                value={form.placeOfBirth}
-                onChange={(e) => set("placeOfBirth", e.target.value)}
-                rows={2}
-              />
-            </Field>
-          </div>
-          <Field label="Photo" className="justify-self-start xl:justify-self-end xl:pt-1">
-            <div className="flex flex-col items-start gap-2">
-              <div className="grid h-24 w-24 place-items-center overflow-hidden rounded-full border border-dashed border-border bg-muted/30">
-                {form.photoUrl ? (
-                  <img
-                    src={form.photoUrl}
-                    alt={formatEmployeeName(form)}
-                    className="h-full w-full rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="px-2 text-center text-xs text-muted-foreground">No photo</span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
-                  <Upload className="h-4 w-4" /> Upload
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (!file) return;
-                      if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
-                        toast.error("Photo must be PNG, JPEG, WebP, or GIF");
-                        return;
-                      }
-                      if (file.size > MAX_PROFILE_IMAGE_BYTES) {
-                        toast.error("Photo must be 2 MB or smaller");
-                        return;
-                      }
-                      const reader = new FileReader();
-                      reader.onload = () => set("photoUrl", String(reader.result || ""));
-                      reader.readAsDataURL(file);
-                    }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={!canEdit || !form.photoUrl}
-                  onClick={() => set("photoUrl", "")}
-                  className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Trash2 className="h-4 w-4" /> Clear photo
-                </button>
-              </div>
-            </div>
-          </Field>
-        </div>
-      </section>
+      <FormSection title="Identity">
+        <Field label="Lastname" required>
+          <Input value={form.lastname} onChange={(e) => set("lastname", e.target.value)} />
+        </Field>
+        <Field label="Firstname" required>
+          <Input value={form.firstname} onChange={(e) => set("firstname", e.target.value)} />
+        </Field>
+        <Field label="Middlename">
+          <Input value={form.middlename} onChange={(e) => set("middlename", e.target.value)} />
+        </Field>
+        <Field label="Name Extension">
+          <Input value={form.nameExt} onChange={(e) => set("nameExt", e.target.value)} />
+        </Field>
+        <Field label="Birthday">
+          <Input
+            type="date"
+            value={form.birthday}
+            onChange={(e) => set("birthday", e.target.value)}
+          />
+        </Field>
+        <Field label="Gender">
+          <RadioGroup
+            value={form.gender}
+            onValueChange={(value) => set("gender", value)}
+            className="flex gap-3 pt-1"
+          >
+            {GENDERS.map((item) => (
+              <RadioItem key={item} id={`gender-${item}`} value={item} label={item} />
+            ))}
+          </RadioGroup>
+        </Field>
+        <Field label="Civil Status">
+          <Select
+            value={form.civilStatus || "none"}
+            onValueChange={(value) => set("civilStatus", value === "none" ? "" : value)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Not specified</SelectItem>
+              {CIVIL_STATUSES.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {item}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Citizenship">
+          <Input value={form.citizenship} onChange={(e) => set("citizenship", e.target.value)} />
+        </Field>
+        <Field label="Place of Birth" className="md:col-span-2 xl:col-span-4">
+          <Textarea
+            value={form.placeOfBirth}
+            onChange={(e) => set("placeOfBirth", e.target.value)}
+            rows={2}
+          />
+        </Field>
+      </FormSection>
 
       <FormSection title="Body Measurements & Government IDs">
         <Field label="Height">
@@ -858,20 +1236,7 @@ function PersonalTab({
           />
         </Field>
       </FormSection>
-
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="outline" onClick={() => setForm(employee)}>
-          Cancel
-        </Button>
-        <Button
-          disabled={!canEdit}
-          onClick={save}
-          className="bg-blue-600 text-white hover:bg-blue-700"
-        >
-          <Save className="mr-1.5 h-4 w-4" /> Save Personal Info
-        </Button>
-      </div>
-    </div>
+    </form>
   );
 }
 
@@ -882,6 +1247,8 @@ function SectionTab({
   rows,
   canEdit,
   onChange,
+  addRequestKey,
+  downloadRequestKey,
 }: {
   employeeId: string;
   section: string;
@@ -889,6 +1256,8 @@ function SectionTab({
   rows: SectionRow[];
   canEdit: boolean;
   onChange: () => void;
+  addRequestKey: number;
+  downloadRequestKey: number;
 }) {
   const fields = useMemo(() => SECTION_FIELDS[section] || [], [section]);
   const dateRange = SECTION_DATE_RANGES[section];
@@ -896,13 +1265,36 @@ function SectionTab({
   const [form, setForm] = useState<Record<string, string | number | boolean | null>>(blank);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [generatingWes, setGeneratingWes] = useState(false);
+  const generatingWesRef = useRef(false);
 
   useEffect(() => {
     setForm(blank);
     setEditingId(null);
     setShowForm(false);
   }, [blank]);
+  useEffect(() => {
+    if (addRequestKey <= 0 || !canEdit) return;
+    setForm(blank);
+    setEditingId(null);
+    setShowForm(true);
+  }, [addRequestKey, blank, canEdit]);
+  useEffect(() => {
+    if (downloadRequestKey <= 0 || section !== "work" || generatingWesRef.current) return;
+    generatingWesRef.current = true;
+    generateEmployeeWesDocx(employeeId)
+      .then((result) => {
+        toast.success("Work Experience Sheet generated");
+        window.location.href = result.downloadUrl;
+      })
+      .catch((err) =>
+        toast.error(
+          err instanceof Error ? err.message : "Unable to generate Work Experience Sheet",
+        ),
+      )
+      .finally(() => {
+        generatingWesRef.current = false;
+      });
+  }, [downloadRequestKey, employeeId, section]);
 
   const set = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const setFile = (key: string, file: File | null) => {
@@ -952,11 +1344,6 @@ function SectionTab({
       toast.error(err instanceof Error ? err.message : "Unable to save record");
     }
   };
-  const add = () => {
-    setForm(blank);
-    setEditingId(null);
-    setShowForm(true);
-  };
   const edit = (row: SectionRow) => {
     setForm({ ...blank, ...row.payload });
     setEditingId(row.id);
@@ -972,37 +1359,8 @@ function SectionTab({
       toast.error(err instanceof Error ? err.message : "Unable to delete record");
     }
   };
-  const downloadWes = async () => {
-    try {
-      setGeneratingWes(true);
-      const result = await generateEmployeeWesDocx(employeeId);
-      toast.success("Work Experience Sheet generated");
-      window.location.href = result.downloadUrl;
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Unable to generate Work Experience Sheet");
-    } finally {
-      setGeneratingWes(false);
-    }
-  };
-
   return (
     <div>
-      <div className="mb-4 flex flex-wrap justify-end gap-2">
-        {section === "work" ? (
-          <Button variant="outline" onClick={downloadWes} disabled={generatingWes}>
-            <Download className="mr-1.5 h-4 w-4" />
-            {generatingWes ? "Generating WES" : "Generate WES"}
-          </Button>
-        ) : null}
-        <Button
-          disabled={!canEdit}
-          onClick={add}
-          className="bg-blue-600 text-white hover:bg-blue-700"
-        >
-          <Plus className="mr-1.5 h-4 w-4" />
-          Add
-        </Button>
-      </div>
       {section === "work" ? (
         <WorkExperienceRecords rows={rows} canEdit={canEdit} onEdit={edit} onDelete={remove} />
       ) : (
@@ -1448,10 +1806,19 @@ function renderSectionValue(
   );
 }
 
-function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit: boolean }) {
+function LeaveBalanceTab({
+  employeeId,
+  canEdit,
+  adjustmentRequestKey,
+}: {
+  employeeId: string;
+  canEdit: boolean;
+  adjustmentRequestKey: number;
+}) {
   const [data, setData] = useState<EmployeeLeaveResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ leaveTypeId: "", amount: "", reason: "" });
+  const adjustmentPanelRef = useRef<HTMLElement>(null);
 
   const load = () => {
     setLoading(true);
@@ -1463,6 +1830,11 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
 
   useEffect(load, [employeeId]);
   useRealtimeRefresh(load, ["leave", "employees"]);
+  useEffect(() => {
+    if (adjustmentRequestKey <= 0 || loading || !canEdit) return;
+    adjustmentPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    adjustmentPanelRef.current?.querySelector<HTMLElement>("button")?.focus();
+  }, [adjustmentRequestKey, canEdit, loading]);
 
   const submitAdjustment = async () => {
     try {
@@ -1647,7 +2019,10 @@ function LeaveBalanceTab({ employeeId, canEdit }: { employeeId: string; canEdit:
           ) : null}
         </section>
 
-        <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <section
+          ref={adjustmentPanelRef}
+          className="scroll-mt-24 rounded-xl border border-border bg-card p-4 shadow-sm"
+        >
           <div className="mb-4">
             <h3 className="text-sm font-semibold text-foreground">Leave Credit Adjustment</h3>
             <p className="text-xs text-muted-foreground">

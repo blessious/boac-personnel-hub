@@ -5172,8 +5172,11 @@ async function handleChangePassword(req, res) {
   if (!user) return;
 
   const body = await readBody(req);
-  const currentPassword = String(body.currentPassword || "");
   const newPassword = String(body.newPassword || "");
+  const confirmPassword = String(body.confirmPassword || "");
+  if (newPassword !== confirmPassword) {
+    return json(res, 400, { error: "New passwords do not match" });
+  }
 
   const passwordErrors = validatePassword(newPassword);
   if (passwordErrors.length) {
@@ -5186,10 +5189,9 @@ async function handleChangePassword(req, res) {
     { id: user.id },
   );
   const row = rows[0];
-  if (!row || !verifyPassword(currentPassword, row.password_hash)) {
-    await logAudit(user.id, "auth.password_change_failed", { reason: "incorrect_password" }, req);
-    return json(res, 401, { error: "Current password is incorrect" });
-  }
+  if (!row) return json(res, 404, { error: "User not found" });
+  if (!row.must_change_password)
+    return json(res, 409, { error: "No temporary password change is required" });
 
   if (await isPasswordReused(user.id, newPassword, row.password_hash)) {
     return json(res, 400, { error: "New password cannot match your current or recent passwords" });
@@ -5440,8 +5442,16 @@ async function handleResetUserPassword(req, res, id) {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
 
-  const temporaryPassword = generateTemporaryPassword();
-  const passwordHash = hashPassword(temporaryPassword);
+  const body = await readBody(req);
+  const newPassword = String(body.newPassword || "");
+  const confirmPassword = String(body.confirmPassword || "");
+  if (newPassword !== confirmPassword) {
+    return json(res, 400, { error: "Passwords do not match" });
+  }
+  const passwordErrors = validatePassword(newPassword);
+  if (passwordErrors.length) {
+    return json(res, 400, { error: `New password must contain ${passwordErrors.join(", ")}.` });
+  }
   const [existingRows] = await pool.execute(
     `SELECT password_hash, role FROM users WHERE id = :id LIMIT 1`,
     { id },
@@ -5450,18 +5460,102 @@ async function handleResetUserPassword(req, res, id) {
   if (existingRows[0].role === "Super Admin" && admin.role !== "Super Admin") {
     return json(res, 403, { error: "Only a Super Admin can reset Super Admin passwords" });
   }
+  if (await isPasswordReused(id, newPassword, existingRows[0].password_hash)) {
+    return json(res, 400, { error: "New password cannot match the current or recent passwords" });
+  }
+  const passwordHash = hashPassword(newPassword);
   await recordPasswordHistory(id, existingRows[0].password_hash);
-  const [result] = await pool.execute(
+  await pool.execute(
     `UPDATE users
-     SET password_hash = :passwordHash, must_change_password = 1,
+     SET password_hash = :passwordHash, must_change_password = 0,
          failed_login_attempts = 0, locked_at = NULL
      WHERE id = :id`,
     { id, passwordHash },
   );
   await recordPasswordHistory(id, passwordHash);
   await pool.execute(`DELETE FROM sessions WHERE user_id = :id`, { id });
-  await logAudit(admin.id, "users.reset_password", { userId: id }, req);
-  return json(res, 200, { temporaryPassword });
+  await logAudit(admin.id, "users.set_password", { userId: id }, req);
+  const [updatedRows] = await pool.execute(
+    `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password,
+            u.failed_login_attempts, u.locked_at, u.employee_id,
+            u.created_at, u.updated_at, e.employee_no, ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name
+     FROM users u
+     LEFT JOIN employees e ON e.id = u.employee_id
+     WHERE u.id = :id LIMIT 1`,
+    { id },
+  );
+  return json(res, 200, { user: adminUser(updatedRows[0]) });
+}
+
+async function handleResetUserTemporaryPassword(req, res, id) {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[existing]] = await connection.execute(
+      `SELECT u.id, u.username, u.name, u.role, u.password_hash, u.employee_id,
+              e.employee_no, e.lastname, e.firstname
+       FROM users u
+       LEFT JOIN employees e ON e.id = u.employee_id
+       WHERE u.id = :id
+       LIMIT 1
+       FOR UPDATE`,
+      { id },
+    );
+    if (!existing) {
+      await connection.rollback();
+      return json(res, 404, { error: "User not found" });
+    }
+    if (existing.role === "Super Admin" && admin.role !== "Super Admin") {
+      await connection.rollback();
+      return json(res, 403, {
+        error: "Only a Super Admin can reset Super Admin passwords",
+      });
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = hashPassword(temporaryPassword);
+    await recordPasswordHistory(id, existing.password_hash, connection);
+    await connection.execute(
+      `UPDATE users
+       SET password_hash = :passwordHash, must_change_password = 1,
+           failed_login_attempts = 0, locked_at = NULL
+       WHERE id = :id`,
+      { id, passwordHash },
+    );
+    await recordPasswordHistory(id, passwordHash, connection);
+    await connection.execute(`DELETE FROM sessions WHERE user_id = :id`, { id });
+    await connection.commit();
+
+    const [updatedRows] = await pool.execute(
+      `SELECT u.id, u.username, u.name, u.role, u.is_active, u.must_change_password,
+              u.failed_login_attempts, u.locked_at, u.employee_id,
+              u.created_at, u.updated_at, e.employee_no, ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name
+       FROM users u
+       LEFT JOIN employees e ON e.id = u.employee_id
+       WHERE u.id = :id LIMIT 1`,
+      { id },
+    );
+    await logAudit(admin.id, "users.reset_temporary_password", { userId: id }, req);
+    return json(res, 200, {
+      user: adminUser(updatedRows[0]),
+      account: {
+        userId: existing.id,
+        employeeId: existing.employee_id || "",
+        employeeNo: existing.employee_no || "",
+        employeeName: formatEmployeeName(existing) || existing.name,
+        username: existing.username,
+        temporaryPassword,
+      },
+    });
+  } catch (error) {
+    await connection.rollback().catch(() => {});
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 async function handleUnlockUser(req, res, id) {
@@ -11868,19 +11962,48 @@ async function handleUpdateDatabaseConfig(req, res) {
 async function handleCreateDepartment(req, res) {
   const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
-  return json(res, 409, {
-    error:
-      "Legacy departments are read-only. Create and maintain offices, divisions, and sections in the Organizational Structure reference library.",
-  });
+  const body = await readBody(req);
+  const name = String(body.name || "").trim();
+  if (!name) return json(res, 400, { error: "Department name is required" });
+  try {
+    const [result] = await pool.execute(`INSERT INTO departments (name) VALUES (:name)`, { name });
+    await logAudit(user.id, "config.department_create", { name }, req);
+    return json(res, 201, { department: { id: result.insertId, name } });
+  } catch (error) {
+    if (error?.code === "ER_DUP_ENTRY")
+      return json(res, 409, { error: "Department already exists" });
+    throw error;
+  }
+}
+
+async function handleUpdateDepartment(req, res, id) {
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
+  if (!user) return;
+  const body = await readBody(req);
+  const name = String(body.name || "").trim();
+  if (!name) return json(res, 400, { error: "Department name is required" });
+  try {
+    const [result] = await pool.execute(
+      `UPDATE departments SET name = :name WHERE id = :id`,
+      { id, name },
+    );
+    if (!result.affectedRows) return json(res, 404, { error: "Department not found" });
+    await logAudit(user.id, "config.department_update", { id, name }, req);
+    return json(res, 200, { department: { id: Number(id), name } });
+  } catch (error) {
+    if (error?.code === "ER_DUP_ENTRY")
+      return json(res, 409, { error: "Department already exists" });
+    throw error;
+  }
 }
 
 async function handleDeleteDepartment(req, res, id) {
   const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
-  return json(res, 409, {
-    error:
-      "Legacy departments are read-only. Use official organizational references for new assignments.",
-  });
+  const [result] = await pool.execute(`DELETE FROM departments WHERE id = :id`, { id });
+  if (!result.affectedRows) return json(res, 404, { error: "Department not found" });
+  await logAudit(user.id, "config.department_delete", { id }, req);
+  return json(res, 200, { ok: true });
 }
 
 async function handleCreatePosition(req, res) {
@@ -11895,6 +12018,27 @@ async function handleCreatePosition(req, res) {
     return json(res, 201, { position: { id: result.insertId, title } });
   } catch (error) {
     if (error?.code === "ER_DUP_ENTRY") return json(res, 409, { error: "Position already exists" });
+    throw error;
+  }
+}
+
+async function handleUpdatePosition(req, res, id) {
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
+  if (!user) return;
+  const body = await readBody(req);
+  const title = String(body.title || "").trim();
+  if (!title) return json(res, 400, { error: "Position title is required" });
+  try {
+    const [result] = await pool.execute(
+      `UPDATE positions SET title = :title WHERE id = :id`,
+      { id, title },
+    );
+    if (!result.affectedRows) return json(res, 404, { error: "Position not found" });
+    await logAudit(user.id, "config.position_update", { id, title }, req);
+    return json(res, 200, { position: { id: Number(id), title } });
+  } catch (error) {
+    if (error?.code === "ER_DUP_ENTRY")
+      return json(res, 409, { error: "Position already exists" });
     throw error;
   }
 }
@@ -13070,6 +13214,9 @@ async function route(req, res) {
     return handleRealtimeEvents(req, res);
   const userMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)$/);
   const resetPasswordMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/reset-password$/);
+  const resetTemporaryPasswordMatch = url.pathname.match(
+    /^\/api\/admin\/users\/(\d+)\/reset-temporary-password$/,
+  );
   const unlockUserMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/unlock$/);
   const employeeRestoreMatch = url.pathname.match(/^\/api\/employees\/([A-Za-z0-9-]+)\/restore$/);
   const employeeMatch = url.pathname.match(/^\/api\/employees\/([A-Za-z0-9-]+)$/);
@@ -13219,6 +13366,8 @@ async function route(req, res) {
   if (req.method === "DELETE" && userMatch) return handleDeleteUser(req, res, userMatch[1]);
   if (req.method === "POST" && resetPasswordMatch)
     return handleResetUserPassword(req, res, resetPasswordMatch[1]);
+  if (req.method === "POST" && resetTemporaryPasswordMatch)
+    return handleResetUserTemporaryPassword(req, res, resetTemporaryPasswordMatch[1]);
   if (req.method === "POST" && unlockUserMatch)
     return handleUnlockUser(req, res, unlockUserMatch[1]);
   if (req.method === "GET" && url.pathname === "/api/admin/role-permissions")
@@ -13461,10 +13610,14 @@ async function route(req, res) {
     return handleUpdateDatabaseConfig(req, res);
   if (req.method === "POST" && url.pathname === "/api/settings/departments")
     return handleCreateDepartment(req, res);
+  if ((req.method === "PUT" || req.method === "PATCH") && departmentMatch)
+    return handleUpdateDepartment(req, res, departmentMatch[1]);
   if (req.method === "DELETE" && departmentMatch)
     return handleDeleteDepartment(req, res, departmentMatch[1]);
   if (req.method === "POST" && url.pathname === "/api/settings/positions")
     return handleCreatePosition(req, res);
+  if ((req.method === "PUT" || req.method === "PATCH") && positionMatch)
+    return handleUpdatePosition(req, res, positionMatch[1]);
   if (req.method === "DELETE" && positionMatch)
     return handleDeletePosition(req, res, positionMatch[1]);
   if (req.method === "POST" && url.pathname === "/api/settings/salary-grades")

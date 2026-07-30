@@ -6,6 +6,8 @@ import {
   Bug,
   Copy,
   Edit,
+  Eye,
+  EyeOff,
   Lock,
   Plus,
   Printer,
@@ -26,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { TablePagination } from "@/components/ui/table-pagination";
 import {
   Select,
   SelectContent,
@@ -166,15 +169,6 @@ const ADMIN_TABS: {
   { key: "errors", label: "Error Log", icon: Bug, permission: "admin.errors" },
 ];
 
-const ROLE_COLORS: Record<Role, string> = {
-  "Super Admin": "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200",
-  Admin: "bg-rose-100 text-rose-700 border-rose-200",
-  HR: "bg-blue-100 text-blue-700 border-blue-200",
-  Approver: "bg-violet-100 text-violet-700 border-violet-200",
-  Employee: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  Viewer: "bg-muted text-muted-foreground border-border",
-};
-
 const IMPORT_LOG_LEVEL_COLORS: Record<ImportLog["level"], string> = {
   Info: "border-slate-200 bg-slate-50 text-slate-600",
   Success: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -232,13 +226,24 @@ function AdminPage() {
   const [selectedPermissionRole, setSelectedPermissionRole] = useState<Role>("HR");
   const [showAddUser, setShowAddUser] = useState(false);
   const [showEditUser, setShowEditUser] = useState(false);
+  const [showSetPassword, setShowSetPassword] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [passwordUser, setPasswordUser] = useState<AdminUser | null>(null);
   const [temporaryPassword, setTemporaryPassword] = useState("");
-  const [tempPasswordMap, setTempPasswordMap] = useState<Record<number, string>>({});
   const [bulkGeneratingAccounts, setBulkGeneratingAccounts] = useState(false);
   const [bulkResettingPasswords, setBulkResettingPasswords] = useState(false);
   const [bulkEmployeeAccounts, setBulkEmployeeAccounts] = useState<BulkEmployeeAccount[]>([]);
   const [userSearch, setUserSearch] = useState("");
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(10);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [settingPassword, setSettingPassword] = useState(false);
+  const [resettingTemporaryPasswordId, setResettingTemporaryPasswordId] = useState<number | null>(
+    null,
+  );
   const [form, setForm] = useState<{
     name: string;
     username: string;
@@ -267,7 +272,7 @@ function AdminPage() {
     loadUsers();
   }, [loadUsers]);
 
-  const loadEmployeeCandidates = async () => {
+  const loadEmployeeCandidates = useCallback(async () => {
     if (!canManageUsers) return;
     try {
       const result = await api<{ employees: EmployeeRecord[] }>(
@@ -277,7 +282,7 @@ function AdminPage() {
     } catch (error) {
       toast.error((error as Error).message);
     }
-  };
+  }, [canManageUsers]);
 
   const loadAuditLogs = useCallback(async () => {
     if (!hasPermission("admin.audit")) return;
@@ -361,10 +366,11 @@ function AdminPage() {
   }, [canManageRolePermissions, canManageUsers]);
 
   useEffect(() => {
+    if (activeTab === "users") loadEmployeeCandidates();
     if (activeTab === "permissions") loadRolePermissions();
     if (activeTab === "audit") loadAuditLogs();
     if (activeTab === "errors") loadErrorLogs();
-  }, [activeTab, loadAuditLogs, loadErrorLogs, loadRolePermissions]);
+  }, [activeTab, loadAuditLogs, loadEmployeeCandidates, loadErrorLogs, loadRolePermissions]);
 
   useEffect(() => {
     if (visibleTabs.length === 0) return;
@@ -375,6 +381,7 @@ function AdminPage() {
 
   useRealtimeRefresh(() => {
     loadUsers();
+    if (activeTab === "users") loadEmployeeCandidates();
     if (activeTab === "permissions") loadRolePermissions();
     if (activeTab === "audit") loadAuditLogs();
     if (activeTab === "errors") loadErrorLogs();
@@ -399,8 +406,7 @@ function AdminPage() {
       });
       setUsers((prev) => [...prev, result.user].sort((a, b) => a.name.localeCompare(b.name)));
       setTemporaryPassword(result.temporaryPassword);
-      // Persist in map so it survives modal close/reopen
-      setTempPasswordMap((prev) => ({ ...prev, [result.user.id]: result.temporaryPassword }));
+      await loadEmployeeCandidates();
       toast.success("User created");
     } catch (error) {
       toast.error((error as Error).message);
@@ -409,8 +415,7 @@ function AdminPage() {
 
   const openEditUser = (item: AdminUser) => {
     setSelectedUser(item);
-    // Restore temp password for this user if one was generated, don't wipe it
-    setTemporaryPassword(tempPasswordMap[item.id] ?? "");
+    setTemporaryPassword("");
     setForm({
       name: item.name,
       username: item.username,
@@ -488,12 +493,7 @@ function AdminPage() {
         body: JSON.stringify(form),
       });
       setUsers((prev) => prev.map((item) => (item.id === result.user.id ? result.user : item)));
-      // Clear stored temp password once acknowledged via Save Changes
-      setTempPasswordMap((prev) => {
-        const next = { ...prev };
-        delete next[selectedUser.id];
-        return next;
-      });
+      await loadEmployeeCandidates();
       setShowEditUser(false);
       toast.success("User updated");
     } catch (error) {
@@ -506,37 +506,78 @@ function AdminPage() {
     try {
       await api<{ ok: boolean }>(`/api/admin/users/${item.id}`, { method: "DELETE" });
       setUsers((prev) => prev.filter((u) => u.id !== item.id));
+      await loadEmployeeCandidates();
       toast.success("User deleted");
     } catch (error) {
       toast.error((error as Error).message);
     }
   };
 
-  const resetPassword = async (item: AdminUser) => {
+  const openSetPassword = (item: AdminUser) => {
+    setPasswordUser(item);
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setShowSetPassword(true);
+  };
+
+  const setPassword = async () => {
+    if (!passwordUser) return;
+    if (newPassword.length < 8) {
+      toast.error("New password must be at least 8 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    setSettingPassword(true);
     try {
-      const result = await api<{ temporaryPassword: string }>(
-        `/api/admin/users/${item.id}/reset-password`,
-        { method: "POST" },
-      );
-      setUsers((prev) =>
-        prev.map((u) => (u.id === item.id ? { ...u, mustChangePassword: true } : u)),
-      );
-      setTemporaryPassword(result.temporaryPassword);
-      // Persist in map so it shows when edit dialog is opened
-      setTempPasswordMap((prev) => ({ ...prev, [item.id]: result.temporaryPassword }));
-      setBulkEmployeeAccounts([
+      const result = await api<{ user: AdminUser }>(
+        `/api/admin/users/${passwordUser.id}/reset-password`,
         {
-          userId: item.id,
-          employeeId: item.employeeId || "",
-          employeeNo: item.employeeNo || "",
-          employeeName: item.employeeName || item.name,
-          username: item.username,
-          temporaryPassword: result.temporaryPassword,
+          method: "POST",
+          body: JSON.stringify({ newPassword, confirmPassword }),
         },
-      ]);
-      toast.success("Temporary password reset");
+      );
+      setUsers((prev) => prev.map((item) => (item.id === result.user.id ? result.user : item)));
+      setShowSetPassword(false);
+      setPasswordUser(null);
+      setNewPassword("");
+      setConfirmPassword("");
+      toast.success(`Password updated for ${result.user.username}`);
     } catch (error) {
       toast.error((error as Error).message);
+    } finally {
+      setSettingPassword(false);
+    }
+  };
+
+  const resetRowTemporaryPassword = async (item: AdminUser) => {
+    if (
+      !window.confirm(
+        `Generate and view a new temporary password for ${item.username}? This will reset the current password and sign this user out.`,
+      )
+    ) {
+      return;
+    }
+
+    setResettingTemporaryPasswordId(item.id);
+    try {
+      const result = await api<{ user: AdminUser; account: BulkEmployeeAccount }>(
+        `/api/admin/users/${item.id}/reset-temporary-password`,
+        { method: "POST" },
+      );
+      setUsers((current) =>
+        current.map((userItem) => (userItem.id === result.user.id ? result.user : userItem)),
+      );
+      setBulkEmployeeAccounts([result.account]);
+      toast.success(`Temporary password reset for ${result.user.username}`);
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setResettingTemporaryPasswordId(null);
     }
   };
 
@@ -587,7 +628,7 @@ function AdminPage() {
   const resetBulkEmployeePasswords = async () => {
     if (
       !window.confirm(
-        "Reset temporary passwords for all active linked employee accounts? This will sign those employees out and force password change on next login.",
+        "View and print new temporary passwords for all active employee accounts? This will reset their current passwords and sign them out.",
       )
     ) {
       return;
@@ -767,6 +808,12 @@ function AdminPage() {
   const activeUsers = users.filter((item) => item.isActive).length;
   const approverUsers = users.filter((item) => item.role === "Approver").length;
   const hasSuperAdmin = users.some((item) => item.role === "Super Admin" && item.isActive);
+  const missingAccountCandidates = useMemo(() => {
+    const linkedEmployeeIds = new Set(
+      users.map((item) => item.employeeId).filter((employeeId) => Boolean(employeeId)),
+    );
+    return employeeCandidates.filter((employee) => !linkedEmployeeIds.has(employee.id));
+  }, [employeeCandidates, users]);
   const filteredUsers = useMemo(() => {
     const query = userSearch.trim().toLowerCase();
     if (!query) return users;
@@ -786,6 +833,14 @@ function AdminPage() {
         .includes(query),
     );
   }, [userSearch, users]);
+  const userTotalPages = Math.max(1, Math.ceil(filteredUsers.length / userPageSize));
+  const paginatedUsers = useMemo(
+    () => filteredUsers.slice((userPage - 1) * userPageSize, userPage * userPageSize),
+    [filteredUsers, userPage, userPageSize],
+  );
+  useEffect(() => {
+    setUserPage((current) => Math.min(current, userTotalPages));
+  }, [userTotalPages]);
   const roleOptions =
     user?.role === "Super Admin" || !hasSuperAdmin
       ? ROLE_OPTIONS
@@ -859,23 +914,27 @@ function AdminPage() {
               </p>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={generateBulkEmployeeAccounts}
-                disabled={bulkGeneratingAccounts || bulkResettingPasswords}
-                className="gap-1.5"
-              >
-                <Users className="h-4 w-4" />
-                {bulkGeneratingAccounts ? "Generating..." : "Generate Employee Accounts"}
-              </Button>
+              {missingAccountCandidates.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={generateBulkEmployeeAccounts}
+                  disabled={bulkGeneratingAccounts || bulkResettingPasswords}
+                  className="gap-1.5"
+                >
+                  <Users className="h-4 w-4" />
+                  {bulkGeneratingAccounts
+                    ? "Creating..."
+                    : `Create Missing Accounts (${missingAccountCandidates.length})`}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={resetBulkEmployeePasswords}
                 disabled={bulkGeneratingAccounts || bulkResettingPasswords}
                 className="gap-1.5"
               >
-                <Lock className="h-4 w-4" />
-                {bulkResettingPasswords ? "Preparing..." : "Print Employee Password"}
+                <Printer className="h-4 w-4" />
+                {bulkResettingPasswords ? "Preparing..." : "View / Print Temporary Passwords"}
               </Button>
               <Button
                 onClick={openAddUser}
@@ -890,16 +949,19 @@ function AdminPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
               <Input
                 value={userSearch}
-                onChange={(event) => setUserSearch(event.target.value)}
+                onChange={(event) => {
+                  setUserSearch(event.target.value);
+                  setUserPage(1);
+                }}
                 placeholder="Search users, usernames, roles, or employees..."
                 className="pl-9"
               />
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-base">
               <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                <tr className="border-b border-border text-left text-sm uppercase tracking-wider text-muted-foreground">
                   <th className="px-4 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Username</th>
                   <th className="px-4 py-3 font-semibold">Employee Record</th>
@@ -909,7 +971,7 @@ function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.map((item, index) => (
+                {paginatedUsers.map((item, index) => (
                   <tr
                     key={item.id}
                     className={cn(
@@ -918,54 +980,39 @@ function AdminPage() {
                     )}
                   >
                     <td className="px-4 py-3 font-medium">{item.name}</td>
-                    <td className="px-4 py-3 font-mono text-muted-foreground text-xs">
-                      @{item.username}
-                    </td>
+                    <td className="px-4 py-3 font-mono text-muted-foreground">@{item.username}</td>
                     <td className="px-4 py-3">
                       {item.employeeId ? (
                         <div>
                           <div className="font-medium">{item.employeeName}</div>
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">No linked employee</span>
+                        <span className="text-muted-foreground">No linked employee</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <Badge
-                        variant="outline"
-                        className={cn("text-[11px]", ROLE_COLORS[item.role])}
-                        title={ROLE_DESCRIPTIONS[item.role]}
-                      >
+                      <span className="text-sm" title={ROLE_DESCRIPTIONS[item.role]}>
                         {item.role}
-                      </Badge>
+                      </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        <Badge
-                          variant="outline"
+                      <div className="flex flex-wrap gap-x-2 gap-y-1">
+                        <span
                           className={
                             item.isActive
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200"
-                              : "bg-muted text-muted-foreground border-border"
+                              ? "text-emerald-700 dark:text-emerald-300"
+                              : "text-muted-foreground"
                           }
                         >
                           {item.isActive ? "Active" : "Inactive"}
-                        </Badge>
+                        </span>
                         {item.mustChangePassword && (
-                          <Badge
-                            variant="outline"
-                            className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
-                          >
-                            Temp Password
-                          </Badge>
+                          <span className="text-amber-700 dark:text-amber-300">
+                            Temporary password
+                          </span>
                         )}
                         {item.lockedAt && (
-                          <Badge
-                            variant="outline"
-                            className="border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-200"
-                          >
-                            Locked
-                          </Badge>
+                          <span className="text-rose-700 dark:text-rose-300">Locked</span>
                         )}
                       </div>
                     </td>
@@ -979,11 +1026,21 @@ function AdminPage() {
                           <Edit className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => resetPassword(item)}
+                          onClick={() => openSetPassword(item)}
                           className="h-7 w-7 grid place-items-center rounded-md hover:bg-accent text-muted-foreground transition-colors"
-                          aria-label="Reset password"
+                          aria-label="Set new password"
+                          title="Set new password"
                         >
                           <Lock className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => resetRowTemporaryPassword(item)}
+                          disabled={resettingTemporaryPasswordId !== null}
+                          className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label="View temporary password"
+                          title="View temporary password"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
                         </button>
                         {item.lockedAt && (
                           <button
@@ -1016,6 +1073,18 @@ function AdminPage() {
               </tbody>
             </table>
           </div>
+          <TablePagination
+            page={userPage}
+            totalPages={userTotalPages}
+            total={filteredUsers.length}
+            pageSize={userPageSize}
+            itemLabel="accounts"
+            onPageChange={setUserPage}
+            onPageSizeChange={(pageSize) => {
+              setUserPageSize(pageSize);
+              setUserPage(1);
+            }}
+          />
         </div>
       )}
 
@@ -1525,10 +1594,33 @@ function AdminPage() {
         form={form}
         roleOptions={roleOptions}
         employeeCandidates={employeeCandidates}
-        temporaryPassword={temporaryPassword}
+        temporaryPassword=""
         onOpenChange={setShowEditUser}
         onChange={setForm}
         onSubmit={updateUser}
+      />
+      <SetPasswordDialog
+        open={showSetPassword}
+        user={passwordUser}
+        newPassword={newPassword}
+        confirmPassword={confirmPassword}
+        showNewPassword={showNewPassword}
+        showConfirmPassword={showConfirmPassword}
+        submitting={settingPassword}
+        onOpenChange={(open) => {
+          if (settingPassword) return;
+          setShowSetPassword(open);
+          if (!open) {
+            setPasswordUser(null);
+            setNewPassword("");
+            setConfirmPassword("");
+          }
+        }}
+        onNewPasswordChange={setNewPassword}
+        onConfirmPasswordChange={setConfirmPassword}
+        onToggleNewPassword={() => setShowNewPassword((current) => !current)}
+        onToggleConfirmPassword={() => setShowConfirmPassword((current) => !current)}
+        onSubmit={setPassword}
       />
       <Dialog
         open={bulkEmployeeAccounts.length > 0}
@@ -1543,14 +1635,14 @@ function AdminPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-100">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-base leading-relaxed text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-100">
               Temporary passwords are shown only now. Print or copy before closing, then give each
               employee only their own credentials.
             </div>
             <div className="max-h-[55vh] overflow-auto rounded-lg border border-border">
-              <table className="w-full text-sm">
+              <table className="w-full text-base">
                 <thead className="sticky top-0 bg-muted">
-                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <tr className="text-left text-sm uppercase tracking-wider text-muted-foreground">
                     <th className="px-3 py-2 font-semibold">Employee</th>
                     <th className="px-3 py-2 font-semibold">Employee ID</th>
                     <th className="px-3 py-2 font-semibold">Username</th>
@@ -1562,8 +1654,8 @@ function AdminPage() {
                     <tr key={account.userId} className="border-t border-border">
                       <td className="px-3 py-2 font-medium">{account.employeeName}</td>
                       <td className="px-3 py-2 text-muted-foreground">{account.employeeNo}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{account.username}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{account.temporaryPassword}</td>
+                      <td className="px-3 py-2 font-mono">{account.username}</td>
+                      <td className="px-3 py-2 font-mono">{account.temporaryPassword}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1586,6 +1678,178 @@ function AdminPage() {
         </DialogContent>
       </Dialog>
     </AppShell>
+  );
+}
+
+function SetPasswordDialog({
+  open,
+  user,
+  newPassword,
+  confirmPassword,
+  showNewPassword,
+  showConfirmPassword,
+  submitting,
+  onOpenChange,
+  onNewPasswordChange,
+  onConfirmPasswordChange,
+  onToggleNewPassword,
+  onToggleConfirmPassword,
+  onSubmit,
+}: {
+  open: boolean;
+  user: AdminUser | null;
+  newPassword: string;
+  confirmPassword: string;
+  showNewPassword: boolean;
+  showConfirmPassword: boolean;
+  submitting: boolean;
+  onOpenChange: (open: boolean) => void;
+  onNewPasswordChange: (value: string) => void;
+  onConfirmPasswordChange: (value: string) => void;
+  onToggleNewPassword: () => void;
+  onToggleConfirmPassword: () => void;
+  onSubmit: () => void;
+}) {
+  const meetsLength = newPassword.length >= 8;
+  const passwordsMatch = confirmPassword.length === 0 || newPassword === confirmPassword;
+  const characterGroups = [
+    /[a-z]/.test(newPassword),
+    /[A-Z]/.test(newPassword),
+    /\d/.test(newPassword),
+    /[^A-Za-z0-9]/.test(newPassword),
+  ].filter(Boolean).length;
+  const strengthScore = newPassword
+    ? Math.min(
+        4,
+        1 +
+          (newPassword.length >= 8 ? 1 : 0) +
+          (characterGroups >= 3 ? 1 : 0) +
+          (newPassword.length >= 12 && characterGroups === 4 ? 1 : 0),
+      )
+    : 0;
+  const strength = [
+    { label: "", color: "bg-muted" },
+    { label: "Weak", color: "bg-rose-500" },
+    { label: "Fair", color: "bg-orange-500" },
+    { label: "Strong", color: "bg-amber-500" },
+    { label: "Very strong", color: "bg-emerald-500" },
+  ][strengthScore] || { label: "", color: "bg-muted" };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Set New Password</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <p className="text-sm text-muted-foreground">
+            Set a permanent password for{" "}
+            <span className="font-medium text-foreground">{user?.username || "this user"}</span>.
+            Their current sessions will be signed out.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="admin-new-password">New Password</Label>
+            <div className="relative">
+              <Input
+                id="admin-new-password"
+                type={showNewPassword ? "text" : "password"}
+                value={newPassword}
+                onChange={(event) => onNewPasswordChange(event.target.value)}
+                autoComplete="new-password"
+                className="pr-10"
+                disabled={submitting}
+              />
+              <button
+                type="button"
+                onClick={onToggleNewPassword}
+                className="absolute right-0 top-0 grid h-9 w-10 place-items-center text-muted-foreground hover:text-foreground"
+                aria-label={showNewPassword ? "Hide new password" : "Show new password"}
+                aria-pressed={showNewPassword}
+                disabled={submitting}
+              >
+                {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <div
+              className="grid grid-cols-4 gap-1"
+              role="meter"
+              aria-label="Password strength"
+              aria-valuemin={0}
+              aria-valuemax={4}
+              aria-valuenow={strengthScore}
+              aria-valuetext={strength.label || "No password entered"}
+            >
+              {[1, 2, 3, 4].map((segment) => (
+                <div
+                  key={segment}
+                  className={cn(
+                    "h-1 rounded-full transition-colors",
+                    segment <= strengthScore ? strength.color : "bg-muted",
+                  )}
+                />
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Strength: {strength.label || "Enter a password"}
+            </p>
+            {!meetsLength && newPassword && (
+              <p className="text-xs text-muted-foreground">
+                Use at least 8 characters to save this password.
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="admin-confirm-password">Confirm Password</Label>
+            <div className="relative">
+              <Input
+                id="admin-confirm-password"
+                type={showConfirmPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(event) => onConfirmPasswordChange(event.target.value)}
+                autoComplete="new-password"
+                className="pr-10"
+                disabled={submitting}
+              />
+              <button
+                type="button"
+                onClick={onToggleConfirmPassword}
+                className="absolute right-0 top-0 grid h-9 w-10 place-items-center text-muted-foreground hover:text-foreground"
+                aria-label={
+                  showConfirmPassword ? "Hide confirmed password" : "Show confirmed password"
+                }
+                aria-pressed={showConfirmPassword}
+                disabled={submitting}
+              >
+                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {confirmPassword && (
+              <p
+                className={cn(
+                  "text-xs",
+                  passwordsMatch
+                    ? "text-emerald-600 dark:text-emerald-300"
+                    : "text-rose-600 dark:text-rose-300",
+                )}
+              >
+                {passwordsMatch ? "Passwords match." : "Passwords do not match."}
+              </p>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            onClick={onSubmit}
+            disabled={submitting || !meetsLength || !confirmPassword || !passwordsMatch}
+          >
+            {submitting ? "Saving..." : "Save New Password"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
