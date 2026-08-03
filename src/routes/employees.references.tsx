@@ -249,7 +249,6 @@ function EmployeeReferencesPage() {
   const [activeReferenceTab, setActiveReferenceTab] = useState("positions");
   const [mobileReferenceNavOpen, setMobileReferenceNavOpen] = useState(false);
   const [showPreservedLevels, setShowPreservedLevels] = useState(false);
-  const [addReferenceRequest, setAddReferenceRequest] = useState(0);
   const [loading, setLoading] = useState(true);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [confirmingAction, setConfirmingAction] = useState(false);
@@ -391,10 +390,6 @@ function EmployeeReferencesPage() {
     referenceTabOptions.find((tab) => tab.value === activeReferenceTab) || referenceTabOptions[0];
   const activeReferenceLabel = activeReference?.label || "Employee References";
   const ActiveReferenceIcon = activeReference?.icon || Building2;
-  const activeLibraryConfig = configuredReferenceLibraries.find(
-    (config) => config.category === activeReferenceTab,
-  );
-
   const loadReferences = async (signal?: AbortSignal) => {
     setLoading(true);
     try {
@@ -897,17 +892,6 @@ function EmployeeReferencesPage() {
           <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span className="truncate font-medium text-foreground">Employee References</span>
         </nav>
-        {canManage && activeLibraryConfig?.enabled !== false && (
-          <Button
-            onClick={() => {
-              if (activeReferenceTab === "salary") setShowSalaryBuilder(true);
-              else setAddReferenceRequest((current) => current + 1);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            {activeReferenceTab === "salary" ? "Add Salary Rows" : "Add Reference"}
-          </Button>
-        )}
       </div>
 
       <section className="mb-4 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -1055,8 +1039,7 @@ function EmployeeReferencesPage() {
                   onValueChange={setNewPos}
                   onQueryChange={setPosQuery}
                   onAdd={addPosition}
-                  addRequestKey={activeReferenceTab === "positions" ? addReferenceRequest : 0}
-                  showAddAction={false}
+                  showAddAction
                 />
               </TabsContent>
 
@@ -1070,6 +1053,12 @@ function EmployeeReferencesPage() {
                           One ordinance or schedule at a time.
                         </p>
                       </div>
+                      {canManage && (
+                        <Button size="sm" onClick={() => setShowSalaryBuilder(true)}>
+                          <Plus className="mr-1 h-4 w-4" />
+                          Add Salary Rows
+                        </Button>
+                      )}
                     </div>
 
                     <div className="grid max-h-[360px] gap-2 overflow-auto p-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -1084,7 +1073,7 @@ function EmployeeReferencesPage() {
                             className={cn(
                               "min-h-20 w-full rounded-md border px-3 py-2.5 text-left transition-colors",
                               selected
-                                ? "border-[#2563eb] bg-[#eff6ff] text-blue-950 ring-1 ring-[#2563eb]/25 dark:border-blue-400/70 dark:bg-blue-500/15 dark:text-blue-50"
+                                ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary/25"
                                 : "border-border bg-background hover:bg-muted/40",
                             )}
                           >
@@ -1105,7 +1094,7 @@ function EmployeeReferencesPage() {
                                   Active
                                 </Badge>
                               ) : readiness?.complete ? (
-                                <Badge variant="outline" className="shrink-0 text-[#2563eb]">
+                                <Badge variant="outline" className="shrink-0 text-primary">
                                   Ready
                                 </Badge>
                               ) : (
@@ -1139,10 +1128,7 @@ function EmployeeReferencesPage() {
                                 Active
                               </Badge>
                             ) : selectedSalaryReadiness.complete ? (
-                              <Badge
-                                variant="outline"
-                                className="gap-1 border-[#bfdbfe] text-[#2563eb]"
-                              >
+                              <Badge variant="outline" className="gap-1 border-border text-primary">
                                 <FileCheck2 className="h-3.5 w-3.5" />
                                 Ready
                               </Badge>
@@ -1181,7 +1167,7 @@ function EmployeeReferencesPage() {
                                 selectedSalaryRows.length === 0
                               }
                               onClick={() => activateSalaryTable(selectedOrdinance)}
-                              className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+                              className="bg-primary text-primary-foreground hover:bg-primary/90"
                             >
                               {activatingOrdinance === selectedOrdinance ? (
                                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />
@@ -1355,7 +1341,7 @@ function EmployeeReferencesPage() {
                                               <button
                                                 disabled={savingSalaryGradeId === row.id}
                                                 onClick={updateSalaryGrade}
-                                                className="text-muted-foreground hover:text-[#2563eb] disabled:opacity-30"
+                                                className="text-muted-foreground hover:text-primary disabled:opacity-30"
                                                 title="Save correction"
                                               >
                                                 {savingSalaryGradeId === row.id ? (
@@ -1391,7 +1377,7 @@ function EmployeeReferencesPage() {
                                               <button
                                                 disabled={!canManage || row.isActive}
                                                 onClick={() => startSalaryGradeEdit(row)}
-                                                className="text-muted-foreground hover:text-[#2563eb] disabled:opacity-30"
+                                                className="text-muted-foreground hover:text-primary disabled:opacity-30"
                                                 title={
                                                   row.isActive
                                                     ? "Rows from the active salary table cannot be edited"
@@ -1453,8 +1439,7 @@ function EmployeeReferencesPage() {
                     canManage={canManage}
                     canCreate={canManage && config.enabled !== false}
                     onChanged={loadReferences}
-                    addRequestKey={activeReferenceTab === config.category ? addReferenceRequest : 0}
-                    showAddAction={false}
+                    showAddAction
                   />
                 </TabsContent>
               ))}
@@ -1527,7 +1512,7 @@ function EmployeeReferencesPage() {
                 !newSalaryGrade.amount.trim()
               }
               onClick={addSalaryGrade}
-              className="w-full bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <Plus className="mr-1 h-4 w-4" /> Add Single Row
             </Button>
@@ -1732,7 +1717,6 @@ interface SimpleReferenceSectionProps {
   onValueChange: (value: string) => void;
   onQueryChange: (value: string) => void;
   onAdd: () => Promise<boolean> | boolean;
-  addRequestKey?: number;
   showAddAction?: boolean;
 }
 
@@ -1750,7 +1734,6 @@ function SimpleReferenceSection({
   onValueChange,
   onQueryChange,
   onAdd,
-  addRequestKey = 0,
   showAddAction = true,
 }: SimpleReferenceSectionProps) {
   const [addOpen, setAddOpen] = useState(false);
@@ -1758,10 +1741,6 @@ function SimpleReferenceSection({
   const [editingItem, setEditingItem] = useState<SimpleReferenceItem | null>(null);
   const [editValue, setEditValue] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
-
-  useEffect(() => {
-    if (addRequestKey > 0 && canManage) setAddOpen(true);
-  }, [addRequestKey, canManage]);
 
   const submitAdd = async () => {
     if (!value.trim()) return;
@@ -1808,9 +1787,9 @@ function SimpleReferenceSection({
                   size="sm"
                   disabled={!canManage}
                   onClick={() => setAddOpen(true)}
-                  className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
                 >
-                  <Plus className="mr-1 h-4 w-4" /> Add
+                  <Plus className="mr-1 h-4 w-4" /> Add Position
                 </Button>
               )}
             </div>
@@ -1889,7 +1868,7 @@ function SimpleReferenceSection({
             <Button
               disabled={!canManage || adding || !value.trim()}
               onClick={submitAdd}
-              className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {adding ? (
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />
@@ -1932,7 +1911,7 @@ function SimpleReferenceSection({
                 editValue.trim() === editingItem?.label
               }
               onClick={submitEdit}
-              className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {savingEdit ? (
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />

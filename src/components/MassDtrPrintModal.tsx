@@ -265,9 +265,9 @@ export function MassDtrPrintModal({
                     </Select>
                   </div>
                 </div>
-                <div className="mt-3 flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                <div className="mt-3 flex items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-foreground">
                   <span>Employees to include</span>
-                  <span className="rounded bg-blue-600 px-2 py-1 font-bold text-white">
+                  <span className="rounded bg-primary px-2 py-1 font-bold text-primary-foreground">
                     {selectedEmployees.length}
                   </span>
                 </div>
@@ -384,7 +384,7 @@ export function MassDtrPrintModal({
               <Button
                 onClick={runMassPrint}
                 disabled={busy}
-                className="bg-blue-600 text-white hover:bg-blue-700"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {busy ? (
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />

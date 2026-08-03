@@ -1,6 +1,5 @@
 ﻿import { useMemo, useState } from "react";
 import { Loader2, Pencil, Plus, Power, Save, Search, Trash2 } from "lucide-react";
-import { useEffect } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -64,7 +63,6 @@ interface Props {
   canManage: boolean;
   canCreate?: boolean;
   onChanged: () => Promise<void> | void;
-  addRequestKey?: number;
   showAddAction?: boolean;
 }
 
@@ -102,7 +100,6 @@ export function ReferenceLibraryPanel({
   canManage,
   canCreate = canManage,
   onChanged,
-  addRequestKey = 0,
   showAddAction = true,
 }: Props) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -137,13 +134,6 @@ export function ReferenceLibraryPanel({
     resetForm();
     setFormOpen(true);
   };
-
-  useEffect(() => {
-    if (addRequestKey <= 0 || !canCreate) return;
-    setForm(EMPTY_FORM);
-    setEditingId(null);
-    setFormOpen(true);
-  }, [addRequestKey, canCreate]);
 
   const editRow = (row: ReferenceRow) => {
     setEditingId(row.id);
@@ -316,10 +306,10 @@ export function ReferenceLibraryPanel({
                   size="sm"
                   disabled={!canCreate}
                   onClick={openAdd}
-                  className="bg-blue-600 text-white hover:bg-blue-700"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   <Plus className="mr-1 h-4 w-4" />
-                  Add
+                  Add Reference
                 </Button>
               )}
             </div>
@@ -554,7 +544,7 @@ export function ReferenceLibraryPanel({
                 !form.name.trim() ||
                 Boolean(config.parentCategory && !form.parentId)
               }
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {saving ? (
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />

@@ -215,7 +215,8 @@ function PageControl({
       className={cn(
         "rounded-full",
         disabled && "pointer-events-none opacity-50",
-        isActive && "bg-blue-600 text-white hover:bg-blue-600 hover:text-white",
+        isActive &&
+          "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
       )}
       onClick={(event) => {
         event.preventDefault();

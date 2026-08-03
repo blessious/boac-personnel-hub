@@ -292,7 +292,9 @@ function SchedulesPage() {
     try {
       if (form.target === "default") {
         const result = await updateDefaultSchedules(payload);
-        toast.success(`Default schedule updated; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+        toast.success(
+          `Default schedule updated; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`,
+        );
         if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       } else {
         const result = await updateScheduleOverrides({
@@ -301,7 +303,9 @@ function SchedulesPage() {
           endDate: form.endDate,
           skipWeekends: form.skipWeekends,
         });
-        toast.success(`Schedule override saved; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+        toast.success(
+          `Schedule override saved; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`,
+        );
         if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       }
       load();
@@ -353,7 +357,9 @@ function SchedulesPage() {
     try {
       if (individualForm.target === "default") {
         const result = await updateDefaultSchedules(payload);
-        toast.success(`Employee default schedule updated; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+        toast.success(
+          `Employee default schedule updated; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`,
+        );
         if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       } else {
         const result = await updateScheduleOverrides({
@@ -362,7 +368,9 @@ function SchedulesPage() {
           endDate: individualForm.endDate,
           skipWeekends: individualForm.skipWeekends,
         });
-        toast.success(`Employee schedule override saved; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+        toast.success(
+          `Employee schedule override saved; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`,
+        );
         if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       }
       await load();
@@ -392,8 +400,13 @@ function SchedulesPage() {
     if (!overrideToDelete) return;
     setSaving(true);
     try {
-      const result = await deleteScheduleOverride(overrideToDelete.employeeId, overrideToDelete.workDate);
-      toast.success(`Schedule override removed; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+      const result = await deleteScheduleOverride(
+        overrideToDelete.employeeId,
+        overrideToDelete.workDate,
+      );
+      toast.success(
+        `Schedule override removed; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`,
+      );
       if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       setOverrideToDelete(null);
       load();
@@ -723,7 +736,7 @@ function SchedulesPage() {
                   />
                 </div>
                 <Button
-                  className="h-10 w-full bg-blue-600 text-white hover:bg-blue-700"
+                  className="h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90"
                   disabled={!canManage || saving || !selectedIds.length}
                   onClick={saveSchedule}
                 >
@@ -1056,7 +1069,7 @@ function SchedulesPage() {
               Close
             </Button>
             <Button
-              className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto"
               disabled={!canManage || saving || !activeEmployee}
               onClick={saveIndividualSchedule}
             >
@@ -1143,11 +1156,11 @@ function EmployeeScheduleCard({
     <article
       className={cn(
         "rounded-xl border bg-white p-3 shadow-sm transition-colors",
-        selected ? "border-blue-300 bg-blue-50/50" : "border-border",
+        selected ? "border-primary bg-primary/10" : "border-border",
       )}
     >
       <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto_1.25rem] items-center gap-3">
-        <div className="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+        <div className="grid h-11 w-11 place-items-center rounded-xl bg-muted text-primary ring-1 ring-border">
           <Checkbox
             checked={selected}
             onCheckedChange={(checked) => onSelect(checked === true)}

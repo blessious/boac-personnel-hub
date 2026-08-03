@@ -112,7 +112,7 @@ function ReportsPage() {
               <Button
                 disabled={!report || Boolean(exporting)}
                 onClick={() => doExport("pdf")}
-                className="bg-blue-600 text-white hover:bg-blue-700"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 <Download className="mr-1.5 h-4 w-4" />
                 {exporting === "pdf" ? "Preparing..." : "PDF Report"}
@@ -298,7 +298,7 @@ function MetricCard({
   tone: "blue" | "green" | "indigo" | "amber";
 }) {
   const toneClass = {
-    blue: "bg-blue-50 text-blue-700",
+    blue: "bg-muted text-primary",
     green: "bg-emerald-50 text-emerald-700",
     indigo: "bg-indigo-50 text-indigo-700",
     amber: "bg-amber-50 text-amber-700",
@@ -360,7 +360,7 @@ function StackedBarRow({
         <div className="flex h-7 overflow-hidden rounded-md" style={{ width: `${width}%` }}>
           <div
             title={`${firstLabel}: ${first}`}
-            className="bg-blue-600"
+            className="bg-primary"
             style={{ width: `${firstWidth}%` }}
           />
           <div
@@ -397,7 +397,7 @@ function CompactSeries({ title, rows }: { title: string; rows: CountSeries[] }) 
               </div>
               <div className="mt-1 h-1.5 rounded-full bg-background">
                 <div
-                  className="h-1.5 rounded-full bg-blue-600"
+                  className="h-1.5 rounded-full bg-primary"
                   style={{ width: `${max ? (row.total / max) * 100 : 0}%` }}
                 />
               </div>
@@ -420,7 +420,7 @@ function SalaryGradeRow({ row }: { row: CountSeries }) {
       <div className="font-semibold text-foreground">SG {row.label}</div>
       <div className="h-2 overflow-hidden rounded-full bg-muted">
         <div
-          className="h-full rounded-full bg-blue-600"
+          className="h-full rounded-full bg-primary"
           style={{ width: `${active ? (occupied / active) * 100 : 0}%` }}
         />
       </div>

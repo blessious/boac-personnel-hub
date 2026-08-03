@@ -793,7 +793,7 @@ function EmployeesPage() {
             <Button
               disabled={!canEdit}
               onClick={openDirectAddDialog}
-              className="bg-blue-600 text-white shadow-sm hover:bg-blue-700"
+              className="bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
             >
               <Plus className="mr-1.5 h-4 w-4" /> Add Employee
             </Button>
@@ -804,7 +804,7 @@ function EmployeesPage() {
           <Button
             disabled={!canEdit}
             onClick={openDirectAddDialog}
-            className="h-10 rounded-md bg-blue-600 text-white shadow-sm hover:bg-blue-700"
+            className="h-10 rounded-md bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
           >
             <Plus className="mr-1.5 h-4 w-4" /> Add Employee
           </Button>
@@ -1057,7 +1057,7 @@ function EmployeesPage() {
                         `${employee.firstname?.[0] || ""}${employee.lastname?.[0] || ""}`.toUpperCase() ||
                         "??";
                       const avatarColors = [
-                        "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100",
+                        "bg-muted text-primary",
                         "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-100",
                         "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-100",
                         "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100",
@@ -1164,7 +1164,7 @@ function EmployeesPage() {
                     `${employee.firstname?.[0] || ""}${employee.lastname?.[0] || ""}`.toUpperCase() ||
                     "??";
                   const avatarColors = [
-                    "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-100",
+                    "bg-muted text-primary",
                     "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-100",
                     "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-100",
                     "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100",
@@ -1485,8 +1485,8 @@ function EmployeesPage() {
                         className={cn(
                           "rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                           onboardingMode === "plantilla"
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-500/10"
-                            : "hover:border-blue-300",
+                            ? "border-primary bg-primary/10"
+                            : "hover:border-primary/40",
                         )}
                       >
                         <div className="font-semibold">Plantilla appointment</div>
@@ -1501,8 +1501,8 @@ function EmployeesPage() {
                         className={cn(
                           "rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                           onboardingMode === "engagement"
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-500/10"
-                            : "hover:border-blue-300",
+                            ? "border-primary bg-primary/10"
+                            : "hover:border-primary/40",
                         )}
                       >
                         <div className="font-semibold">Non-Plantilla engagement</div>
@@ -1769,7 +1769,7 @@ function EmployeesPage() {
                       event.stopPropagation();
                       continueToAssignment();
                     }}
-                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
                   >
                     Continue to Employment
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -1792,7 +1792,7 @@ function EmployeesPage() {
                       (onboardingMode === "plantilla" && !canCreatePlantillaAppointment) ||
                       (onboardingMode === "engagement" && !canCreateEngagement)
                     }
-                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
                   >
                     Review Employee Details
                   </Button>
@@ -1930,7 +1930,7 @@ function EmployeesPage() {
             <Button
               type="button"
               disabled={isCreatingEmployee}
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
               onClick={submit}
             >
               {isCreatingEmployee ? "Creating..." : "Confirm & Create"}

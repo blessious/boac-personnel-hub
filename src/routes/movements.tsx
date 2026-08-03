@@ -412,15 +412,24 @@ function MovementsPage() {
       (!movement.preparedById || !user?.id || Number(movement.preparedById) !== Number(user.id)),
     [canApprove, user?.id],
   );
+  const canUnsubmitMovement = useCallback(
+    (movement: Movement) =>
+      canPrepare &&
+      movement.status === "Submitted" &&
+      (user?.role === "Super Admin" ||
+        (movement.preparedById && user?.id && Number(movement.preparedById) === Number(user.id))),
+    [canPrepare, user?.id, user?.role],
+  );
   const requiresUserAction = useCallback(
     (movement: Movement) =>
       (canPrepare &&
         (["Draft", "Rejected", "Approved"].includes(movement.status) ||
           (movement.status === "Scheduled" &&
-            (Boolean(movement.activationError) || movement.effectiveDate <= today())))) ||
+            (Boolean(movement.activationError) || movement.effectiveDate <= today())) ||
+          canUnsubmitMovement(movement))) ||
       (canUserApproveMovement(movement) &&
         (movement.status === "Submitted" || movement.status === "Reviewed")),
-    [canPrepare, canUserApproveMovement],
+    [canPrepare, canUnsubmitMovement, canUserApproveMovement],
   );
   const displayedMovements = useMemo(() => {
     if (status === "needs-action") {
@@ -495,6 +504,18 @@ function MovementsPage() {
           aria-label="Submit"
         >
           <Send className="h-4 w-4" />
+        </Button>
+      )}
+      {canUnsubmitMovement(m) && (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground hover:ring-1 hover:ring-border dark:hover:bg-white/10"
+          onClick={() => openDecision(m, "unsubmit")}
+          title="Unsubmit"
+          aria-label="Unsubmit"
+        >
+          <Undo2 className="h-4 w-4" />
         </Button>
       )}
       {canPost && canPostMovement(m) && (
@@ -649,7 +670,10 @@ function MovementsPage() {
           ))}
         </select>
         {canPrepare && (
-          <Button onClick={() => openForm()} className="bg-blue-600 text-white hover:bg-blue-700">
+          <Button
+            onClick={() => openForm()}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
             <Plus className="mr-2 h-4 w-4" />
             Prepare movement
           </Button>
@@ -809,6 +833,7 @@ function MovementsPage() {
         movement={detailMovement}
         events={events}
         canApprove={detailMovement ? canUserApproveMovement(detailMovement) : false}
+        canUnsubmit={detailMovement ? canUnsubmitMovement(detailMovement) : false}
         canPost={canPost}
         onClose={() => setDetailMovement(null)}
         onDecision={openDecision}
@@ -833,6 +858,8 @@ function MovementsPage() {
                     ? "Final approval immediately posts the movement. A future-effective movement will be scheduled automatically."
                     : decision?.action === "return"
                       ? "Returning to Draft refreshes the source employee/occupancy snapshot and clears prior approvals."
+                      : decision?.action === "unsubmit"
+                        ? "Unsubmitting pulls this movement back to Draft before review starts."
                       : decision?.action === "reject"
                         ? "Record the reason for this decision."
                         : "Confirm this workflow step before the movement continues."}
@@ -893,6 +920,7 @@ function MovementDetailDialog({
   movement,
   events,
   canApprove,
+  canUnsubmit,
   canPost,
   onClose,
   onDecision,
@@ -900,6 +928,7 @@ function MovementDetailDialog({
   movement: Movement | null;
   events: MovementEvent[];
   canApprove: boolean;
+  canUnsubmit: boolean;
   canPost: boolean;
   onClose: () => void;
   onDecision: (movement: Movement, action: string) => void;
@@ -1033,6 +1062,11 @@ function MovementDetailDialog({
                 Close
               </Button>
               <div className="flex flex-wrap justify-end gap-2">
+                {canUnsubmit && movement.status === "Submitted" && (
+                  <Button variant="outline" onClick={() => onDecision(movement, "unsubmit")}>
+                    Unsubmit
+                  </Button>
+                )}
                 {canApprove && movement.status === "Submitted" && (
                   <>
                     <Button variant="outline" onClick={() => onDecision(movement, "return")}>
@@ -1167,6 +1201,7 @@ function MovementDialog({
   save: () => void;
 }) {
   const selectedItem = items.find((item) => item.id === form.targetPlantillaItemId);
+  const isAppointmentDraft = form.actionType === "Original Appointment" && Boolean(selectedItem);
   const needsItem = ITEM_ACTIONS.has(form.actionType),
     needsPosition = PROFILE_ACTIONS.has(form.actionType) || form.actionType === "Reclassification",
     needsOrganization = TEMPORARY_ACTIONS.has(form.actionType),
@@ -1181,6 +1216,119 @@ function MovementDialog({
       : selectedEmployee
         ? "Preparing employee movement"
         : "";
+  const appointmentSalarySteps = selectedItem
+    ? settings.salaryGrades
+        .filter(
+          (s) =>
+            (s.isActive || String(s.id) === form.targetSalaryGradeId) &&
+            selectedItem.salaryGrade &&
+            s.ordinance === selectedItem.salaryGrade.ordinance &&
+            s.grade === selectedItem.salaryGrade.grade,
+        )
+        .sort((left, right) => left.step - right.step || left.amount - right.amount)
+    : [];
+
+  if (isAppointmentDraft) {
+    return (
+      <Dialog open={open} onOpenChange={(o) => !o && close()}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {movement ? "Edit appointment draft" : "Existing employee"} -{" "}
+              {selectedItem?.itemNumber}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedItem && (
+            <div className="notice-info rounded-lg border px-3 py-2 text-sm">
+              <div className="font-semibold">{selectedItem.positionTitle}</div>
+              <div className="mt-1 text-muted-foreground">
+                {selectedItem.salaryGrade
+                  ? `SG ${selectedItem.salaryGrade.grade}, authorized Step ${selectedItem.salaryGrade.step}`
+                  : "No salary grade"}
+              </div>
+            </div>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SelectField
+              label="Employee"
+              value={form.employeeId}
+              set={(v) => setForm({ ...form, employeeId: v })}
+              rows={employees.map((e) => [
+                e.id,
+                formatEmployeeName(e),
+                [e.employeeId, e.department, e.position].filter(Boolean).join(" "),
+              ])}
+            />
+            <Field label="Appointment start date">
+              <Input
+                type="date"
+                value={form.effectiveDate}
+                onChange={(e) => setForm({ ...form, effectiveDate: e.target.value })}
+              />
+            </Field>
+            <SelectField
+              label="Salary Step"
+              value={form.targetSalaryGradeId}
+              set={(v) => setForm({ ...form, targetSalaryGradeId: v })}
+              rows={appointmentSalarySteps.map((step) => [
+                String(step.id),
+                `Step ${step.step} - PHP ${step.amount.toLocaleString()} monthly`,
+              ])}
+            />
+            <Field label="Authority / appointment number">
+              <Input
+                value={form.authorityNumber}
+                onChange={(e) => setForm({ ...form, authorityNumber: e.target.value })}
+              />
+            </Field>
+            <Field label="Authority date">
+              <Input
+                type="date"
+                value={form.authorityDate}
+                onChange={(e) => setForm({ ...form, authorityDate: e.target.value })}
+              />
+            </Field>
+            <div className="sm:col-span-2">
+              <Field label="Document references (one per line: Name | reference/location)">
+                <Textarea
+                  rows={3}
+                  value={form.documentsText}
+                  onChange={(e) => setForm({ ...form, documentsText: e.target.value })}
+                />
+              </Field>
+            </div>
+            <div className="sm:col-span-2">
+              <Field label="Remarks">
+                <Textarea
+                  rows={3}
+                  value={form.remarks}
+                  onChange={(e) => setForm({ ...form, remarks: e.target.value })}
+                />
+              </Field>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={close}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                busy ||
+                !form.employeeId ||
+                !form.effectiveDate ||
+                !form.targetPlantillaItemId ||
+                !form.targetSalaryGradeId
+              }
+              onClick={save}
+            >
+              Save draft
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
@@ -1509,13 +1657,14 @@ function Status({ value }: { value: string }) {
       : value === "Rejected" || value === "Reversed"
         ? "bg-red-100 text-red-800"
         : value === "Approved" || value === "Scheduled"
-          ? "bg-blue-100 text-blue-800"
+          ? "bg-primary/10 text-primary"
           : "bg-amber-100 text-amber-800";
   return <span className={`rounded-full px-2 py-1 text-xs font-medium ${tone}`}>{value}</span>;
 }
 function actionLabel(x: string) {
   if (x === "reviewApprove") return "Review, approve and post";
   if (x === "approve") return "Approve and post";
+  if (x === "unsubmit") return "Unsubmit";
   return titleCase(x);
 }
 function titleCase(x: string) {

@@ -64,9 +64,9 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.18 0.02 260);
 
-  /* Primary = STRH Deep Blue (#002f9f) */
-  --primary: oklch(0.38 0.22 260);
-  --primary-foreground: oklch(0.99 0.005 250);
+  /* Primary = shadcn neutral */
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
 
   --secondary: oklch(0.965 0.01 260);
   --secondary-foreground: oklch(0.22 0.04 260);
@@ -74,9 +74,9 @@
   --muted: oklch(0.965 0.008 260);
   --muted-foreground: oklch(0.52 0.02 260);
 
-  /* Accent = Soft Blue for hovers */
-  --accent: oklch(0.96 0.01 260);
-  --accent-foreground: oklch(0.22 0.04 260);
+  /* Accent = neutral hover */
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
 
   --destructive: oklch(0.6 0.22 27);
   --destructive-foreground: oklch(0.99 0.005 250);
@@ -89,24 +89,24 @@
 
   --border: oklch(0.92 0.01 260);
   --input: oklch(0.92 0.01 260);
-  --ring: oklch(0.38 0.22 260);
+  --ring: oklch(0.708 0 0);
 
   /* Chart palette — STRH Theme */
-  --chart-1: oklch(0.38 0.22 260); /* Blue */
+  --chart-1: oklch(0.205 0 0); /* Neutral */
   --chart-2: oklch(0.78 0.17 80); /* Gold */
   --chart-3: oklch(0.66 0.16 152); /* Success Green */
   --chart-4: oklch(0.85 0.12 90); /* Light Gold */
-  --chart-5: oklch(0.48 0.15 250); /* Muted Blue */
+  --chart-5: oklch(0.45 0 0); /* Muted neutral */
 
   /* Sidebar */
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.32 0.04 260);
-  --sidebar-primary: oklch(0.38 0.22 260);
+  --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.99 0 0);
   --sidebar-accent: oklch(0.96 0.01 260);
   --sidebar-accent-foreground: oklch(0.22 0.04 260);
   --sidebar-border: oklch(0.93 0.01 260);
-  --sidebar-ring: oklch(0.38 0.22 260);
+  --sidebar-ring: oklch(0.708 0 0);
 
   /* Brand navy for accent surfaces */
   --navy: oklch(0.25 0.08 260);

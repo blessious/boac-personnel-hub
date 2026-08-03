@@ -403,7 +403,7 @@ function LeavePage() {
                   className={cn(
                     "whitespace-nowrap rounded-md px-4 py-2 text-sm font-semibold transition-colors md:px-3 md:py-1.5 md:font-medium",
                     status === item
-                      ? "bg-background text-blue-700 shadow-sm ring-1 ring-blue-100"
+                      ? "bg-background text-primary shadow-sm ring-1 ring-border"
                       : "bg-muted/50 text-muted-foreground hover:text-foreground md:bg-transparent",
                   )}
                 >
@@ -423,7 +423,7 @@ function LeavePage() {
               <Button
                 disabled={!canEdit}
                 onClick={() => setShowApplication(true)}
-                className="bg-blue-600 text-white hover:bg-blue-700"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 <FilePlus2 className="mr-1.5 h-4 w-4" /> File Leave
               </Button>
@@ -480,7 +480,7 @@ function LeavePage() {
                   </div>
 
                   <div className="mt-3 grid grid-cols-[2.5rem_1.15fr_1.15fr_0.55fr_1fr] items-center gap-2 border-t border-border/70 pt-3">
-                    <div className="grid h-9 w-9 place-items-center rounded-md bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                    <div className="grid h-9 w-9 place-items-center rounded-md bg-muted text-primary ring-1 ring-border">
                       <FilePlus2 className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
@@ -976,7 +976,7 @@ function LeavePage() {
             <Button
               disabled={!canEdit}
               onClick={submitApplication}
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               Save Application
             </Button>
@@ -1067,7 +1067,10 @@ function LeavePage() {
             <Button variant="outline" onClick={() => setDecision(null)}>
               Cancel
             </Button>
-            <Button onClick={submitDecision} className="bg-blue-600 text-white hover:bg-blue-700">
+            <Button
+              onClick={submitDecision}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
               Save Decision
             </Button>
           </DialogFooter>

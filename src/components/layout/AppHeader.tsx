@@ -530,7 +530,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
               Cancel
             </Button>
             <Button
-              className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
               disabled={profileSaving}
               onClick={handleSaveProfile}
             >

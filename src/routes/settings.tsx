@@ -448,7 +448,7 @@ function SettingsPage() {
               type="button"
               onClick={saveAgency}
               disabled={!canSave}
-              className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-md hover:shadow-blue-500/20 transition-all duration-200"
+              className="bg-primary text-primary-foreground shadow-md transition-all duration-200 hover:bg-primary/90 hover:shadow-primary/20"
             >
               <Save className="mr-2 h-4 w-4" />
               {saving ? "Saving..." : "Save Changes"}
@@ -468,7 +468,7 @@ function SettingsPage() {
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h3 className="flex items-center gap-2 text-lg font-medium">
-              <Database className="h-5 w-5 text-[#2563eb]" />
+              <Database className="h-5 w-5 text-primary" />
               Database Configuration
             </h3>
             <p className="text-sm text-muted-foreground">
@@ -587,7 +587,7 @@ function SettingsPage() {
                 type="button"
                 onClick={saveDatabase}
                 disabled={loadingDatabase || savingDatabase || !databaseDirty}
-                className="bg-[#2563eb] text-white hover:bg-[#1d4ed8] shadow-md hover:shadow-blue-500/20 transition-all duration-200"
+                className="bg-primary text-primary-foreground shadow-md transition-all duration-200 hover:bg-primary/90 hover:shadow-primary/20"
               >
                 <Save className="mr-2 h-4 w-4" />
                 {savingDatabase ? "Saving..." : "Save Database"}

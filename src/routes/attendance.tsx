@@ -1708,7 +1708,7 @@ function AttendancePage() {
               type="button"
               onClick={openImportAll}
               disabled={busy}
-              className="h-10 min-w-0 rounded-md bg-blue-600 font-semibold text-white shadow-sm hover:bg-blue-700"
+              className="h-10 min-w-0 rounded-md bg-primary font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
             >
               <Upload className="mr-1.5 h-4 w-4" />
               Import DTR
@@ -2254,7 +2254,7 @@ function AttendancePage() {
                     entry.employeeName.slice(0, 2).toUpperCase() ||
                     "DT";
                   const avatarClasses = [
-                    "bg-blue-100 text-blue-700",
+                    "bg-primary/10 text-primary",
                     "bg-indigo-100 text-indigo-700",
                     "bg-violet-100 text-violet-700",
                     "bg-emerald-100 text-emerald-700",
@@ -2282,7 +2282,7 @@ function AttendancePage() {
                         </div>
 
                         {entry.displayLabel ? (
-                          <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-3 text-center text-xs font-semibold text-blue-800">
+                          <div className="rounded-md border border-border bg-muted/40 px-2 py-3 text-center text-xs font-semibold text-foreground">
                             {entry.displayLabel}
                           </div>
                         ) : (
@@ -2424,7 +2424,7 @@ function AttendancePage() {
                           {entry.displayLabel ? (
                             <td
                               colSpan={4}
-                              className="bg-blue-50 px-4 py-3 text-center font-semibold text-blue-800"
+                              className="bg-muted/40 px-4 py-3 text-center font-semibold text-foreground"
                             >
                               {entry.displayLabel}
                             </td>
@@ -2626,7 +2626,7 @@ function AttendancePage() {
             <Button
               onClick={saveDtr}
               disabled={busy}
-              className="w-full bg-blue-600 text-white hover:bg-blue-700"
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             >
               Save DTR
             </Button>
@@ -2662,7 +2662,7 @@ function AttendancePage() {
                       type="button"
                       onClick={() => setSelectedImportEmployeeId(employee.id)}
                       className={`flex w-full items-center justify-between gap-3 border-b border-border px-3 py-2 text-left text-sm last:border-b-0 hover:bg-muted ${
-                        selected ? "bg-blue-50" : ""
+                        selected ? "bg-muted/50" : ""
                       }`}
                     >
                       <span className="min-w-0">
@@ -2680,7 +2680,7 @@ function AttendancePage() {
                           </span>
                         )}
                       </span>
-                      {selected && <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-700" />}
+                      {selected && <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />}
                     </button>
                   );
                 })}
@@ -2694,7 +2694,7 @@ function AttendancePage() {
 
             <div className="space-y-4">
               {selectedImportEmployee && (
-                <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-medium">Unimported Records Check</span>
                     <Button
@@ -2845,7 +2845,7 @@ function AttendancePage() {
             <Button
               onClick={importRows}
               disabled={busy}
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
               {busy ? "Importing..." : "Import Single DTR"}
@@ -3230,7 +3230,7 @@ function AttendancePage() {
             <Button
               onClick={saveBiometricDevice}
               disabled={busy}
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
               {editingBiometricDevice ? "Save Changes" : "Add Device"}
@@ -3380,7 +3380,7 @@ function AttendancePage() {
               <Button
                 onClick={viewPdf}
                 disabled={busy}
-                className="bg-blue-600 text-white hover:bg-blue-700"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {busy ? (
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
@@ -3628,7 +3628,7 @@ function AttendancePage() {
             <Button
               onClick={saveSchedule}
               disabled={busy}
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               Save Schedule
             </Button>

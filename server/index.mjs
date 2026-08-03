@@ -14623,7 +14623,7 @@ async function route(req, res) {
   const movementMatch = url.pathname.match(/^\/api\/movements\/([A-Za-z0-9-]+)$/);
   const movementEventsMatch = url.pathname.match(/^\/api\/movements\/([A-Za-z0-9-]+)\/events$/);
   const movementActionMatch = url.pathname.match(
-    /^\/api\/movements\/([A-Za-z0-9-]+)\/(submit|review|approve|reject|return|post|reverse)$/,
+    /^\/api\/movements\/([A-Za-z0-9-]+)\/(submit|unsubmit|review|approve|reject|return|post|reverse)$/,
   );
   const plantillaItemMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)$/);
   const plantillaHistoryMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)\/history$/);

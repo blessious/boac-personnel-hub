@@ -273,6 +273,7 @@ export function createMovementHandlers({
       approve: ["Movement approved", `${controlNumber} is approved and ready for posting.`],
       reject: ["Movement rejected", `${controlNumber} was rejected.`],
       return: ["Movement returned to draft", `${controlNumber} was returned for revision.`],
+      unsubmit: ["Movement unsubmitted", `${controlNumber} was pulled back to draft.`],
       schedule: ["Movement scheduled", `${controlNumber} is scheduled for automatic posting.`],
       post: ["Movement posted", `${controlNumber} was posted to the employee record.`],
       reverse: ["Movement reversed", `${controlNumber} was reversed.`],
@@ -680,6 +681,7 @@ export function createMovementHandlers({
       remarks = String(body.remarks || "").trim();
     const rules = {
       submit: ["Draft", "Submitted"],
+      unsubmit: ["Submitted", "Draft"],
       review: ["Submitted", "Reviewed"],
       approve: ["Reviewed", "Approved"],
       reject: [["Submitted", "Reviewed", "Approved"], "Rejected"],
@@ -707,6 +709,12 @@ export function createMovementHandlers({
           user.role !== "Super Admin"
         )
           throw new Error("The movement preparer cannot review or approve the same transaction");
+        if (
+          action === "unsubmit" &&
+          Number(row.prepared_by) !== Number(user.id) &&
+          user.role !== "Super Admin"
+        )
+          throw new Error("Only the movement preparer or Super Admin can unsubmit this movement");
         if (action === "reject" && !remarks) throw new Error("Rejection remarks are required");
         if (action === "return" && !remarks)
           throw new Error("Return-to-draft remarks are required");
@@ -718,7 +726,18 @@ export function createMovementHandlers({
         };
         const source =
           action === "return" ? await currentSnapshot(row.employee_id, connection, true) : null;
-        if (action === "return") {
+        if (action === "unsubmit") {
+          await connection.execute(
+            `UPDATE personnel_movements
+             SET status='Draft',
+                 submitted_by=NULL,
+                 submitted_at=NULL,
+                 decision_remarks=NULL,
+                 version=version+1
+             WHERE id=:id`,
+            { id },
+          );
+        } else if (action === "return") {
           await connection.execute(
             `UPDATE personnel_movements
              SET status='Draft',
@@ -741,7 +760,11 @@ export function createMovementHandlers({
         await event(
           connection,
           id,
-          action === "return" ? "Returned to Draft" : action[0].toUpperCase() + action.slice(1),
+          action === "return"
+            ? "Returned to Draft"
+            : action === "unsubmit"
+              ? "Unsubmitted"
+              : action[0].toUpperCase() + action.slice(1),
           row.status,
           toStatus,
           user.id,

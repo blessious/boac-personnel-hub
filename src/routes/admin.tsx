@@ -936,7 +936,10 @@ function AdminPage() {
                 <Printer className="h-4 w-4" />
                 {bulkResettingPasswords ? "Preparing..." : "View / Print Temporary Passwords"}
               </Button>
-              <Button onClick={openAddUser} className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700">
+              <Button
+                onClick={openAddUser}
+                className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+              >
                 <Plus className="h-4 w-4" /> Add User
               </Button>
             </div>
@@ -1130,7 +1133,7 @@ function AdminPage() {
                         className={cn(
                           "rounded-lg border p-3 text-left transition-colors",
                           active
-                            ? "border-blue-300 bg-blue-50 text-blue-900"
+                            ? "border-primary bg-primary/10 text-foreground"
                             : "border-border bg-card hover:bg-muted/40",
                         )}
                       >
@@ -1139,7 +1142,7 @@ function AdminPage() {
                           {role === "Super Admin" && (
                             <Badge
                               variant="outline"
-                              className="border-blue-200 bg-background text-blue-700"
+                              className="border-border bg-background text-foreground"
                             >
                               Protected
                             </Badge>
@@ -1166,7 +1169,7 @@ function AdminPage() {
                 <Button
                   onClick={() => saveRolePermissions(selectedPermissionRole)}
                   disabled={!canManageRolePermissions || savingPermissionRole !== null}
-                  className="bg-blue-600 text-white hover:bg-blue-700"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   {savingPermissionRole === selectedPermissionRole ? "Saving..." : "Save Changes"}
                 </Button>
@@ -1199,7 +1202,7 @@ function AdminPage() {
                             key={permission.key}
                             className={cn(
                               "flex min-h-[86px] items-start justify-between gap-4 rounded-lg border border-border bg-background p-3",
-                              checked && "border-blue-200 bg-blue-50/40",
+                              checked && "border-primary bg-primary/10",
                             )}
                           >
                             <div className="min-w-0">
@@ -1210,7 +1213,7 @@ function AdminPage() {
                                 {locked && (
                                   <Badge
                                     variant="outline"
-                                    className="border-blue-200 bg-background text-blue-700"
+                                    className="border-border bg-background text-foreground"
                                   >
                                     Locked
                                   </Badge>
@@ -1985,7 +1988,10 @@ function UserDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={onSubmit}>
+          <Button
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={onSubmit}
+          >
             {mode === "add" ? "Create User" : "Save Changes"}
           </Button>
         </DialogFooter>
@@ -2013,7 +2019,7 @@ function AdminSummaryCard({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-100">
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-muted text-primary">
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">

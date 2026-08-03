@@ -40,9 +40,9 @@ export function GenerationLoader({
       className="fixed inset-0 z-[100] grid place-items-center bg-background/70 px-4 backdrop-blur-sm"
     >
       <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 text-center shadow-lg">
-        <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-blue-100 bg-blue-50 text-blue-700">
-          <span className="absolute inset-1 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" />
-          <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-blue-50">
+        <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-border bg-muted text-primary">
+          <span className="absolute inset-1 animate-spin rounded-full border-2 border-border border-t-primary" />
+          <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-muted">
             <FileText className="h-8 w-8 animate-pulse" />
           </div>
         </div>

@@ -314,7 +314,7 @@ function Dashboard() {
                     cy="50"
                     r="40"
                     fill="transparent"
-                    stroke="#2563eb"
+                    stroke="currentColor"
                     strokeWidth="20"
                     strokeDasharray={`${(permanentRegularTotal / Math.max(totalEmployees, 1)) * 251.2} 251.2`}
                     strokeDashoffset={`${-(joCosTotal / Math.max(totalEmployees, 1)) * 251.2}`}
@@ -327,7 +327,7 @@ function Dashboard() {
               </div>
               <div className="mt-5 w-full space-y-3 md:mt-8">
                 <LegendItem
-                  color="bg-blue-600"
+                  color="bg-primary"
                   label="Permanent / Regular"
                   value={permanentRegularTotal}
                   percent={`(${percentOf(permanentRegularTotal, totalEmployees)}%)`}
@@ -360,7 +360,7 @@ function Dashboard() {
             <div className="mt-5 flex-1 space-y-4">
               {offices.map((office, index) => {
                 const pct = percentOf(office.total, totalEmployees);
-                const colors = ["bg-blue-500", "bg-amber-500", "bg-emerald-500", "bg-purple-500"];
+                const colors = ["bg-primary", "bg-amber-500", "bg-emerald-500", "bg-purple-500"];
                 return (
                   <ProgressBar
                     key={office.department || "Unassigned"}
@@ -398,7 +398,7 @@ function Dashboard() {
                     cy="50"
                     r="40"
                     fill="transparent"
-                    stroke="#2563eb"
+                    stroke="currentColor"
                     strokeWidth="20"
                   />
                   <circle
@@ -426,7 +426,7 @@ function Dashboard() {
                   small
                 />
                 <LegendItem
-                  color="bg-blue-600"
+                  color="bg-primary"
                   label="Male"
                   value={maleTotal}
                   percent={`(${malePct}%)`}
@@ -494,7 +494,7 @@ function DashboardHeader({
   return (
     <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <div className="mb-1 text-sm font-medium text-blue-600">
+        <div className="mb-1 text-sm font-medium text-primary">
           {greeting}, {firstName}
         </div>
         <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">Dashboard</h1>
@@ -597,7 +597,7 @@ function AgeBar({
         <div
           className={cn(
             "h-full rounded-full transition-all duration-300",
-            active ? "bg-blue-600" : "bg-blue-500/80",
+            active ? "bg-primary" : "bg-primary/70",
           )}
           style={{ width }}
         />

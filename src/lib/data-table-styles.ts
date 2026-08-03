@@ -13,7 +13,7 @@ export const dataTableHeaderCellClass = "px-4 py-3 font-semibold";
 export const dataTableBodyClass = "divide-y divide-border/70";
 
 export const dataTableRowClass =
-  "odd:bg-card even:bg-muted/30 transition-colors hover:bg-blue-50/80 dark:hover:bg-white/[0.06]";
+  "odd:bg-card even:bg-muted/30 transition-colors hover:bg-muted/50 dark:hover:bg-white/[0.06]";
 
 export const dataTableCellClass = "px-4 py-3.5 align-middle";
 

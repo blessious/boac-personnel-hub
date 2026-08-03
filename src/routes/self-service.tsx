@@ -254,7 +254,7 @@ export function EmployeeDashboardHome() {
                 </Button>
                 <Button
                   onClick={openServices}
-                  className="h-12 w-full rounded-xl bg-blue-600 font-semibold text-white shadow-sm hover:bg-blue-700"
+                  className="h-12 w-full rounded-xl bg-primary font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
                 >
                   Self-Service
                   <ChevronRight className="ml-2 h-4 w-4" />
@@ -933,7 +933,7 @@ function EmployeeServicesHome() {
             <Button
               disabled={submittingLeave || leaveTypes.length === 0}
               onClick={submitLeave}
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               Submit Request
             </Button>
@@ -1005,7 +1005,7 @@ function ProfileHeader({
             <div className="mt-8 flex justify-start">
               <Button
                 onClick={onOpenProfile}
-                className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto"
               >
                 Full 201 File
                 <ChevronRight className="ml-2 h-4 w-4" />
@@ -1290,7 +1290,7 @@ function WorkExperienceSheetPanel({
           <Download className="mr-1.5 h-4 w-4" />
           {generating ? "Generating WES" : "Generate WES"}
         </Button>
-        <Button onClick={add} className="bg-blue-600 text-white hover:bg-blue-700">
+        <Button onClick={add} className="bg-primary text-primary-foreground hover:bg-primary/90">
           <Plus className="mr-1.5 h-4 w-4" />
           Add Experience
         </Button>
@@ -1419,7 +1419,7 @@ function WorkExperienceSheetPanel({
             <Button
               onClick={save}
               disabled={saving}
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {saving ? "Saving" : editingId ? "Update" : "Add"}
             </Button>
@@ -1441,7 +1441,7 @@ function CleanStat({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-100">
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-primary">
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">
@@ -1469,7 +1469,7 @@ function DashboardActionRow({
       onClick={onClick}
       className="group flex w-full items-center gap-3 border-b border-border bg-background px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-muted/30"
     >
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-100">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-primary">
         <Icon className="h-4 w-4" />
       </div>
       <span className="min-w-0 flex-1">
@@ -1559,7 +1559,7 @@ function CleanPanel({
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center gap-2">
-        <div className="grid h-9 w-9 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-100">
+        <div className="grid h-9 w-9 place-items-center rounded-lg bg-muted text-primary">
           <Icon className="h-4 w-4" />
         </div>
         <h3 className="text-base font-semibold text-foreground">{title}</h3>
@@ -1593,7 +1593,7 @@ function DetailItem({
         wide && "sm:grid-cols-[2rem_minmax(0,1fr)]",
       )}
     >
-      <div className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-100">
+      <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-primary">
         {Icon ? <Icon className="h-4 w-4" /> : <IdCard className="h-4 w-4" />}
       </div>
       <div className="grid min-w-0 gap-1 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)] sm:items-center sm:gap-4">
@@ -1836,7 +1836,10 @@ function EmptyProfile({
         {description}
       </p>
       {actionLabel && onAction ? (
-        <Button onClick={onAction} className="mt-5 bg-blue-600 text-white hover:bg-blue-700">
+        <Button
+          onClick={onAction}
+          className="mt-5 bg-primary text-primary-foreground hover:bg-primary/90"
+        >
           {actionLabel}
         </Button>
       ) : null}

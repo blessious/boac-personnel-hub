@@ -229,7 +229,7 @@ function ServiceRecordsPage() {
                   className={cn(
                     "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
                     employeeId === e.id
-                      ? "bg-blue-600 text-white shadow-sm"
+                      ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-foreground hover:bg-muted",
                   )}
                 >
@@ -239,7 +239,9 @@ function ServiceRecordsPage() {
                     <div
                       className={cn(
                         "truncate text-xs",
-                        employeeId === e.id ? "text-blue-100" : "text-muted-foreground",
+                        employeeId === e.id
+                          ? "text-primary-foreground/70"
+                          : "text-muted-foreground",
                       )}
                     >
                       {e.position || e.department || "No assignment"}
@@ -277,9 +279,7 @@ function ServiceRecordsPage() {
                     }}
                     className={cn(
                       "w-full rounded-lg px-3 py-2 text-left text-sm",
-                      employeeId === e.id
-                        ? "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-100"
-                        : "hover:bg-muted",
+                      employeeId === e.id ? "bg-primary/10 text-primary" : "hover:bg-muted",
                     )}
                   >
                     <span className="block font-semibold">{formatEmployeeName(e)}</span>
@@ -320,19 +320,19 @@ function ServiceRecordsPage() {
                 <Button
                   disabled={busy}
                   onClick={() => doExport("pdf")}
-                  className="bg-blue-600 text-white hover:bg-blue-700"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   <Download className="mr-2 h-4 w-4" />
                   PDF
                 </Button>
               </div>
-              <div className="mb-3 grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-3 rounded-lg border border-blue-100 bg-blue-50/45 p-4 shadow-sm md:hidden">
+              <div className="mb-3 grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-3 rounded-lg border border-border bg-muted/40 p-4 shadow-sm md:hidden">
                 <AvatarInitials employee={selected} size="lg" />
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-semibold text-foreground">
                     {formatEmployeeName(selected)}
                   </h2>
-                  <p className="text-sm font-semibold text-blue-700">
+                  <p className="text-sm font-semibold text-primary">
                     {records.length} service period(s)
                   </p>
                 </div>
@@ -787,7 +787,7 @@ function AvatarInitials({
         size === "lg" ? "h-14 w-14 text-lg" : "h-9 w-9 text-xs",
         selected
           ? "bg-white/20 text-white ring-1 ring-white/30"
-          : "bg-blue-100 text-blue-700 ring-1 ring-blue-200 dark:bg-blue-500/20 dark:text-blue-100 dark:ring-blue-400/30",
+          : "bg-primary/10 text-primary ring-1 ring-primary/20",
       )}
     >
       {employee?.photoUrl ? (
@@ -822,7 +822,7 @@ function SummaryTile({
   );
 }
 function sourceBadgeClass(source: ServiceRecord["source"]) {
-  if (source === "Automatic") return "bg-blue-100 text-blue-800";
+  if (source === "Automatic") return "bg-primary/10 text-primary";
   if (source === "Manual") return "bg-amber-100 text-amber-800";
   return "bg-slate-100 text-slate-700";
 }

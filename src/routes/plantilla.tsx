@@ -688,7 +688,10 @@ function PlantillaPage() {
           ))}
         </select>
         {canManage && (
-          <Button onClick={() => openEdit()} className="bg-blue-600 text-white hover:bg-blue-700">
+          <Button
+            onClick={() => openEdit()}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
             <Plus className="mr-2 h-4 w-4" />
             New item
           </Button>
@@ -708,7 +711,7 @@ function PlantillaPage() {
             key={i.id}
           >
             <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_4.75rem_1.25rem] items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-md bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-100 dark:ring-blue-500/30">
+              <div className="grid h-10 w-10 place-items-center rounded-md bg-muted text-primary ring-1 ring-border">
                 <BriefcaseBusiness className="h-5 w-5" />
               </div>
               <div className="min-w-0">
@@ -1316,6 +1319,7 @@ function MovementDialog({
   save: () => void;
 }) {
   const selectedItem = items.find((item) => item.id === form.targetPlantillaItemId);
+  const isAppointmentDraft = form.actionType === "Original Appointment" && Boolean(selectedItem);
   const needsItem = ITEM_ACTIONS.has(form.actionType);
   const needsPosition =
     PROFILE_ACTIONS.has(form.actionType) || form.actionType === "Reclassification";
@@ -1325,6 +1329,117 @@ function MovementDialog({
     ["Step Increment", "Reclassification"].includes(form.actionType);
   const separation = SEPARATIONS.has(form.actionType);
   const selectedEmployee = employees.find((employee) => employee.id === form.employeeId);
+  const appointmentSalarySteps = selectedItem
+    ? settings.salaryGrades
+        .filter(
+          (grade) =>
+            (grade.isActive || String(grade.id) === form.targetSalaryGradeId) &&
+            selectedItem.salaryGrade &&
+            grade.ordinance === selectedItem.salaryGrade.ordinance &&
+            grade.grade === selectedItem.salaryGrade.grade,
+        )
+        .sort((left, right) => left.step - right.step || left.amount - right.amount)
+    : [];
+
+  if (isAppointmentDraft) {
+    return (
+      <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && close()}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Existing employee - {selectedItem?.itemNumber}</DialogTitle>
+          </DialogHeader>
+          {selectedItem && (
+            <div className="notice-info rounded-lg border px-3 py-2 text-sm">
+              <div className="font-semibold">{selectedItem.positionTitle}</div>
+              <div className="mt-1 text-muted-foreground">
+                {selectedItem.salaryGrade
+                  ? `SG ${selectedItem.salaryGrade.grade}, authorized Step ${selectedItem.salaryGrade.step}`
+                  : "No salary grade"}
+              </div>
+            </div>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Sel
+              l="Employee"
+              v={form.employeeId}
+              set={(value) => setForm({ ...form, employeeId: value })}
+              rows={employees.map((employee) => [
+                employee.id,
+                formatEmployeeName(employee),
+                [employee.employeeId, employee.department, employee.position]
+                  .filter(Boolean)
+                  .join(" "),
+              ])}
+            />
+            <F l="Appointment start date">
+              <Input
+                type="date"
+                value={form.effectiveDate}
+                onChange={(event) => setForm({ ...form, effectiveDate: event.target.value })}
+              />
+            </F>
+            <Sel
+              l="Salary Step"
+              v={form.targetSalaryGradeId}
+              set={(value) => setForm({ ...form, targetSalaryGradeId: value })}
+              rows={appointmentSalarySteps.map((step) => [
+                String(step.id),
+                `Step ${step.step} - PHP ${step.amount.toLocaleString()} monthly`,
+              ])}
+            />
+            <F l="Authority / appointment number">
+              <Input
+                value={form.authorityNumber}
+                onChange={(event) => setForm({ ...form, authorityNumber: event.target.value })}
+              />
+            </F>
+            <F l="Authority date">
+              <Input
+                type="date"
+                value={form.authorityDate}
+                onChange={(event) => setForm({ ...form, authorityDate: event.target.value })}
+              />
+            </F>
+            <div className="sm:col-span-2">
+              <F l="Document references (one per line: Name | reference/location)">
+                <Textarea
+                  rows={3}
+                  value={form.documentsText}
+                  onChange={(event) => setForm({ ...form, documentsText: event.target.value })}
+                />
+              </F>
+            </div>
+            <div className="sm:col-span-2">
+              <F l="Remarks">
+                <Textarea
+                  rows={3}
+                  value={form.remarks}
+                  onChange={(event) => setForm({ ...form, remarks: event.target.value })}
+                />
+              </F>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={close}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                busy ||
+                !form.employeeId ||
+                !form.effectiveDate ||
+                !form.targetPlantillaItemId ||
+                !form.targetSalaryGradeId
+              }
+              onClick={save}
+            >
+              Save draft
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && close()}>
