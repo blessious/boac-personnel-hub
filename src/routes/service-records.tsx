@@ -195,7 +195,7 @@ function ServiceRecordsPage() {
       subtitle="Movement-derived service history, controlled legacy encoding, and HRIS-generated exports"
     >
       <div className="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
-        <aside className="hidden rounded-xl border border-border bg-card shadow-sm md:block">
+        <aside className="hidden rounded-lg border border-border bg-card shadow-sm md:block">
           <div className="border-b border-border p-4">
             <div className="flex items-center gap-2 font-semibold">
               <UserRound className="h-4 w-4 text-blue-600" />
@@ -267,7 +267,7 @@ function ServiceRecordsPage() {
               />
             </div>
             {query.trim() && (
-              <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-border bg-white p-1 shadow-sm dark:bg-card">
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border bg-background p-1 shadow-sm dark:bg-card">
                 {filteredEmployees.slice(0, 8).map((e) => (
                   <button
                     key={e.id}
@@ -297,7 +297,7 @@ function ServiceRecordsPage() {
             )}
           </div>
           {!employeeId ? (
-            <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center text-muted-foreground shadow-sm">
+            <div className="rounded-lg border border-dashed border-border bg-card p-12 text-center text-muted-foreground shadow-sm">
               <FileClock className="mx-auto mb-3 h-10 w-10 text-muted-foreground/70" />
               <div className="font-medium text-foreground">Select an employee</div>
               <p className="mt-1 text-sm">
@@ -326,10 +326,10 @@ function ServiceRecordsPage() {
                   PDF
                 </Button>
               </div>
-              <div className="mb-3 grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/45 p-4 shadow-sm md:hidden">
+              <div className="mb-3 grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-3 rounded-lg border border-blue-100 bg-blue-50/45 p-4 shadow-sm md:hidden">
                 <AvatarInitials employee={selected} size="lg" />
                 <div className="min-w-0">
-                  <h2 className="truncate text-lg font-bold text-foreground">
+                  <h2 className="truncate text-lg font-semibold text-foreground">
                     {formatEmployeeName(selected)}
                   </h2>
                   <p className="text-sm font-semibold text-blue-700">
@@ -337,7 +337,7 @@ function ServiceRecordsPage() {
                   </p>
                 </div>
               </div>
-              <div className="hidden rounded-xl border border-border bg-card p-4 shadow-sm md:block">
+              <div className="hidden rounded-lg border border-border bg-card p-4 shadow-sm md:block">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <AvatarInitials employee={selected} size="lg" />
@@ -402,12 +402,12 @@ function ServiceRecordsPage() {
               <div className="mobile-record-list mt-3 md:hidden">
                 {records.map((r) => (
                   <article
-                    className="rounded-xl border border-border bg-white p-3 shadow-sm dark:bg-card"
+                    className="rounded-lg border border-border bg-background p-3 shadow-sm dark:bg-card"
                     key={r.id}
                   >
                     <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3">
                       <div className="relative flex justify-center">
-                        <span className="mt-1 h-4 w-4 rounded-full border-2 border-blue-600 bg-white dark:bg-card" />
+                        <span className="mt-1 h-4 w-4 rounded-full border-2 border-blue-600 bg-background dark:bg-card" />
                         <span className="absolute top-6 h-[calc(100%-1rem)] border-l border-dashed border-border" />
                       </div>
                       <div className="min-w-0">
@@ -421,7 +421,7 @@ function ServiceRecordsPage() {
                             </p>
                           </div>
                           <div className="min-w-0">
-                            <h3 className="truncate text-base font-bold text-foreground">
+                            <h3 className="truncate text-base font-semibold text-foreground">
                               {r.positionTitle}
                             </h3>
                             <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
@@ -496,7 +496,7 @@ function ServiceRecordsPage() {
                   </div>
                 )}
               </div>
-              <div className="mobile-desktop-table mt-3 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+              <div className="mobile-desktop-table mt-3 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
                 <div className="border-b border-border px-4 py-3">
                   <div className="flex items-center gap-2 font-semibold">
                     <FileClock className="h-4 w-4 text-blue-600" />
@@ -783,7 +783,7 @@ function AvatarInitials({
   return (
     <div
       className={cn(
-        "grid shrink-0 place-items-center overflow-hidden rounded-full font-bold",
+        "grid shrink-0 place-items-center overflow-hidden rounded-full font-semibold",
         size === "lg" ? "h-14 w-14 text-lg" : "h-9 w-9 text-xs",
         selected
           ? "bg-white/20 text-white ring-1 ring-white/30"

@@ -98,7 +98,10 @@ export function DateRangePicker({
           type="button"
           variant="outline"
           disabled={disabled}
-          className={cn("h-9 w-full justify-between bg-background px-3", className)}
+          className={cn(
+            "h-9 w-full justify-between border border-input bg-background px-3 shadow-sm hover:bg-background focus-visible:ring-1 focus-visible:ring-ring dark:bg-neutral-950/60 dark:hover:bg-neutral-950/80",
+            className,
+          )}
         >
           <span className="truncate text-left">{labelFormatter(from, to)}</span>
           <CalendarClock className="ml-2 h-4 w-4 text-muted-foreground" />

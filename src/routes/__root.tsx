@@ -252,13 +252,13 @@ function AppLayout() {
       {isLoginPage || isChangePasswordPage ? (
         <Outlet />
       ) : (
-        <div className="app-frame flex min-h-dvh w-full bg-background">
+        <div className="app-frame flex min-h-dvh w-full bg-muted/30">
           <div className="dash-sidebar-enter">
             <AppSidebar />
           </div>
           <div className="dash-content-enter flex min-w-0 flex-1 flex-col">
             <AppHeader title={title || "LGU BOAC HRIS"} subtitle={subtitle} />
-            <main className="mobile-app-content min-w-0 flex-1 p-3 sm:p-4 xl:p-5">
+            <main className="mobile-app-content min-w-0 flex-1 overflow-x-hidden p-3 sm:p-4 xl:p-5">
               <Outlet />
             </main>
           </div>

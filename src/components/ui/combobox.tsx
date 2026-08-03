@@ -72,7 +72,10 @@ function Combobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className={cn("h-9 w-full justify-between px-3 font-normal", triggerProps?.className)}
+          className={cn(
+            "h-9 w-full justify-between border border-input bg-background px-3 font-normal shadow-sm hover:bg-background focus-visible:ring-1 focus-visible:ring-ring dark:bg-neutral-950/60 dark:hover:bg-neutral-950/80",
+            triggerProps?.className,
+          )}
         >
           <span className={cn("truncate", !selectedOption && "text-muted-foreground")}>
             {selectedOption?.label || placeholder}

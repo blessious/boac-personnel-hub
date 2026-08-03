@@ -17,6 +17,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { cn, formatDisplayDate } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getDashboard, type DashboardResponse } from "@/lib/employees-api";
+import { organizationAssignmentLabel } from "@/lib/reference-libraries";
+import { useSettings } from "@/lib/settings-context";
 import { EmployeeDashboardHome } from "@/routes/self-service";
 
 export const Route = createFileRoute("/")({
@@ -25,6 +27,8 @@ export const Route = createFileRoute("/")({
 
 function Dashboard() {
   const { user, hasPermission } = useAuth();
+  const { agency } = useSettings();
+  const organizationLabel = organizationAssignmentLabel(agency.hierarchy);
   const canReadDashboardStats = hasPermission("employees.read");
   const [now, setNow] = useState(() => new Date());
   const {
@@ -175,7 +179,7 @@ function Dashboard() {
   if (showInitialLoading || showBlockingError) {
     return (
       <AppShell title="" subtitle="">
-        <div className="flex flex-col space-y-6 pb-8">
+        <div className="flex flex-col gap-4 pb-8">
           <DashboardHeader
             greeting={greeting}
             firstName={firstName}
@@ -197,7 +201,7 @@ function Dashboard() {
 
   return (
     <AppShell title="" subtitle="">
-      <div className="flex flex-col space-y-6 pb-8">
+      <div className="flex flex-col gap-4 pb-8">
         <DashboardHeader
           greeting={greeting}
           firstName={firstName}
@@ -205,7 +209,7 @@ function Dashboard() {
           currentDate={currentDate}
         />
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="dash-card-stagger">
             <StatCard
               title="Total Employees"
@@ -251,8 +255,8 @@ function Dashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 md:gap-6 lg:grid-cols-12">
-          <section className="dash-card-stagger col-span-2 flex h-full flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm lg:col-span-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-12">
+          <section className="dash-card-stagger col-span-2 flex h-full flex-col rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm lg:col-span-5">
             <div className="mb-6">
               <h3 className="text-base font-semibold text-foreground">Workforce Age Profile</h3>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -278,7 +282,7 @@ function Dashboard() {
             </div>
           </section>
 
-          <section className="dash-card-stagger flex h-full flex-col rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-3">
+          <section className="dash-card-stagger flex h-full flex-col rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm lg:col-span-3">
             <div>
               <h3 className="text-base font-semibold text-foreground">Employment Type Mix</h3>
               <p className="mt-1 text-xs text-muted-foreground">Distribution by employment type.</p>
@@ -317,7 +321,7 @@ function Dashboard() {
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-bold text-foreground">{totalEmployees}</span>
+                  <span className="text-2xl font-semibold text-foreground">{totalEmployees}</span>
                   <span className="text-xs text-muted-foreground">Total</span>
                 </div>
               </div>
@@ -344,11 +348,13 @@ function Dashboard() {
             </div>
           </section>
 
-          <section className="dash-card-stagger flex h-full flex-col rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-4">
+          <section className="dash-card-stagger flex h-full flex-col rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm lg:col-span-4">
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Employees by Office / Unit</h3>
+              <h3 className="text-sm font-semibold text-foreground">
+                Employees by {organizationLabel}
+              </h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Distribution across offices, departments, and assigned units.
+                Distribution across configured organizational assignments.
               </p>
             </div>
             <div className="mt-5 flex-1 space-y-4">
@@ -378,8 +384,8 @@ function Dashboard() {
           </section>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-12">
-          <section className="dash-card-stagger hidden flex-col rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm md:flex lg:col-span-4">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+          <section className="dash-card-stagger hidden flex-col rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm md:flex lg:col-span-4">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Gender Distribution</h3>
               <p className="mt-1 text-xs text-muted-foreground">Workforce by gender.</p>
@@ -407,7 +413,7 @@ function Dashboard() {
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-xl font-bold text-foreground">{genderTotal}</span>
+                  <span className="text-xl font-semibold text-foreground">{genderTotal}</span>
                   <span className="text-[10px] text-muted-foreground">Total</span>
                 </div>
               </div>
@@ -430,8 +436,8 @@ function Dashboard() {
             </div>
           </section>
 
-          <section className="dash-card-stagger rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm md:p-5 lg:col-span-8">
-            <div className="mb-5">
+          <section className="dash-card-stagger rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm lg:col-span-8">
+            <div className="mb-4">
               <h3 className="text-base font-semibold text-foreground">Quick Links</h3>
             </div>
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-3 xl:grid-cols-5">
@@ -486,15 +492,15 @@ function DashboardHeader({
   currentDate: string;
 }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-      <div>
+    <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
         <div className="mb-1 text-sm font-medium text-blue-600">
           {greeting}, {firstName}
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
+        <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">Dashboard</h1>
       </div>
-      <div className="mt-4 sm:mt-0">
-        <div className="flex items-center gap-3 text-sm font-medium tabular-nums text-muted-foreground">
+      <div className="shrink-0">
+        <div className="inline-flex items-center gap-3 rounded-md border bg-background px-3 py-2 text-sm font-medium tabular-nums text-muted-foreground">
           <span>{currentTime}</span>
           <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
           <span>{currentDate}</span>
@@ -506,7 +512,7 @@ function DashboardHeader({
 
 function DashboardLoadingPanel() {
   return (
-    <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
+    <section className="rounded-lg border border-border bg-card p-6 shadow-sm">
       <div className="space-y-3" role="status" aria-live="polite">
         <div className="h-4 w-40 animate-pulse rounded bg-muted" />
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -521,7 +527,7 @@ function DashboardLoadingPanel() {
 
 function DashboardErrorPanel({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 shadow-sm">
+    <section className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 shadow-sm">
       <h2 className="text-base font-semibold text-destructive">Dashboard unavailable</h2>
       <p className="mt-2 max-w-2xl text-sm text-destructive/85">{message}</p>
       <button
@@ -553,15 +559,15 @@ function StatCard({
   iconBg: string;
 }) {
   return (
-    <div className="relative min-h-[6.35rem] overflow-hidden rounded-xl border border-border bg-card p-3 text-card-foreground shadow-sm md:p-4">
+    <div className="relative min-h-[6.25rem] overflow-hidden rounded-lg border border-border bg-card p-3 text-card-foreground shadow-sm md:p-4">
       <div className="mb-2 flex items-start justify-between">
         <div className="min-w-0">
           <p className="line-clamp-2 text-[0.68rem] font-semibold leading-4 text-foreground/80 md:text-xs">
             {title}
           </p>
-          <h2 className="mt-1 text-xl font-bold text-foreground md:text-2xl">{value}</h2>
+          <h2 className="mt-1 text-xl font-semibold text-foreground md:text-2xl">{value}</h2>
         </div>
-        <div className={cn("rounded-lg p-2", iconBg)}>{icon}</div>
+        <div className={cn("rounded-md p-2", iconBg)}>{icon}</div>
       </div>
       <div className="relative z-10 mt-2 flex items-center text-[10px]">
         {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
@@ -680,10 +686,10 @@ function QuickLink({
   return (
     <Link
       to={to}
-      className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-3 text-center text-card-foreground transition-all hover:border-border hover:shadow-sm"
+      className="flex min-h-24 flex-col items-center justify-center rounded-md border border-border/60 bg-background p-3 text-center text-card-foreground transition-colors hover:border-primary/40 hover:bg-muted/40"
     >
-      <div className={cn("mb-2 rounded-lg p-2.5 transition-transform", bg)}>{icon}</div>
-      <span className="text-[10px] font-medium text-foreground/80">{label}</span>
+      <div className={cn("mb-2 rounded-md p-2.5", bg)}>{icon}</div>
+      <span className="text-[11px] font-medium leading-tight text-foreground/85">{label}</span>
     </Link>
   );
 }

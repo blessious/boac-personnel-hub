@@ -115,37 +115,39 @@
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.18 0.02 260);
-  --foreground: oklch(0.97 0.005 250);
-  --card: oklch(0.22 0.025 260);
-  --card-foreground: oklch(0.97 0.005 250);
-  --popover: oklch(0.22 0.025 260);
-  --popover-foreground: oklch(0.97 0.005 250);
-  --primary: oklch(0.55 0.18 255);
-  --primary-foreground: oklch(0.18 0.02 260);
-  --secondary: oklch(0.27 0.03 260);
-  --secondary-foreground: oklch(0.97 0.005 250);
-  --muted: oklch(0.27 0.03 260);
-  --muted-foreground: oklch(0.72 0.02 260);
-  --accent: oklch(0.27 0.03 260);
-  --accent-foreground: oklch(0.97 0.005 250);
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.7 0.19 22);
-  --destructive-foreground: oklch(0.97 0.005 250);
+  --destructive-foreground: oklch(0.985 0 0);
   --success: oklch(0.7 0.16 152);
-  --success-foreground: oklch(0.18 0.02 260);
+  --success-foreground: oklch(0.145 0 0);
   --warning: oklch(0.8 0.16 75);
-  --warning-foreground: oklch(0.18 0.02 260);
+  --warning-foreground: oklch(0.145 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.55 0.18 255);
-  --sidebar: oklch(0.22 0.025 260);
-  --sidebar-foreground: oklch(0.94 0.01 260);
-  --sidebar-primary: oklch(0.55 0.18 255);
-  --sidebar-primary-foreground: oklch(0.18 0.02 260);
-  --sidebar-accent: oklch(0.34 0.04 260);
-  --sidebar-accent-foreground: oklch(0.97 0.005 250);
+  --ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.371 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 14%);
-  --sidebar-ring: oklch(0.55 0.18 255);
+  --sidebar-ring: oklch(0.556 0 0);
+  --navy: oklch(0.205 0 0);
+  --navy-foreground: oklch(0.985 0 0);
 }
 
 ::view-transition-old(root),
@@ -522,7 +524,7 @@ html.theme-transitioning *::after {
     z-index: 0;
     width: calc((100% - 0.7rem) / var(--item-count));
     border-radius: 0.875rem;
-    background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+    background: var(--color-sidebar-primary);
     transform: translateX(calc(var(--active-index) * 100%));
     transition:
       transform 430ms cubic-bezier(0.2, 0.9, 0.2, 1.08),
@@ -555,7 +557,7 @@ html.theme-transitioning *::after {
   }
 
   .mobile-bottom-nav__item--active {
-    color: color-mix(in oklab, var(--color-primary) 76%, var(--color-foreground) 24%);
+    color: var(--color-sidebar-primary-foreground);
     font-weight: 700;
   }
 
@@ -714,7 +716,7 @@ html.theme-transitioning *::after {
   .mobile-app-content input:not([type="radio"]):not([type="checkbox"]),
   .mobile-app-content button,
   .mobile-app-content [role="combobox"] {
-    border-radius: 0.875rem;
+    border-radius: 0.625rem;
   }
 
   .mobile-app-content input:not([type="radio"]):not([type="checkbox"]),
@@ -734,7 +736,7 @@ html.theme-transitioning *::after {
   .mobile-app-content .rounded-lg,
   .mobile-app-content section.rounded-xl,
   .mobile-app-content .bg-card.text-card-foreground.rounded-xl {
-    border-radius: 1.125rem;
+    border-radius: 0.625rem;
   }
 
   .mobile-app-content section,
@@ -748,7 +750,7 @@ html.theme-transitioning *::after {
   .mobile-app-content .bg-card.text-card-foreground.rounded-xl {
     margin-inline: 0;
     border-inline-width: 1px;
-    border-radius: 1.125rem;
+    border-radius: 0.625rem;
   }
 
   .mobile-app-content .grid[class*="md:grid-cols"] {
@@ -791,14 +793,14 @@ html.theme-transitioning *::after {
   }
 
   .mobile-app-content [role="tablist"] {
-    border-radius: 1rem;
+    border-radius: 0.625rem;
     background: #f1f5fb;
     padding: 0.25rem;
   }
 
   .mobile-app-content [role="tab"] {
     min-height: 2.25rem;
-    border-radius: 0.8rem;
+    border-radius: 0.5rem;
     font-size: 0.75rem;
     font-weight: 700;
   }
@@ -820,14 +822,14 @@ html.theme-transitioning *::after {
   }
 
   .mobile-record-card {
-    border-radius: 1rem;
+    border-radius: 0.625rem;
     border-color: color-mix(in oklab, var(--color-border) 74%, transparent);
     background: #fff;
     box-shadow: 0 10px 28px rgb(15 35 80 / 6%);
   }
 
   .mobile-record-card__field {
-    border-radius: 0.875rem;
+    border-radius: 0.5rem;
     background: #f7faff;
   }
 

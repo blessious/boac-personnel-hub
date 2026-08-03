@@ -62,16 +62,45 @@ interface Props {
   rows: ReferenceRow[];
   parentRows: ReferenceRow[];
   canManage: boolean;
+  canCreate?: boolean;
   onChanged: () => Promise<void> | void;
   addRequestKey?: number;
   showAddAction?: boolean;
 }
+
+interface ReferenceUsage {
+  activeChildren: number;
+  totalChildren: number;
+  currentEmployees: number;
+  employeeReferences: number;
+  activeEngagements: number;
+  engagementReferences: number;
+  activeTemporaryAssignments: number;
+  temporaryAssignmentReferences: number;
+  pendingMovements: number;
+  movementReferences: number;
+  activePlantillaItems: number;
+  plantillaReferences: number;
+  activeDependencies: number;
+  totalDependencies: number;
+}
+
+interface RetireState {
+  row: ReferenceRow;
+  usage: ReferenceUsage;
+  activeChildren: Array<{ id: number; category: string; name: string }>;
+  replacementId: string;
+  detachChildren: boolean;
+}
+
+const optionCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 
 export function ReferenceLibraryPanel({
   config,
   rows,
   parentRows,
   canManage,
+  canCreate = canManage,
   onChanged,
   addRequestKey = 0,
   showAddAction = true,
@@ -83,6 +112,8 @@ export function ReferenceLibraryPanel({
   const [formOpen, setFormOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ReferenceRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [retireState, setRetireState] = useState<RetireState | null>(null);
+  const [retiring, setRetiring] = useState(false);
 
   const filteredRows = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -108,11 +139,11 @@ export function ReferenceLibraryPanel({
   };
 
   useEffect(() => {
-    if (addRequestKey <= 0 || !canManage) return;
+    if (addRequestKey <= 0 || !canCreate) return;
     setForm(EMPTY_FORM);
     setEditingId(null);
     setFormOpen(true);
-  }, [addRequestKey, canManage]);
+  }, [addRequestKey, canCreate]);
 
   const editRow = (row: ReferenceRow) => {
     setEditingId(row.id);
@@ -163,6 +194,22 @@ export function ReferenceLibraryPanel({
 
   const toggleActive = async (row: ReferenceRow) => {
     try {
+      if (row.isActive) {
+        const details = await api<{
+          usage: ReferenceUsage;
+          activeChildren: Array<{ id: number; category: string; name: string }>;
+        }>(`/api/settings/references/${config.category}/${row.id}/usage`);
+        if (details.usage.activeDependencies > 0) {
+          setRetireState({
+            row,
+            usage: details.usage,
+            activeChildren: details.activeChildren,
+            replacementId: "",
+            detachChildren: false,
+          });
+          return;
+        }
+      }
       await api<{ value: ReferenceRow }>(`/api/settings/references/${config.category}/${row.id}`, {
         method: "PATCH",
         body: JSON.stringify({ ...row, isActive: !row.isActive }),
@@ -171,6 +218,53 @@ export function ReferenceLibraryPanel({
       await onChanged();
     } catch (error) {
       toast.error((error as Error).message);
+    }
+  };
+
+  const confirmRetire = async () => {
+    if (!retireState) return;
+    const operationalUsage =
+      retireState.usage.currentEmployees +
+      retireState.usage.activeEngagements +
+      retireState.usage.activeTemporaryAssignments +
+      retireState.usage.pendingMovements +
+      retireState.usage.activePlantillaItems;
+    if (operationalUsage > 0 && !retireState.replacementId) {
+      toast.error("Choose a replacement for current employee and staffing usage");
+      return;
+    }
+    if (
+      retireState.usage.activeChildren > 0 &&
+      !retireState.replacementId &&
+      !retireState.detachChildren
+    ) {
+      toast.error("Choose a replacement or detach the active child units");
+      return;
+    }
+    setRetiring(true);
+    try {
+      await api<{ value: ReferenceRow }>(
+        `/api/settings/references/${config.category}/${retireState.row.id}/retire`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            replacementId: retireState.replacementId ? Number(retireState.replacementId) : null,
+            childMappings: retireState.detachChildren
+              ? retireState.activeChildren.map((child) => ({
+                  childId: child.id,
+                  parentId: null,
+                }))
+              : [],
+          }),
+        },
+      );
+      toast.success(`${config.label} deactivated`);
+      setRetireState(null);
+      await onChanged();
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setRetiring(false);
     }
   };
 
@@ -220,7 +314,7 @@ export function ReferenceLibraryPanel({
               {showAddAction && (
                 <Button
                   size="sm"
-                  disabled={!canManage}
+                  disabled={!canCreate}
                   onClick={openAdd}
                   className="bg-blue-600 text-white hover:bg-blue-700"
                 >
@@ -387,9 +481,10 @@ export function ReferenceLibraryPanel({
                     <SelectContent>
                       {parentRows
                         .filter((row) => row.isActive || String(row.id) === form.parentId)
+                        .sort((left, right) => optionCollator.compare(left.name, right.name))
                         .map((row) => (
                           <SelectItem key={row.id} value={String(row.id)}>
-                            {row.code} - {row.name}
+                            {row.name}
                           </SelectItem>
                         ))}
                     </SelectContent>
@@ -473,6 +568,95 @@ export function ReferenceLibraryPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={Boolean(retireState)}
+        onOpenChange={(open) => {
+          if (!open && !retiring) setRetireState(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Deactivate and reassign {config.label.toLowerCase()}</DialogTitle>
+          </DialogHeader>
+          {retireState && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                “{retireState.row.name}” has active dependencies. Historical records will keep their
+                original reference; only current operational records are reassigned.
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <UsageCount label="Active children" value={retireState.usage.activeChildren} />
+                <UsageCount label="Current employees" value={retireState.usage.currentEmployees} />
+                <UsageCount
+                  label="Active engagements"
+                  value={retireState.usage.activeEngagements}
+                />
+                <UsageCount
+                  label="Active Plantilla items"
+                  value={retireState.usage.activePlantillaItems}
+                />
+                <UsageCount label="Pending movements" value={retireState.usage.pendingMovements} />
+              </div>
+              <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                Replacement {config.label}
+                <Select
+                  value={retireState.replacementId}
+                  onValueChange={(replacementId) =>
+                    setRetireState({ ...retireState, replacementId, detachChildren: false })
+                  }
+                  disabled={retiring}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose replacement when required" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rows
+                      .filter((row) => row.isActive && row.id !== retireState.row.id)
+                      .sort((left, right) => optionCollator.compare(left.name, right.name))
+                      .map((row) => (
+                        <SelectItem key={row.id} value={String(row.id)}>
+                          {row.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              {retireState.activeChildren.length > 0 && !retireState.replacementId && (
+                <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={retireState.detachChildren}
+                    onChange={(event) =>
+                      setRetireState({
+                        ...retireState,
+                        detachChildren: event.target.checked,
+                      })
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-input"
+                  />
+                  <span>
+                    Detach active child units instead. This is accepted only when those units are
+                    configured as a root level.
+                  </span>
+                </label>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" disabled={retiring} onClick={() => setRetireState(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={retiring}
+              onClick={confirmRetire}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {retiring && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+              Deactivate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AlertDialog
         open={Boolean(pendingDelete)}
         onOpenChange={(open) => !open && setPendingDelete(null)}
@@ -503,5 +687,14 @@ export function ReferenceLibraryPanel({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+function UsageCount({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="font-semibold">{value}</div>
+    </div>
   );
 }

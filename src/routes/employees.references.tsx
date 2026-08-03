@@ -31,7 +31,11 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { ReferenceLibraryPanel } from "@/components/reference/ReferenceLibraryPanel";
 import {
+  DEFAULT_ORGANIZATION_HIERARCHY,
   REFERENCE_LIBRARY_CONFIG,
+  referenceLibraryConfigForHierarchy,
+  type OrganizationHierarchy,
+  type OrganizationReferenceCategory,
   type ReferenceCategory,
   type ReferenceRow,
 } from "@/lib/reference-libraries";
@@ -72,11 +76,6 @@ import { cn, formatDisplayDate } from "@/lib/utils";
 export const Route = createFileRoute("/employees/references")({
   component: EmployeeReferencesPage,
 });
-
-interface DepartmentRow {
-  id: number;
-  name: string;
-}
 
 interface PositionRow {
   id: number;
@@ -128,6 +127,7 @@ interface ConfirmAction {
 const EXPECTED_SALARY_GRADES = 33;
 const EXPECTED_SALARY_STEPS = 8;
 const EXPECTED_SALARY_ROWS = EXPECTED_SALARY_GRADES * EXPECTED_SALARY_STEPS;
+const optionCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 
 type ReferenceSectionMeta = {
   description: string;
@@ -135,10 +135,6 @@ type ReferenceSectionMeta = {
 };
 
 const REFERENCE_SECTION_META: Record<string, ReferenceSectionMeta> = {
-  departments: {
-    description: "Department names available in employee records and related filters.",
-    icon: Building2,
-  },
   positions: {
     description: "Official position titles used in Plantilla, employee profiles, and movements.",
     icon: BriefcaseBusiness,
@@ -211,7 +207,6 @@ function formatMoneyInput(value: string) {
 function EmployeeReferencesPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission("settings.manage");
-  const [depts, setDepts] = useState<DepartmentRow[]>([]);
   const [pos, setPos] = useState<PositionRow[]>([]);
   const [salaryGrades, setSalaryGrades] = useState<SalaryGradeRow[]>([]);
   const [salaryGradeTables, setSalaryGradeTables] = useState<SalaryGradeTableRow[]>([]);
@@ -223,9 +218,8 @@ function EmployeeReferencesPage() {
         REFERENCE_LIBRARY_CONFIG.map((config) => [config.category, []]),
       ) as unknown as Record<ReferenceCategory, ReferenceRow[]>,
   );
-  const [newDept, setNewDept] = useState("");
+  const [hierarchy, setHierarchy] = useState<OrganizationHierarchy>(DEFAULT_ORGANIZATION_HIERARCHY);
   const [newPos, setNewPos] = useState("");
-  const [deptQuery, setDeptQuery] = useState("");
   const [posQuery, setPosQuery] = useState("");
   const [newSalaryGrade, setNewSalaryGrade] = useState({
     ordinance: "",
@@ -252,15 +246,17 @@ function EmployeeReferencesPage() {
   const [savingSalaryGradeId, setSavingSalaryGradeId] = useState(0);
   const [activationSummary, setActivationSummary] = useState<ActivationSummary | null>(null);
   const [showSalaryBuilder, setShowSalaryBuilder] = useState(false);
-  const [activeReferenceTab, setActiveReferenceTab] = useState("departments");
+  const [activeReferenceTab, setActiveReferenceTab] = useState("positions");
   const [mobileReferenceNavOpen, setMobileReferenceNavOpen] = useState(false);
+  const [showPreservedLevels, setShowPreservedLevels] = useState(false);
   const [addReferenceRequest, setAddReferenceRequest] = useState(0);
   const [loading, setLoading] = useState(true);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [confirmingAction, setConfirmingAction] = useState(false);
 
-  const filteredDepts = depts.filter((d) => d.name.toLowerCase().includes(deptQuery.toLowerCase()));
-  const filteredPos = pos.filter((p) => p.title.toLowerCase().includes(posQuery.toLowerCase()));
+  const filteredPos = pos
+    .filter((p) => p.title.toLowerCase().includes(posQuery.toLowerCase()))
+    .sort((left, right) => optionCollator.compare(left.title, right.title));
   const activeSalaryTable = useMemo(
     () => salaryGradeTables.find((table) => table.isActive)?.ordinance || "",
     [salaryGradeTables],
@@ -272,6 +268,15 @@ function EmployeeReferencesPage() {
         0,
       ),
     [referenceLibraries],
+  );
+  const enabledOrganizationCount = useMemo(
+    () =>
+      hierarchy.enabledCategories.reduce(
+        (total, category) =>
+          total + (referenceLibraries[category] || []).filter((row) => row.isActive).length,
+        0,
+      ),
+    [hierarchy.enabledCategories, referenceLibraries],
   );
   const selectedSalaryRows = useMemo(
     () =>
@@ -344,14 +349,18 @@ function EmployeeReferencesPage() {
       };
     });
   }, [selectedSalaryRows]);
+  const configuredReferenceLibraries = useMemo(
+    () =>
+      referenceLibraryConfigForHierarchy(hierarchy).filter(
+        (config) =>
+          !["sectors", "offices", "divisions", "sections"].includes(config.category) ||
+          config.enabled ||
+          (canManage && showPreservedLevels),
+      ),
+    [canManage, hierarchy, showPreservedLevels],
+  );
   const referenceTabOptions = useMemo(
     () => [
-      {
-        value: "departments",
-        label: "Departments",
-        count: depts.length,
-        ...REFERENCE_SECTION_META.departments,
-      },
       {
         value: "positions",
         label: "Positions",
@@ -364,36 +373,43 @@ function EmployeeReferencesPage() {
         count: salaryGradeTables.length,
         ...REFERENCE_SECTION_META.salary,
       },
-      ...REFERENCE_LIBRARY_CONFIG.map((config) => ({
+      ...configuredReferenceLibraries.map((config) => ({
         value: config.category,
         label: config.plural,
         count: referenceLibraries[config.category]?.length || 0,
         ...REFERENCE_SECTION_META[config.category],
+        description: ["sectors", "offices", "divisions", "sections"].includes(config.category)
+          ? config.parentLabel
+            ? `${config.plural} maintained under the configured ${config.parentLabel} level.`
+            : `${config.plural} maintained as the first enabled organizational level.`
+          : REFERENCE_SECTION_META[config.category].description,
       })),
     ],
-    [depts.length, pos.length, referenceLibraries, salaryGradeTables.length],
+    [configuredReferenceLibraries, pos.length, referenceLibraries, salaryGradeTables.length],
   );
   const activeReference =
     referenceTabOptions.find((tab) => tab.value === activeReferenceTab) || referenceTabOptions[0];
   const activeReferenceLabel = activeReference?.label || "Employee References";
   const ActiveReferenceIcon = activeReference?.icon || Building2;
+  const activeLibraryConfig = configuredReferenceLibraries.find(
+    (config) => config.category === activeReferenceTab,
+  );
 
   const loadReferences = async (signal?: AbortSignal) => {
     setLoading(true);
     try {
       const [data, references] = await Promise.all([
         api<{
-          departments: DepartmentRow[];
           positions: PositionRow[];
           salaryGrades: SalaryGradeRow[];
           salaryGradeTables?: SalaryGradeTableRow[];
         }>("/api/settings", { signal }),
-        api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references", {
-          signal,
-        }),
+        api<{
+          libraries: Record<ReferenceCategory, ReferenceRow[]>;
+          hierarchy: OrganizationHierarchy;
+        }>("/api/settings/references", { signal }),
       ]);
       if (signal?.aborted) return;
-      setDepts(data.departments);
       setPos(data.positions);
       setSalaryGrades(data.salaryGrades);
       const groupedTables =
@@ -433,6 +449,22 @@ function EmployeeReferencesPage() {
           "",
       }));
       setReferenceLibraries(references.libraries);
+      setHierarchy(references.hierarchy || DEFAULT_ORGANIZATION_HIERARCHY);
+      setActiveReferenceTab((current) => {
+        const enabledCategories = new Set(
+          (references.hierarchy || DEFAULT_ORGANIZATION_HIERARCHY).enabledCategories,
+        );
+        if (
+          !["sectors", "offices", "divisions", "sections"].includes(current) ||
+          enabledCategories.has(current as OrganizationReferenceCategory)
+        ) {
+          return current;
+        }
+        return (
+          (references.hierarchy || DEFAULT_ORGANIZATION_HIERARCHY).enabledCategories[0] ||
+          "positions"
+        );
+      });
     } catch (error) {
       if (!isAbortError(error)) toast.error((error as Error).message);
     } finally {
@@ -449,60 +481,6 @@ function EmployeeReferencesPage() {
   useEffect(() => {
     setRenameOrdinance(selectedOrdinance);
   }, [selectedOrdinance]);
-
-  const addDepartment = async () => {
-    if (!newDept.trim()) return false;
-    try {
-      const result = await api<{ department: DepartmentRow }>("/api/settings/departments", {
-        method: "POST",
-        body: JSON.stringify({ name: newDept.trim() }),
-      });
-      setDepts((prev) => [...prev, result.department]);
-      setNewDept("");
-      toast.success("Department added");
-      return true;
-    } catch (error) {
-      toast.error((error as Error).message);
-      return false;
-    }
-  };
-
-  const updateDepartment = async (id: number, name: string) => {
-    try {
-      const result = await api<{ department: DepartmentRow }>(`/api/settings/departments/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name }),
-      });
-      setDepts((prev) =>
-        prev.map((department) => (department.id === id ? result.department : department)),
-      );
-      toast.success("Department updated");
-      return true;
-    } catch (error) {
-      toast.error((error as Error).message);
-      return false;
-    }
-  };
-
-  const deleteDepartment = async (id: number) => {
-    try {
-      await api<{ ok: boolean }>(`/api/settings/departments/${id}`, { method: "DELETE" });
-      setDepts((prev) => prev.filter((item) => item.id !== id));
-      toast.success("Department removed");
-    } catch (error) {
-      toast.error((error as Error).message);
-    }
-  };
-
-  const requestDeleteDepartment = (department: DepartmentRow) => {
-    setConfirmAction({
-      title: "Delete department?",
-      description: `This will remove "${department.name}" from the department reference list. If it has already been used in records, keep it and update the official reference instead.`,
-      confirmLabel: "Delete Department",
-      destructive: true,
-      onConfirm: () => deleteDepartment(department.id),
-    });
-  };
 
   const addPosition = async () => {
     if (!newPos.trim()) return false;
@@ -919,7 +897,7 @@ function EmployeeReferencesPage() {
           <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span className="truncate font-medium text-foreground">Employee References</span>
         </nav>
-        {canManage && (
+        {canManage && activeLibraryConfig?.enabled !== false && (
           <Button
             onClick={() => {
               if (activeReferenceTab === "salary") setShowSalaryBuilder(true);
@@ -955,9 +933,9 @@ function EmployeeReferencesPage() {
         <div className="grid border-t border-border sm:grid-cols-2 xl:grid-cols-4">
           <ReferenceMetric
             icon={Building2}
-            label="Departments"
-            value={depts.length}
-            detail={`${filteredDepts.length} visible`}
+            label="Organization Units"
+            value={enabledOrganizationCount}
+            detail={`${hierarchy.enabledCategories.length} enabled levels`}
           />
           <ReferenceMetric
             icon={BriefcaseBusiness}
@@ -975,7 +953,7 @@ function EmployeeReferencesPage() {
             icon={CheckCircle2}
             label="Active Library Values"
             value={activeLibraryCount}
-            detail={`${REFERENCE_LIBRARY_CONFIG.length} managed libraries`}
+            detail={`${configuredReferenceLibraries.length} managed libraries`}
           />
         </div>
       </section>
@@ -1029,6 +1007,17 @@ function EmployeeReferencesPage() {
                   setMobileReferenceNavOpen(false);
                 }}
               />
+              {canManage && (
+                <label className="mt-3 flex items-start gap-2 border-t border-border px-2 pt-3 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={showPreservedLevels}
+                    onChange={(event) => setShowPreservedLevels(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-input"
+                  />
+                  Show preserved disabled organizational levels
+                </label>
+              )}
             </div>
           </aside>
 
@@ -1046,31 +1035,6 @@ function EmployeeReferencesPage() {
             </header>
 
             <div className="p-3 sm:p-4">
-              <TabsContent value="departments" className="mt-0">
-                <SimpleReferenceSection
-                  title="Departments"
-                  description="Department names available in employee records and related filters."
-                  itemLabel="department"
-                  addPlaceholder="New department name"
-                  searchPlaceholder="Search departments..."
-                  value={newDept}
-                  query={deptQuery}
-                  items={filteredDepts.map((department) => ({
-                    id: department.id,
-                    label: department.name,
-                    onEdit: (name) => updateDepartment(department.id, name),
-                    onDelete: () => requestDeleteDepartment(department),
-                  }))}
-                  totalCount={depts.length}
-                  canManage={canManage}
-                  onValueChange={setNewDept}
-                  onQueryChange={setDeptQuery}
-                  onAdd={addDepartment}
-                  addRequestKey={activeReferenceTab === "departments" ? addReferenceRequest : 0}
-                  showAddAction={false}
-                />
-              </TabsContent>
-
               <TabsContent value="positions" className="mt-0">
                 <SimpleReferenceSection
                   title="Positions"
@@ -1478,7 +1442,7 @@ function EmployeeReferencesPage() {
                 </div>
               </TabsContent>
 
-              {REFERENCE_LIBRARY_CONFIG.map((config) => (
+              {configuredReferenceLibraries.map((config) => (
                 <TabsContent key={config.category} value={config.category} className="mt-0">
                   <ReferenceLibraryPanel
                     config={config}
@@ -1487,6 +1451,7 @@ function EmployeeReferencesPage() {
                       config.parentCategory ? referenceLibraries[config.parentCategory] || [] : []
                     }
                     canManage={canManage}
+                    canCreate={canManage && config.enabled !== false}
                     onChanged={loadReferences}
                     addRequestKey={activeReferenceTab === config.category ? addReferenceRequest : 0}
                     showAddAction={false}

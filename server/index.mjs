@@ -263,7 +263,13 @@ const PERMISSIONS = [
   {
     key: "attendance.write",
     label: "Manage attendance",
-    description: "Import, edit, refresh, approve corrections, and manage attendance setup.",
+    description: "Import, edit, refresh, and manage attendance setup.",
+    group: "Attendance",
+  },
+  {
+    key: "attendance.corrections.approve",
+    label: "Approve DTR corrections",
+    description: "Review, approve, disapprove, and reverse DTR correction requests.",
     group: "Attendance",
   },
   {
@@ -416,6 +422,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "dashboard.view",
     "employees.read",
     "attendance.read",
+    "attendance.corrections.approve",
     "leave.read",
     "approvals.manage",
     "plantilla.read",
@@ -473,6 +480,40 @@ const REFERENCE_LIBRARY_TYPES = {
   "job-levels": { label: "Job Level" },
   "plantilla-types": { label: "Plantilla Classification" },
   "budget-codes": { label: "Budget Code" },
+};
+const ORGANIZATION_REFERENCE_CATEGORIES = ["sectors", "offices", "divisions", "sections"];
+const DEFAULT_ORGANIZATION_HIERARCHY = {
+  version: 1,
+  levels: [
+    {
+      category: "sectors",
+      label: "Sector",
+      pluralLabel: "Sectors",
+      enabled: true,
+      assignable: false,
+    },
+    {
+      category: "offices",
+      label: "Office",
+      pluralLabel: "Offices",
+      enabled: true,
+      assignable: true,
+    },
+    {
+      category: "divisions",
+      label: "Division",
+      pluralLabel: "Divisions",
+      enabled: true,
+      assignable: true,
+    },
+    {
+      category: "sections",
+      label: "Section / Unit",
+      pluralLabel: "Sections / Units",
+      enabled: true,
+      assignable: true,
+    },
+  ],
 };
 const DEFAULT_AGENCY = {
   name: "LGU BOAC",
@@ -1591,9 +1632,9 @@ const EMPLOYEE_PROFILE_FIELDS = [
   "cardSerialNo",
 ];
 
-// Employee self-service may maintain personal/contact details and submit work
-// history for HR review. Employment assignments, attendance controls, payroll
-// identifiers, and other 201 sections remain HR-managed.
+// Employee self-service may maintain personal/contact details and supporting
+// PDS/IPCR sections. Employment assignments, attendance controls, salary
+// history, and official service records remain system- or HR-managed.
 const EMPLOYEE_SELF_SERVICE_BASE_FIELDS = new Set([
   "firstname",
   "middlename",
@@ -1629,22 +1670,26 @@ const EMPLOYEE_SELF_SERVICE_PROFILE_FIELDS = new Set([
   "permanentZipcode",
   "permanentTelNo",
 ]);
-const EMPLOYEE_SELF_SERVICE_SECTIONS = new Set(["work"]);
-const EMPLOYEE_SELF_SERVICE_WORK_FIELDS = new Set([
-  "dateFrom",
-  "dateTo",
-  "position",
-  "officeUnit",
-  "immediateSupervisor",
-  "agencyOrganizationLocation",
-  "accomplishments",
-  "actualDuties",
-  "company",
-  "status",
-  "salary",
-  "salaryGradeStep",
-  "govEmp",
+const EMPLOYEE_SELF_SERVICE_SECTIONS = new Set([
+  "family",
+  "children",
+  "education",
+  "civilService",
+  "work",
+  "organization",
+  "training",
+  "ipcr",
 ]);
+
+function selfServiceSectionAccessError(section) {
+  if (section === "salary") {
+    return "Salary history is generated from posted appointments, movements, and salary updates";
+  }
+  if (section === "service") {
+    return "Official service records are maintained through the Service Records workflow";
+  }
+  return "This 201 section is managed by HR";
+}
 
 let pool;
 const biometricSyncLogs = [];
@@ -1689,7 +1734,7 @@ async function authorizeDocumentExport(user, fileName, { singleUse = true } = {}
         ${singleUse ? "AND downloaded_at IS NULL" : ""}`,
     { fileName },
   );
-  return result.affectedRows === 1;
+  return result.affectedRows === 1 ? record : null;
 }
 
 async function cleanupDocumentExportJobs() {
@@ -3508,10 +3553,16 @@ function selfServiceEmployeePayload(body, existing, data, existingData) {
   return safe;
 }
 
-function selfServiceSectionPayload(payload, existingPayload = {}) {
-  const unknown = Object.keys(payload).filter((key) => !EMPLOYEE_SELF_SERVICE_WORK_FIELDS.has(key));
+function selfServiceSectionPayload(section, payload, existingPayload = {}) {
+  const allowedFields = new Set(EMPLOYEE_SECTION_FIELDS[section] || []);
+  const allowedKeys = new Set(
+    [...allowedFields].flatMap((field) => [field, `${field}Data`, `${field}Type`, `${field}Size`]),
+  );
+  const unknown = Object.keys(payload).filter((key) => !allowedKeys.has(key));
   if (unknown.length) {
-    throw new Error(`Self-service work records contain unsupported fields: ${unknown.join(", ")}`);
+    throw new Error(
+      `Self-service ${section} records contain unsupported fields: ${unknown.join(", ")}`,
+    );
   }
   return { ...existingPayload, ...payload };
 }
@@ -3885,9 +3936,11 @@ async function initializeDatabase() {
       logo_url LONGTEXT NULL,
       icon_url LONGTEXT NULL,
       banner_url LONGTEXT NULL,
+      organization_hierarchy_json JSON NULL,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB;
   `);
+  await ensureColumn("agency_settings", "organization_hierarchy_json", "JSON NULL");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS departments (
@@ -4042,6 +4095,7 @@ async function initializeDatabase() {
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_${table}_employee_id (employee_id),
+        INDEX idx_${table}_employee_created_id (employee_id, created_at, id),
         ${single ? `UNIQUE KEY uniq_${table}_employee_id (employee_id),` : ""}
         CONSTRAINT fk_${table}_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
       ) ENGINE=InnoDB;
@@ -4243,6 +4297,31 @@ async function initializeDatabase() {
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_attendance_import_logs_import_id (import_id),
       INDEX idx_attendance_import_logs_level (level)
+    ) ENGINE=InnoDB;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS attendance_import_exceptions (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      import_id CHAR(36) NOT NULL,
+      employee_no VARCHAR(80) NULL,
+      punch_at DATETIME NULL,
+      source VARCHAR(40) NOT NULL,
+      source_device VARCHAR(120) NULL,
+      raw_payload JSON NULL,
+      status ENUM('Open', 'Mapped', 'Reprocessed', 'Ignored') NOT NULL DEFAULT 'Open',
+      mapped_employee_id ${nullableEmployeeIdDefinition},
+      resolved_by INT UNSIGNED NULL,
+      resolved_at DATETIME NULL,
+      resolution_notes TEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_attendance_import_exceptions_import_id (import_id),
+      INDEX idx_attendance_import_exceptions_status (status),
+      INDEX idx_attendance_import_exceptions_employee_no (employee_no),
+      CONSTRAINT fk_attendance_import_exceptions_import_id FOREIGN KEY (import_id) REFERENCES attendance_imports(id) ON DELETE CASCADE,
+      CONSTRAINT fk_attendance_import_exceptions_mapped_employee_id FOREIGN KEY (mapped_employee_id) REFERENCES employees(id) ON DELETE SET NULL,
+      CONSTRAINT fk_attendance_import_exceptions_resolved_by FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
 
@@ -4728,6 +4807,12 @@ async function seedConfigTables() {
      ON DUPLICATE KEY UPDATE id = id`,
     DEFAULT_AGENCY,
   );
+  await pool.execute(
+    `UPDATE agency_settings
+     SET organization_hierarchy_json = :hierarchy
+     WHERE id = 1 AND organization_hierarchy_json IS NULL`,
+    { hierarchy: JSON.stringify(DEFAULT_ORGANIZATION_HIERARCHY) },
+  );
 
   const [[departmentCount]] = await pool.query(`SELECT COUNT(*) AS count FROM departments`);
   if (Number(departmentCount.count || 0) === 0) {
@@ -4787,56 +4872,54 @@ async function seedConfigTables() {
     obsoleteParams,
   );
 
-  for (const value of DEFAULT_REFERENCE_VALUES) {
-    await pool.execute(
-      `INSERT INTO hr_reference_values (
-         category, code, name, description, is_active, effective_from, effective_to, sort_order
-       )
-       VALUES (
-         :category, :code, :name, :description, 1, NULL, NULL, :sortOrder
-       )
-       ON DUPLICATE KEY UPDATE
-         name = VALUES(name),
-         description = VALUES(description),
-         is_active = VALUES(is_active),
-         sort_order = VALUES(sort_order)`,
-      {
-        category: value.category,
-        code: value.code,
-        name: value.name,
-        description: value.description || null,
-        sortOrder: value.sortOrder || 0,
-      },
-    );
-  }
+  const [[referenceCount]] = await pool.query(`SELECT COUNT(*) AS count FROM hr_reference_values`);
+  if (Number(referenceCount.count || 0) === 0) {
+    for (const value of DEFAULT_REFERENCE_VALUES) {
+      await pool.execute(
+        `INSERT INTO hr_reference_values (
+           category, code, name, description, is_active, effective_from, effective_to, sort_order
+         )
+         VALUES (
+           :category, :code, :name, :description, 1, NULL, NULL, :sortOrder
+         )`,
+        {
+          category: value.category,
+          code: value.code,
+          name: value.name,
+          description: value.description || null,
+          sortOrder: value.sortOrder || 0,
+        },
+      );
+    }
 
-  for (const value of DEFAULT_REFERENCE_VALUES.filter((item) => item.parentCode)) {
-    await pool.execute(
-      `UPDATE hr_reference_values child
-       JOIN hr_reference_values parent
-         ON parent.category = :parentCategory AND parent.code = :parentCode
-       SET child.parent_id = parent.id
-       WHERE child.category = :category
-         AND child.code = :code`,
-      {
-        category: value.category,
-        code: value.code,
-        parentCategory: value.parentCategory,
-        parentCode: value.parentCode,
-      },
-    );
-  }
+    for (const value of DEFAULT_REFERENCE_VALUES.filter((item) => item.parentCode)) {
+      await pool.execute(
+        `UPDATE hr_reference_values child
+         JOIN hr_reference_values parent
+           ON parent.category = :parentCategory AND parent.code = :parentCode
+         SET child.parent_id = parent.id
+         WHERE child.category = :category
+           AND child.code = :code`,
+        {
+          category: value.category,
+          code: value.code,
+          parentCategory: value.parentCategory,
+          parentCode: value.parentCode,
+        },
+      );
+    }
 
-  for (const [sectorCode, officeCodes] of Object.entries(OFFICE_SECTOR_PARENT_CODES)) {
-    await pool.query(
-      `UPDATE hr_reference_values child
-       JOIN hr_reference_values parent
-         ON parent.category = 'sectors' AND parent.code = ?
-       SET child.parent_id = parent.id
-       WHERE child.category = 'offices'
-         AND child.code IN (${officeCodes.map(() => "?").join(",")})`,
-      [sectorCode, ...officeCodes],
-    );
+    for (const [sectorCode, officeCodes] of Object.entries(OFFICE_SECTOR_PARENT_CODES)) {
+      await pool.query(
+        `UPDATE hr_reference_values child
+         JOIN hr_reference_values parent
+           ON parent.category = 'sectors' AND parent.code = ?
+         SET child.parent_id = parent.id
+         WHERE child.category = 'offices'
+           AND child.code IN (${officeCodes.map(() => "?").join(",")})`,
+        [sectorCode, ...officeCodes],
+      );
+    }
   }
   await pool.execute(
     `UPDATE plantilla_items pi
@@ -6455,6 +6538,19 @@ async function refreshDtrEntries({ employeeId, from, to, userId }) {
   if (!dutyDates.length) return { recordsProcessed: 0, punchesProcessed: logs.length };
 
   const { assignmentMap, overrideMap } = await loadScheduleContext(employeeIds, dutyDates);
+  const warnings = [];
+  const [preservedRows] = await pool.execute(
+    `SELECT COUNT(*) AS count
+     FROM dtr_entries
+     WHERE employee_id IN (${employeeIds.map(() => "?").join(",")})
+       AND work_date IN (${dutyDates.map(() => "?").join(",")})
+       AND (locked = 1 OR source <> 'Imported')`,
+    [...employeeIds, ...dutyDates],
+  );
+  const preservedCount = Number(preservedRows[0]?.count || 0);
+  if (preservedCount) {
+    warnings.push(`${preservedCount} locked or adjusted DTR row(s) were preserved`);
+  }
   const connection = await pool.getConnection();
   let recordsProcessed = 0;
   try {
@@ -6487,7 +6583,7 @@ async function refreshDtrEntries({ employeeId, from, to, userId }) {
     connection.release();
   }
 
-  return { recordsProcessed, punchesProcessed: logs.length };
+  return { recordsProcessed, punchesProcessed: logs.length, warnings };
 }
 
 async function handleListDtrEntries(req, res, url) {
@@ -6600,6 +6696,155 @@ async function handleListAttendanceImportLogs(req, res, importId) {
     import: attendanceImportRow(imports[0]),
     logs: logs.map(attendanceImportLogRow),
   });
+}
+
+async function handleListAttendanceImportExceptions(req, res, url) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const status = String(url.searchParams.get("status") || "Open").trim();
+  if (status && status !== "all" && !["Open", "Mapped", "Reprocessed", "Ignored"].includes(status)) {
+    return json(res, 400, { error: "Invalid exception status" });
+  }
+  const exceptions = await readAttendanceImportExceptions({
+    importId: String(url.searchParams.get("importId") || "").trim(),
+    status,
+  });
+  return json(res, 200, { exceptions });
+}
+
+async function handleMapAttendanceImportException(req, res, id) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const employeeId = String(body.employeeId || "").trim();
+  const notes = String(body.notes || "").trim();
+  if (!employeeId) return json(res, 400, { error: "Employee mapping is required" });
+  const [[employee]] = await pool.execute(`SELECT id FROM employees WHERE id = :employeeId LIMIT 1`, {
+    employeeId,
+  });
+  if (!employee) return json(res, 404, { error: "Employee not found" });
+  const [result] = await pool.execute(
+    `UPDATE attendance_import_exceptions
+     SET status = 'Mapped', mapped_employee_id = :employeeId,
+         resolved_by = :resolvedBy, resolved_at = NOW(), resolution_notes = :notes
+     WHERE id = :id AND status IN ('Open', 'Mapped')`,
+    { id, employeeId, resolvedBy: user.id, notes: notes || null },
+  );
+  if (!result.affectedRows) return json(res, 404, { error: "Open import exception not found" });
+  await logAudit(user.id, "attendance.import_exception.map", { id, employeeId }, req);
+  const [rows] = await pool.execute(
+    `SELECT aie.*, resolver.name AS resolved_by_name,
+            ${EMPLOYEE_DISPLAY_NAME_SQL.replaceAll("e.", "mapped_employee.")} AS mapped_employee_name
+     FROM attendance_import_exceptions aie
+     LEFT JOIN employees mapped_employee ON mapped_employee.id = aie.mapped_employee_id
+     LEFT JOIN users resolver ON resolver.id = aie.resolved_by
+     WHERE aie.id = :id
+     LIMIT 1`,
+    { id },
+  );
+  return json(res, 200, {
+    ok: true,
+    exception: rows[0] ? attendanceImportExceptionRow(rows[0]) : null,
+  });
+}
+
+async function handleReprocessAttendanceImportExceptions(req, res) {
+  const user = await requireAttendanceWrite(req, res);
+  if (!user) return;
+  const body = await readBody(req);
+  const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+  const where = ids.length
+    ? `aie.id IN (${ids.map(() => "?").join(",")})`
+    : "aie.status = 'Mapped'";
+  const [rows] = await pool.query(
+    `SELECT aie.*
+     FROM attendance_import_exceptions aie
+     WHERE ${where}
+       AND aie.status = 'Mapped'
+       AND aie.mapped_employee_id IS NOT NULL
+     ORDER BY aie.created_at ASC
+     LIMIT 500`,
+    ids,
+  );
+  if (!rows.length) return json(res, 400, { error: "No mapped exceptions are ready to reprocess" });
+
+  let reprocessed = 0;
+  let skipped = 0;
+  const affectedEmployees = new Map();
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    for (const row of rows) {
+      if (!row.punch_at) {
+        skipped++;
+        continue;
+      }
+      const [result] = await connection.execute(
+        `INSERT IGNORE INTO attendance_logs
+           (id, employee_id, punch_at, source, source_device, import_id, raw_payload, created_by)
+         VALUES
+           (:id, :employeeId, :punchAt, :source, :sourceDevice, :importId, :rawPayload, :createdBy)`,
+        {
+          id: crypto.randomUUID(),
+          employeeId: row.mapped_employee_id,
+          punchAt: row.punch_at,
+          source: ["CSV", "Manual", "Biometric", "Legacy"].includes(row.source)
+            ? row.source
+            : "Biometric",
+          sourceDevice: row.source_device || "Mapped exception",
+          importId: row.import_id,
+          rawPayload: JSON.stringify({
+            exceptionId: row.id,
+            employeeNo: row.employee_no,
+            raw: parseJson(row.raw_payload, null),
+          }),
+          createdBy: user.id,
+        },
+      );
+      if (result.affectedRows > 0) {
+        reprocessed++;
+        const workDate = normalizeDate(row.punch_at);
+        const existing = affectedEmployees.get(row.mapped_employee_id);
+        affectedEmployees.set(row.mapped_employee_id, {
+          from: existing?.from && existing.from < workDate ? existing.from : workDate,
+          to: existing?.to && existing.to > workDate ? existing.to : workDate,
+        });
+      } else {
+        skipped++;
+      }
+      await connection.execute(
+        `UPDATE attendance_import_exceptions
+         SET status = 'Reprocessed', resolved_by = :resolvedBy, resolved_at = NOW()
+         WHERE id = :id`,
+        { id: row.id, resolvedBy: user.id },
+      );
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  const refreshed = { recordsProcessed: 0, punchesProcessed: 0 };
+  for (const [employeeId, range] of affectedEmployees.entries()) {
+    const result = await refreshDtrEntries({
+      employeeId,
+      from: range.from,
+      to: range.to,
+      userId: user.id,
+    });
+    refreshed.recordsProcessed += result.recordsProcessed;
+    refreshed.punchesProcessed += result.punchesProcessed;
+  }
+  await logAudit(
+    user.id,
+    "attendance.import_exception.reprocess",
+    { requested: ids.length || rows.length, reprocessed, skipped, refreshed },
+    req,
+  );
+  return json(res, 200, { ok: true, reprocessed, skipped, refreshed });
 }
 
 function dtrNoterRow(row) {
@@ -6951,6 +7196,103 @@ async function parseUploadedDtrFile(fileName, fileBase64) {
   throw new Error("Only .txt, .csv, .dat, and .xlsx DTR files are supported for import");
 }
 
+const ATTENDANCE_MAX_RANGE_DAYS = 62;
+
+function dateRangeDaysInclusive(from, to) {
+  const start = normalizeDate(from);
+  const end = normalizeDate(to);
+  if (!start || !end) return 0;
+  return Math.floor((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000) + 1;
+}
+
+function validateAttendanceRange(from, to, label = "date range") {
+  if (!from || !to) {
+    const error = new Error("Start date and end date are required");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (from > to) {
+    const error = new Error("Start date cannot be after end date");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (dateRangeDaysInclusive(from, to) > ATTENDANCE_MAX_RANGE_DAYS) {
+    const error = new Error(`${label} cannot be longer than ${ATTENDANCE_MAX_RANGE_DAYS} days`);
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
+function attendanceImportExceptionRow(row) {
+  return {
+    id: String(row.id),
+    importId: String(row.import_id || ""),
+    employeeNo: row.employee_no || "",
+    punchAt: row.punch_at || "",
+    source: row.source || "",
+    sourceDevice: row.source_device || "",
+    status: row.status || "Open",
+    mappedEmployeeId: row.mapped_employee_id || "",
+    mappedEmployeeName: row.mapped_employee_name || "",
+    resolvedByName: row.resolved_by_name || "",
+    resolvedAt: row.resolved_at || "",
+    resolutionNotes: row.resolution_notes || "",
+    raw: parseJson(row.raw_payload, null),
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+  };
+}
+
+async function insertAttendanceImportException(
+  connection,
+  { importId, employeeNo, punchAt, source, sourceDevice, raw, status = "Open" },
+) {
+  await connection.execute(
+    `INSERT INTO attendance_import_exceptions (
+       id, import_id, employee_no, punch_at, source, source_device, raw_payload, status
+     ) VALUES (
+       :id, :importId, :employeeNo, :punchAt, :source, :sourceDevice, :rawPayload, :status
+     )`,
+    {
+      id: crypto.randomUUID(),
+      importId,
+      employeeNo: employeeNo || null,
+      punchAt: punchAt || null,
+      source,
+      sourceDevice: sourceDevice || null,
+      rawPayload: JSON.stringify(raw || null),
+      status,
+    },
+  );
+}
+
+async function readAttendanceImportExceptions({ importId = "", status = "Open" } = {}) {
+  const where = [];
+  const params = {};
+  if (importId) {
+    where.push("aie.import_id = :importId");
+    params.importId = importId;
+  }
+  if (status && status !== "all") {
+    where.push("aie.status = :status");
+    params.status = status;
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const [rows] = await pool.execute(
+    `SELECT aie.*, resolver.name AS resolved_by_name,
+            ${EMPLOYEE_DISPLAY_NAME_SQL.replaceAll("e.", "mapped_employee.")} AS mapped_employee_name
+     FROM attendance_import_exceptions aie
+     LEFT JOIN employees mapped_employee ON mapped_employee.id = aie.mapped_employee_id
+     LEFT JOIN users resolver ON resolver.id = aie.resolved_by
+     ${whereSql}
+     ORDER BY CASE aie.status WHEN 'Open' THEN 0 WHEN 'Mapped' THEN 1 ELSE 2 END,
+              aie.created_at DESC
+     LIMIT 500`,
+    params,
+  );
+  return rows.map(attendanceImportExceptionRow);
+}
+
 async function importParsedPunches({
   user,
   req,
@@ -6978,6 +7320,7 @@ async function importParsedPunches({
   const importId = crypto.randomUUID();
   let imported = 0;
   const errors = [];
+  let exceptions = 0;
   const importLogs = [
     {
       level: "Info",
@@ -7009,7 +7352,25 @@ async function importParsedPunches({
           `SELECT id FROM employees WHERE employee_no = :employeeNo OR biometric_id = :employeeNo LIMIT 1`,
           { employeeNo },
         );
-        if (!employee) throw new Error(`Employee not found: ${employeeNo}`);
+        if (!employee) {
+          exceptions++;
+          await insertAttendanceImportException(connection, {
+            importId,
+            employeeNo,
+            punchAt: punch.punchAt,
+            source,
+            sourceDevice,
+            raw: { fileName, raw: punch.raw },
+          });
+          importLogs.push({
+            level: "Warning",
+            rowNumber: index + 1,
+            employeeNo,
+            message: `Unmapped biometric/employee ID quarantined: ${employeeNo}`,
+            details: { raw: punch.raw || null, punchAt: punch.punchAt || null },
+          });
+          continue;
+        }
         await connection.execute(
           `INSERT INTO attendance_logs (id, employee_id, punch_at, source, source_device, import_id, raw_payload, created_by)
            VALUES (:id, :employeeId, :punchAt, :source, :sourceDevice, :importId, :rawPayload, :createdBy)
@@ -7053,15 +7414,17 @@ async function importParsedPunches({
         periodTo: sortedDates[sortedDates.length - 1] || null,
         notes: errors.length
           ? `${errors.length} row(s) had errors`
+          : exceptions
+            ? `${exceptions} punch row(s) quarantined for mapping`
           : body.notes
             ? String(body.notes)
             : null,
       },
     );
     importLogs.push({
-      level: errors.length ? "Warning" : "Success",
-      message: `Imported ${imported} punch(es); ${errors.length} row(s) had errors`,
-      details: { imported, errors: errors.length },
+      level: errors.length || exceptions ? "Warning" : "Success",
+      message: `Imported ${imported} punch(es); ${errors.length} row(s) had errors; ${exceptions} quarantined`,
+      details: { imported, errors: errors.length, exceptions },
     });
     await insertAttendanceImportLogs(connection, importId, importLogs);
     await connection.commit();
@@ -7100,10 +7463,10 @@ async function importParsedPunches({
   await logAudit(
     user.id,
     "attendance.import_file",
-    { importId, imported, errors: errors.length },
+    { importId, imported, errors: errors.length, exceptions },
     req,
   );
-  return { importId, imported, errors, refreshed, dates };
+  return { importId, imported, errors, exceptions, refreshed, dates };
 }
 
 async function handleImportDtrFile(req, res) {
@@ -7174,7 +7537,11 @@ async function handleImportSingleDtr(req, res) {
   const from = normalizeDate(body.from || body.startDate || body.start_date);
   const to = normalizeDate(body.to || body.endDate || body.end_date);
   if (!employeeId) return json(res, 400, { error: "Select an employee first" });
-  if (!from || !to) return json(res, 400, { error: "Start date and end date are required" });
+  try {
+    validateAttendanceRange(from, to, "Import date range");
+  } catch (error) {
+    return json(res, error.statusCode || 400, { error: error.message });
+  }
   const [[employee]] = await pool.execute(
     `SELECT id, employee_no, biometric_id FROM employees WHERE id = :employeeId LIMIT 1`,
     {
@@ -7258,6 +7625,7 @@ async function handleImportSingleDtr(req, res) {
       records_imported: result.imported,
       imported: result.imported,
       errors: result.errors,
+      exceptions: result.exceptions,
       refreshed: result.refreshed,
       source: "biometric",
       origin: device.ip_address,
@@ -7319,6 +7687,7 @@ async function handleImportSingleDtr(req, res) {
     records_imported: result.imported,
     imported: result.imported,
     errors: result.errors,
+    exceptions: result.exceptions,
     refreshed: result.refreshed,
     source: "file",
     file_type: path.extname(fileName).replace(".", "").toLowerCase(),
@@ -7336,7 +7705,11 @@ async function handleImportAllDtr(req, res) {
   const source = String(body.source || "file").toLowerCase();
   const from = normalizeDate(body.from || body.startDate || body.start_date);
   const to = normalizeDate(body.to || body.endDate || body.end_date);
-  if (!from || !to) return json(res, 400, { error: "Start date and end date are required" });
+  try {
+    validateAttendanceRange(from, to, "Import date range");
+  } catch (error) {
+    return json(res, error.statusCode || 400, { error: error.message });
+  }
 
   if (source === "biometric") {
     const biometricId = String(body.biometricId || body.biometric_id || "").trim();
@@ -7404,6 +7777,7 @@ async function handleImportAllDtr(req, res) {
       importId: result.importId,
       imported: result.imported,
       errors: result.errors,
+      exceptions: result.exceptions,
       refreshed: result.refreshed,
       source: "biometric",
       origin: device.ip_address,
@@ -7464,6 +7838,7 @@ async function handleImportAllDtr(req, res) {
     importId: result.importId,
     imported: result.imported,
     errors: result.errors,
+    exceptions: result.exceptions,
     refreshed: result.refreshed,
     source: "file",
     file_type: path.extname(fileName).replace(".", "").toLowerCase(),
@@ -7597,6 +7972,11 @@ async function handleRefreshDtr(req, res) {
   const employeeId = String(body.employeeId || "").trim();
   const from = normalizeDate(body.from);
   const to = normalizeDate(body.to);
+  try {
+    validateAttendanceRange(from, to, "Refresh date range");
+  } catch (error) {
+    return json(res, error.statusCode || 400, { error: error.message });
+  }
   const result = await refreshDtrEntries({
     employeeId: employeeId || "",
     from,
@@ -7774,8 +8154,13 @@ async function handleDeleteEmployeeScheduleOverride(req, res, employeeId, workDa
   if (!user) return;
   const normalizedDate = normalizeDate(workDate);
   if (!employeeId || !normalizedDate) return json(res, 400, { error: "Invalid schedule override" });
+  const [[employee]] = await pool.execute(`SELECT id FROM employees WHERE id = :employeeId LIMIT 1`, {
+    employeeId,
+  });
+  if (!employee) return json(res, 404, { error: "Employee not found" });
 
   const connection = await pool.getConnection();
+  let committed = false;
   try {
     await connection.beginTransaction();
     const [result] = await connection.execute(
@@ -7789,15 +8174,33 @@ async function handleDeleteEmployeeScheduleOverride(req, res, employeeId, workDa
       { employeeId, workDate: normalizedDate },
     );
     await connection.commit();
+    committed = true;
     await logAudit(
       user.id,
       "attendance.schedule_override_delete",
       { employeeId, workDate: normalizedDate },
       req,
     );
-    return json(res, 200, { ok: true, deleted: result.affectedRows || 0 });
+    const refreshed = await refreshDtrEntries({
+      employeeId,
+      from: normalizedDate,
+      to: normalizedDate,
+      userId: user.id,
+    });
+    await logAudit(
+      user.id,
+      "attendance.schedule_override_refresh",
+      { employeeId, workDate: normalizedDate, refreshed },
+      req,
+    );
+    return json(res, 200, {
+      ok: true,
+      deleted: result.affectedRows || 0,
+      refreshed,
+      warnings: refreshed.warnings || [],
+    });
   } catch (error) {
-    await connection.rollback();
+    if (!committed) await connection.rollback();
     return json(res, 400, { error: error.message });
   } finally {
     connection.release();
@@ -7809,10 +8212,19 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
   if (!user) return;
   const body = await readBody(req);
   const employeeIds = Array.isArray(body.employeeIds)
-    ? body.employeeIds.map(String).filter(Boolean)
+    ? Array.from(new Set(body.employeeIds.map(String).filter(Boolean)))
     : [];
   const schedule = body.schedule || {};
   if (!employeeIds.length) return json(res, 400, { error: "Select at least one employee" });
+  const [existingEmployees] = await pool.query(
+    `SELECT id FROM employees WHERE id IN (${employeeIds.map(() => "?").join(",")})`,
+    employeeIds,
+  );
+  const existingEmployeeIds = new Set(existingEmployees.map((employee) => String(employee.id)));
+  const invalidEmployeeIds = employeeIds.filter((id) => !existingEmployeeIds.has(id));
+  if (invalidEmployeeIds.length) {
+    return json(res, 400, { error: "One or more selected employees no longer exist" });
+  }
   const values = {
     amIn: normalizeTimeInput(schedule.amIn || schedule.am_in || "08:00"),
     amOut: normalizeTimeInput(schedule.amOut || schedule.am_out || "12:00"),
@@ -7831,9 +8243,14 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
   }
 
   const connection = await pool.getConnection();
+  let refreshFrom = normalizeDate(body.from || body.startDate);
+  let refreshTo = normalizeDate(body.to || body.endDate);
+  let touchedDates = [];
   try {
     await connection.beginTransaction();
     if (!overrides) {
+      if (!refreshFrom || !refreshTo) throw new Error("Schedule refresh date range is required");
+      validateAttendanceRange(refreshFrom, refreshTo, "Schedule refresh range");
       for (const employeeId of employeeIds) {
         await connection.execute(
           `UPDATE employees
@@ -7845,8 +8262,9 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
     } else {
       const startDate = normalizeDate(body.startDate || body.from);
       const endDate = normalizeDate(body.endDate || body.to);
-      if (!startDate || !endDate) throw new Error("Start and end dates are required");
-      if (startDate > endDate) throw new Error("Start date cannot be after end date");
+      validateAttendanceRange(startDate, endDate, "Schedule override range");
+      refreshFrom = startDate;
+      refreshTo = endDate;
       const skipWeekends = body.skipWeekends !== false;
       const cursor = new Date(`${startDate}T00:00:00`);
       const end = new Date(`${endDate}T00:00:00`);
@@ -7854,6 +8272,7 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
         const day = cursor.getDay();
         if (skipWeekends && (day === 0 || day === 6)) continue;
         const workDate = formatLocalDate(cursor);
+        touchedDates.push(workDate);
         for (const employeeId of employeeIds) {
           await connection.execute(
             `INSERT INTO employee_schedule_overrides
@@ -7894,10 +8313,36 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
   await logAudit(
     user.id,
     overrides ? "attendance.schedule_override_bulk" : "attendance.schedule_bulk",
-    { employeeIds: employeeIds.length, shiftTemplateCode: shiftTemplateCode || null },
+    { employeeIds: employeeIds.length, shiftTemplateCode: shiftTemplateCode || null, from: refreshFrom, to: refreshTo },
     req,
   );
-  return json(res, 200, { ok: true, updated: employeeIds.length });
+  const refreshed = { recordsProcessed: 0, punchesProcessed: 0, warnings: [] };
+  if (refreshFrom && refreshTo && (!overrides || touchedDates.length)) {
+    for (const employeeId of employeeIds) {
+      const result = await refreshDtrEntries({
+        employeeId,
+        from: refreshFrom,
+        to: refreshTo,
+        userId: user.id,
+      });
+      refreshed.recordsProcessed += result.recordsProcessed;
+      refreshed.punchesProcessed += result.punchesProcessed;
+      refreshed.warnings.push(...(result.warnings || []));
+    }
+  }
+  refreshed.warnings = Array.from(new Set(refreshed.warnings));
+  await logAudit(
+    user.id,
+    overrides ? "attendance.schedule_override_refresh" : "attendance.schedule_refresh",
+    { employeeIds: employeeIds.length, from: refreshFrom, to: refreshTo, refreshed },
+    req,
+  );
+  return json(res, 200, {
+    ok: true,
+    updated: overrides ? employeeIds.length * touchedDates.length : employeeIds.length,
+    refreshed,
+    warnings: refreshed.warnings,
+  });
 }
 
 function monthPeriodBounds(period) {
@@ -8136,6 +8581,7 @@ async function insertBiometricPunches({
 }) {
   let inserted = 0;
   let skipped = 0;
+  let exceptions = 0;
   const affectedEmployees = new Map();
   const connection = await pool.getConnection();
   try {
@@ -8146,7 +8592,17 @@ async function insertBiometricPunches({
         { employeeNo: punch.employeeNo },
       );
       if (!employee) {
-        skipped++;
+        exceptions++;
+        if (importId) {
+          await insertAttendanceImportException(connection, {
+            importId,
+            employeeNo: punch.employeeNo,
+            punchAt: punch.punchAt,
+            source: "Biometric",
+            sourceDevice,
+            raw: punch.raw,
+          });
+        }
         continue;
       }
       const [result] = await connection.execute(
@@ -8183,7 +8639,7 @@ async function insertBiometricPunches({
     connection.release();
   }
 
-  return { inserted, skipped, affectedEmployees };
+  return { inserted, skipped, exceptions, affectedEmployees };
 }
 
 async function handleAdmsIclock(req, res, url) {
@@ -8247,14 +8703,14 @@ async function handleAdmsIclock(req, res, url) {
       {
         id: importId,
         rowCount: result.inserted,
-        notes: `Stored ${result.inserted} new punch(es); skipped ${result.skipped}`,
+        notes: `Stored ${result.inserted} new punch(es); skipped ${result.skipped}; quarantined ${result.exceptions}`,
       },
     );
     await insertAttendanceImportLogs(pool, importId, [
       {
-        level: result.skipped ? "Warning" : "Success",
-        message: `Stored ${result.inserted} new punch(es); skipped ${result.skipped}`,
-        details: { inserted: result.inserted, skipped: result.skipped },
+        level: result.skipped || result.exceptions ? "Warning" : "Success",
+        message: `Stored ${result.inserted} new punch(es); skipped ${result.skipped}; quarantined ${result.exceptions}`,
+        details: { inserted: result.inserted, skipped: result.skipped, exceptions: result.exceptions },
       },
     ]);
     const now = new Date().toISOString();
@@ -8270,7 +8726,7 @@ async function handleAdmsIclock(req, res, url) {
     biometricSyncStartedAt = null;
     addBiometricSyncLog(
       "success",
-      `ADMS stored ${result.inserted} new punch(es), skipped ${result.skipped}`,
+      `ADMS stored ${result.inserted} new punch(es), skipped ${result.skipped}, quarantined ${result.exceptions}`,
     );
   } catch (error) {
     await pool.execute(
@@ -8349,6 +8805,11 @@ async function handleBiometricSyncNow(req, res) {
   const from = normalizeDate(body.from || body.startDate) || formatLocalDate(fallbackFromDate);
   const to = normalizeDate(body.to || body.endDate) || fallbackTo;
   const deviceId = String(body.deviceId || body.biometricId || "").trim();
+  try {
+    validateAttendanceRange(from, to, "Biometric sync range");
+  } catch (error) {
+    return json(res, error.statusCode || 400, { error: error.message });
+  }
 
   const deviceWhere = deviceId ? "WHERE id = :deviceId" : "WHERE is_active = 1";
   const [devices] = await pool.execute(
@@ -8951,7 +9412,7 @@ async function readDtrCorrectionRequests({
 async function handleListDtrCorrectionRequests(req, res, url) {
   const user = await requireUser(req, res);
   if (!user) return;
-  const canApproveCorrections = await hasPermission(user, "approvals.manage");
+  const canApproveCorrections = await hasPermission(user, "attendance.corrections.approve");
   const canSelfServiceAttendance = await hasPermission(user, "self_service.access");
   if (!canApproveCorrections && !canSelfServiceAttendance) {
     return json(res, 403, { error: "DTR correction request access required" });
@@ -9132,7 +9593,12 @@ async function handleCreateDtrCorrectionRequest(req, res) {
 }
 
 async function handleDecideDtrCorrectionRequest(req, res, id) {
-  const user = await requireApproval(req, res);
+  const user = await requirePermission(
+    req,
+    res,
+    "attendance.corrections.approve",
+    "DTR correction approval access required",
+  );
   if (!user) return;
   const body = await readBody(req);
   const status = String(body.status || "");
@@ -9337,7 +9803,12 @@ async function handleCancelDtrCorrectionRequest(req, res, id) {
 }
 
 async function handleReverseDtrCorrectionRequest(req, res, id) {
-  const user = await requireApproval(req, res);
+  const user = await requirePermission(
+    req,
+    res,
+    "attendance.corrections.approve",
+    "DTR correction approval access required",
+  );
   if (!user) return;
   const body = await readBody(req);
   const reason = String(body.reason || body.reverseReason || "").trim();
@@ -10006,13 +10477,10 @@ async function handleCreateEmployee(req, res) {
       const engagementType = String(engagement.engagementType || "").trim();
       if (!allowedTypes.has(engagementType)) throw httpError(400, "Select a valid engagement type");
       const organizationId = Number(engagement.organizationId);
-      const [[organization]] = await connection.execute(
-        `SELECT id,name,is_active FROM hr_reference_values
-          WHERE id=:organizationId AND category = 'offices'`,
-        { organizationId },
-      );
-      if (!organization || !organization.is_active)
-        throw httpError(400, "Select an active office");
+      if (!Number.isInteger(organizationId) || organizationId < 1) {
+        throw httpError(400, "Organizational unit is required");
+      }
+      const organization = await readAssignableOrganization(organizationId, connection);
       const designation = String(engagement.designation || "").trim();
       const dateFrom = String(engagement.dateFrom || "").trim();
       const dateTo = String(engagement.dateTo || "").trim();
@@ -10218,18 +10686,20 @@ async function buildEmployeePdsPayload(id, user) {
 }
 
 function pdsFileName(employee) {
-  const cleanPart = (value, fallback = "") =>
-    String(value || fallback)
+  const cleanPart = (value) =>
+    String(value || "")
       .replace(/[<>:"/\\|?*\u0000-\u001F]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
-  const lastName = cleanPart(employee.lastname, "Employee");
+  const lastName = cleanPart(employee.lastname);
   const firstName = cleanPart(employee.firstname);
   const middleName = cleanPart(employee.middlename);
   const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
-  const givenNames = [firstName, middleInitial].filter(Boolean).join(" ") || "Employee";
+  const name = [lastName, [firstName, middleInitial].filter(Boolean).join(" ")]
+    .filter(Boolean)
+    .join(", ");
 
-  return `${lastName}, ${givenNames} - PDS.xlsx`;
+  return `${name || "Personal Data Sheet"} - Personal Data Sheet.xlsx`;
 }
 
 async function generateEmployeePdsExcelFile(id, user, req) {
@@ -10291,26 +10761,31 @@ async function handleDownloadEmployeePdsExcel(req, res, fileName) {
   } catch {
     return json(res, 404, { error: "Personal Data Sheet file not found" });
   }
-  if (!(await authorizeDocumentExport(user, decoded))) {
+  const exportRecord = await authorizeDocumentExport(user, decoded);
+  if (!exportRecord) {
     return json(res, 403, { error: "This export is not available to your account or has expired" });
   }
+  const employee = await readEmployeeById(exportRecord.employee_id);
+  const downloadFileName = pdsFileName(employee || {});
   await logAudit(user.id, "employees.pds_excel_download", { fileName: decoded }, req);
-  return sendFile(res, resolved, decoded, { deleteAfterSend: true });
+  return sendFile(res, resolved, downloadFileName, { deleteAfterSend: true });
 }
 
 function wesFileName(employee) {
-  const cleanPart = (value, fallback = "") =>
-    String(value || fallback)
+  const cleanPart = (value) =>
+    String(value || "")
       .replace(/[<>:"/\\|?*\u0000-\u001F]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
-  const lastName = cleanPart(employee.lastname, "Employee");
+  const lastName = cleanPart(employee.lastname);
   const firstName = cleanPart(employee.firstname);
   const middleName = cleanPart(employee.middlename);
   const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
-  const givenNames = [firstName, middleInitial].filter(Boolean).join(" ") || "Employee";
+  const name = [lastName, [firstName, middleInitial].filter(Boolean).join(" ")]
+    .filter(Boolean)
+    .join(", ");
 
-  return `${lastName}, ${givenNames} - Work Experience Sheet.docx`;
+  return `${name || "Work Experience Sheet"} - Work Experience Sheet.docx`;
 }
 
 async function generateEmployeeWesDocxFile(id, user, req) {
@@ -10378,11 +10853,14 @@ async function handleDownloadEmployeeWesDocx(req, res, fileName) {
   } catch {
     return json(res, 404, { error: "Work Experience Sheet file not found" });
   }
-  if (!(await authorizeDocumentExport(user, decoded))) {
+  const exportRecord = await authorizeDocumentExport(user, decoded);
+  if (!exportRecord) {
     return json(res, 403, { error: "This export is not available to your account or has expired" });
   }
+  const employee = await readEmployeeById(exportRecord.employee_id);
+  const downloadFileName = wesFileName(employee || {});
   await logAudit(user.id, "employees.wes_docx_download", { fileName: decoded }, req);
-  return sendFile(res, resolved, decoded, { deleteAfterSend: true });
+  return sendFile(res, resolved, downloadFileName, { deleteAfterSend: true });
 }
 
 async function handleUpdateEmployee(req, res, id) {
@@ -10407,6 +10885,19 @@ async function handleUpdateEmployee(req, res, id) {
   if (isSelfService) {
     const existingData = employeeDbPayload(existing, existing);
     data = selfServiceEmployeePayload(body, existing, data, existingData);
+  }
+  if (
+    canManage &&
+    body.currentOrganizationId !== undefined &&
+    data.currentOrganizationId &&
+    Number(data.currentOrganizationId) !== Number(existing.currentOrganizationId || 0)
+  ) {
+    try {
+      const organization = await readAssignableOrganization(Number(data.currentOrganizationId));
+      data.department = organization.name;
+    } catch (error) {
+      return json(res, 400, { error: error.message });
+    }
   }
   const assignmentOwner = await activeAssignmentOwnership(id);
   if (assignmentOwner) {
@@ -10564,7 +11055,7 @@ async function handleCreateSectionRow(req, res, employeeId, section) {
   const config = validateSection(section);
   if (!config) return json(res, 404, { error: "Section not found" });
   if (isSelfService && !EMPLOYEE_SELF_SERVICE_SECTIONS.has(section)) {
-    return json(res, 403, { error: "This 201 section is managed by HR" });
+    return json(res, 403, { error: selfServiceSectionAccessError(section) });
   }
   const employee = await readEmployeeById(employeeId);
   if (!employee) return json(res, 404, { error: "Employee not found" });
@@ -10575,7 +11066,7 @@ async function handleCreateSectionRow(req, res, employeeId, section) {
   try {
     safePayload = validateSectionPayload(
       section,
-      isSelfService ? selfServiceSectionPayload(payload) : payload,
+      isSelfService ? selfServiceSectionPayload(section, payload) : payload,
     );
   } catch (error) {
     return json(res, 400, { error: error.message });
@@ -10632,7 +11123,7 @@ async function handleUpdateSectionRow(req, res, employeeId, section, rowId, supp
   const config = validateSection(section);
   if (!config) return json(res, 404, { error: "Section not found" });
   if (isSelfService && !EMPLOYEE_SELF_SERVICE_SECTIONS.has(section)) {
-    return json(res, 403, { error: "This 201 section is managed by HR" });
+    return json(res, 403, { error: selfServiceSectionAccessError(section) });
   }
   const body = suppliedPayload ? { payload: suppliedPayload } : await readBody(req);
   const payload = body.payload && typeof body.payload === "object" ? body.payload : {};
@@ -10646,7 +11137,7 @@ async function handleUpdateSectionRow(req, res, employeeId, section, rowId, supp
   try {
     safePayload = validateSectionPayload(
       section,
-      isSelfService ? selfServiceSectionPayload(payload, beforePayload) : payload,
+      isSelfService ? selfServiceSectionPayload(section, payload, beforePayload) : payload,
       beforePayload,
     );
   } catch (error) {
@@ -10693,7 +11184,7 @@ async function handleDeleteSectionRow(req, res, employeeId, section, rowId) {
   const config = validateSection(section);
   if (!config) return json(res, 404, { error: "Section not found" });
   if (isSelfService && !EMPLOYEE_SELF_SERVICE_SECTIONS.has(section)) {
-    return json(res, 403, { error: "This 201 section is managed by HR" });
+    return json(res, 403, { error: selfServiceSectionAccessError(section) });
   }
   const [[existing]] = await pool.execute(
     `SELECT id, payload FROM \`${config.table}\` WHERE id = :rowId AND employee_id = :employeeId LIMIT 1`,
@@ -11761,10 +12252,14 @@ async function handleGetConfig(req, res) {
   if (!user) return;
 
   const [[agency]] = await pool.query(
-    `SELECT name, tagline, logo_url, icon_url, banner_url FROM agency_settings WHERE id = 1`,
+    `SELECT name, tagline, logo_url, icon_url, banner_url, organization_hierarchy_json
+     FROM agency_settings WHERE id = 1`,
   );
   const [departments] = await pool.query(
-    `SELECT id, name FROM departments ORDER BY sort_order ASC, name ASC`,
+    `SELECT id, name
+     FROM hr_reference_values
+     WHERE category = 'offices' AND is_active = 1
+     ORDER BY sort_order ASC, name ASC`,
   );
   const [positions] = await pool.query(
     `SELECT id, title FROM positions ORDER BY sort_order ASC, title ASC`,
@@ -11792,6 +12287,9 @@ async function handleGetConfig(req, res) {
       logoUrl: agency.logo_url || "",
       iconUrl: agency.icon_url || "",
       bannerUrl: agency.banner_url || "",
+      hierarchy: organizationHierarchyMetadata(
+        parseOrganizationHierarchyValue(agency.organization_hierarchy_json),
+      ),
     },
     departments,
     positions,
@@ -11815,7 +12313,8 @@ async function handleGetConfig(req, res) {
 
 async function handlePublicAgencySettings(req, res) {
   const [[agency]] = await pool.query(
-    `SELECT name, tagline, logo_url, icon_url, banner_url FROM agency_settings WHERE id = 1`,
+    `SELECT name, tagline, logo_url, icon_url, banner_url, organization_hierarchy_json
+     FROM agency_settings WHERE id = 1`,
   );
 
   return json(res, 200, {
@@ -11825,6 +12324,9 @@ async function handlePublicAgencySettings(req, res) {
       logoUrl: agency?.logo_url || "",
       iconUrl: agency?.icon_url || "",
       bannerUrl: agency?.banner_url || "",
+      hierarchy: organizationHierarchyMetadata(
+        parseOrganizationHierarchyValue(agency?.organization_hierarchy_json),
+      ),
     },
   });
 }
@@ -11872,7 +12374,12 @@ async function handleUpdateAgency(req, res) {
     agency,
   );
   await logAudit(admin.id, "config.agency_update", null, req);
-  return json(res, 200, { agency });
+  return json(res, 200, {
+    agency: {
+      ...agency,
+      hierarchy: organizationHierarchyMetadata(await readOrganizationHierarchy()),
+    },
+  });
 }
 
 async function handleGetDatabaseConfig(req, res) {
@@ -11962,48 +12469,25 @@ async function handleUpdateDatabaseConfig(req, res) {
 async function handleCreateDepartment(req, res) {
   const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
-  const body = await readBody(req);
-  const name = String(body.name || "").trim();
-  if (!name) return json(res, 400, { error: "Department name is required" });
-  try {
-    const [result] = await pool.execute(`INSERT INTO departments (name) VALUES (:name)`, { name });
-    await logAudit(user.id, "config.department_create", { name }, req);
-    return json(res, 201, { department: { id: result.insertId, name } });
-  } catch (error) {
-    if (error?.code === "ER_DUP_ENTRY")
-      return json(res, 409, { error: "Department already exists" });
-    throw error;
-  }
+  return json(res, 409, {
+    error: "Departments are managed through the configured organizational reference level",
+  });
 }
 
 async function handleUpdateDepartment(req, res, id) {
   const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
-  const body = await readBody(req);
-  const name = String(body.name || "").trim();
-  if (!name) return json(res, 400, { error: "Department name is required" });
-  try {
-    const [result] = await pool.execute(
-      `UPDATE departments SET name = :name WHERE id = :id`,
-      { id, name },
-    );
-    if (!result.affectedRows) return json(res, 404, { error: "Department not found" });
-    await logAudit(user.id, "config.department_update", { id, name }, req);
-    return json(res, 200, { department: { id: Number(id), name } });
-  } catch (error) {
-    if (error?.code === "ER_DUP_ENTRY")
-      return json(res, 409, { error: "Department already exists" });
-    throw error;
-  }
+  return json(res, 409, {
+    error: "Departments are read-only here; edit the configured organizational reference level",
+  });
 }
 
 async function handleDeleteDepartment(req, res, id) {
   const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
-  const [result] = await pool.execute(`DELETE FROM departments WHERE id = :id`, { id });
-  if (!result.affectedRows) return json(res, 404, { error: "Department not found" });
-  await logAudit(user.id, "config.department_delete", { id }, req);
-  return json(res, 200, { ok: true });
+  return json(res, 409, {
+    error: "Departments are read-only here; deactivate the configured organizational reference",
+  });
 }
 
 async function handleCreatePosition(req, res) {
@@ -12029,16 +12513,15 @@ async function handleUpdatePosition(req, res, id) {
   const title = String(body.title || "").trim();
   if (!title) return json(res, 400, { error: "Position title is required" });
   try {
-    const [result] = await pool.execute(
-      `UPDATE positions SET title = :title WHERE id = :id`,
-      { id, title },
-    );
+    const [result] = await pool.execute(`UPDATE positions SET title = :title WHERE id = :id`, {
+      id,
+      title,
+    });
     if (!result.affectedRows) return json(res, 404, { error: "Position not found" });
     await logAudit(user.id, "config.position_update", { id, title }, req);
     return json(res, 200, { position: { id: Number(id), title } });
   } catch (error) {
-    if (error?.code === "ER_DUP_ENTRY")
-      return json(res, 409, { error: "Position already exists" });
+    if (error?.code === "ER_DUP_ENTRY") return json(res, 409, { error: "Position already exists" });
     throw error;
   }
 }
@@ -12703,6 +13186,306 @@ function getReferenceLibraryType(category) {
   return REFERENCE_LIBRARY_TYPES[category] || null;
 }
 
+function cloneDefaultOrganizationHierarchy() {
+  return JSON.parse(JSON.stringify(DEFAULT_ORGANIZATION_HIERARCHY));
+}
+
+function parseOrganizationHierarchyValue(value) {
+  if (!value) return cloneDefaultOrganizationHierarchy();
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    return normalizeOrganizationHierarchy(parsed);
+  } catch {
+    return cloneDefaultOrganizationHierarchy();
+  }
+}
+
+function normalizeOrganizationHierarchy(value) {
+  const incoming = Array.isArray(value?.levels) ? value.levels : [];
+  if (incoming.length !== ORGANIZATION_REFERENCE_CATEGORIES.length) {
+    throw new Error("Organizational structure must include all four reusable levels");
+  }
+
+  const seen = new Set();
+  const levels = incoming.map((level) => {
+    const category = String(level?.category || "");
+    if (!ORGANIZATION_REFERENCE_CATEGORIES.includes(category) || seen.has(category)) {
+      throw new Error("Organizational levels must be unique Sector, Office, Division, and Section");
+    }
+    seen.add(category);
+    const label = String(level?.label || "").trim();
+    const pluralLabel = String(level?.pluralLabel || "").trim();
+    if (!label || !pluralLabel) throw new Error("Every organizational level needs labels");
+    if (label.length > 80 || pluralLabel.length > 100) {
+      throw new Error("Organizational level labels are too long");
+    }
+    const enabled = Boolean(level?.enabled);
+    const assignable = enabled && Boolean(level?.assignable);
+    return { category, label, pluralLabel, enabled, assignable };
+  });
+
+  const enabled = levels.filter((level) => level.enabled);
+  if (!enabled.length) throw new Error("Enable at least one organizational level");
+  if (!enabled.some((level) => level.assignable)) {
+    throw new Error("At least one enabled organizational level must accept assignments");
+  }
+
+  return {
+    version: Math.max(1, Number(value?.version || 1)),
+    levels,
+  };
+}
+
+async function readOrganizationHierarchy(connection = pool) {
+  const [[agency]] = await connection.query(
+    `SELECT organization_hierarchy_json FROM agency_settings WHERE id = 1 LIMIT 1`,
+  );
+  return parseOrganizationHierarchyValue(agency?.organization_hierarchy_json);
+}
+
+function organizationHierarchyMetadata(hierarchy) {
+  const enabledLevels = hierarchy.levels.filter((level) => level.enabled);
+  let previousCategory = null;
+  return {
+    version: hierarchy.version,
+    levels: hierarchy.levels.map((level) => {
+      const parentCategory = level.enabled ? previousCategory : null;
+      if (level.enabled) previousCategory = level.category;
+      return { ...level, parentCategory };
+    }),
+    enabledCategories: enabledLevels.map((level) => level.category),
+    assignableCategories: enabledLevels
+      .filter((level) => level.assignable)
+      .map((level) => level.category),
+  };
+}
+
+function hierarchyLevel(hierarchy, category) {
+  return hierarchy.levels.find((level) => level.category === category) || null;
+}
+
+function configuredParentCategory(hierarchy, category) {
+  const enabled = hierarchy.levels.filter((level) => level.enabled);
+  const index = enabled.findIndex((level) => level.category === category);
+  return index > 0 ? enabled[index - 1].category : null;
+}
+
+async function readAssignableOrganization(id, connection = pool) {
+  const hierarchy = await readOrganizationHierarchy(connection);
+  const metadata = organizationHierarchyMetadata(hierarchy);
+  const [[organization]] = await connection.execute(
+    `SELECT id, name, category, parent_id, is_active
+     FROM hr_reference_values
+     WHERE id = :id
+     LIMIT 1`,
+    { id },
+  );
+  if (
+    !organization ||
+    !organization.is_active ||
+    !metadata.assignableCategories.includes(organization.category)
+  ) {
+    const labels = hierarchy.levels
+      .filter((level) => level.enabled && level.assignable)
+      .map((level) => level.label);
+    throw new Error(`Select an active ${labels.join(" or ") || "organizational unit"}`);
+  }
+  const selectedLevelIndex = metadata.enabledCategories.indexOf(organization.category);
+  if (selectedLevelIndex > 0) {
+    const [organizationRows] = await connection.query(
+      `SELECT id, category, parent_id, is_active
+       FROM hr_reference_values
+       WHERE category IN ('sectors','offices','divisions','sections')`,
+    );
+    const rowsById = new Map(
+      organizationRows.map((row) => [
+        Number(row.id),
+        {
+          ...row,
+          id: Number(row.id),
+          parent_id: row.parent_id == null ? null : Number(row.parent_id),
+        },
+      ]),
+    );
+    for (const requiredCategory of metadata.enabledCategories.slice(0, selectedLevelIndex)) {
+      const ancestor = referenceAncestor(rowsById, organization, requiredCategory);
+      if (!ancestor || !ancestor.is_active) {
+        const requiredLevel = hierarchyLevel(hierarchy, requiredCategory);
+        throw new Error(
+          `${requiredLevel?.label || "Organizational"} ancestry is missing or inactive`,
+        );
+      }
+    }
+  }
+  return organization;
+}
+
+function referenceAncestor(rowsById, row, category) {
+  const visited = new Set([Number(row.id)]);
+  let parentId = row.parent_id == null ? null : Number(row.parent_id);
+  while (parentId && !visited.has(parentId)) {
+    visited.add(parentId);
+    const parent = rowsById.get(parentId);
+    if (!parent) return null;
+    if (parent.category === category) return parent;
+    parentId = parent.parent_id == null ? null : Number(parent.parent_id);
+  }
+  return null;
+}
+
+async function organizationHierarchyPreview(hierarchy, connection = pool) {
+  const metadata = organizationHierarchyMetadata(hierarchy);
+  const currentHierarchy = await readOrganizationHierarchy(connection);
+  const currentMetadata = organizationHierarchyMetadata(currentHierarchy);
+  const [referenceRows] = await connection.query(
+    `SELECT id, category, name, parent_id, is_active
+     FROM hr_reference_values
+     WHERE category IN ('sectors','offices','divisions','sections')`,
+  );
+  const rowsById = new Map(referenceRows.map((row) => [Number(row.id), row]));
+  const [legacyDepartments] = await connection.query(
+    `SELECT id, name FROM departments ORDER BY sort_order, name`,
+  );
+  const normalizeOrganizationName = (value) =>
+    String(value || "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const officesByName = new Map(
+    referenceRows
+      .filter((row) => row.category === "offices")
+      .map((row) => [normalizeOrganizationName(row.name), row]),
+  );
+  const departmentConsolidation = {
+    matched: [],
+    unresolved: [],
+  };
+  for (const department of legacyDepartments) {
+    const office = officesByName.get(normalizeOrganizationName(department.name));
+    const target = office ? departmentConsolidation.matched : departmentConsolidation.unresolved;
+    target.push({
+      departmentId: Number(department.id),
+      departmentName: department.name,
+      officeId: office ? Number(office.id) : null,
+      officeName: office?.name || "",
+    });
+  }
+  const parentIssues = [];
+
+  for (const row of referenceRows) {
+    if (!row.is_active || !metadata.enabledCategories.includes(row.category)) continue;
+    const expectedParentCategory = configuredParentCategory(hierarchy, row.category);
+    if (!expectedParentCategory) continue;
+    const ancestor = referenceAncestor(rowsById, row, expectedParentCategory);
+    if (!ancestor) {
+      parentIssues.push({
+        referenceId: Number(row.id),
+        category: row.category,
+        name: row.name,
+        requiredParentCategory: expectedParentCategory,
+      });
+    }
+  }
+
+  const assignable = metadata.assignableCategories;
+  const [employeeRows] = await connection.query(
+    `SELECT current_org_unit_ref_id reference_id, COUNT(*) count
+     FROM employees
+     WHERE current_org_unit_ref_id IS NOT NULL AND lifecycle_state = 'Active'
+     GROUP BY current_org_unit_ref_id`,
+  );
+  const [engagementRows] = await connection.query(
+    `SELECT org_unit_ref_id reference_id, COUNT(*) count
+     FROM non_plantilla_engagements
+     WHERE status IN ('Active','Scheduled')
+     GROUP BY org_unit_ref_id`,
+  );
+  const [temporaryRows] = await connection.query(
+    `SELECT org_unit_ref_id reference_id, COUNT(*) count
+     FROM temporary_assignments
+     WHERE org_unit_ref_id IS NOT NULL AND status IN ('Active','Scheduled')
+     GROUP BY org_unit_ref_id`,
+  );
+  const [movementRows] = await connection.query(
+    `SELECT target_org_unit_ref_id reference_id, COUNT(*) count
+     FROM personnel_movements
+     WHERE target_org_unit_ref_id IS NOT NULL
+       AND status IN ('Draft','Submitted','Reviewed','Approved','Scheduled')
+     GROUP BY target_org_unit_ref_id`,
+  );
+  const referenceColumn = {
+    sectors: "sector_ref_id",
+    offices: "office_ref_id",
+    divisions: "division_ref_id",
+    sections: "section_ref_id",
+  };
+  const effectivePlantillaColumns = [...currentMetadata.enabledCategories]
+    .reverse()
+    .map((category) => `pi.${referenceColumn[category]}`);
+  const effectivePlantillaReference =
+    effectivePlantillaColumns.length === 1
+      ? effectivePlantillaColumns[0]
+      : `COALESCE(${effectivePlantillaColumns.join(",")})`;
+  const [plantillaRows] = effectivePlantillaColumns.length
+    ? await connection.query(
+        `SELECT ${effectivePlantillaReference} reference_id, COUNT(*) count
+         FROM plantilla_items pi
+         WHERE pi.item_status = 'Active'
+           AND ${effectivePlantillaReference} IS NOT NULL
+         GROUP BY ${effectivePlantillaReference}`,
+      )
+    : [[]];
+  const operationalUsage = new Map();
+  for (const [kind, rows] of [
+    ["employees", employeeRows],
+    ["engagements", engagementRows],
+    ["temporaryAssignments", temporaryRows],
+    ["movements", movementRows],
+    ["plantillaItems", plantillaRows],
+  ]) {
+    for (const row of rows) {
+      const id = Number(row.reference_id);
+      const current = operationalUsage.get(id) || {
+        referenceId: id,
+        employees: 0,
+        engagements: 0,
+        temporaryAssignments: 0,
+        movements: 0,
+        plantillaItems: 0,
+      };
+      current[kind] += Number(row.count || 0);
+      operationalUsage.set(id, current);
+    }
+  }
+  const assignmentIssues = [];
+  for (const usage of operationalUsage.values()) {
+    const reference = rowsById.get(usage.referenceId);
+    if (!reference || !assignable.includes(reference.category)) {
+      assignmentIssues.push({
+        ...usage,
+        category: reference?.category || "",
+        name: reference?.name || `Reference #${usage.referenceId}`,
+      });
+    }
+  }
+
+  return {
+    hierarchy: metadata,
+    compatible: parentIssues.length === 0 && assignmentIssues.length === 0,
+    parentIssues,
+    assignmentIssues,
+    departmentConsolidation,
+    summary: {
+      activeReferences: referenceRows.filter((row) => row.is_active).length,
+      parentMappingsRequired: parentIssues.length,
+      assignmentMappingsRequired: assignmentIssues.length,
+      unresolvedLegacyDepartments: departmentConsolidation.unresolved.length,
+    },
+  };
+}
+
 function referenceValueResponse(row) {
   return {
     id: row.id,
@@ -12752,7 +13535,183 @@ async function handleListReferenceValues(req, res) {
   for (const row of rows) {
     if (libraries[row.category]) libraries[row.category].push(referenceValueResponse(row));
   }
-  return json(res, 200, { libraries });
+  const hierarchy = await readOrganizationHierarchy();
+  return json(res, 200, {
+    libraries,
+    hierarchy: organizationHierarchyMetadata(hierarchy),
+  });
+}
+
+async function handlePreviewOrganizationHierarchy(req, res) {
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
+  if (!user) return;
+  try {
+    const body = await readBody(req);
+    const hierarchy = normalizeOrganizationHierarchy(body?.hierarchy || body);
+    return json(res, 200, await organizationHierarchyPreview(hierarchy));
+  } catch (error) {
+    return json(res, 400, { error: error instanceof Error ? error.message : "Invalid hierarchy" });
+  }
+}
+
+async function handleActivateOrganizationHierarchy(req, res) {
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
+  if (!user) return;
+  const connection = await pool.getConnection();
+  try {
+    const body = await readBody(req);
+    const requested = normalizeOrganizationHierarchy(body?.hierarchy || body);
+    await connection.beginTransaction();
+    const current = await readOrganizationHierarchy(connection);
+    const hierarchy = { ...requested, version: Number(current.version || 1) + 1 };
+    const currentMetadata = organizationHierarchyMetadata(current);
+    const nextMetadata = organizationHierarchyMetadata(hierarchy);
+    const referenceColumn = {
+      sectors: "sector_ref_id",
+      offices: "office_ref_id",
+      divisions: "division_ref_id",
+      sections: "section_ref_id",
+    };
+    const currentPlantillaColumns = [...currentMetadata.enabledCategories]
+      .reverse()
+      .map((category) => referenceColumn[category]);
+    const currentPlantillaReference = currentPlantillaColumns.length
+      ? `COALESCE(${currentPlantillaColumns.join(",")})`
+      : "NULL";
+    const preview = await organizationHierarchyPreview(hierarchy, connection);
+    const parentMappings = new Map(
+      (Array.isArray(body?.parentMappings) ? body.parentMappings : []).map((mapping) => [
+        Number(mapping.referenceId),
+        mapping.parentId == null || mapping.parentId === "" ? null : Number(mapping.parentId),
+      ]),
+    );
+    const assignmentMappings = new Map(
+      (Array.isArray(body?.assignmentMappings) ? body.assignmentMappings : []).map((mapping) => [
+        Number(mapping.referenceId),
+        Number(mapping.replacementId),
+      ]),
+    );
+
+    for (const issue of preview.parentIssues) {
+      if (!parentMappings.has(issue.referenceId)) {
+        throw new Error(`Choose a ${issue.requiredParentCategory} parent for ${issue.name}`);
+      }
+      const parentId = parentMappings.get(issue.referenceId);
+      if (!parentId) throw new Error(`${issue.name} requires an active parent`);
+      const [[parent]] = await connection.execute(
+        `SELECT id, category, is_active FROM hr_reference_values WHERE id = :id LIMIT 1`,
+        { id: parentId },
+      );
+      if (!parent || !parent.is_active || parent.category !== issue.requiredParentCategory) {
+        throw new Error(`Select a valid active parent for ${issue.name}`);
+      }
+      await connection.execute(
+        `UPDATE hr_reference_values SET parent_id = :parentId WHERE id = :id`,
+        { id: issue.referenceId, parentId },
+      );
+    }
+
+    const assignableCategories = nextMetadata.assignableCategories;
+    for (const issue of preview.assignmentIssues) {
+      const replacementId = assignmentMappings.get(issue.referenceId);
+      if (!replacementId) {
+        throw new Error(`Choose an assignable replacement for ${issue.name}`);
+      }
+      const [[replacement]] = await connection.execute(
+        `SELECT id, category, name, is_active
+         FROM hr_reference_values WHERE id = :id LIMIT 1`,
+        { id: replacementId },
+      );
+      if (
+        !replacement ||
+        !replacement.is_active ||
+        !assignableCategories.includes(replacement.category)
+      ) {
+        throw new Error(`Select a valid active assignable replacement for ${issue.name}`);
+      }
+      await connection.execute(
+        `UPDATE employees
+         SET current_org_unit_ref_id = :replacementId, department = :replacementName
+         WHERE current_org_unit_ref_id = :sourceId AND lifecycle_state = 'Active'`,
+        {
+          sourceId: issue.referenceId,
+          replacementId,
+          replacementName: replacement.name,
+        },
+      );
+      await connection.execute(
+        `UPDATE non_plantilla_engagements
+         SET org_unit_ref_id = :replacementId
+         WHERE org_unit_ref_id = :sourceId AND status IN ('Active','Scheduled')`,
+        { sourceId: issue.referenceId, replacementId },
+      );
+      await connection.execute(
+        `UPDATE temporary_assignments
+         SET org_unit_ref_id = :replacementId
+         WHERE org_unit_ref_id = :sourceId AND status IN ('Active','Scheduled')`,
+        { sourceId: issue.referenceId, replacementId },
+      );
+      await connection.execute(
+        `UPDATE personnel_movements
+         SET target_org_unit_ref_id = :replacementId,
+             target_department = :replacementName
+         WHERE target_org_unit_ref_id = :sourceId
+           AND status IN ('Draft','Submitted','Reviewed','Approved','Scheduled')`,
+        {
+          sourceId: issue.referenceId,
+          replacementId,
+          replacementName: replacement.name,
+        },
+      );
+      const replacementIndex = nextMetadata.enabledCategories.indexOf(replacement.category);
+      const plantillaAssignments = [
+        `${referenceColumn[replacement.category]} = :replacementId`,
+        ...nextMetadata.enabledCategories
+          .slice(replacementIndex + 1)
+          .map((category) => `${referenceColumn[category]} = NULL`),
+      ];
+      if (currentPlantillaColumns.length) {
+        await connection.execute(
+          `UPDATE plantilla_items
+           SET ${plantillaAssignments.join(", ")}
+           WHERE item_status = 'Active'
+             AND ${currentPlantillaReference} = :sourceId`,
+          { sourceId: issue.referenceId, replacementId },
+        );
+      }
+    }
+
+    await connection.execute(
+      `UPDATE agency_settings
+       SET organization_hierarchy_json = :hierarchy
+       WHERE id = 1`,
+      { hierarchy: JSON.stringify(hierarchy) },
+    );
+    const afterPreview = await organizationHierarchyPreview(hierarchy, connection);
+    if (!afterPreview.compatible) {
+      throw new Error("Organizational structure still has unresolved mappings");
+    }
+    await connection.commit();
+    await logAudit(
+      user.id,
+      "config.organization_hierarchy_activate",
+      {
+        previous: current,
+        next: hierarchy,
+        parentMappings: [...parentMappings.entries()],
+        assignmentMappings: [...assignmentMappings.entries()],
+      },
+      req,
+    );
+    return json(res, 200, await organizationHierarchyPreview(hierarchy));
+  } catch (error) {
+    await connection.rollback().catch(() => undefined);
+    return json(res, 400, {
+      error: error instanceof Error ? error.message : "Unable to activate hierarchy",
+    });
+  } finally {
+    connection.release();
+  }
 }
 
 async function validateReferenceParent(
@@ -12761,6 +13720,50 @@ async function validateReferenceParent(
   { existingParentId = null, childIsActive = true } = {},
 ) {
   const config = getReferenceLibraryType(category);
+  if (ORGANIZATION_REFERENCE_CATEGORIES.includes(category)) {
+    const hierarchy = await readOrganizationHierarchy();
+    const level = hierarchyLevel(hierarchy, category);
+    const parentCategory = level?.enabled
+      ? configuredParentCategory(hierarchy, category)
+      : config?.parentCategory || null;
+    const label = level?.label || config?.label || "Organizational unit";
+    const parentLevel = parentCategory ? hierarchyLevel(hierarchy, parentCategory) : null;
+    const parentLabel =
+      parentLevel?.label || REFERENCE_LIBRARY_TYPES[parentCategory]?.label || "Parent";
+    const unchangedParent = Number(existingParentId || 0) === Number(parentId || 0);
+
+    if (!parentCategory) {
+      if (parentId && !unchangedParent) throw new Error(`${label} cannot have a parent`);
+      return parentId ? Number(parentId) : null;
+    }
+    if (!parentId) throw new Error(`${parentLabel} is required`);
+    const [rows] = await pool.execute(
+      `SELECT id, category, parent_id, is_active
+       FROM hr_reference_values
+       WHERE id = :parentId
+       LIMIT 1`,
+      { parentId },
+    );
+    const parent = rows[0];
+    if (!parent) throw new Error(`Select a valid ${parentLabel}`);
+    if (!parent.is_active && (childIsActive || !unchangedParent)) {
+      throw new Error(`Select an active ${parentLabel}`);
+    }
+    if (parent.category === parentCategory) return Number(parentId);
+
+    if (unchangedParent) {
+      const [organizationRows] = await pool.query(
+        `SELECT id, category, parent_id
+         FROM hr_reference_values
+         WHERE category IN ('sectors','offices','divisions','sections')`,
+      );
+      const rowsById = new Map(organizationRows.map((row) => [Number(row.id), row]));
+      if (referenceAncestor(rowsById, { id: 0, parent_id: parentId }, parentCategory)) {
+        return Number(parentId);
+      }
+    }
+    throw new Error(`Select a ${parentLabel} as the direct parent`);
+  }
   if (!config?.parentCategory) {
     if (parentId) throw new Error(`${config?.label || "This reference"} cannot have a parent`);
     return null;
@@ -12848,12 +13851,311 @@ function referenceMutationError(res, error, label) {
   throw error;
 }
 
+async function referenceValueUsage(id, category, connection = pool) {
+  const plantillaColumn = {
+    sectors: "sector_ref_id",
+    offices: "office_ref_id",
+    divisions: "division_ref_id",
+    sections: "section_ref_id",
+  }[category];
+  const [[children]] = await connection.execute(
+    `SELECT
+       SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) active_count,
+       COUNT(*) total_count
+     FROM hr_reference_values
+     WHERE parent_id = :id`,
+    { id },
+  );
+  const [[employees]] = await connection.execute(
+    `SELECT
+       SUM(CASE WHEN lifecycle_state = 'Active' THEN 1 ELSE 0 END) active_count,
+       COUNT(*) total_count
+     FROM employees
+     WHERE current_org_unit_ref_id = :id`,
+    { id },
+  );
+  const [[engagements]] = await connection.execute(
+    `SELECT
+       SUM(CASE WHEN status IN ('Active','Scheduled') THEN 1 ELSE 0 END) active_count,
+       COUNT(*) total_count
+     FROM non_plantilla_engagements
+     WHERE org_unit_ref_id = :id`,
+    { id },
+  );
+  const [[temporaryAssignments]] = await connection.execute(
+    `SELECT
+       SUM(CASE WHEN status IN ('Active','Scheduled') THEN 1 ELSE 0 END) active_count,
+       COUNT(*) total_count
+     FROM temporary_assignments
+     WHERE org_unit_ref_id = :id`,
+    { id },
+  );
+  const [[movements]] = await connection.execute(
+    `SELECT
+       SUM(CASE WHEN status IN ('Draft','Submitted','Reviewed','Approved','Scheduled') THEN 1 ELSE 0 END) active_count,
+       COUNT(*) total_count
+     FROM personnel_movements
+     WHERE target_org_unit_ref_id = :id`,
+    { id },
+  );
+  let plantillaItems = { active_count: 0, total_count: 0 };
+  if (plantillaColumn) {
+    [[plantillaItems]] = await connection.execute(
+      `SELECT
+         SUM(CASE WHEN item_status = 'Active' THEN 1 ELSE 0 END) active_count,
+         COUNT(*) total_count
+       FROM plantilla_items
+       WHERE ${plantillaColumn} = :id`,
+      { id },
+    );
+  }
+  const count = (row, key) => Number(row?.[key] || 0);
+  const usage = {
+    activeChildren: count(children, "active_count"),
+    totalChildren: count(children, "total_count"),
+    currentEmployees: count(employees, "active_count"),
+    employeeReferences: count(employees, "total_count"),
+    activeEngagements: count(engagements, "active_count"),
+    engagementReferences: count(engagements, "total_count"),
+    activeTemporaryAssignments: count(temporaryAssignments, "active_count"),
+    temporaryAssignmentReferences: count(temporaryAssignments, "total_count"),
+    pendingMovements: count(movements, "active_count"),
+    movementReferences: count(movements, "total_count"),
+    activePlantillaItems: count(plantillaItems, "active_count"),
+    plantillaReferences: count(plantillaItems, "total_count"),
+  };
+  usage.activeDependencies =
+    usage.activeChildren +
+    usage.currentEmployees +
+    usage.activeEngagements +
+    usage.activeTemporaryAssignments +
+    usage.pendingMovements +
+    usage.activePlantillaItems;
+  usage.totalDependencies =
+    usage.totalChildren +
+    usage.employeeReferences +
+    usage.engagementReferences +
+    usage.temporaryAssignmentReferences +
+    usage.movementReferences +
+    usage.plantillaReferences;
+  return usage;
+}
+
+async function handleGetReferenceValueUsage(req, res, category, id) {
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (!(await hasPermission(user, "employees.read"))) {
+    return json(res, 403, { error: "Employee reference access required" });
+  }
+  const config = getReferenceLibraryType(category);
+  if (!config) return json(res, 404, { error: "Reference library not found" });
+  const value = await readReferenceValue(id, category);
+  if (!value) return json(res, 404, { error: `${config.label} not found` });
+  const [activeChildren] = await pool.execute(
+    `SELECT id, category, name
+     FROM hr_reference_values
+     WHERE parent_id = :id AND is_active = 1
+     ORDER BY name`,
+    { id: Number(id) },
+  );
+  return json(res, 200, {
+    value,
+    usage: await referenceValueUsage(Number(id), category),
+    activeChildren: activeChildren.map((child) => ({
+      id: Number(child.id),
+      category: child.category,
+      name: child.name,
+    })),
+  });
+}
+
+async function handleRetireReferenceValue(req, res, category, id) {
+  const user = await requirePermission(req, res, "settings.manage", "Settings access required");
+  if (!user) return;
+  const config = getReferenceLibraryType(category);
+  if (!config) return json(res, 404, { error: "Reference library not found" });
+  const sourceId = Number(id);
+  const connection = await pool.getConnection();
+  try {
+    const body = await readBody(req);
+    const replacementId =
+      body?.replacementId == null || body.replacementId === "" ? null : Number(body.replacementId);
+    const requestedChildMappings = new Map(
+      (Array.isArray(body?.childMappings) ? body.childMappings : []).map((mapping) => [
+        Number(mapping.childId),
+        mapping.parentId == null || mapping.parentId === "" ? null : Number(mapping.parentId),
+      ]),
+    );
+    await connection.beginTransaction();
+    const [[source]] = await connection.execute(
+      `SELECT id, category, code, name, is_active
+       FROM hr_reference_values
+       WHERE id = :id AND category = :category
+       FOR UPDATE`,
+      { id: sourceId, category },
+    );
+    if (!source) throw new Error(`${config.label} not found`);
+    if (!source.is_active) throw new Error(`${config.label} is already inactive`);
+    const usage = await referenceValueUsage(sourceId, category, connection);
+    let replacement = null;
+    if (replacementId) {
+      [[replacement]] = await connection.execute(
+        `SELECT id, category, name, is_active
+         FROM hr_reference_values
+         WHERE id = :id
+         FOR UPDATE`,
+        { id: replacementId },
+      );
+      if (
+        !replacement ||
+        !replacement.is_active ||
+        replacement.category !== category ||
+        Number(replacement.id) === sourceId
+      ) {
+        throw new Error(`Select another active ${config.label} as the replacement`);
+      }
+    }
+    const currentUsage =
+      usage.currentEmployees +
+      usage.activeEngagements +
+      usage.activeTemporaryAssignments +
+      usage.pendingMovements +
+      usage.activePlantillaItems;
+    if (currentUsage > 0 && !replacement) {
+      throw new Error(`${config.label} has current operational usage; choose a replacement`);
+    }
+
+    const hierarchy = await readOrganizationHierarchy(connection);
+    const [children] = await connection.execute(
+      `SELECT id, category, name
+       FROM hr_reference_values
+       WHERE parent_id = :id AND is_active = 1
+       FOR UPDATE`,
+      { id: sourceId },
+    );
+    for (const child of children) {
+      const mappedParent = requestedChildMappings.has(Number(child.id))
+        ? requestedChildMappings.get(Number(child.id))
+        : replacementId;
+      const expectedParent = hierarchyLevel(hierarchy, child.category)?.enabled
+        ? configuredParentCategory(hierarchy, child.category)
+        : getReferenceLibraryType(child.category)?.parentCategory || null;
+      if (mappedParent == null) {
+        if (expectedParent) {
+          throw new Error(`Choose a parent for ${child.name}`);
+        }
+      } else {
+        const [[parent]] = await connection.execute(
+          `SELECT id, category, is_active
+           FROM hr_reference_values
+           WHERE id = :id
+           LIMIT 1`,
+          { id: mappedParent },
+        );
+        if (!parent || !parent.is_active || parent.category !== expectedParent) {
+          throw new Error(`Select a valid active parent for ${child.name}`);
+        }
+      }
+      await connection.execute(
+        `UPDATE hr_reference_values SET parent_id = :parentId WHERE id = :childId`,
+        { childId: child.id, parentId: mappedParent },
+      );
+    }
+
+    if (replacement) {
+      await connection.execute(
+        `UPDATE employees
+         SET current_org_unit_ref_id = :replacementId, department = :replacementName
+         WHERE current_org_unit_ref_id = :sourceId AND lifecycle_state = 'Active'`,
+        {
+          sourceId,
+          replacementId,
+          replacementName: replacement.name,
+        },
+      );
+      await connection.execute(
+        `UPDATE non_plantilla_engagements
+         SET org_unit_ref_id = :replacementId
+         WHERE org_unit_ref_id = :sourceId AND status IN ('Active','Scheduled')`,
+        { sourceId, replacementId },
+      );
+      await connection.execute(
+        `UPDATE temporary_assignments
+         SET org_unit_ref_id = :replacementId
+         WHERE org_unit_ref_id = :sourceId AND status IN ('Active','Scheduled')`,
+        { sourceId, replacementId },
+      );
+      await connection.execute(
+        `UPDATE personnel_movements
+         SET target_org_unit_ref_id = :replacementId,
+             target_department = :replacementName
+         WHERE target_org_unit_ref_id = :sourceId
+           AND status IN ('Draft','Submitted','Reviewed','Approved','Scheduled')`,
+        {
+          sourceId,
+          replacementId,
+          replacementName: replacement.name,
+        },
+      );
+      const plantillaColumn = {
+        sectors: "sector_ref_id",
+        offices: "office_ref_id",
+        divisions: "division_ref_id",
+        sections: "section_ref_id",
+      }[category];
+      if (plantillaColumn) {
+        await connection.execute(
+          `UPDATE plantilla_items
+           SET ${plantillaColumn} = :replacementId
+           WHERE ${plantillaColumn} = :sourceId AND item_status = 'Active'`,
+          { sourceId, replacementId },
+        );
+      }
+    }
+    await connection.execute(
+      `UPDATE hr_reference_values SET is_active = 0 WHERE id = :id AND category = :category`,
+      { id: sourceId, category },
+    );
+    await connection.commit();
+    await logAudit(
+      user.id,
+      "config.reference_retire",
+      {
+        category,
+        id: sourceId,
+        replacementId,
+        childMappings: [...requestedChildMappings.entries()],
+        usage,
+      },
+      req,
+    );
+    return json(res, 200, {
+      value: await readReferenceValue(sourceId, category),
+      usage,
+    });
+  } catch (error) {
+    await connection.rollback().catch(() => undefined);
+    return referenceMutationError(res, error, config.label);
+  } finally {
+    connection.release();
+  }
+}
+
 async function handleCreateReferenceValue(req, res, category) {
   const user = await requirePermission(req, res, "settings.manage", "Settings access required");
   if (!user) return;
   const config = getReferenceLibraryType(category);
   if (!config) return json(res, 404, { error: "Reference library not found" });
   try {
+    if (ORGANIZATION_REFERENCE_CATEGORIES.includes(category)) {
+      const hierarchy = await readOrganizationHierarchy();
+      const level = hierarchyLevel(hierarchy, category);
+      if (!level?.enabled) {
+        return json(res, 409, {
+          error: `${level?.label || config.label} is preserved but disabled in the active structure`,
+        });
+      }
+    }
     const payload = referencePayload(await readBody(req));
     if (!payload.code || !payload.name) {
       return json(res, 400, { error: `${config.label} code and name are required` });
@@ -12901,14 +14203,11 @@ async function handleUpdateReferenceValue(req, res, category, id) {
       childIsActive: Boolean(payload.isActive),
     });
     if (existing.isActive && !payload.isActive) {
-      const [[children]] = await pool.execute(
-        `SELECT COUNT(*) AS count FROM hr_reference_values
-         WHERE parent_id = :id AND is_active = 1`,
-        { id },
-      );
-      if (Number(children.count) > 0) {
+      const usage = await referenceValueUsage(Number(id), category);
+      if (usage.activeDependencies > 0) {
         return json(res, 409, {
-          error: `${config.label} has ${Number(children.count)} active child record(s); deactivate or reassign them first`,
+          error: `${config.label} has ${usage.activeDependencies} active dependent record(s); use Deactivate and Reassign`,
+          usage,
         });
       }
     }
@@ -12937,6 +14236,13 @@ async function handleDeleteReferenceValue(req, res, category, id) {
   const existing = await readReferenceValue(id, category);
   if (!existing) return json(res, 404, { error: `${config.label} not found` });
   try {
+    const usage = await referenceValueUsage(Number(id), category);
+    if (usage.totalDependencies > 0) {
+      return json(res, 409, {
+        error: `${config.label} is in use and cannot be deleted; deactivate it instead`,
+        usage,
+      });
+    }
     await pool.execute(`DELETE FROM hr_reference_values WHERE id = :id AND category = :category`, {
       id,
       category,
@@ -13273,6 +14579,9 @@ async function route(req, res) {
   const attendanceImportLogMatch = url.pathname.match(
     /^\/api\/attendance\/imports\/([A-Za-z0-9-]+)\/logs$/,
   );
+  const attendanceImportExceptionMatch = url.pathname.match(
+    /^\/api\/attendance\/import-exceptions\/([A-Za-z0-9-]+)$/,
+  );
   const scheduleOverrideMatch = url.pathname.match(
     /^\/api\/attendance\/schedule\/overrides\/([A-Za-z0-9-]+)\/(\d{4}-\d{2}-\d{2})$/,
   );
@@ -13289,6 +14598,12 @@ async function route(req, res) {
   const positionMatch = url.pathname.match(/^\/api\/settings\/positions\/(\d+)$/);
   const salaryGradeMatch = url.pathname.match(/^\/api\/settings\/salary-grades\/(\d+)$/);
   const referenceValueMatch = url.pathname.match(/^\/api\/settings\/references\/([a-z-]+)\/(\d+)$/);
+  const referenceUsageMatch = url.pathname.match(
+    /^\/api\/settings\/references\/([a-z-]+)\/(\d+)\/usage$/,
+  );
+  const referenceRetireMatch = url.pathname.match(
+    /^\/api\/settings\/references\/([a-z-]+)\/(\d+)\/retire$/,
+  );
   const referenceCollectionMatch = url.pathname.match(/^\/api\/settings\/references\/([a-z-]+)$/);
   const notificationReadMatch = url.pathname.match(/^\/api\/notifications\/([A-Za-z0-9-]+)\/read$/);
   const serviceRecordEmployeeMatch = url.pathname.match(
@@ -13458,6 +14773,12 @@ async function route(req, res) {
     return handleListDtrEntries(req, res, url);
   if (req.method === "GET" && attendanceImportLogMatch)
     return handleListAttendanceImportLogs(req, res, attendanceImportLogMatch[1]);
+  if (req.method === "GET" && url.pathname === "/api/attendance/import-exceptions")
+    return handleListAttendanceImportExceptions(req, res, url);
+  if (req.method === "POST" && url.pathname === "/api/attendance/import-exceptions/reprocess")
+    return handleReprocessAttendanceImportExceptions(req, res);
+  if (req.method === "POST" && attendanceImportExceptionMatch)
+    return handleMapAttendanceImportException(req, res, attendanceImportExceptionMatch[1]);
   if (req.method === "GET" && url.pathname === "/api/attendance/correction-requests")
     return handleListDtrCorrectionRequests(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/attendance/correction-requests")
@@ -13593,6 +14914,14 @@ async function route(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/settings/references")
     return handleListReferenceValues(req, res);
+  if (req.method === "POST" && url.pathname === "/api/settings/organization-hierarchy/preview")
+    return handlePreviewOrganizationHierarchy(req, res);
+  if (req.method === "PUT" && url.pathname === "/api/settings/organization-hierarchy")
+    return handleActivateOrganizationHierarchy(req, res);
+  if (req.method === "GET" && referenceUsageMatch)
+    return handleGetReferenceValueUsage(req, res, referenceUsageMatch[1], referenceUsageMatch[2]);
+  if (req.method === "POST" && referenceRetireMatch)
+    return handleRetireReferenceValue(req, res, referenceRetireMatch[1], referenceRetireMatch[2]);
   if (req.method === "POST" && referenceCollectionMatch)
     return handleCreateReferenceValue(req, res, referenceCollectionMatch[1]);
   if ((req.method === "PUT" || req.method === "PATCH") && referenceValueMatch)
@@ -13663,6 +14992,7 @@ reportHandlers = createReportHandlers({
 });
 movementHandlers = createMovementHandlers({
   pool,
+  readAssignableOrganization,
   requireEmployeeRead: requireMovementRead,
   requireEmployeeWrite: requireMovementWrite,
   requireApproval,
@@ -13677,6 +15007,8 @@ movementHandlers = createMovementHandlers({
 });
 plantillaHandlers = createPlantillaHandlers({
   pool,
+  getOrganizationHierarchy: async (connection = pool) =>
+    organizationHierarchyMetadata(await readOrganizationHierarchy(connection)),
   requireEmployeeRead: requirePlantillaRead,
   requireEmployeeWrite: requirePlantillaWrite,
   readBody,
@@ -13686,6 +15018,7 @@ plantillaHandlers = createPlantillaHandlers({
 });
 assignmentHandlers = createAssignmentHandlers({
   pool,
+  readAssignableOrganization,
   requireRead: requireAssignmentRead,
   requireEngagement: requireEngagementWrite,
   readBody,

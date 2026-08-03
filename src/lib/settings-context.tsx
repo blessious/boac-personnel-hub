@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "@/lib/api";
+import type { OrganizationHierarchy } from "@/lib/reference-libraries";
 
 export interface AgencySettings {
   name: string;
@@ -8,6 +9,7 @@ export interface AgencySettings {
   logoUrl: string;
   iconUrl: string;
   bannerUrl?: string;
+  hierarchy?: OrganizationHierarchy;
 }
 
 export type Theme = "light" | "dark";

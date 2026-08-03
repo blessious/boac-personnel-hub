@@ -59,7 +59,9 @@ import {
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { useAuth } from "@/lib/auth";
+import { organizationAssignmentLabel } from "@/lib/reference-libraries";
 import { useRealtimeRefresh } from "@/lib/realtime";
+import { useSettings } from "@/lib/settings-context";
 import {
   deleteScheduleOverride,
   listSchedules,
@@ -103,6 +105,8 @@ const EMPTY_FORM: ScheduleForm = {
 
 function SchedulesPage() {
   const { hasPermission } = useAuth();
+  const { agency } = useSettings();
+  const organizationLabel = organizationAssignmentLabel(agency.hierarchy);
   const canRead = hasPermission("attendance.read");
   const canManage = hasPermission("attendance.write");
   const [employees, setEmployees] = useState<ScheduleEmployee[]>([]);
@@ -275,6 +279,8 @@ function SchedulesPage() {
     const payload = {
       employeeIds: selectedIds,
       shiftTemplateCode: form.shiftCode === "manual" ? undefined : form.shiftCode,
+      from: form.target === "default" ? scheduleDate : form.startDate,
+      to: form.target === "default" ? scheduleDate : form.endDate,
       schedule: {
         amIn: form.amIn,
         amOut: form.amOut,
@@ -285,16 +291,18 @@ function SchedulesPage() {
 
     try {
       if (form.target === "default") {
-        await updateDefaultSchedules(payload);
-        toast.success("Default schedule updated");
+        const result = await updateDefaultSchedules(payload);
+        toast.success(`Default schedule updated; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+        if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       } else {
-        await updateScheduleOverrides({
+        const result = await updateScheduleOverrides({
           ...payload,
           startDate: form.startDate,
           endDate: form.endDate,
           skipWeekends: form.skipWeekends,
         });
-        toast.success("Schedule override saved");
+        toast.success(`Schedule override saved; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+        if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       }
       load();
     } catch (error) {
@@ -332,6 +340,8 @@ function SchedulesPage() {
       employeeIds: [activeEmployee.employeeId],
       shiftTemplateCode:
         individualForm.shiftCode === "manual" ? undefined : individualForm.shiftCode,
+      from: individualForm.target === "default" ? scheduleDate : individualForm.startDate,
+      to: individualForm.target === "default" ? scheduleDate : individualForm.endDate,
       schedule: {
         amIn: individualForm.amIn,
         amOut: individualForm.amOut,
@@ -342,16 +352,18 @@ function SchedulesPage() {
 
     try {
       if (individualForm.target === "default") {
-        await updateDefaultSchedules(payload);
-        toast.success("Employee default schedule updated");
+        const result = await updateDefaultSchedules(payload);
+        toast.success(`Employee default schedule updated; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+        if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       } else {
-        await updateScheduleOverrides({
+        const result = await updateScheduleOverrides({
           ...payload,
           startDate: individualForm.startDate,
           endDate: individualForm.endDate,
           skipWeekends: individualForm.skipWeekends,
         });
-        toast.success("Employee schedule override saved");
+        toast.success(`Employee schedule override saved; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+        if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       }
       await load();
       setActiveEmployee((current) =>
@@ -380,8 +392,9 @@ function SchedulesPage() {
     if (!overrideToDelete) return;
     setSaving(true);
     try {
-      await deleteScheduleOverride(overrideToDelete.employeeId, overrideToDelete.workDate);
-      toast.success("Schedule override removed");
+      const result = await deleteScheduleOverride(overrideToDelete.employeeId, overrideToDelete.workDate);
+      toast.success(`Schedule override removed; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+      if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       setOverrideToDelete(null);
       load();
     } catch (error) {
@@ -429,7 +442,9 @@ function SchedulesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All departments</SelectItem>
+                    <SelectItem value="all">
+                      All {organizationLabel.toLowerCase()} records
+                    </SelectItem>
                     {departments.map((item) => (
                       <SelectItem key={item} value={item}>
                         {item}
@@ -818,7 +833,7 @@ function SchedulesPage() {
                 <div>
                   <div className="text-lg font-semibold">{activeEmployee.employeeName}</div>
                   <div className="mt-1 text-sm text-muted-foreground">
-                    {activeEmployee.department || "No department"}
+                    {activeEmployee.department || `No ${organizationLabel.toLowerCase()}`}
                   </div>
                 </div>
                 <div className="rounded-md bg-muted px-3 py-2 text-sm">
@@ -1144,7 +1159,7 @@ function EmployeeScheduleCard({
           <div className="truncate text-sm font-bold text-foreground">{employee.employeeName}</div>
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <Building2 className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{employee.department || "No department"}</span>
+            <span className="truncate">{employee.department || "No organizational unit"}</span>
           </div>
         </div>
         <Badge

@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
+import { OrganizationHierarchyFields } from "@/components/organization/OrganizationHierarchyFields";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Combobox } from "@/components/ui/combobox";
@@ -38,6 +39,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { Textarea } from "@/components/ui/textarea";
 import {
   dataTableBodyClass,
   dataTableCellClass,
@@ -52,7 +54,19 @@ import {
 import { api, isAbortError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useRealtimeRefresh } from "@/lib/realtime";
-import { type SettingsOptions } from "@/lib/employees-api";
+import {
+  createEmployee,
+  listEmployees,
+  type EmployeeAccountCredentials,
+  type EmployeeRecord,
+  type SettingsOptions,
+} from "@/lib/employees-api";
+import {
+  emptyMovement,
+  MOVEMENT_TYPES,
+  saveMovement,
+  type MovementForm,
+} from "@/lib/movements-api";
 import {
   emptyPlantilla,
   deletePlantilla,
@@ -61,7 +75,20 @@ import {
   type PlantillaItem,
   type PlantillaPayload,
 } from "@/lib/plantilla-api";
-import type { ReferenceCategory, ReferenceRow } from "@/lib/reference-libraries";
+import {
+  DEFAULT_ORGANIZATION_HIERARCHY,
+  organizationPath,
+  type OrganizationHierarchy,
+  type OrganizationReferenceCategory,
+  type ReferenceCategory,
+  type ReferenceRow,
+} from "@/lib/reference-libraries";
+import {
+  organizationSelectionFromReferenceId,
+  organizationAncestry,
+  selectedAssignableOrganization,
+  type OrganizationSelection,
+} from "@/lib/organization-selection";
 import {
   listEngagements,
   renewEngagement,
@@ -99,10 +126,23 @@ const categories: ReferenceCategory[] = [
 ];
 const optionCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 const CREATE_PLANTILLA_CLASSIFICATION_CODES = new Set(["PLANTILLA", "ELECTIVE", "COTER"]);
+const ITEM_ACTIONS = new Set(["Original Appointment", "Promotion", "Transfer"]);
+const PROFILE_ACTIONS = new Set(["Detail", "Designation"]);
+const TEMPORARY_ACTIONS = new Set(["Detail", "Designation", "Reassignment", "Job Rotation"]);
+const SEPARATIONS = new Set(["Resignation", "Retirement", "Termination", "Death"]);
 const displayPlantillaClassification = (name: string) =>
   name.trim().toLowerCase() === "plantilla" ? "Permanent" : name;
+const formatEmployeeName = (employee: {
+  lastname?: string;
+  firstname?: string;
+  middlename?: string;
+  nameExt?: string;
+}) =>
+  [employee.lastname, employee.firstname, employee.middlename, employee.nameExt]
+    .filter(Boolean)
+    .join(", ");
+const today = () => new Date().toISOString().slice(0, 10);
 function PlantillaPage() {
-  const navigate = useNavigate({ from: "/plantilla" });
   const { hasPermission } = useAuth(),
     canManage = hasPermission("plantilla.write"),
     canManageEngagements = hasPermission("engagements.manage");
@@ -119,9 +159,11 @@ function PlantillaPage() {
     positions: [],
     salaryGrades: [],
   });
+  const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [refs, setRefs] = useState<Record<ReferenceCategory, ReferenceRow[]>>(
     {} as Record<ReferenceCategory, ReferenceRow[]>,
   );
+  const [hierarchy, setHierarchy] = useState<OrganizationHierarchy>(DEFAULT_ORGANIZATION_HIERARCHY);
   const [q, setQ] = useState(""),
     [status, setStatus] = useState("all"),
     [occupancy, setOccupancy] = useState("all"),
@@ -146,6 +188,26 @@ function PlantillaPage() {
     dateTo: "",
     remarks: "",
   });
+  const [movementEdit, setMovementEdit] = useState<null | undefined>(undefined);
+  const [movementForm, setMovementForm] = useState<MovementForm>(emptyMovement);
+  const [movementOrganizationSelection, setMovementOrganizationSelection] =
+    useState<OrganizationSelection>({});
+  const [newEmployeeItem, setNewEmployeeItem] = useState<PlantillaItem | null>(null);
+  const [newEmployeeForm, setNewEmployeeForm] = useState({
+    employeeId: "",
+    biometricId: "",
+    lastname: "",
+    firstname: "",
+    middlename: "",
+    email: "",
+    dtrSignatory: "",
+    targetSalaryGradeId: "",
+    effectiveDate: today(),
+  });
+  const [createdAccount, setCreatedAccount] = useState<{
+    employeeName: string;
+    credentials: EmployeeAccountCredentials;
+  } | null>(null);
   const load = useCallback(
     async (signal?: AbortSignal) => {
       try {
@@ -185,13 +247,17 @@ function PlantillaPage() {
     const controller = new AbortController();
     Promise.all([
       api<SettingsOptions>("/api/settings", { signal: controller.signal }),
-      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references", {
-        signal: controller.signal,
-      }),
+      api<{
+        libraries: Record<ReferenceCategory, ReferenceRow[]>;
+        hierarchy: OrganizationHierarchy;
+      }>("/api/settings/references", { signal: controller.signal }),
+      loadAllEmployees(controller.signal),
     ])
-      .then(([s, r]) => {
+      .then(([s, r, e]) => {
         setSettings(s);
         setRefs(r.libraries);
+        setHierarchy(r.hierarchy || DEFAULT_ORGANIZATION_HIERARCHY);
+        setEmployees(e);
         setConfigError("");
       })
       .catch((e) => {
@@ -234,7 +300,47 @@ function PlantillaPage() {
     void Promise.all([load(), loadEngagements()]);
   }, ["plantilla", "movements", "employees", "engagements"]);
   const active = (c: ReferenceCategory) => refs[c]?.filter((x) => x.isActive) || [];
-  const offices = useMemo(() => (refs["offices"] || []).filter((x) => x.isActive), [refs]);
+  const enabledOrganizationLevels = hierarchy.levels.filter((level) => level.enabled);
+  const plantillaOrganizationValue: Record<OrganizationReferenceCategory, string> = {
+    sectors: form.sectorId,
+    offices: form.officeId,
+    divisions: form.divisionId,
+    sections: form.sectionId,
+  };
+  const plantillaOrganizationSelection = enabledOrganizationLevels.reduce<OrganizationSelection>(
+    (selection, level) => {
+      selection[level.category] = plantillaOrganizationValue[level.category];
+      return selection;
+    },
+    {},
+  );
+  const plantillaAssignedOrganization = selectedAssignableOrganization(
+    plantillaOrganizationSelection,
+    refs,
+    hierarchy,
+    { allowInactive: Boolean(edit) },
+  );
+  const organizationFilterRows = enabledOrganizationLevels
+    .flatMap((level) => (refs[level.category] || []).filter((row) => row.isActive))
+    .map((row) => ({
+      id: row.id,
+      label:
+        organizationPath(row, refs, hierarchy)
+          .map((part) => part.name)
+          .join(" / ") || row.name,
+    }))
+    .sort((left, right) => optionCollator.compare(left.label, right.label));
+  const organizationNameField: Record<OrganizationReferenceCategory, keyof PlantillaItem> = {
+    sectors: "sectorName",
+    offices: "officeName",
+    divisions: "divisionName",
+    sections: "sectionName",
+  };
+  const plantillaOrganizationPath = (item: PlantillaItem) =>
+    enabledOrganizationLevels
+      .map((level) => String(item[organizationNameField[level.category]] || ""))
+      .filter(Boolean)
+      .join(" / ");
   const openEdit = (item?: PlantillaItem) => {
     const selectedGrade = item?.salaryGradeId
       ? settings.salaryGrades.find((grade) => grade.id === item.salaryGradeId)
@@ -246,10 +352,10 @@ function PlantillaPage() {
             itemNumber: item.itemNumber,
             positionId: String(item.positionId),
             salaryGradeId: item.salaryGradeId ? String(item.salaryGradeId) : "",
-            sectorId: "",
+            sectorId: item.sectorId ? String(item.sectorId) : "",
             officeId: item.officeId ? String(item.officeId) : "",
-            divisionId: "",
-            sectionId: "",
+            divisionId: item.divisionId ? String(item.divisionId) : "",
+            sectionId: item.sectionId ? String(item.sectionId) : "",
             plantillaTypeId: item.plantillaTypeId ? String(item.plantillaTypeId) : "",
             budgetCodeId: item.budgetCodeId ? String(item.budgetCodeId) : "",
             authorizedSalary: selectedGrade
@@ -268,15 +374,7 @@ function PlantillaPage() {
   const save = async () => {
     setBusy(true);
     try {
-      await savePlantilla(
-        {
-          ...form,
-          sectorId: "",
-          divisionId: "",
-          sectionId: "",
-        },
-        edit?.id,
-      );
+      await savePlantilla(form, edit?.id);
       toast.success(edit ? "Plantilla item updated" : "Plantilla item created");
       setEdit(undefined);
       await load();
@@ -315,33 +413,122 @@ function PlantillaPage() {
   };
   const prepareMovement = (item: PlantillaItem) => {
     if (item.occupant) {
-      navigate({
-        to: "/movements",
-        search: {
-          prepare: "1",
-          actionType: "Transfer",
-          employeeId: item.occupant.employeeId,
-        },
+      openMovementForm({
+        employeeId: item.occupant.employeeId,
+        actionType: "Transfer",
       });
       return;
     }
-    navigate({
-      to: "/employees",
-      search: {
-        onboard: "plantilla",
-        targetPlantillaItemId: item.id,
-      },
-    });
+    openNewEmployeeForm(item);
   };
   const prepareExistingPerson = (item: PlantillaItem) =>
-    navigate({
-      to: "/movements",
-      search: {
-        prepare: "1",
-        actionType: "Original Appointment",
-        targetPlantillaItemId: item.id,
-      },
+    openMovementForm({
+      actionType: "Original Appointment",
+      targetPlantillaItemId: item.id,
     });
+  const openMovementForm = (prefill: Partial<MovementForm>) => {
+    const targetOrganizationId = prefill.targetOrganizationId || "";
+    const targetItem = items.find((item) => item.id === prefill.targetPlantillaItemId);
+    const [stepOne] = salaryStepsForItem(targetItem || null);
+    setMovementEdit(null);
+    setMovementOrganizationSelection(
+      organizationSelectionFromReferenceId(targetOrganizationId, refs, hierarchy),
+    );
+    setMovementForm({
+      ...emptyMovement,
+      effectiveDate: today(),
+      ...prefill,
+      targetSalaryGradeId: prefill.targetSalaryGradeId || (stepOne ? String(stepOne.id) : ""),
+    });
+  };
+  const savePreparedMovement = async () => {
+    setBusy(true);
+    try {
+      await saveMovement(movementForm);
+      toast.success("Movement prepared");
+      setMovementEdit(undefined);
+      await load();
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const salaryStepsForItem = (item: PlantillaItem | null) =>
+    item?.salaryGrade
+      ? settings.salaryGrades
+          .filter(
+            (row) =>
+              row.isActive &&
+              row.ordinance === item.salaryGrade?.ordinance &&
+              row.grade === item.salaryGrade?.grade,
+          )
+          .sort((left, right) => left.step - right.step || left.amount - right.amount)
+      : [];
+  const openNewEmployeeForm = (item: PlantillaItem) => {
+    const [stepOne] = salaryStepsForItem(item);
+    setNewEmployeeItem(item);
+    setNewEmployeeForm({
+      employeeId: "",
+      biometricId: "",
+      lastname: "",
+      firstname: "",
+      middlename: "",
+      email: "",
+      dtrSignatory: "",
+      targetSalaryGradeId: stepOne ? String(stepOne.id) : "",
+      effectiveDate: today(),
+    });
+  };
+  const createPlantillaEmployee = async () => {
+    if (!newEmployeeItem) return;
+    if (!newEmployeeForm.lastname.trim() || !newEmployeeForm.firstname.trim()) {
+      toast.error("Enter the employee name");
+      return;
+    }
+    if (!newEmployeeForm.effectiveDate || !newEmployeeForm.targetSalaryGradeId) {
+      toast.error("Select the appointment date and salary step");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await createEmployee({
+        employeeId: newEmployeeForm.employeeId,
+        biometricId: newEmployeeForm.biometricId,
+        lastname: newEmployeeForm.lastname,
+        firstname: newEmployeeForm.firstname,
+        middlename: newEmployeeForm.middlename,
+        email: newEmployeeForm.email,
+        dtrSignatory: newEmployeeForm.dtrSignatory || formatEmployeeName(newEmployeeForm),
+        department: "",
+        position: "",
+        itemNo: "",
+        status: displayPlantillaClassification(newEmployeeItem.plantillaTypeName || "Plantilla"),
+        empStatus: "Inactive",
+        lifecycleState: "Pre-Employment",
+        createAccount: true,
+        appointment: {
+          targetPlantillaItemId: newEmployeeItem.id,
+          targetSalaryGradeId: newEmployeeForm.targetSalaryGradeId,
+          effectiveDate: newEmployeeForm.effectiveDate,
+          supportingDocuments: [],
+        },
+      });
+      toast.success("Personal record and appointment draft created");
+      if (result.account) {
+        setCreatedAccount({
+          employeeName: formatEmployeeName(result.employee),
+          credentials: result.account,
+        });
+      }
+      setNewEmployeeItem(null);
+      await load();
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const openRenewalDialog = (engagement: NonPlantillaEngagement) => {
     setRenewalEngagement(engagement);
     setRenewalForm({
@@ -488,20 +675,17 @@ function PlantillaPage() {
           <option value="vacant">Vacant</option>
         </select>
         <select
-          aria-label="Filter by office"
+          aria-label="Filter by organizational unit"
           className={fieldClass + " md:max-w-56"}
           value={officeId}
           onChange={(e) => setOfficeId(e.target.value)}
         >
-          <option value="all">All offices</option>
-          {offices
-            .slice()
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((office) => (
-              <option key={office.id} value={office.id}>
-                {office.name}
-              </option>
-            ))}
+          <option value="all">All organizational units</option>
+          {organizationFilterRows.map((organization) => (
+            <option key={organization.id} value={organization.id}>
+              {organization.label}
+            </option>
+          ))}
         </select>
         {canManage && (
           <Button onClick={() => openEdit()} className="bg-blue-600 text-white hover:bg-blue-700">
@@ -519,13 +703,16 @@ function PlantillaPage() {
       )}
       <div className="mobile-record-list mt-4 md:hidden">
         {paginatedItems.map((i) => (
-          <article className="rounded-xl border border-border bg-white p-3 shadow-sm" key={i.id}>
+          <article
+            className="rounded-lg border border-border bg-background p-3 shadow-sm"
+            key={i.id}
+          >
             <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_4.75rem_1.25rem] items-center gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+              <div className="grid h-10 w-10 place-items-center rounded-md bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-100 dark:ring-blue-500/30">
                 <BriefcaseBusiness className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <div className="truncate text-sm font-bold text-foreground">{i.itemNumber}</div>
+                <div className="truncate text-sm font-semibold text-foreground">{i.itemNumber}</div>
                 <div className="truncate text-xs text-muted-foreground">
                   {i.positionTitle}
                   {i.salaryGrade
@@ -533,17 +720,15 @@ function PlantillaPage() {
                     : " - No salary grade"}
                 </div>
                 <div className="mt-1 line-clamp-2 text-xs leading-4 text-muted-foreground">
-                  {[i.sectorName, i.officeName, i.divisionName, i.sectionName]
-                    .filter(Boolean)
-                    .join(" / ") || "-"}
+                  {plantillaOrganizationPath(i) || "-"}
                 </div>
               </div>
               <span
                 className={cn(
-                  "rounded-full border px-2 py-1 text-center text-xs font-semibold",
+                  "text-center text-xs font-semibold",
                   i.itemStatus === "Active"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-amber-200 bg-amber-50 text-amber-700",
+                    ? "text-emerald-700 dark:text-emerald-300"
+                    : "text-amber-700 dark:text-amber-300",
                 )}
               >
                 {i.itemStatus}
@@ -638,11 +823,7 @@ function PlantillaPage() {
                       : "No salary grade"}
                   </div>
                 </td>
-                <td className={dataTableCellClass}>
-                  {[i.sectorName, i.officeName, i.divisionName, i.sectionName]
-                    .filter(Boolean)
-                    .join(" / ") || "-"}
-                </td>
+                <td className={dataTableCellClass}>{plantillaOrganizationPath(i) || "-"}</td>
                 <td className={dataTableCellClass}>
                   {i.plantillaTypeName || "-"}
                   {/* <div className="text-sm leading-5 text-muted-foreground">
@@ -735,13 +916,18 @@ function PlantillaPage() {
           <table className={dataTableClass}>
             <thead className={dataTableHeadClass}>
               <tr className={dataTableHeadRowClass}>
-                {["Employee", "Type / Position", "Office", "Period", "Status", "Actions"].map(
-                  (heading) => (
-                    <th className={dataTableHeaderCellClass} key={heading}>
-                      {heading}
-                    </th>
-                  ),
-                )}
+                {[
+                  "Employee",
+                  "Type / Position",
+                  "Organizational unit",
+                  "Period",
+                  "Status",
+                  "Actions",
+                ].map((heading) => (
+                  <th className={dataTableHeaderCellClass} key={heading}>
+                    {heading}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className={dataTableBodyClass}>
@@ -765,12 +951,12 @@ function PlantillaPage() {
                   <td className={dataTableCellClass}>
                     <span
                       className={cn(
-                        "rounded-full border px-2 py-1 text-xs font-semibold",
+                        "text-xs font-semibold",
                         engagement.status === "Active"
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          ? "text-emerald-700 dark:text-emerald-300"
                           : engagement.status === "Scheduled"
-                            ? "border-blue-200 bg-blue-50 text-blue-700"
-                            : "border-slate-200 bg-slate-50 text-slate-700",
+                            ? "text-blue-700 dark:text-blue-300"
+                            : "text-muted-foreground",
                       )}
                     >
                       {engagement.status}
@@ -873,7 +1059,9 @@ function PlantillaPage() {
               l="Position"
               v={form.positionId}
               set={(v) => setForm({ ...form, positionId: v })}
-              rows={settings.positions.map((x) => [String(x.id), x.title])}
+              rows={[...settings.positions]
+                .sort((left, right) => optionCollator.compare(left.title, right.title))
+                .map((x) => [String(x.id), x.title])}
             />
             <Sel
               l="Salary grade"
@@ -902,13 +1090,39 @@ function PlantillaPage() {
                 title="Calculated from the selected monthly salary grade amount multiplied by 12"
               />
             </F>
-            <Sel
-              l="Office"
-              v={form.officeId}
-              set={(v) =>
-                setForm({ ...form, sectorId: "", officeId: v, divisionId: "", sectionId: "" })
-              }
-              rows={offices.map((x) => [String(x.id), x.name])}
+            <OrganizationHierarchyFields
+              libraries={refs}
+              hierarchy={hierarchy}
+              value={plantillaOrganizationSelection}
+              onValueChange={(selection) => {
+                const assignedOrganization = selectedAssignableOrganization(
+                  selection,
+                  refs,
+                  hierarchy,
+                  { allowInactive: Boolean(edit) },
+                );
+                const ancestry = organizationAncestry(assignedOrganization || undefined, refs);
+                const ancestryId = (category: OrganizationReferenceCategory) =>
+                  ancestry.find((row) => row.category === category)?.id;
+                setForm({
+                  ...form,
+                  sectorId:
+                    selection.sectors ??
+                    (assignedOrganization ? String(ancestryId("sectors") || "") : form.sectorId),
+                  officeId:
+                    selection.offices ??
+                    (assignedOrganization ? String(ancestryId("offices") || "") : form.officeId),
+                  divisionId:
+                    selection.divisions ??
+                    (assignedOrganization
+                      ? String(ancestryId("divisions") || "")
+                      : form.divisionId),
+                  sectionId:
+                    selection.sections ??
+                    (assignedOrganization ? String(ancestryId("sections") || "") : form.sectionId),
+                });
+              }}
+              fieldKey="plantilla-organization"
             />
             <Sel
               l="Plantilla classification"
@@ -920,6 +1134,7 @@ function PlantillaPage() {
                     Boolean(edit) ||
                     CREATE_PLANTILLA_CLASSIFICATION_CODES.has(x.code.toUpperCase()),
                 )
+                .sort((left, right) => optionCollator.compare(left.name, right.name))
                 .map((x) => [String(x.id), displayPlantillaClassification(x.name)])}
             />
             {/* Hidden from the Edit Plantilla Item form; preserve the stored value on save.
@@ -928,7 +1143,9 @@ function PlantillaPage() {
                 l="Budget / fund code"
                 v={form.budgetCodeId}
                 set={(v) => setForm({ ...form, budgetCodeId: v })}
-                rows={active("budget-codes").map((x) => [String(x.id), x.name])}
+                rows={active("budget-codes")
+                  .sort((left, right) => optionCollator.compare(left.name, right.name))
+                  .map((x) => [String(x.id), x.name])}
               />
             )}
             */}
@@ -973,9 +1190,77 @@ function PlantillaPage() {
             <Button variant="outline" onClick={() => setEdit(undefined)}>
               Cancel
             </Button>
-            <Button disabled={busy} onClick={save}>
+            <Button
+              disabled={busy || !form.positionId || !plantillaAssignedOrganization}
+              onClick={save}
+            >
               Save item
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <MovementDialog
+        open={movementEdit !== undefined}
+        form={movementForm}
+        setForm={setMovementForm}
+        employees={employees}
+        items={items}
+        settings={settings}
+        organizationLibraries={refs}
+        organizationHierarchy={hierarchy}
+        organizationSelection={movementOrganizationSelection}
+        setOrganizationSelection={setMovementOrganizationSelection}
+        busy={busy}
+        close={() => setMovementEdit(undefined)}
+        save={savePreparedMovement}
+      />
+      <NewPlantillaEmployeeDialog
+        item={newEmployeeItem}
+        form={newEmployeeForm}
+        setForm={setNewEmployeeForm}
+        salarySteps={salaryStepsForItem(newEmployeeItem)}
+        busy={busy}
+        close={() => setNewEmployeeItem(null)}
+        save={createPlantillaEmployee}
+      />
+      <Dialog
+        open={Boolean(createdAccount)}
+        onOpenChange={(open) => !open && setCreatedAccount(null)}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Temporary account - {createdAccount?.employeeName}</DialogTitle>
+          </DialogHeader>
+          {createdAccount && (
+            <div className="space-y-3 text-sm">
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <div className="font-medium">Username</div>
+                <div className="mt-1 select-all font-mono">
+                  {createdAccount.credentials.username}
+                </div>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <div className="font-medium">Temporary password</div>
+                <div className="mt-1 select-all font-mono">
+                  {createdAccount.credentials.temporaryPassword}
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (!createdAccount) return;
+                void navigator.clipboard?.writeText(
+                  `Username: ${createdAccount.credentials.username}\nTemporary password: ${createdAccount.credentials.temporaryPassword}`,
+                );
+                toast.success("Credentials copied");
+              }}
+            >
+              Copy
+            </Button>
+            <Button onClick={() => setCreatedAccount(null)}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -998,6 +1283,401 @@ function PlantillaPage() {
         </DialogContent>
       </Dialog>
     </AppShell>
+  );
+}
+
+function MovementDialog({
+  open,
+  form,
+  setForm,
+  employees,
+  items,
+  settings,
+  organizationLibraries,
+  organizationHierarchy,
+  organizationSelection,
+  setOrganizationSelection,
+  busy,
+  close,
+  save,
+}: {
+  open: boolean;
+  form: MovementForm;
+  setForm: (x: MovementForm) => void;
+  employees: EmployeeRecord[];
+  items: PlantillaItem[];
+  settings: SettingsOptions;
+  organizationLibraries: Record<ReferenceCategory, ReferenceRow[]>;
+  organizationHierarchy: OrganizationHierarchy;
+  organizationSelection: OrganizationSelection;
+  setOrganizationSelection: (selection: OrganizationSelection) => void;
+  busy: boolean;
+  close: () => void;
+  save: () => void;
+}) {
+  const selectedItem = items.find((item) => item.id === form.targetPlantillaItemId);
+  const needsItem = ITEM_ACTIONS.has(form.actionType);
+  const needsPosition =
+    PROFILE_ACTIONS.has(form.actionType) || form.actionType === "Reclassification";
+  const needsOrganization = TEMPORARY_ACTIONS.has(form.actionType);
+  const needsGrade =
+    ITEM_ACTIONS.has(form.actionType) ||
+    ["Step Increment", "Reclassification"].includes(form.actionType);
+  const separation = SEPARATIONS.has(form.actionType);
+  const selectedEmployee = employees.find((employee) => employee.id === form.employeeId);
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && close()}>
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Prepare personnel movement</DialogTitle>
+        </DialogHeader>
+        {(selectedEmployee || selectedItem) && (
+          <div className="notice-info rounded-lg border px-3 py-2 text-sm">
+            <div className="font-semibold">
+              {form.actionType === "Original Appointment"
+                ? "Filling vacancy"
+                : "Preparing movement"}
+            </div>
+            <div className="mt-1 grid gap-1 sm:grid-cols-2">
+              {selectedEmployee && (
+                <div className="min-w-0">
+                  <span className="font-medium">Employee: </span>
+                  <span className="break-words">{formatEmployeeName(selectedEmployee)}</span>
+                </div>
+              )}
+              {selectedItem && (
+                <div className="min-w-0">
+                  <span className="font-medium">Target item: </span>
+                  <span className="break-words">
+                    {selectedItem.itemNumber} - {selectedItem.positionTitle}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <F l="Control number">
+            <Input
+              placeholder="Auto-generated when blank"
+              value={form.controlNumber}
+              onChange={(event) => setForm({ ...form, controlNumber: event.target.value })}
+            />
+          </F>
+          <Sel
+            l="Employee"
+            v={form.employeeId}
+            set={(value) => setForm({ ...form, employeeId: value })}
+            rows={employees.map((employee) => [
+              employee.id,
+              formatEmployeeName(employee),
+              [employee.employeeId, employee.department, employee.position]
+                .filter(Boolean)
+                .join(" "),
+            ])}
+          />
+          <Sel
+            l="Personnel action"
+            v={form.actionType}
+            set={(value) => {
+              setOrganizationSelection({});
+              setForm({
+                ...form,
+                actionType: value,
+                targetPlantillaItemId: "",
+                targetPositionId: "",
+                targetSalaryGradeId: "",
+                targetDepartment: "",
+                targetOrganizationId: "",
+              });
+            }}
+            rows={MOVEMENT_TYPES.map((type) => [type, type])}
+          />
+          {TEMPORARY_ACTIONS.has(form.actionType) || form.actionType === "Renewal" ? (
+            <F l="Date Range">
+              <DateRangePicker
+                from={form.effectiveDate}
+                to={form.endDate}
+                allowOpenEnded={form.actionType === "Reassignment"}
+                onApply={(effectiveDate, endDate) => setForm({ ...form, effectiveDate, endDate })}
+              />
+            </F>
+          ) : (
+            <F l="Effective date">
+              <Input
+                type="date"
+                value={form.effectiveDate}
+                onChange={(event) => setForm({ ...form, effectiveDate: event.target.value })}
+              />
+            </F>
+          )}
+          <F l="Authority / appointment number">
+            <Input
+              value={form.authorityNumber}
+              onChange={(event) => setForm({ ...form, authorityNumber: event.target.value })}
+            />
+          </F>
+          <F l="Authority date">
+            <Input
+              type="date"
+              value={form.authorityDate}
+              onChange={(event) => setForm({ ...form, authorityDate: event.target.value })}
+            />
+          </F>
+          {needsItem && (
+            <Sel
+              l="Target vacant plantilla item"
+              v={form.targetPlantillaItemId}
+              set={(value) => {
+                const item = items.find((candidate) => candidate.id === value);
+                const stepOne = item?.salaryGrade
+                  ? settings.salaryGrades.find(
+                      (row) =>
+                        row.isActive &&
+                        row.ordinance === item.salaryGrade?.ordinance &&
+                        row.grade === item.salaryGrade?.grade &&
+                        row.step === 1,
+                    )
+                  : null;
+                setForm({
+                  ...form,
+                  targetPlantillaItemId: value,
+                  targetSalaryGradeId: stepOne ? String(stepOne.id) : "",
+                });
+              }}
+              rows={items
+                .filter((item) => !item.occupant)
+                .map((item) => [item.id, `${item.itemNumber} - ${item.positionTitle}`])}
+            />
+          )}
+          {needsPosition && (
+            <Sel
+              l="Target position"
+              v={form.targetPositionId}
+              set={(value) => setForm({ ...form, targetPositionId: value })}
+              rows={[...settings.positions]
+                .sort((left, right) => optionCollator.compare(left.title, right.title))
+                .map((position) => [String(position.id), position.title])}
+            />
+          )}
+          {needsGrade && (
+            <Sel
+              l={
+                ITEM_ACTIONS.has(form.actionType)
+                  ? "Employee salary step"
+                  : "Target salary grade / step"
+              }
+              v={form.targetSalaryGradeId}
+              set={(value) => setForm({ ...form, targetSalaryGradeId: value })}
+              rows={settings.salaryGrades
+                .filter(
+                  (grade) =>
+                    (grade.isActive || String(grade.id) === form.targetSalaryGradeId) &&
+                    (!ITEM_ACTIONS.has(form.actionType) ||
+                      (selectedItem?.salaryGrade &&
+                        grade.ordinance === selectedItem.salaryGrade.ordinance &&
+                        grade.grade === selectedItem.salaryGrade.grade)),
+                )
+                .map((grade) => [
+                  String(grade.id),
+                  `SG ${grade.grade}, Step ${grade.step} - PHP ${grade.amount.toLocaleString()} monthly`,
+                ])}
+            />
+          )}
+          {needsOrganization && (
+            <OrganizationHierarchyFields
+              libraries={organizationLibraries}
+              hierarchy={organizationHierarchy}
+              value={organizationSelection}
+              onValueChange={(selection) => {
+                const organization = selectedAssignableOrganization(
+                  selection,
+                  organizationLibraries,
+                  organizationHierarchy,
+                );
+                setOrganizationSelection(selection);
+                setForm({
+                  ...form,
+                  targetOrganizationId: organization ? String(organization.id) : "",
+                  targetDepartment: organization?.name || "",
+                });
+              }}
+              disabled={busy}
+              fieldKey="movement-organization"
+            />
+          )}
+          <div className="sm:col-span-2">
+            <F l="Document references (one per line: Name | reference/location)">
+              <Textarea
+                rows={3}
+                value={form.documentsText}
+                onChange={(event) => setForm({ ...form, documentsText: event.target.value })}
+              />
+            </F>
+          </div>
+          <div className="sm:col-span-2">
+            <F l={separation ? "Separation remarks" : "Remarks"}>
+              <Textarea
+                rows={3}
+                value={form.remarks}
+                onChange={(event) => setForm({ ...form, remarks: event.target.value })}
+              />
+            </F>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={close}>
+            Cancel
+          </Button>
+          <Button
+            disabled={
+              busy ||
+              !form.employeeId ||
+              !form.effectiveDate ||
+              (needsItem && !form.targetPlantillaItemId) ||
+              (needsGrade && !form.targetSalaryGradeId) ||
+              (needsOrganization && !form.targetOrganizationId)
+            }
+            onClick={save}
+          >
+            Save draft
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function NewPlantillaEmployeeDialog({
+  item,
+  form,
+  setForm,
+  salarySteps,
+  busy,
+  close,
+  save,
+}: {
+  item: PlantillaItem | null;
+  form: {
+    employeeId: string;
+    biometricId: string;
+    lastname: string;
+    firstname: string;
+    middlename: string;
+    email: string;
+    dtrSignatory: string;
+    targetSalaryGradeId: string;
+    effectiveDate: string;
+  };
+  setForm: (form: {
+    employeeId: string;
+    biometricId: string;
+    lastname: string;
+    firstname: string;
+    middlename: string;
+    email: string;
+    dtrSignatory: string;
+    targetSalaryGradeId: string;
+    effectiveDate: string;
+  }) => void;
+  salarySteps: SettingsOptions["salaryGrades"];
+  busy: boolean;
+  close: () => void;
+  save: () => void;
+}) {
+  return (
+    <Dialog open={Boolean(item)} onOpenChange={(open) => !open && close()}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>New employee - {item?.itemNumber}</DialogTitle>
+        </DialogHeader>
+        {item && (
+          <div className="notice-info rounded-lg border px-3 py-2 text-sm">
+            <div className="font-semibold">{item.positionTitle}</div>
+            <div className="mt-1 text-muted-foreground">
+              {item.salaryGrade
+                ? `SG ${item.salaryGrade.grade}, authorized Step ${item.salaryGrade.step}`
+                : "No salary grade"}
+            </div>
+          </div>
+        )}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <F l="Employee ID">
+            <Input
+              value={form.employeeId}
+              placeholder="Auto-generated if blank"
+              onChange={(event) => setForm({ ...form, employeeId: event.target.value })}
+            />
+          </F>
+          <F l="Biometric ID">
+            <Input
+              value={form.biometricId}
+              placeholder="Attendance device user ID"
+              onChange={(event) => setForm({ ...form, biometricId: event.target.value })}
+            />
+          </F>
+          <F l="Last name">
+            <Input
+              value={form.lastname}
+              onChange={(event) => setForm({ ...form, lastname: event.target.value })}
+            />
+          </F>
+          <F l="First name">
+            <Input
+              value={form.firstname}
+              onChange={(event) => setForm({ ...form, firstname: event.target.value })}
+            />
+          </F>
+          <F l="Middle name">
+            <Input
+              value={form.middlename}
+              onChange={(event) => setForm({ ...form, middlename: event.target.value })}
+            />
+          </F>
+          <F l="Email">
+            <Input
+              type="email"
+              value={form.email}
+              onChange={(event) => setForm({ ...form, email: event.target.value })}
+            />
+          </F>
+          <F l="DTR Signatory">
+            <Input
+              value={form.dtrSignatory}
+              placeholder="Defaults to employee name"
+              onChange={(event) =>
+                setForm({ ...form, dtrSignatory: event.target.value.toUpperCase() })
+              }
+            />
+          </F>
+          <F l="Appointment start date">
+            <Input
+              type="date"
+              value={form.effectiveDate}
+              onChange={(event) => setForm({ ...form, effectiveDate: event.target.value })}
+            />
+          </F>
+          <Sel
+            l="Salary Step"
+            v={form.targetSalaryGradeId}
+            set={(value) => setForm({ ...form, targetSalaryGradeId: value })}
+            rows={salarySteps.map((step) => [
+              String(step.id),
+              `Step ${step.step} - PHP ${step.amount.toLocaleString()} monthly`,
+            ])}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={close}>
+            Cancel
+          </Button>
+          <Button disabled={busy} onClick={save}>
+            Create appointment draft
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1025,33 +1705,47 @@ function PlantillaActionsMenu({
   return (
     <div className="inline-flex items-center justify-end gap-2">
       {canPrepareMovement && (
-        <Button size="sm" variant="outline" onClick={() => onPrepareMovement(item)}>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground hover:ring-1 hover:ring-border dark:hover:bg-white/10"
+          onClick={() => onPrepareMovement(item)}
+          title={item.occupant ? "Move employee" : "New employee"}
+          aria-label={item.occupant ? "Move employee" : "New employee"}
+        >
           {item.occupant ? (
-            <ArrowRightLeft className="mr-1.5 h-4 w-4" />
+            <ArrowRightLeft className="h-4 w-4" />
           ) : (
-            <UserPlus className="mr-1.5 h-4 w-4" />
+            <UserPlus className="h-4 w-4" />
           )}
-          {item.occupant ? "Move employee" : "New Employee"}
+          <span className="sr-only">{item.occupant ? "Move employee" : "New employee"}</span>
+        </Button>
+      )}
+      {canPrepareMovement && !item.occupant && (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground hover:ring-1 hover:ring-border dark:hover:bg-white/10"
+          onClick={() => onPrepareExistingPerson(item)}
+          title="Existing employee"
+          aria-label="Existing employee"
+        >
+          <UserCheck className="h-4 w-4" />
+          <span className="sr-only">Existing employee</span>
         </Button>
       )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="inline-grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted/50"
+            className="inline-grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground hover:ring-1 hover:ring-border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:hover:bg-white/10"
             title="More actions"
             aria-label={`More actions for item ${item.itemNumber}`}
           >
             <MoreVertical className="h-4 w-4" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          {canPrepareMovement && !item.occupant && (
-            <DropdownMenuItem onClick={() => onPrepareExistingPerson(item)}>
-              <UserCheck className="mr-2 h-4 w-4" />
-              Existing Employee
-            </DropdownMenuItem>
-          )}
+        <DropdownMenuContent align="end" className="w-40">
           <DropdownMenuItem onClick={() => onHistory(item)}>
             <History className="mr-2 h-4 w-4" />
             History
@@ -1060,7 +1754,7 @@ function PlantillaActionsMenu({
             <>
               <DropdownMenuItem onClick={() => onEdit(item)}>
                 <BriefcaseBusiness className="mr-2 h-4 w-4" />
-                Edit item
+                Edit
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={busy}
@@ -1068,7 +1762,7 @@ function PlantillaActionsMenu({
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2 className="mr-2 h-4 w-4" />
-                Delete item
+                Delete
               </DropdownMenuItem>
             </>
           )}
@@ -1178,13 +1872,13 @@ function StatCard({
   trend: "up" | "down";
 }) {
   return (
-    <div className="relative min-h-[7.25rem] overflow-hidden rounded-xl border border-border bg-card p-2.5 text-card-foreground shadow-sm md:min-h-0 md:p-4">
+    <div className="relative min-h-[7.25rem] overflow-hidden rounded-lg border border-border bg-card p-2.5 text-card-foreground shadow-sm md:min-h-0 md:p-4">
       <div className="mb-2 flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold text-foreground/80">{title}</p>
-          <h2 className="mt-1 text-xl font-bold text-foreground md:text-2xl">{value}</h2>
+          <h2 className="mt-1 text-xl font-semibold text-foreground md:text-2xl">{value}</h2>
         </div>
-        <div className={cn("rounded-lg p-1.5 md:p-2", iconBg)}>{icon}</div>
+        <div className={cn("rounded-md p-1.5 md:p-2", iconBg)}>{icon}</div>
       </div>
       <div className="relative z-10 mt-2 flex items-center text-[10px]">
         {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
@@ -1213,4 +1907,16 @@ function StatCard({
       </div>
     </div>
   );
+}
+
+async function loadAllEmployees(signal?: AbortSignal) {
+  const first = await listEmployees({ pageSize: 100 }, { signal });
+  const pages = Math.ceil(first.total / first.pageSize);
+  if (pages <= 1) return first.employees;
+  const rest = await Promise.all(
+    Array.from({ length: pages - 1 }, (_, index) =>
+      listEmployees({ page: index + 2, pageSize: first.pageSize }, { signal }),
+    ),
+  );
+  return [...first.employees, ...rest.flatMap((page) => page.employees)];
 }

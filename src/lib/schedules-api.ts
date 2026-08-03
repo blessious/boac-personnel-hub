@@ -57,6 +57,13 @@ export type ScheduleListResponse = {
   };
 };
 
+export type ScheduleMutationResponse = {
+  ok: boolean;
+  updated: number;
+  refreshed: { recordsProcessed: number; punchesProcessed: number; warnings?: string[] };
+  warnings: string[];
+};
+
 export function listSchedules(params: {
   q?: string;
   department?: string;
@@ -78,9 +85,11 @@ export function listSchedules(params: {
 export function updateDefaultSchedules(payload: {
   employeeIds: string[];
   shiftTemplateCode?: string;
+  from: string;
+  to: string;
   schedule: { amIn: string; amOut: string; pmIn: string; pmOut: string };
 }) {
-  return api<{ ok: boolean; updated: number }>("/api/attendance/schedule/bulk", {
+  return api<ScheduleMutationResponse>("/api/attendance/schedule/bulk", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -94,14 +103,14 @@ export function updateScheduleOverrides(payload: {
   shiftTemplateCode?: string;
   schedule: { amIn: string; amOut: string; pmIn: string; pmOut: string };
 }) {
-  return api<{ ok: boolean; updated: number }>("/api/attendance/schedule/overrides", {
+  return api<ScheduleMutationResponse>("/api/attendance/schedule/overrides", {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function deleteScheduleOverride(employeeId: string, workDate: string) {
-  return api<{ ok: boolean; deleted: number }>(
+  return api<ScheduleMutationResponse & { deleted: number }>(
     `/api/attendance/schedule/overrides/${employeeId}/${workDate}`,
     { method: "DELETE" },
   );

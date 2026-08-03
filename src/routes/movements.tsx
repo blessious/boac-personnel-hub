@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { cn, formatDisplayDate, formatDisplayDateTime, formatEmployeeName } from "@/lib/utils";
 import { AppShell } from "@/components/layout/AppShell";
+import { OrganizationHierarchyFields } from "@/components/organization/OrganizationHierarchyFields";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import {
@@ -45,7 +46,17 @@ import {
   type MovementForm,
 } from "@/lib/movements-api";
 import { listPlantilla, type PlantillaItem } from "@/lib/plantilla-api";
-import type { ReferenceCategory, ReferenceRow } from "@/lib/reference-libraries";
+import {
+  DEFAULT_ORGANIZATION_HIERARCHY,
+  type OrganizationHierarchy,
+  type ReferenceCategory,
+  type ReferenceRow,
+} from "@/lib/reference-libraries";
+import {
+  organizationSelectionFromReferenceId,
+  selectedAssignableOrganization,
+  type OrganizationSelection,
+} from "@/lib/organization-selection";
 import {
   dataTableBodyClass,
   dataTableCellClass,
@@ -91,6 +102,7 @@ const ITEM_ACTIONS = new Set(["Original Appointment", "Promotion", "Transfer"]);
 const PROFILE_ACTIONS = new Set(["Detail", "Designation"]);
 const TEMPORARY_ACTIONS = new Set(["Detail", "Designation", "Reassignment", "Job Rotation"]);
 const SEPARATIONS = new Set(["Resignation", "Retirement", "Termination", "Death"]);
+const optionCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 const BASE_QUEUE_STATUSES = [
   "all",
   "Draft",
@@ -138,7 +150,12 @@ function MovementsPage() {
   }, [canPrepare]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]),
     [items, setItems] = useState<PlantillaItem[]>([]),
-    [organizationUnits, setOrganizationUnits] = useState<ReferenceRow[]>([]),
+    [organizationLibraries, setOrganizationLibraries] = useState<
+      Record<ReferenceCategory, ReferenceRow[]>
+    >({} as Record<ReferenceCategory, ReferenceRow[]>),
+    [organizationHierarchy, setOrganizationHierarchy] = useState<OrganizationHierarchy>(
+      DEFAULT_ORGANIZATION_HIERARCHY,
+    ),
     [settings, setSettings] = useState<SettingsOptions>({
       departments: [],
       positions: [],
@@ -146,6 +163,8 @@ function MovementsPage() {
     });
   const [edit, setEdit] = useState<Movement | null | undefined>(undefined),
     [form, setForm] = useState<MovementForm>(emptyMovement),
+    [movementOrganizationSelection, setMovementOrganizationSelection] =
+      useState<OrganizationSelection>({}),
     [busy, setBusy] = useState(false);
   const [decision, setDecision] = useState<{ movement: Movement; action: string } | null>(null),
     [decisionRemarks, setDecisionRemarks] = useState(""),
@@ -188,23 +207,19 @@ function MovementsPage() {
       api<SettingsOptions>("/api/settings", { signal: controller.signal }),
       listPlantilla("", "Active", "all", { signal: controller.signal }),
       loadAllEmployees(controller.signal),
-      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references", {
-        signal: controller.signal,
-      }),
+      api<{
+        libraries: Record<ReferenceCategory, ReferenceRow[]>;
+        hierarchy: OrganizationHierarchy;
+      }>("/api/settings/references", { signal: controller.signal }),
     ])
       .then(([s, p, e, references]) => {
         if (controller.signal.aborted) return;
         setSettings(s);
         setItems(p.items);
         setEmployees(e);
-        setOrganizationUnits(
-          [
-            ...references.libraries.sectors,
-            ...references.libraries.offices,
-            ...references.libraries.divisions,
-            ...references.libraries.sections,
-          ].filter((row) => row.isActive),
-        );
+        const hierarchy = references.hierarchy || DEFAULT_ORGANIZATION_HIERARCHY;
+        setOrganizationLibraries(references.libraries);
+        setOrganizationHierarchy(hierarchy);
       })
       .catch((e) => {
         if (!isAbortError(e)) toast.error(e.message);
@@ -212,30 +227,42 @@ function MovementsPage() {
 
     return () => controller.abort();
   }, [user]);
-  const openForm = useCallback((m?: Movement, prefill: Partial<MovementForm> = {}) => {
-    setEdit(m || null);
-    setForm(
-      m
-        ? {
-            controlNumber: m.controlNumber,
-            employeeId: m.employeeId,
-            actionType: m.actionType,
-            effectiveDate: m.effectiveDate,
-            endDate: m.endDate || "",
-            authorityNumber: m.authorityNumber,
-            authorityDate: m.authorityDate || "",
-            targetPlantillaItemId: m.targetPlantillaItemId || "",
-            targetPositionId: m.targetPositionId ? String(m.targetPositionId) : "",
-            targetSalaryGradeId: m.targetSalaryGradeId ? String(m.targetSalaryGradeId) : "",
-            targetDepartment: m.targetDepartment,
-            remarks: m.remarks,
-            documentsText: m.supportingDocuments
-              .map((x) => `${x.name}${x.reference ? ` | ${x.reference}` : ""}`)
-              .join("\n"),
-          }
-        : { ...emptyMovement, effectiveDate: today(), ...prefill },
-    );
-  }, []);
+  const openForm = useCallback(
+    (m?: Movement, prefill: Partial<MovementForm> = {}) => {
+      setEdit(m || null);
+      const targetOrganizationId = m?.targetOrganizationId || prefill.targetOrganizationId || "";
+      setMovementOrganizationSelection(
+        organizationSelectionFromReferenceId(
+          targetOrganizationId,
+          organizationLibraries,
+          organizationHierarchy,
+        ),
+      );
+      setForm(
+        m
+          ? {
+              controlNumber: m.controlNumber,
+              employeeId: m.employeeId,
+              actionType: m.actionType,
+              effectiveDate: m.effectiveDate,
+              endDate: m.endDate || "",
+              authorityNumber: m.authorityNumber,
+              authorityDate: m.authorityDate || "",
+              targetPlantillaItemId: m.targetPlantillaItemId || "",
+              targetPositionId: m.targetPositionId ? String(m.targetPositionId) : "",
+              targetSalaryGradeId: m.targetSalaryGradeId ? String(m.targetSalaryGradeId) : "",
+              targetDepartment: m.targetDepartment,
+              targetOrganizationId: m.targetOrganizationId ? String(m.targetOrganizationId) : "",
+              remarks: m.remarks,
+              documentsText: m.supportingDocuments
+                .map((x) => `${x.name}${x.reference ? ` | ${x.reference}` : ""}`)
+                .join("\n"),
+            }
+          : { ...emptyMovement, effectiveDate: today(), ...prefill },
+      );
+    },
+    [organizationHierarchy, organizationLibraries],
+  );
   useEffect(() => {
     if (prepareSearch.prepare !== "1") return;
     if (!canPrepare) {
@@ -426,44 +453,86 @@ function MovementsPage() {
             : queueStatus === "all"
               ? "All"
               : queueStatus;
-  const actionButtons = (m: Movement, variant: "ghost" | "outline") => (
+  const actionButtons = (m: Movement) => (
     <>
-      <Button size="sm" variant="outline" onClick={() => openDetails(m)}>
-        <Eye className="mr-1.5 h-4 w-4" />
-        {canUserApproveMovement(m) && ["Submitted", "Reviewed"].includes(m.status)
-          ? "Review"
-          : "Details"}
+      <Button
+        size="icon"
+        variant="ghost"
+        className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground hover:ring-1 hover:ring-border dark:hover:bg-white/10"
+        onClick={() => openDetails(m)}
+        title={
+          canUserApproveMovement(m) && ["Submitted", "Reviewed"].includes(m.status)
+            ? "Review"
+            : "Details"
+        }
+        aria-label={
+          canUserApproveMovement(m) && ["Submitted", "Reviewed"].includes(m.status)
+            ? "Review"
+            : "Details"
+        }
+      >
+        <Eye className="h-4 w-4" />
       </Button>
       {canPrepare && ["Draft", "Rejected"].includes(m.status) && (
-        <Button size="sm" variant={variant} onClick={() => openForm(m)}>
-          <ArrowRightLeft className="mr-1.5 h-4 w-4" />
-          Edit draft
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground hover:ring-1 hover:ring-border dark:hover:bg-white/10"
+          onClick={() => openForm(m)}
+          title="Edit draft"
+          aria-label="Edit draft"
+        >
+          <FileEdit className="h-4 w-4" />
         </Button>
       )}
       {canPrepare && m.status === "Draft" && (
-        <Button size="sm" variant={variant} onClick={() => openDecision(m, "submit")}>
-          <Send className="mr-1.5 h-4 w-4" />
-          Submit
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground hover:ring-1 hover:ring-border dark:hover:bg-white/10"
+          onClick={() => openDecision(m, "submit")}
+          title="Submit"
+          aria-label="Submit"
+        >
+          <Send className="h-4 w-4" />
         </Button>
       )}
       {canPost && canPostMovement(m) && (
         <>
-          <Button size="sm" variant="outline" onClick={() => openDecision(m, "post")}>
-            <CheckCircle2 className="mr-1.5 h-4 w-4" />
-            Post
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground hover:ring-1 hover:ring-border dark:hover:bg-white/10"
+            onClick={() => openDecision(m, "post")}
+            title="Post"
+            aria-label="Post"
+          >
+            <CheckCircle2 className="h-4 w-4" />
           </Button>
         </>
       )}
       {canPost && (m.status === "Approved" || m.status === "Scheduled") && (
-        <Button size="sm" variant={variant} onClick={() => openDecision(m, "return")}>
-          <Undo2 className="mr-1.5 h-4 w-4" />
-          Return
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground hover:ring-1 hover:ring-border dark:hover:bg-white/10"
+          onClick={() => openDecision(m, "return")}
+          title="Return"
+          aria-label="Return"
+        >
+          <Undo2 className="h-4 w-4" />
         </Button>
       )}
       {canPost && m.status === "Posted" && (
-        <Button size="sm" variant={variant} onClick={() => openDecision(m, "reverse")}>
-          <Undo2 className="mr-1.5 h-4 w-4" />
-          Reverse
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground hover:ring-1 hover:ring-border dark:hover:bg-white/10"
+          onClick={() => openDecision(m, "reverse")}
+          title="Reverse"
+          aria-label="Reverse"
+        >
+          <Undo2 className="h-4 w-4" />
         </Button>
       )}
     </>
@@ -599,10 +668,15 @@ function MovementsPage() {
       )}
       <div className="mobile-record-list mt-4 md:hidden">
         {displayedMovements.map((m) => (
-          <article className="rounded-xl border border-border bg-white p-3 shadow-sm" key={m.id}>
+          <article
+            className="rounded-lg border border-border bg-background p-3 shadow-sm"
+            key={m.id}
+          >
             <div className="grid grid-cols-[minmax(0,1fr)_5rem] items-start gap-3">
               <div className="min-w-0">
-                <div className="truncate text-sm font-bold text-foreground">{m.controlNumber}</div>
+                <div className="truncate text-sm font-semibold text-foreground">
+                  {m.controlNumber}
+                </div>
                 <div className="mt-1 truncate text-sm font-semibold text-foreground">
                   {m.employeeName}
                 </div>
@@ -616,7 +690,7 @@ function MovementsPage() {
               )}
             </div>
             <div className="mt-3 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-3">
-              <div className="space-y-5">
+              <div className="space-y-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <CalendarDays className="h-4 w-4" />
                   <span>
@@ -626,7 +700,7 @@ function MovementsPage() {
                 </div>
               </div>
               <div className="min-w-0 border-l border-border/70 pl-3">
-                <div className="text-sm font-bold text-foreground">{m.actionType}</div>
+                <div className="text-sm font-semibold text-foreground">{m.actionType}</div>
                 <div className="mt-1 text-xs leading-4 text-muted-foreground">
                   {fromText(m)} <span aria-hidden="true">-&gt;</span> {toText(m)}
                 </div>
@@ -635,7 +709,7 @@ function MovementsPage() {
                 </div>
               </div>
             </div>
-            <div className="mt-3 flex justify-end gap-2">{actionButtons(m, "outline")}</div>
+            <div className="mt-3 flex justify-end gap-2">{actionButtons(m)}</div>
           </article>
         ))}
         {!displayedMovements.length && (
@@ -701,7 +775,7 @@ function MovementsPage() {
                   )}
                 </td>
                 <td className={dataTableCellClass}>
-                  <div className="flex flex-wrap gap-1">{actionButtons(m, "ghost")}</div>
+                  <div className="flex flex-wrap gap-1">{actionButtons(m)}</div>
                 </td>
               </tr>
             ))}
@@ -723,7 +797,10 @@ function MovementsPage() {
         employees={employees}
         items={items}
         settings={settings}
-        organizationUnits={organizationUnits}
+        organizationLibraries={organizationLibraries}
+        organizationHierarchy={organizationHierarchy}
+        organizationSelection={movementOrganizationSelection}
+        setOrganizationSelection={setMovementOrganizationSelection}
         busy={busy}
         close={() => setEdit(undefined)}
         save={save}
@@ -1066,7 +1143,10 @@ function MovementDialog({
   employees,
   items,
   settings,
-  organizationUnits,
+  organizationLibraries,
+  organizationHierarchy,
+  organizationSelection,
+  setOrganizationSelection,
   busy,
   close,
   save,
@@ -1078,7 +1158,10 @@ function MovementDialog({
   employees: EmployeeRecord[];
   items: PlantillaItem[];
   settings: SettingsOptions;
-  organizationUnits: ReferenceRow[];
+  organizationLibraries: Record<ReferenceCategory, ReferenceRow[]>;
+  organizationHierarchy: OrganizationHierarchy;
+  organizationSelection: OrganizationSelection;
+  setOrganizationSelection: (selection: OrganizationSelection) => void;
   busy: boolean;
   close: () => void;
   save: () => void;
@@ -1086,6 +1169,7 @@ function MovementDialog({
   const selectedItem = items.find((item) => item.id === form.targetPlantillaItemId);
   const needsItem = ITEM_ACTIONS.has(form.actionType),
     needsPosition = PROFILE_ACTIONS.has(form.actionType) || form.actionType === "Reclassification",
+    needsOrganization = TEMPORARY_ACTIONS.has(form.actionType),
     needsGrade =
       ITEM_ACTIONS.has(form.actionType) ||
       ["Step Increment", "Reclassification"].includes(form.actionType),
@@ -1148,15 +1232,18 @@ function MovementDialog({
           <SelectField
             label="Personnel action"
             value={form.actionType}
-            set={(v) =>
+            set={(v) => {
+              setOrganizationSelection({});
               setForm({
                 ...form,
                 actionType: v,
                 targetPlantillaItemId: "",
                 targetPositionId: "",
                 targetSalaryGradeId: "",
-              })
-            }
+                targetDepartment: "",
+                targetOrganizationId: "",
+              });
+            }}
             rows={MOVEMENT_TYPES.map((x) => [x, x])}
           />
           {TEMPORARY_ACTIONS.has(form.actionType) || form.actionType === "Renewal" ? (
@@ -1221,7 +1308,9 @@ function MovementDialog({
               label="Target position"
               value={form.targetPositionId}
               set={(v) => setForm({ ...form, targetPositionId: v })}
-              rows={settings.positions.map((p) => [String(p.id), p.title])}
+              rows={[...settings.positions]
+                .sort((left, right) => optionCollator.compare(left.title, right.title))
+                .map((p) => [String(p.id), p.title])}
             />
           )}{" "}
           {needsGrade && (
@@ -1248,12 +1337,26 @@ function MovementDialog({
                 ])}
             />
           )}{" "}
-          {TEMPORARY_ACTIONS.has(form.actionType) && (
-            <SelectField
-              label="Target organizational assignment"
-              value={form.targetDepartment}
-              set={(value) => setForm({ ...form, targetDepartment: value })}
-              rows={organizationUnits.map((row) => [row.name, `${row.name} (${row.category})`])}
+          {needsOrganization && (
+            <OrganizationHierarchyFields
+              libraries={organizationLibraries}
+              hierarchy={organizationHierarchy}
+              value={organizationSelection}
+              onValueChange={(selection) => {
+                const organization = selectedAssignableOrganization(
+                  selection,
+                  organizationLibraries,
+                  organizationHierarchy,
+                );
+                setOrganizationSelection(selection);
+                setForm({
+                  ...form,
+                  targetOrganizationId: organization ? String(organization.id) : "",
+                  targetDepartment: organization?.name || "",
+                });
+              }}
+              disabled={busy}
+              fieldKey="movement-organization"
             />
           )}
           {form.actionType === "Reclassification" && (
@@ -1286,7 +1389,15 @@ function MovementDialog({
           <Button variant="outline" onClick={close}>
             Cancel
           </Button>
-          <Button disabled={busy || !form.employeeId || !form.effectiveDate} onClick={save}>
+          <Button
+            disabled={
+              busy ||
+              !form.employeeId ||
+              !form.effectiveDate ||
+              (needsOrganization && !form.targetOrganizationId)
+            }
+            onClick={save}
+          >
             Save draft
           </Button>
         </DialogFooter>
@@ -1325,13 +1436,13 @@ function StatCard({
   trend: "up" | "down";
 }) {
   return (
-    <div className="relative min-h-[6.25rem] overflow-hidden rounded-xl border border-border bg-card p-2.5 text-card-foreground shadow-sm md:min-h-0 md:p-4">
+    <div className="relative min-h-[6.25rem] overflow-hidden rounded-lg border border-border bg-card p-2.5 text-card-foreground shadow-sm md:min-h-0 md:p-4">
       <div className="mb-2 flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold text-foreground/80">{title}</p>
-          <h2 className="mt-1 text-xl font-bold text-foreground md:text-2xl">{value}</h2>
+          <h2 className="mt-1 text-xl font-semibold text-foreground md:text-2xl">{value}</h2>
         </div>
-        <div className={cn("rounded-lg p-1.5 md:p-2", iconBg)}>{icon}</div>
+        <div className={cn("rounded-md p-1.5 md:p-2", iconBg)}>{icon}</div>
       </div>
       <div className="relative z-10 mt-2 flex items-center text-[10px]">
         {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
@@ -1377,12 +1488,14 @@ function SelectField({
       <Combobox
         value={value}
         onValueChange={set}
-        options={rows.map(([id, name, ...details]) => ({
-          value: id,
-          label: name,
-          description: details.filter(Boolean).join(" · "),
-          keywords: details,
-        }))}
+        options={[...rows]
+          .sort((left, right) => optionCollator.compare(left[1], right[1]))
+          .map(([id, name, ...details]) => ({
+            value: id,
+            label: name,
+            description: details.filter(Boolean).join(" · "),
+            keywords: details,
+          }))}
         searchPlaceholder={`Search ${label.toLowerCase()}...`}
         clearable
       />

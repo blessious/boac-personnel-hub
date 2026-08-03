@@ -4,16 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const TONE_CLASSES = {
-  success:
-    "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/20",
-  info: "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-200 dark:hover:bg-blue-500/20",
-  warning:
-    "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/20",
-  danger:
-    "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-200 dark:hover:bg-rose-500/20",
-  accent:
-    "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-50 dark:border-purple-500/30 dark:bg-purple-500/15 dark:text-purple-200 dark:hover:bg-purple-500/20",
-  neutral: "border-border bg-muted/50 text-muted-foreground hover:bg-muted/50",
+  success: "text-emerald-700 dark:text-emerald-300",
+  info: "text-blue-700 dark:text-blue-300",
+  warning: "text-amber-700 dark:text-amber-300",
+  danger: "text-rose-700 dark:text-rose-300",
+  accent: "text-purple-700 dark:text-purple-300",
+  neutral: "text-muted-foreground",
 } as const;
 
 export type StatusBadgeTone = keyof typeof TONE_CLASSES;

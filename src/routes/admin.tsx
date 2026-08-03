@@ -852,7 +852,7 @@ function AdminPage() {
         title="System Administration"
         subtitle="Manage users, audit logs, and system configuration"
       >
-        <div className="rounded-xl border border-border bg-card p-8 text-center shadow-sm">
+        <div className="rounded-lg border border-border bg-card p-8 text-center shadow-sm">
           <ShieldCheck className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
           <h4 className="font-semibold text-foreground">System Administration access required</h4>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -873,7 +873,7 @@ function AdminPage() {
         <AdminSummaryCard label="Approvers" value={approverUsers} icon={ShieldCheck} />
       </div>
 
-      <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/40 dark:bg-amber-500/15">
+      <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/40 dark:bg-amber-500/15">
         <AlertCircle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-200" />
         <p className="text-sm font-medium text-amber-800 dark:text-amber-100">
           System Administration is restricted to administrators. HR maintains records, Approvers
@@ -881,7 +881,7 @@ function AdminPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-1 bg-muted/40 rounded-xl p-1 w-fit mb-5">
+      <div className="mb-5 flex w-fit flex-wrap gap-1 rounded-lg bg-muted/40 p-1">
         {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -889,7 +889,7 @@ function AdminPage() {
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap",
+                "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all whitespace-nowrap",
                 activeTab === tab.key
                   ? "bg-card text-foreground shadow-sm border border-border"
                   : "text-muted-foreground hover:text-foreground",
@@ -903,8 +903,8 @@ function AdminPage() {
       </div>
 
       {activeTab === "users" && (
-        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="p-4 flex items-center justify-between border-b border-border">
+        <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+          <div className="flex items-center justify-between border-b border-border p-4">
             <div>
               <h4 className="font-semibold text-foreground">System Users</h4>
               <p className="text-xs text-muted-foreground">
@@ -936,10 +936,7 @@ function AdminPage() {
                 <Printer className="h-4 w-4" />
                 {bulkResettingPasswords ? "Preparing..." : "View / Print Temporary Passwords"}
               </Button>
-              <Button
-                onClick={openAddUser}
-                className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
-              >
+              <Button onClick={openAddUser} className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700">
                 <Plus className="h-4 w-4" /> Add User
               </Button>
             </div>
@@ -959,7 +956,7 @@ function AdminPage() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-base">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-sm uppercase tracking-wider text-muted-foreground">
                   <th className="px-4 py-3 font-semibold">Name</th>
@@ -1089,7 +1086,7 @@ function AdminPage() {
       )}
 
       {activeTab === "permissions" && (
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
             <div>
               <h4 className="font-semibold text-foreground">Role Permission Review</h4>
@@ -1142,7 +1139,7 @@ function AdminPage() {
                           {role === "Super Admin" && (
                             <Badge
                               variant="outline"
-                              className="border-blue-200 bg-white text-blue-700"
+                              className="border-blue-200 bg-background text-blue-700"
                             >
                               Protected
                             </Badge>
@@ -1213,7 +1210,7 @@ function AdminPage() {
                                 {locked && (
                                   <Badge
                                     variant="outline"
-                                    className="border-blue-200 bg-white text-blue-700"
+                                    className="border-blue-200 bg-background text-blue-700"
                                   >
                                     Locked
                                   </Badge>
@@ -1245,8 +1242,8 @@ function AdminPage() {
       )}
 
       {activeTab === "audit" && (
-        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="p-4 flex items-center justify-between border-b border-border">
+        <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+          <div className="flex items-center justify-between border-b border-border p-4">
             <div>
               <h4 className="font-semibold text-foreground">Audit Log</h4>
               <p className="text-xs text-muted-foreground">
@@ -1356,8 +1353,8 @@ function AdminPage() {
 
       {activeTab === "errors" && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-            <div className="p-4 flex items-center justify-between border-b border-border">
+          <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+            <div className="flex items-center justify-between border-b border-border p-4">
               <div>
                 <h4 className="font-semibold text-foreground">Error Log</h4>
                 <p className="text-xs text-muted-foreground">
@@ -1491,7 +1488,7 @@ function AdminPage() {
             />
           </div>
 
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+          <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
             <div className="border-b border-border p-4">
               <h4 className="font-semibold text-foreground">DTR Import Logs</h4>
               <p className="text-xs text-muted-foreground">
@@ -1635,12 +1632,12 @@ function AdminPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-base leading-relaxed text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-100">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-100">
               Temporary passwords are shown only now. Print or copy before closing, then give each
               employee only their own credentials.
             </div>
             <div className="max-h-[55vh] overflow-auto rounded-lg border border-border">
-              <table className="w-full text-base">
+              <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-muted">
                   <tr className="text-left text-sm uppercase tracking-wider text-muted-foreground">
                     <th className="px-3 py-2 font-semibold">Employee</th>
@@ -2015,8 +2012,8 @@ function AdminSummaryCard({
   icon: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-100">
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-100">
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">
@@ -2038,50 +2035,19 @@ function LogPager({
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
 }) {
-  const start = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
-  const end = Math.min(pagination.total, start + pagination.pageSize - 1);
   return (
-    <div className="flex flex-col gap-3 border-t border-border px-4 py-3 text-sm md:flex-row md:items-center md:justify-between">
-      <p className="text-xs text-muted-foreground">
-        Showing {start}-{end} of {pagination.total}
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <Select
-          value={String(pagination.pageSize)}
-          onValueChange={(value) => onPageSizeChange(Number(value))}
-          disabled={loading}
-        >
-          <SelectTrigger className="h-9 w-[120px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[25, 50, 100, 200].map((size) => (
-              <SelectItem key={size} value={String(size)}>
-                {size} / page
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={loading || pagination.page <= 1}
-          onClick={() => onPageChange(Math.max(1, pagination.page - 1))}
-        >
-          Previous
-        </Button>
-        <span className="px-2 text-xs text-muted-foreground">
-          Page {pagination.page} of {pagination.totalPages}
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={loading || pagination.page >= pagination.totalPages}
-          onClick={() => onPageChange(Math.min(pagination.totalPages, pagination.page + 1))}
-        >
-          Next
-        </Button>
-      </div>
-    </div>
+    <TablePagination
+      page={pagination.page}
+      totalPages={pagination.totalPages}
+      total={pagination.total}
+      pageSize={pagination.pageSize}
+      itemLabel="entries"
+      onPageChange={onPageChange}
+      onPageSizeChange={onPageSizeChange}
+      disabled={loading}
+      minPageSize={10}
+      maxPageSize={200}
+      pageSizeOptions={[25, 50, 100, 200]}
+    />
   );
 }

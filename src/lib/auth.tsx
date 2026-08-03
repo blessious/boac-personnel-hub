@@ -39,6 +39,7 @@ export type PermissionKey =
   | "employees.write"
   | "attendance.read"
   | "attendance.write"
+  | "attendance.corrections.approve"
   | "leave.read"
   | "leave.write"
   | "approvals.manage"

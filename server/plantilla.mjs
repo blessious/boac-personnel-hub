@@ -272,6 +272,7 @@ const map = (r) => ({
 
 export function createPlantillaHandlers({
   pool,
+  getOrganizationHierarchy,
   requireEmployeeRead,
   requireEmployeeWrite,
   readBody,
@@ -382,33 +383,76 @@ export function createPlantillaHandlers({
       if (!salaryGrade.is_active && Number(existing?.salaryGradeId) !== salaryGradeId)
         throw Error("Select a salary grade from the active salary table");
     }
+    const hierarchy = await getOrganizationHierarchy();
+    const organizationField = {
+      sectors: "sectorId",
+      offices: "officeId",
+      divisions: "divisionId",
+      sections: "sectionId",
+    };
+    const organizationLevels = hierarchy.levels.filter((level) => level.enabled);
     const defs = [
-        ["sectorId", "sectors", "Sector"],
-        ["officeId", "offices", "Office"],
-        ["divisionId", "divisions", "Division"],
-        ["sectionId", "sections", "Section"],
+        ...hierarchy.levels.map((level) => [
+          organizationField[level.category],
+          level.category,
+          level.label,
+          level.enabled,
+        ]),
         ["plantillaTypeId", "plantilla-types", "Plantilla type"],
         ["budgetCodeId", "budget-codes", "Budget code"],
       ],
       refs = {},
       rows = {};
-    for (const [f, cat, label] of defs) {
-      refs[f] = num(body[f], label);
+    for (const [f, cat, label, enabled = true] of defs) {
+      refs[f] = !enabled && existing ? existing[f] || null : !enabled ? null : num(body[f], label);
       if (refs[f]) {
         const [rr] = await pool.execute(
-          "SELECT id,parent_id,is_active FROM hr_reference_values WHERE id=:id AND category=:cat",
+          "SELECT id,category,parent_id,is_active FROM hr_reference_values WHERE id=:id AND category=:cat",
           { id: refs[f], cat },
         );
-        if (!rr[0] || !rr[0].is_active) throw Error(`Select an active ${label}`);
+        const preservingDisabled = !enabled && Number(existing?.[f]) === Number(refs[f]);
+        if (!rr[0] || (!rr[0].is_active && !preservingDisabled))
+          throw Error(`Select an active ${label}`);
         rows[f] = rr[0];
       }
     }
-    if (refs.officeId && refs.sectorId && Number(rows.officeId.parent_id) !== refs.sectorId)
-      throw Error("Office must belong to the selected sector");
-    if (refs.divisionId && Number(rows.divisionId.parent_id) !== refs.officeId)
-      throw Error("Division must belong to the selected office");
-    if (refs.sectionId && Number(rows.sectionId.parent_id) !== refs.divisionId)
-      throw Error("Section must belong to the selected division");
+    const isAncestor = async (child, parentId) => {
+      const visited = new Set();
+      let current = child;
+      while (current?.parent_id && !visited.has(Number(current.parent_id))) {
+        const candidateId = Number(current.parent_id);
+        if (candidateId === Number(parentId)) return true;
+        visited.add(candidateId);
+        const [[candidate]] = await pool.execute(
+          `SELECT id, category, parent_id, is_active
+           FROM hr_reference_values
+           WHERE id = :id
+           LIMIT 1`,
+          { id: candidateId },
+        );
+        current = candidate;
+      }
+      return false;
+    };
+    let deepestSelectedLevel = null;
+    for (let index = 0; index < organizationLevels.length; index += 1) {
+      const level = organizationLevels[index];
+      const field = organizationField[level.category];
+      if (!refs[field]) continue;
+      deepestSelectedLevel = level;
+      if (index === 0) continue;
+      const parentLevel = organizationLevels[index - 1];
+      const parentField = organizationField[parentLevel.category];
+      if (!refs[parentField]) {
+        throw Error(`${parentLevel.label} is required before ${level.label}`);
+      }
+      if (!(await isAncestor(rows[field], refs[parentField]))) {
+        throw Error(`${level.label} must belong to the selected ${parentLevel.label}`);
+      }
+    }
+    if (deepestSelectedLevel && !deepestSelectedLevel.assignable) {
+      throw Error(`Select an organizational level that accepts assignments`);
+    }
     const itemStatus = String(body.itemStatus || "Active");
     if (!["Active", "Inactive", "Abolished"].includes(itemStatus))
       throw Error("Invalid item status");
@@ -439,7 +483,9 @@ export function createPlantillaHandlers({
     const q = String(url.searchParams.get("q") || "").trim(),
       status = String(url.searchParams.get("status") || ""),
       occ = String(url.searchParams.get("occupancy") || ""),
-      officeId = String(url.searchParams.get("officeId") || "").trim();
+      organizationId = String(
+        url.searchParams.get("organizationId") || url.searchParams.get("officeId") || "",
+      ).trim();
     if (q) {
       where.push(
         "(pi.item_number LIKE :q OR p.title LIKE :q OR e.employee_no LIKE :q OR e.firstname LIKE :q OR e.lastname LIKE :q)",
@@ -452,10 +498,15 @@ export function createPlantillaHandlers({
     }
     if (occ === "occupied") where.push("po.id IS NOT NULL");
     if (occ === "vacant") where.push("po.id IS NULL AND pi.item_status='Active'");
-    if (officeId && officeId !== "all") {
-      if (!/^\d+$/.test(officeId)) return json(res, 400, { error: "Invalid office filter" });
-      where.push("pi.office_ref_id=:officeId");
-      p.officeId = Number(officeId);
+    if (organizationId && organizationId !== "all") {
+      if (!/^\d+$/.test(organizationId))
+        return json(res, 400, { error: "Invalid organization filter" });
+      where.push(
+        `:organizationId IN (
+          pi.sector_ref_id, pi.office_ref_id, pi.division_ref_id, pi.section_ref_id
+        )`,
+      );
+      p.organizationId = Number(organizationId);
     }
     const [rs] = await pool.execute(
       selectSql +

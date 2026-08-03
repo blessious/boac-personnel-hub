@@ -3,6 +3,7 @@ import { Database, PlugZap, RotateCcw, Save, ShieldCheck, Trash2 } from "lucide-
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
+import { OrganizationHierarchySettings } from "@/components/settings/OrganizationHierarchySettings";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,6 +70,7 @@ function normalizeAgency(settings: AgencySettings): AgencySettings {
     logoUrl: settings.logoUrl || "",
     iconUrl: settings.iconUrl || "",
     bannerUrl: settings.bannerUrl || "",
+    hierarchy: settings.hierarchy,
   };
 }
 
@@ -381,7 +383,7 @@ function SettingsPage() {
             </p>
           </div>
           {dirty && (
-            <span className="w-fit rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+            <span className="w-fit text-xs font-semibold text-amber-700 dark:text-amber-300">
               Unsaved changes
             </span>
           )}
@@ -455,6 +457,13 @@ function SettingsPage() {
         </div>
       </div>
 
+      <OrganizationHierarchySettings
+        onActivated={(hierarchy) => {
+          updateAgency({ hierarchy });
+          void loadAgencySettings();
+        }}
+      />
+
       <div className="mt-5 rounded-xl border border-border bg-card p-5 shadow-sm">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -467,7 +476,7 @@ function SettingsPage() {
             </p>
           </div>
           {databaseConfig?.restartRequired && (
-            <span className="w-fit rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+            <span className="w-fit text-xs font-semibold text-amber-700 dark:text-amber-300">
               Restart required
             </span>
           )}

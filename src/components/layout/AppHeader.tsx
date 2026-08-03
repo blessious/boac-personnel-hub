@@ -8,6 +8,7 @@ import {
   Menu,
   ShieldCheck,
   CheckCheck,
+  Loader2,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
@@ -40,7 +41,36 @@ import { listLeaveApplications } from "@/lib/leave-api";
 import { listDtrCorrectionRequests } from "@/lib/attendance-api";
 import { navNotificationCount, useRealtime } from "@/lib/realtime";
 import { cn, formatDisplayDateTime } from "@/lib/utils";
-import { groupNavItems, navForPermissions } from "@/components/layout/navigation";
+import { APP_NAV, groupNavItems, navForPermissions } from "@/components/layout/navigation";
+
+const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024;
+const PROFILE_PHOTO_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+
+function routeBreadcrumbs(path: string) {
+  const dashboard = { label: "Dashboard", to: "/" };
+
+  if (path === "/") {
+    return [dashboard];
+  }
+
+  const match = APP_NAV.filter(
+    (item) => item.to !== "/" && (path === item.to || path.startsWith(`${item.to}/`)),
+  ).sort((a, b) => b.to.length - a.to.length)[0];
+
+  if (!match) {
+    return [dashboard, { label: "Workspace", to: path }];
+  }
+
+  const crumbs = [dashboard, { label: match.shortLabel || match.label, to: match.to }];
+  if (
+    path !== match.to &&
+    path.startsWith("/employees/") &&
+    !path.startsWith("/employees/references")
+  ) {
+    crumbs.push({ label: "201 File", to: path });
+  }
+  return crumbs;
+}
 
 export function AppHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   const { user, logout, updateProfile, hasPermission } = useAuth();
@@ -51,6 +81,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", photoUrl: "" });
+  const [profileSaving, setProfileSaving] = useState(false);
   const canSeeLeaveNotifications = hasPermission("approvals.manage");
   const { connected, notifications, unreadCount, markRead, markAllRead } = useRealtime();
 
@@ -85,17 +116,39 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
     : "U";
 
   const handleSaveProfile = async () => {
+    if (profileSaving) return;
     try {
       if (!formData.name.trim()) {
         toast.error("Name is required");
         return;
       }
+      setProfileSaving(true);
       await updateProfile({ name: formData.name.trim(), photoUrl: formData.photoUrl });
       toast.success("Profile updated successfully");
       setShowProfileDialog(false);
-    } catch (e) {
-      toast.error("Failed to update profile");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update profile");
+    } finally {
+      setProfileSaving(false);
     }
+  };
+
+  const handleProfilePhoto = (file: File | undefined) => {
+    if (!file) return;
+    if (!PROFILE_PHOTO_TYPES.has(file.type.toLowerCase())) {
+      toast.error("Profile photo must be PNG, JPEG, WebP, or GIF");
+      return;
+    }
+    if (file.size > MAX_PROFILE_PHOTO_BYTES) {
+      toast.error("Profile photo must be 2 MB or smaller");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () =>
+      setFormData((current) => ({ ...current, photoUrl: String(reader.result || "") }));
+    reader.onerror = () => toast.error("Unable to read the selected photo");
+    reader.readAsDataURL(file);
   };
 
   const handleLogout = async () => {
@@ -108,18 +161,15 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
 
   const mobileNav = navForPermissions(user?.permissions);
   const mobileNavSections = groupNavItems(mobileNav);
+  const breadcrumbs = routeBreadcrumbs(path);
 
   return (
     <>
-      <header className="mobile-app-header flex h-16 items-center justify-between gap-3 border-b border-border/50 bg-background/90 px-3 backdrop-blur-md md:px-6">
-        <div className="flex items-center gap-3 min-w-0">
+      <header className="mobile-app-header sticky top-0 z-40 flex h-14 items-center justify-between gap-4 border-b bg-card/95 px-3 shadow-sm backdrop-blur md:px-5">
+        <div className="flex min-w-0 items-center gap-3">
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-10 w-10 shrink-0 rounded-full md:hidden"
-              >
+              <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-md md:hidden">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
@@ -213,12 +263,27 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
               </div>
             </SheetContent>
           </Sheet>
-          <div className="min-w-0">
-            <h1 className="truncate text-[17px] font-bold tracking-tight text-foreground/90 md:text-[18px]">
-              {title}
+          <div className="min-w-0 leading-tight">
+            <div className="hidden min-w-0 items-center gap-1 text-[11px] font-medium text-muted-foreground sm:flex">
+              {breadcrumbs.map((crumb, index) => (
+                <span key={`${crumb.to}-${index}`} className="flex min-w-0 items-center gap-1">
+                  {index > 0 && <span className="text-muted-foreground/45">/</span>}
+                  <span
+                    className={cn(
+                      "truncate",
+                      index === breadcrumbs.length - 1 && "text-foreground/70",
+                    )}
+                  >
+                    {crumb.label}
+                  </span>
+                </span>
+              ))}
+            </div>
+            <h1 className="truncate text-[15px] font-semibold tracking-tight text-foreground md:text-base">
+              {title || breadcrumbs[breadcrumbs.length - 1]?.label || "LGU BOAC HRIS"}
             </h1>
             {subtitle && (
-              <p className="text-[11px] text-muted-foreground/80 font-medium truncate hidden sm:block">
+              <p className="hidden truncate text-[11px] font-medium text-muted-foreground/75 lg:block">
                 {subtitle}
               </p>
             )}
@@ -424,16 +489,11 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
               <input
                 id="profile-photo-upload"
                 type="file"
-                accept="image/*"
+                accept="image/png,image/jpeg,image/webp,image/gif"
                 className="hidden"
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () =>
-                      setFormData({ ...formData, photoUrl: reader.result as string });
-                    reader.readAsDataURL(file);
-                  }
+                  handleProfilePhoto(e.target.files?.[0]);
+                  e.target.value = "";
                 }}
               />
             </div>
@@ -462,14 +522,26 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowProfileDialog(false)}>
+            <Button
+              variant="outline"
+              disabled={profileSaving}
+              onClick={() => setShowProfileDialog(false)}
+            >
               Cancel
             </Button>
             <Button
               className="bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+              disabled={profileSaving}
               onClick={handleSaveProfile}
             >
-              Save Changes
+              {profileSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -73,6 +73,7 @@ export async function initializeMovementSchema(pool, employeeIdDefinition) {
     target_position_id INT UNSIGNED NULL,
     target_salary_grade_id INT UNSIGNED NULL,
     target_department VARCHAR(200) NULL,
+    target_org_unit_ref_id INT UNSIGNED NULL,
     remarks TEXT NULL,
     supporting_documents JSON NULL,
     source_snapshot_json JSON NOT NULL,
@@ -126,6 +127,24 @@ export async function initializeMovementSchema(pool, employeeIdDefinition) {
   };
   await ensureColumn("scheduled_at", "DATETIME NULL AFTER approved_at");
   await ensureColumn("activation_error", "TEXT NULL AFTER reversal_reason");
+  await ensureColumn("target_org_unit_ref_id", "INT UNSIGNED NULL AFTER target_department");
+  const [organizationConstraint] = await pool.execute(
+    `SELECT 1
+     FROM information_schema.referential_constraints
+     WHERE constraint_schema = DATABASE()
+       AND table_name = 'personnel_movements'
+       AND constraint_name = 'fk_movement_target_org_unit'
+     LIMIT 1`,
+  );
+  if (!organizationConstraint.length) {
+    await pool.query(
+      `ALTER TABLE personnel_movements
+       ADD CONSTRAINT fk_movement_target_org_unit
+       FOREIGN KEY (target_org_unit_ref_id)
+       REFERENCES hr_reference_values(id)
+       ON DELETE RESTRICT`,
+    );
+  }
   await pool.query(`CREATE TABLE IF NOT EXISTS personnel_movement_events (
     id CHAR(36) NOT NULL PRIMARY KEY,
     movement_id CHAR(36) NOT NULL,
@@ -189,6 +208,7 @@ const movementRow = (row) => ({
       }
     : null,
   targetDepartment: row.target_department || "",
+  targetOrganizationId: row.target_org_unit_ref_id ? Number(row.target_org_unit_ref_id) : null,
   remarks: row.remarks || "",
   supportingDocuments: parseJson(row.supporting_documents) || [],
   sourceSnapshot: parseJson(row.source_snapshot_json),
@@ -216,6 +236,7 @@ const movementRow = (row) => ({
 
 export function createMovementHandlers({
   pool,
+  readAssignableOrganization,
   requireEmployeeRead,
   requireEmployeeWrite,
   requireApproval,
@@ -388,6 +409,10 @@ export function createMovementHandlers({
     const targetPlantillaItemId = String(body.targetPlantillaItemId || "").trim() || null;
     const targetPositionId = positiveId(body.targetPositionId, "target position");
     const targetSalaryGradeId = positiveId(body.targetSalaryGradeId, "target salary grade");
+    const targetOrganizationId = positiveId(
+      body.targetOrganizationId,
+      "target organizational assignment",
+    );
     if (ITEM_ACTIONS.has(actionType) && !targetPlantillaItemId)
       throw new Error(`${actionType} requires a target plantilla item`);
     if (ITEM_ACTIONS.has(actionType) && !targetSalaryGradeId)
@@ -400,10 +425,7 @@ export function createMovementHandlers({
       throw new Error("Renewal requires a new engagement end date");
     if (["Detail", "Designation", "Job Rotation"].includes(actionType) && !endDate)
       throw new Error(`${actionType} requires an end date`);
-    if (
-      ["Reassignment", "Job Rotation"].includes(actionType) &&
-      !String(body.targetDepartment || "").trim()
-    )
+    if (["Reassignment", "Job Rotation"].includes(actionType) && !targetOrganizationId)
       throw new Error(`${actionType} requires a target organizational assignment`);
     if (actionType === "Step Increment" && !targetSalaryGradeId)
       throw new Error("Step Increment requires a target salary grade and step");
@@ -478,6 +500,10 @@ export function createMovementHandlers({
           throw new Error("Select the next step in the employee's current salary grade");
       }
     }
+    let targetOrganization = null;
+    if (targetOrganizationId) {
+      targetOrganization = await readAssignableOrganization(targetOrganizationId);
+    }
     const documents = Array.isArray(body.supportingDocuments)
       ? body.supportingDocuments
           .map((x) => ({
@@ -504,10 +530,13 @@ export function createMovementHandlers({
       targetPlantillaItemId,
       targetPositionId,
       targetSalaryGradeId,
+      targetOrganizationId,
       targetDepartment:
+        targetOrganization?.name ||
         String(body.targetDepartment || "")
           .trim()
-          .slice(0, 200) || null,
+          .slice(0, 200) ||
+        null,
       remarks: String(body.remarks || "").trim() || null,
       supportingDocuments: JSON.stringify(documents),
     };
@@ -598,7 +627,7 @@ export function createMovementHandlers({
             .toUpperCase() ||
           `PA-${new Date().getFullYear()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
       await pool.execute(
-        `INSERT INTO personnel_movements(id,control_number,employee_id,action_type,effective_date,end_date,authority_number,authority_date,target_plantilla_item_id,target_position_id,target_salary_grade_id,target_department,remarks,supporting_documents,source_snapshot_json,prepared_by) VALUES(:id,:controlNumber,:employeeId,:actionType,:effectiveDate,:endDate,:authorityNumber,:authorityDate,:targetPlantillaItemId,:targetPositionId,:targetSalaryGradeId,:targetDepartment,:remarks,:supportingDocuments,:sourceSnapshot,:userId)`,
+        `INSERT INTO personnel_movements(id,control_number,employee_id,action_type,effective_date,end_date,authority_number,authority_date,target_plantilla_item_id,target_position_id,target_salary_grade_id,target_department,target_org_unit_ref_id,remarks,supporting_documents,source_snapshot_json,prepared_by) VALUES(:id,:controlNumber,:employeeId,:actionType,:effectiveDate,:endDate,:authorityNumber,:authorityDate,:targetPlantillaItemId,:targetPositionId,:targetSalaryGradeId,:targetDepartment,:targetOrganizationId,:remarks,:supportingDocuments,:sourceSnapshot,:userId)`,
         { id, controlNumber, ...data, sourceSnapshot: JSON.stringify(source), userId: user.id },
       );
       await event(pool, id, "Created", null, "Draft", user.id, data.remarks, source);
@@ -628,7 +657,7 @@ export function createMovementHandlers({
         .trim()
         .toUpperCase();
       await pool.execute(
-        `UPDATE personnel_movements SET control_number=:controlNumber,employee_id=:employeeId,action_type=:actionType,effective_date=:effectiveDate,end_date=:endDate,authority_number=:authorityNumber,authority_date=:authorityDate,target_plantilla_item_id=:targetPlantillaItemId,target_position_id=:targetPositionId,target_salary_grade_id=:targetSalaryGradeId,target_department=:targetDepartment,remarks=:remarks,supporting_documents=:supportingDocuments,source_snapshot_json=:sourceSnapshot,status='Draft',decision_remarks=NULL,rejected_by=NULL,rejected_at=NULL,version=version+1 WHERE id=:id`,
+        `UPDATE personnel_movements SET control_number=:controlNumber,employee_id=:employeeId,action_type=:actionType,effective_date=:effectiveDate,end_date=:endDate,authority_number=:authorityNumber,authority_date=:authorityDate,target_plantilla_item_id=:targetPlantillaItemId,target_position_id=:targetPositionId,target_salary_grade_id=:targetSalaryGradeId,target_department=:targetDepartment,target_org_unit_ref_id=:targetOrganizationId,remarks=:remarks,supporting_documents=:supportingDocuments,source_snapshot_json=:sourceSnapshot,status='Draft',decision_remarks=NULL,rejected_by=NULL,rejected_at=NULL,version=version+1 WHERE id=:id`,
         { id, controlNumber, ...data, sourceSnapshot: JSON.stringify(source) },
       );
       await event(pool, id, "Updated", old.status, "Draft", user.id, data.remarks, {
@@ -1025,8 +1054,10 @@ export function createMovementHandlers({
           employeeId: movement.employee_id,
         });
       } else if (TEMPORARY_ACTIONS.has(movement.action_type)) {
-        let organizationId = null;
-        if (movement.target_department) {
+        let organizationId = movement.target_org_unit_ref_id
+          ? Number(movement.target_org_unit_ref_id)
+          : null;
+        if (!organizationId && movement.target_department) {
           const [[organization]] = await connection.execute(
             `SELECT id FROM hr_reference_values
               WHERE BINARY name=BINARY :name AND category IN ('sectors','offices','divisions','sections')
@@ -1034,6 +1065,9 @@ export function createMovementHandlers({
             { name: movement.target_department },
           );
           organizationId = organization?.id || null;
+        }
+        if (organizationId) {
+          await readAssignableOrganization(organizationId, connection);
         }
         temporaryAssignmentId = crypto.randomUUID();
         await connection.execute(

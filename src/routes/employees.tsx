@@ -6,22 +6,29 @@ import {
   useNavigate,
   useSearch,
 } from "@tanstack/react-router";
-import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useState } from "react";
+import {
+  type ComponentType,
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
+  Archive,
   ArrowLeft,
   ArrowRight,
   Check,
   Copy,
   Eye,
-  MoreVertical,
   Pencil,
   Plus,
   Printer,
   RotateCcw,
   Search,
-  Trash2,
   Users,
   Briefcase,
   UserCheck,
@@ -31,13 +38,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
+import { OrganizationHierarchyFields } from "@/components/organization/OrganizationHierarchyFields";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -103,7 +105,17 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { api } from "@/lib/api";
 import { listPlantilla, type PlantillaItem } from "@/lib/plantilla-api";
-import type { ReferenceCategory, ReferenceRow } from "@/lib/reference-libraries";
+import {
+  DEFAULT_ORGANIZATION_HIERARCHY,
+  organizationPath,
+  type OrganizationHierarchy,
+  type ReferenceCategory,
+  type ReferenceRow,
+} from "@/lib/reference-libraries";
+import {
+  selectedAssignableOrganization,
+  type OrganizationSelection,
+} from "@/lib/organization-selection";
 import type { EngagementPayload } from "@/lib/assignments-api";
 
 export const Route = createFileRoute("/employees")({
@@ -168,6 +180,10 @@ type AddFormErrorKey =
   | "engagementStart"
   | "engagementEnd";
 type AddFormErrors = Partial<Record<AddFormErrorKey, string>>;
+type StaticEmployeeIcon = ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+
+const employeeActionButtonClass =
+  "inline-flex h-8 w-8 items-center justify-center rounded-md bg-transparent text-muted-foreground transition-colors hover:bg-muted hover:text-foreground hover:ring-1 hover:ring-border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-white/10";
 
 const today = () => {
   const value = new Date();
@@ -233,6 +249,8 @@ function EmployeesPage() {
   const [plantillaOrigin, setPlantillaOrigin] = useState(false);
   const [appointment, setAppointment] = useState(emptyAppointment);
   const [engagement, setEngagement] = useState<AddEngagementForm>(emptyEngagement);
+  const [engagementOrganizationSelection, setEngagementOrganizationSelection] =
+    useState<OrganizationSelection>({});
   const [sameDtrSignatoryAsName, setSameDtrSignatoryAsName] = useState(false);
   const [addFormErrors, setAddFormErrors] = useState<AddFormErrors>({});
   const [isAddDialogDirty, setIsAddDialogDirty] = useState(false);
@@ -278,9 +296,10 @@ function EmployeesPage() {
   const organizationOptionsQuery = useQuery({
     queryKey: ["employees", "onboarding-options", "organizations"],
     queryFn: ({ signal }) =>
-      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references", {
-        signal,
-      }),
+      api<{
+        libraries: Record<ReferenceCategory, ReferenceRow[]>;
+        hierarchy: OrganizationHierarchy;
+      }>("/api/settings/references", { signal }),
     staleTime: 5 * 60_000,
   });
   const dashboardQuery = useQuery({
@@ -309,13 +328,20 @@ function EmployeesPage() {
         ),
     [plantillaOptionsQuery.data?.items],
   );
-  const organizationUnits = useMemo(() => {
-    const libraries = organizationOptionsQuery.data?.libraries;
-    if (!libraries) return [];
-    return libraries.offices
-      .filter((row) => row.isActive)
-      .sort((left, right) => optionCollator.compare(left.name, right.name));
-  }, [organizationOptionsQuery.data?.libraries]);
+  const organizationLibraries =
+    organizationOptionsQuery.data?.libraries || ({} as Record<ReferenceCategory, ReferenceRow[]>);
+  const organizationHierarchy =
+    organizationOptionsQuery.data?.hierarchy || DEFAULT_ORGANIZATION_HIERARCHY;
+  const selectedEngagementOrganization = selectedAssignableOrganization(
+    engagementOrganizationSelection,
+    organizationLibraries,
+    organizationHierarchy,
+  );
+  const selectedEngagementOrganizationPath = selectedEngagementOrganization
+    ? organizationPath(selectedEngagementOrganization, organizationLibraries, organizationHierarchy)
+        .map((part) => part.name)
+        .join(" / ")
+    : "";
   const dashboardData: DashboardResponse | null = dashboardQuery.data ?? null;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const selectedDepartment = search.department?.trim() || "all";
@@ -333,6 +359,7 @@ function EmployeesPage() {
     if (search.onboard !== "plantilla") return;
     setForm({ ...EMPTY_FORM, status: "Permanent" });
     setEngagement(emptyEngagement());
+    setEngagementOrganizationSelection({});
     setAppointment({
       ...emptyAppointment(),
       targetPlantillaItemId: search.targetPlantillaItemId || "",
@@ -438,6 +465,7 @@ function EmployeesPage() {
     setPlantillaOrigin(false);
     setAppointment(emptyAppointment());
     setEngagement(emptyEngagement());
+    setEngagementOrganizationSelection({});
     setSameDtrSignatoryAsName(true);
     setAddFormErrors({});
     setIsAddDialogDirty(false);
@@ -466,6 +494,7 @@ function EmployeesPage() {
     setIsAddDialogDirty(true);
     if (mode === "plantilla") {
       setEngagement(emptyEngagement());
+      setEngagementOrganizationSelection({});
       return;
     }
     setAppointment(emptyAppointment());
@@ -501,7 +530,8 @@ function EmployeesPage() {
 
     if (onboardingMode === "engagement") {
       if (!engagement.engagementType) errors.engagementType = "Select an engagement type.";
-      if (!engagement.organizationId) errors.organization = "Select an office.";
+      if (!engagement.organizationId)
+        errors.organization = "Select an active assignable organizational level.";
       if (!engagement.designation.trim()) errors.designation = "Select a position or designation.";
       if (!engagement.dateFrom) errors.engagementStart = "Start date is required.";
       if (!engagement.dateTo) errors.engagementEnd = "End date is required.";
@@ -749,22 +779,21 @@ function EmployeesPage() {
         </div>
       )}
 
-      <div className="flex flex-col space-y-6 pb-8">
-        {/* Header */}
-        <div className="hidden flex-col sm:flex-row sm:items-center sm:justify-between md:flex">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground tracking-tight">
+      <div className="flex flex-col gap-4 pb-8">
+        <div className="hidden items-center justify-between gap-4 rounded-lg border bg-card p-4 shadow-sm md:flex">
+          <div className="min-w-0">
+            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
               Employee Management
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="mt-1 text-sm text-muted-foreground">
               Manage employee records, employment status, and workforce information.
             </p>
           </div>
-          <div className="mobile-action-row mt-4 flex flex-wrap gap-2 sm:mt-0">
+          <div className="mobile-action-row flex shrink-0 flex-wrap gap-2">
             <Button
               disabled={!canEdit}
               onClick={openDirectAddDialog}
-              className="bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+              className="bg-blue-600 text-white shadow-sm hover:bg-blue-700"
             >
               <Plus className="mr-1.5 h-4 w-4" /> Add Employee
             </Button>
@@ -775,14 +804,13 @@ function EmployeesPage() {
           <Button
             disabled={!canEdit}
             onClick={openDirectAddDialog}
-            className="h-11 rounded-xl bg-blue-600 text-white shadow-sm hover:bg-blue-700"
+            className="h-10 rounded-md bg-blue-600 text-white shadow-sm hover:bg-blue-700"
           >
             <Plus className="mr-1.5 h-4 w-4" /> Add Employee
           </Button>
         </div>
 
-        {/* Top Stat Cards */}
-        <div className="hidden grid-cols-1 gap-4 md:grid md:grid-cols-2 xl:grid-cols-4">
+        <div className="hidden grid-cols-1 gap-3 md:grid md:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title="Total Employees"
             value={dashboardData === null ? "..." : totalEmployees}
@@ -828,14 +856,13 @@ function EmployeesPage() {
           />
         </div>
 
-        <div className="bg-card text-card-foreground rounded-xl border border-border shadow-sm flex flex-col">
-          {/* Filters */}
-          <div className="grid grid-cols-3 items-center gap-2 border-b border-border/50 p-4 lg:flex lg:flex-row lg:gap-3">
-            <div className="relative order-2 col-span-3 w-full lg:order-none lg:max-w-md">
+        <div className="flex flex-col rounded-lg border border-border bg-card text-card-foreground shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-border/50 p-4 lg:flex-row lg:items-center">
+            <div className="relative w-full lg:max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
               <Input
                 placeholder="Search employees..."
-                className="pl-9 bg-card text-card-foreground"
+                className="h-9 bg-background pl-9 text-card-foreground"
                 value={q}
                 onChange={(event) => {
                   setQ(event.target.value);
@@ -865,7 +892,7 @@ function EmployeesPage() {
                 })),
               ]}
               triggerProps={{
-                className: "order-1 w-full bg-card text-card-foreground lg:w-[220px]",
+                className: "h-9 w-full bg-background text-card-foreground lg:w-[220px]",
               }}
             />
 
@@ -876,7 +903,7 @@ function EmployeesPage() {
                 setPage(1);
               }}
             >
-              <SelectTrigger className="order-1 w-full bg-card text-card-foreground lg:w-[200px]">
+              <SelectTrigger className="h-9 w-full bg-background text-card-foreground lg:w-[200px]">
                 <SelectValue placeholder="All Employment Types" />
               </SelectTrigger>
               <SelectContent>
@@ -896,7 +923,7 @@ function EmployeesPage() {
                 setPage(1);
               }}
             >
-              <SelectTrigger className="hidden w-full bg-card text-card-foreground lg:flex lg:w-[160px]">
+              <SelectTrigger className="hidden h-9 w-full bg-background text-card-foreground lg:flex lg:w-[160px]">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
@@ -913,7 +940,7 @@ function EmployeesPage() {
                 setPage(1);
               }}
             >
-              <SelectTrigger className="hidden w-full bg-card text-card-foreground lg:flex lg:w-[150px]">
+              <SelectTrigger className="hidden h-9 w-full bg-background text-card-foreground lg:flex lg:w-[150px]">
                 <SelectValue placeholder="All Gender" />
               </SelectTrigger>
               <SelectContent>
@@ -933,7 +960,7 @@ function EmployeesPage() {
                 setPage(1);
               }}
             >
-              <SelectTrigger className="hidden w-full bg-card text-card-foreground lg:flex lg:w-[150px]">
+              <SelectTrigger className="hidden h-9 w-full bg-background text-card-foreground lg:flex lg:w-[150px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -942,20 +969,20 @@ function EmployeesPage() {
               </SelectContent>
             </Select>
 
-            <div className="order-1 col-span-1 flex w-full items-center gap-2 lg:order-none lg:ml-auto lg:mt-0 lg:w-auto">
+            <div className="flex w-full items-center gap-2 lg:ml-auto lg:w-auto">
               <Button
                 variant={showAdvancedFilters ? "default" : "outline"}
-                className="flex-1 lg:flex-none"
+                className="h-9 flex-1 lg:flex-none"
                 onClick={() => setShowAdvancedFilters((value) => !value)}
               >
-                <SlidersHorizontal className="w-4 h-4 mr-2" />
+                <SlidersHorizontal className="mr-2 h-4 w-4" />
                 Filters
               </Button>
               <Button
                 variant="outline"
                 className={cn(
-                  "hidden px-3 text-muted-foreground md:inline-flex",
-                  viewMode === "grid" && "border-primary text-primary bg-primary/10",
+                  "hidden h-9 px-3 text-muted-foreground md:inline-flex",
+                  viewMode === "grid" && "border-primary bg-primary/10 text-primary",
                 )}
                 onClick={() => setViewMode((value) => (value === "table" ? "grid" : "table"))}
                 title={viewMode === "table" ? "Switch to grid view" : "Switch to table view"}
@@ -963,7 +990,7 @@ function EmployeesPage() {
                 {viewMode === "table" ? (
                   <LayoutGrid className="w-4 h-4" />
                 ) : (
-                  <List className="w-4 h-4" />
+                  <List className="h-4 w-4" />
                 )}
               </Button>
             </div>
@@ -1046,11 +1073,11 @@ function EmployeesPage() {
                             navigate({ to: "/employees/$id", params: { id: employee.id } })
                           }
                         >
-                          <td className={dataTableCellClass}>
+                          <td className={cn(dataTableCellClass, "min-w-[250px]")}>
                             <div className="flex items-center gap-3">
                               <div
                                 className={cn(
-                                  "grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full text-xs font-bold",
+                                  "grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full text-xs font-semibold",
                                   avatarColor,
                                 )}
                               >
@@ -1065,66 +1092,53 @@ function EmployeesPage() {
                                 )}
                               </div>
                               <div>
-                                <div className="font-semibold text-foreground">
+                                <div className="font-medium text-foreground">
                                   {formatEmployeeName(employee)}
                                 </div>
                               </div>
                             </div>
                           </td>
-                          <td className={cn(dataTableCellClass, "font-medium")}>
+                          <td className={cn(dataTableCellClass, "min-w-[180px] font-medium")}>
                             {employee.position || "-"}
                           </td>
-                          <td className={dataTableCellClass}>{employee.department || "-"}</td>
-                          <td className={dataTableCellClass}>{employee.status || "-"}</td>
+                          <td className={cn(dataTableCellClass, "min-w-[180px]")}>
+                            {employee.department || "-"}
+                          </td>
+                          <td className={cn(dataTableCellClass, "min-w-[150px]")}>
+                            <span className="inline-flex max-w-full items-center text-xs font-semibold text-foreground">
+                              {employee.status || "-"}
+                            </span>
+                          </td>
                           <td
                             className={cn(dataTableCellClass, "text-right")}
                             onDoubleClick={(event) => event.stopPropagation()}
                           >
-                            <div className="inline-flex items-center gap-2 justify-end">
-                              <Link
+                            <div className="inline-flex items-center justify-end gap-2">
+                              <EmployeeActionLink
+                                label="View"
+                                icon={Eye}
                                 to="/employees/$id"
                                 params={{ id: employee.id }}
-                                className="inline-grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted/50 transition-colors"
-                                title="View"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Link>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <button
-                                    className="inline-grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-muted/50 transition-colors"
-                                    title="More actions"
-                                  >
-                                    <MoreVertical className="h-4 w-4" />
-                                  </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-36">
-                                  <DropdownMenuItem asChild>
-                                    <Link to="/employees/$id" params={{ id: employee.id }}>
-                                      <Pencil className="h-4 w-4 mr-2" />
-                                      Edit
-                                    </Link>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    disabled={!canEdit}
-                                    onClick={() =>
-                                      employee.isHidden ? restore(employee) : remove(employee)
-                                    }
-                                    className={cn(
-                                      employee.isHidden
-                                        ? "text-emerald-600 focus:text-emerald-600"
-                                        : "text-rose-600 focus:text-rose-600",
-                                    )}
-                                  >
-                                    {employee.isHidden ? (
-                                      <RotateCcw className="h-4 w-4 mr-2" />
-                                    ) : (
-                                      <Trash2 className="h-4 w-4 mr-2" />
-                                    )}
-                                    {employee.isHidden ? "Restore" : "Archive"}
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                              />
+                              <EmployeeActionLink
+                                label="Edit"
+                                icon={Pencil}
+                                to="/employees/$id"
+                                params={{ id: employee.id }}
+                              />
+                              <EmployeeActionButton
+                                label={employee.isHidden ? "Restore" : "Archive"}
+                                icon={employee.isHidden ? RotateCcw : Archive}
+                                disabled={!canEdit}
+                                onClick={() =>
+                                  employee.isHidden ? restore(employee) : remove(employee)
+                                }
+                                className={
+                                  employee.isHidden
+                                    ? "text-emerald-600 hover:text-emerald-600 dark:text-emerald-300"
+                                    : "text-rose-600 hover:text-rose-600 dark:text-rose-300"
+                                }
+                              />
                             </div>
                           </td>
                         </tr>
@@ -1158,11 +1172,14 @@ function EmployeesPage() {
                   const avatarColor = avatarColors[index % avatarColors.length];
 
                   return (
-                    <div key={employee.id} className="mobile-record-card text-sm">
+                    <div
+                      key={employee.id}
+                      className="mobile-record-card rounded-lg border bg-background p-3 text-sm shadow-sm"
+                    >
                       <div className="flex items-start gap-3">
                         <div
                           className={cn(
-                            "grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full text-xs font-bold",
+                            "grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full text-xs font-semibold",
                             avatarColor,
                           )}
                         >
@@ -1202,20 +1219,22 @@ function EmployeesPage() {
                           </span>
                         </div>
                       </div>
-                      <div className="mt-3 flex items-center justify-end gap-2">
-                        <Button variant="outline" size="icon" asChild title="View">
-                          <Link to="/employees/$id" params={{ id: employee.id }}>
-                            <Eye className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        <Button variant="outline" size="icon" asChild title="Edit">
-                          <Link to="/employees/$id" params={{ id: employee.id }}>
-                            <Pencil className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
+                      <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
+                        <EmployeeActionLink
+                          label="View"
+                          icon={Eye}
+                          to="/employees/$id"
+                          params={{ id: employee.id }}
+                        />
+                        <EmployeeActionLink
+                          label="Edit"
+                          icon={Pencil}
+                          to="/employees/$id"
+                          params={{ id: employee.id }}
+                        />
+                        <EmployeeActionButton
+                          label={employee.isHidden ? "Restore" : "Archive"}
+                          icon={employee.isHidden ? RotateCcw : Archive}
                           disabled={!canEdit}
                           onClick={() => (employee.isHidden ? restore(employee) : remove(employee))}
                           className={cn(
@@ -1223,14 +1242,7 @@ function EmployeesPage() {
                               ? "text-emerald-600 hover:text-emerald-600 dark:text-emerald-300"
                               : "text-rose-600 hover:text-rose-600 dark:text-rose-300",
                           )}
-                          title={employee.isHidden ? "Restore" : "Archive"}
-                        >
-                          {employee.isHidden ? (
-                            <RotateCcw className="h-4 w-4" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
+                        />
                       </div>
                     </div>
                   );
@@ -1540,6 +1552,7 @@ function EmployeesPage() {
                             targetSalaryGradeId: "",
                           });
                           setEngagement(emptyEngagement());
+                          setEngagementOrganizationSelection({});
                           setIsAddDialogDirty(true);
                           setAddFormErrors((current) => ({ ...current, plantillaItem: undefined }));
                         }}
@@ -1672,29 +1685,32 @@ function EmployeesPage() {
                             </SelectContent>
                           </Select>
                         </Field>
-                        <SearchableSelectField
-                          label="Office"
-                          required
-                          fieldKey="organization"
-                          error={addFormErrors.organization}
-                          disabled={
-                            organizationOptionsQuery.isLoading || organizationOptionsQuery.isError
-                          }
-                          placeholder={
-                            organizationOptionsQuery.isLoading
-                              ? "Loading offices..."
-                              : "Select office"
-                          }
-                          value={engagement.organizationId}
-                          set={(value) => {
-                            setEngagement({ ...engagement, organizationId: value });
+                        <OrganizationHierarchyFields
+                          libraries={organizationLibraries}
+                          hierarchy={organizationHierarchy}
+                          value={engagementOrganizationSelection}
+                          onValueChange={(selection) => {
+                            const organization = selectedAssignableOrganization(
+                              selection,
+                              organizationLibraries,
+                              organizationHierarchy,
+                            );
+                            setEngagementOrganizationSelection(selection);
+                            setEngagement({
+                              ...engagement,
+                              organizationId: organization ? String(organization.id) : "",
+                            });
                             setIsAddDialogDirty(true);
                             setAddFormErrors((current) => ({
                               ...current,
                               organization: undefined,
                             }));
                           }}
-                          rows={organizationUnits.map((row) => [String(row.id), row.name])}
+                          disabled={
+                            organizationOptionsQuery.isLoading || organizationOptionsQuery.isError
+                          }
+                          error={addFormErrors.organization}
+                          fieldKey="organization"
                         />
                         <SearchableSelectField
                           label="Position / designation"
@@ -1740,7 +1756,7 @@ function EmployeesPage() {
                 </section>
               )}
             </div>
-            <DialogFooter className="border-t bg-background px-4 py-3 sm:px-6">
+            <DialogFooter className="border-t bg-card px-4 py-3 dark:border-white/15 dark:bg-neutral-900 sm:px-6">
               {addEmployeeStep === "identity" ? (
                 <>
                   <Button type="button" variant="outline" onClick={requestCloseAddDialog}>
@@ -1887,11 +1903,8 @@ function EmployeesPage() {
                   <ReviewDetail label="Engagement type" value={engagement.engagementType || "—"} />
                   <ReviewDetail label="Position" value={engagement.designation || "—"} />
                   <ReviewDetail
-                    label="Office"
-                    value={
-                      organizationUnits.find((row) => String(row.id) === engagement.organizationId)
-                        ?.name || "—"
-                    }
+                    label="Organizational assignment"
+                    value={selectedEngagementOrganizationPath || "—"}
                     wide
                   />
                   <ReviewDetail label="Start date" value={engagement.dateFrom || "—"} />
@@ -1905,7 +1918,7 @@ function EmployeesPage() {
               )}
             </ReviewSection>
           </div>
-          <DialogFooter className="border-t bg-background px-5 py-3">
+          <DialogFooter className="border-t bg-card px-5 py-3 dark:border-white/15 dark:bg-neutral-900">
             <Button
               type="button"
               variant="outline"
@@ -1997,6 +2010,61 @@ function EmployeesPage() {
   );
 }
 
+function EmployeeActionLink({
+  label,
+  icon: Icon,
+  to,
+  params,
+  className,
+}: {
+  label: string;
+  icon: StaticEmployeeIcon;
+  to: "/employees/$id";
+  params: { id: string };
+  className?: string;
+}) {
+  return (
+    <Link
+      to={to}
+      params={params}
+      className={cn(employeeActionButtonClass, className)}
+      title={label}
+      aria-label={label}
+    >
+      <Icon className="h-4 w-4" aria-hidden />
+      <span className="sr-only">{label}</span>
+    </Link>
+  );
+}
+
+function EmployeeActionButton({
+  label,
+  icon: Icon,
+  disabled,
+  onClick,
+  className,
+}: {
+  label: string;
+  icon: StaticEmployeeIcon;
+  disabled?: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(employeeActionButtonClass, className)}
+      disabled={disabled}
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+    >
+      <Icon className="h-4 w-4" aria-hidden />
+      <span className="sr-only">{label}</span>
+    </button>
+  );
+}
+
 function Field({
   label,
   htmlFor,
@@ -2059,14 +2127,16 @@ function SearchableSelectField({
         onValueChange={set}
         placeholder={placeholder}
         searchPlaceholder={`Search ${label.replace(/\s+\*$/, "").toLowerCase()}...`}
-        options={rows.map(([id, name, ...details]) => ({
-          value: id,
-          label: name,
-          description: details.filter(Boolean).join(" · "),
-          keywords: details,
-          disabled: disabledValues.has(id),
-          disabledDescription: "Unavailable for selected date",
-        }))}
+        options={[...rows]
+          .sort((left, right) => optionCollator.compare(left[1], right[1]))
+          .map(([id, name, ...details]) => ({
+            value: id,
+            label: name,
+            description: details.filter(Boolean).join(" · "),
+            keywords: details,
+            disabled: disabledValues.has(id),
+            disabledDescription: "Unavailable for selected date",
+          }))}
         triggerProps={{
           id: triggerId,
           "aria-invalid": Boolean(error),
@@ -2146,20 +2216,20 @@ function StatCard({
   trend: "up" | "down";
 }) {
   return (
-    <div className="bg-card text-card-foreground p-4 rounded-xl border border-border shadow-sm relative overflow-hidden">
-      <div className="flex justify-between items-start mb-2">
+    <div className="relative overflow-hidden rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm">
+      <div className="mb-2 flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold text-foreground/80">{title}</p>
-          <h2 className="text-2xl font-bold text-foreground mt-1">{value}</h2>
+          <h2 className="mt-1 text-2xl font-semibold text-foreground">{value}</h2>
         </div>
-        <div className={cn("p-2 rounded-lg", iconBg)}>{icon}</div>
+        <div className={cn("rounded-md p-2", iconBg)}>{icon}</div>
       </div>
-      <div className="flex items-center text-[10px] mt-2 z-10 relative">
-        {subtextDot && <span className={cn("w-1.5 h-1.5 rounded-full mr-1.5", subtextDot)}></span>}
+      <div className="relative z-10 mt-2 flex items-center text-[10px]">
+        {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
         <span className={subtextColor}>{subtext}</span>
       </div>
-      <div className="absolute bottom-2 right-2 w-24 h-8 opacity-50 z-0">
-        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-full">
+      <div className="absolute bottom-2 right-2 z-0 h-8 w-24 opacity-50">
+        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
           {trend === "up" ? (
             <path
               d="M0,25 C20,20 40,30 60,10 C80,-5 100,5 100,5"

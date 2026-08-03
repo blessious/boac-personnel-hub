@@ -34,6 +34,7 @@ import {
 import { toast } from "sonner";
 import { GenerationLoader } from "@/components/GenerationLoader";
 import { AppShell } from "@/components/layout/AppShell";
+import { RepeatableTextRows } from "@/components/forms/RepeatableTextRows";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -213,7 +214,7 @@ export function EmployeeDashboardHome() {
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-100">
+                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300">
                     <UserRound className="h-3.5 w-3.5" />
                     Employee Dashboard
                   </div>
@@ -246,7 +247,7 @@ export function EmployeeDashboardHome() {
                 <Button
                   variant="outline"
                   onClick={openProfile}
-                  className="h-12 w-full rounded-xl bg-white font-semibold shadow-sm hover:bg-muted/60 dark:bg-card dark:text-foreground dark:hover:bg-muted/40"
+                  className="h-12 w-full rounded-md font-semibold hover:bg-muted/60 dark:text-foreground dark:hover:bg-muted/40"
                 >
                   <UserRound className="mr-2 h-4 w-4 text-blue-600" />
                   My Profile
@@ -760,11 +761,18 @@ function EmployeeServicesHome() {
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {leaveTypes.map((type) => (
-                    <SelectItem key={type.id} value={String(type.id)}>
-                      {type.name}
-                    </SelectItem>
-                  ))}
+                  {[...leaveTypes]
+                    .sort((left, right) =>
+                      left.name.localeCompare(right.name, undefined, {
+                        numeric: true,
+                        sensitivity: "base",
+                      }),
+                    )
+                    .map((type) => (
+                      <SelectItem key={type.id} value={String(type.id)}>
+                        {type.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
               {!leaveTypesLoading && leaveTypesError ? (
@@ -981,7 +989,7 @@ function ProfileHeader({
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 {employee.empStatus || "Active"}
               </Badge>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <Briefcase className="h-3.5 w-3.5 text-blue-600" />
                 {employee.position || "Position not set"}
               </span>
@@ -1018,7 +1026,7 @@ function ProfileChip({
   label: string;
 }) {
   return (
-    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+    <span className="inline-flex max-w-full items-center gap-1.5 text-xs font-medium text-muted-foreground">
       <Icon className="h-3.5 w-3.5 shrink-0 text-blue-600" />
       <span className="truncate">{label}</span>
     </span>
@@ -1381,7 +1389,12 @@ function WorkExperienceSheetPanel({
                     label={field.label}
                     className={field.type === "textarea" ? "md:col-span-2" : undefined}
                   >
-                    {field.type === "textarea" ? (
+                    {field.key === "accomplishments" ? (
+                      <RepeatableTextRows
+                        value={form.accomplishments || ""}
+                        onChange={(value) => set("accomplishments", value)}
+                      />
+                    ) : field.type === "textarea" ? (
                       <Textarea
                         value={form[field.key] || ""}
                         onChange={(event) => set(field.key, event.target.value)}
@@ -1585,7 +1598,7 @@ function DetailItem({
       </div>
       <div className="grid min-w-0 gap-1 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)] sm:items-center sm:gap-4">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
-        <p className="break-words text-sm font-semibold leading-6 text-foreground sm:text-right">
+        <p className="whitespace-pre-line break-words text-sm font-semibold leading-6 text-foreground sm:text-right">
           {valueOrDash(value)}
         </p>
       </div>

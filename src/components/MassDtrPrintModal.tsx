@@ -293,11 +293,18 @@ export function MassDtrPrintModal({
                         <SelectValue placeholder="Select noter" />
                       </SelectTrigger>
                       <SelectContent>
-                        {noters.map((noter) => (
-                          <SelectItem key={noter.id} value={noter.signatory}>
-                            {noter.signatory} - {noter.position}
-                          </SelectItem>
-                        ))}
+                        {[...noters]
+                          .sort((left, right) =>
+                            left.signatory.localeCompare(right.signatory, undefined, {
+                              numeric: true,
+                              sensitivity: "base",
+                            }),
+                          )
+                          .map((noter) => (
+                            <SelectItem key={noter.id} value={noter.signatory}>
+                              {noter.signatory} - {noter.position}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>

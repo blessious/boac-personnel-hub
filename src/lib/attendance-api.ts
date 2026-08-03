@@ -124,6 +124,24 @@ export type AttendanceImportLog = {
   createdAt: string;
 };
 
+export type AttendanceImportException = {
+  id: string;
+  importId: string;
+  employeeNo: string;
+  punchAt: string;
+  source: string;
+  sourceDevice: string;
+  status: "Open" | "Mapped" | "Reprocessed" | "Ignored";
+  mappedEmployeeId: string;
+  mappedEmployeeName: string;
+  resolvedByName: string;
+  resolvedAt: string;
+  resolutionNotes: string;
+  raw: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type DtrListResponse = {
   entries: DtrEntry[];
   imports: AttendanceImport[];
@@ -318,6 +336,7 @@ export function importDtrFile(payload: {
     importId: string;
     imported: number;
     errors: string[];
+    exceptions?: number;
     refreshed: { recordsProcessed: number; punchesProcessed: number };
   }>("/api/attendance/import-file", {
     method: "POST",
@@ -339,6 +358,7 @@ export function importAllDtr(payload: {
     records_imported: number;
     imported: number;
     errors: string[];
+    exceptions?: number;
     refreshed: { recordsProcessed: number; punchesProcessed: number };
   }>("/api/attendance/import-all", {
     method: "POST",
@@ -361,6 +381,7 @@ export function importSingleDtr(payload: {
     records_imported: number;
     imported: number;
     errors: string[];
+    exceptions?: number;
     refreshed: { recordsProcessed: number; punchesProcessed: number };
   }>("/api/attendance/import-single-dtr", {
     method: "POST",
@@ -374,11 +395,48 @@ export function listAttendanceImportLogs(importId: string) {
   );
 }
 
-export function refreshDtr(params: { employeeId?: string; from?: string; to?: string }) {
-  return api<{ recordsProcessed: number; punchesProcessed: number }>("/api/attendance/refresh", {
+export function listAttendanceImportExceptions(params: {
+  importId?: string;
+  status?: "Open" | "Mapped" | "Reprocessed" | "Ignored" | "all";
+}) {
+  const query = new URLSearchParams();
+  if (params.importId) query.set("importId", params.importId);
+  if (params.status) query.set("status", params.status);
+  return api<{ exceptions: AttendanceImportException[] }>(
+    `/api/attendance/import-exceptions?${query.toString()}`,
+  );
+}
+
+export function mapAttendanceImportException(
+  id: string,
+  payload: { employeeId: string; notes?: string },
+) {
+  return api<{ ok: boolean; exception: AttendanceImportException | null }>(
+    `/api/attendance/import-exceptions/${id}`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export function reprocessAttendanceImportExceptions(ids: string[]) {
+  return api<{
+    ok: boolean;
+    reprocessed: number;
+    skipped: number;
+    refreshed: { recordsProcessed: number; punchesProcessed: number; warnings?: string[] };
+  }>("/api/attendance/import-exceptions/reprocess", {
     method: "POST",
-    body: JSON.stringify(params),
+    body: JSON.stringify({ ids }),
   });
+}
+
+export function refreshDtr(params: { employeeId?: string; from?: string; to?: string }) {
+  return api<{ recordsProcessed: number; punchesProcessed: number; warnings?: string[] }>(
+    "/api/attendance/refresh",
+    {
+      method: "POST",
+      body: JSON.stringify(params),
+    },
+  );
 }
 
 export function listDtrNoters() {
@@ -467,9 +525,16 @@ export function checkUnimportedDtrs(employeeId: string) {
 export function bulkUpdateSchedule(payload: {
   employeeIds: string[];
   shiftTemplateCode?: string;
+  from: string;
+  to: string;
   schedule: { amIn: string; amOut: string; pmIn: string; pmOut: string };
 }) {
-  return api<{ ok: boolean; updated: number }>("/api/attendance/schedule/bulk", {
+  return api<{
+    ok: boolean;
+    updated: number;
+    refreshed: { recordsProcessed: number; punchesProcessed: number; warnings?: string[] };
+    warnings: string[];
+  }>("/api/attendance/schedule/bulk", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -483,7 +548,12 @@ export function bulkUpdateScheduleOverrides(payload: {
   shiftTemplateCode?: string;
   schedule: { amIn: string; amOut: string; pmIn: string; pmOut: string };
 }) {
-  return api<{ ok: boolean; updated: number }>("/api/attendance/schedule/overrides", {
+  return api<{
+    ok: boolean;
+    updated: number;
+    refreshed: { recordsProcessed: number; punchesProcessed: number; warnings?: string[] };
+    warnings: string[];
+  }>("/api/attendance/schedule/overrides", {
     method: "POST",
     body: JSON.stringify(payload),
   });

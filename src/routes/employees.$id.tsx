@@ -17,7 +17,6 @@ import {
   Menu,
   Pencil,
   Plus,
-  Save,
   ShieldCheck,
   Trash2,
   Upload,
@@ -53,6 +52,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FormSection } from "@/components/forms/Field";
+import { RepeatableTextRows } from "@/components/forms/RepeatableTextRows";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useRealtimeRefresh } from "@/lib/realtime";
@@ -73,13 +73,15 @@ import {
   type SectionRow,
   type SettingsOptions,
 } from "@/lib/employees-api";
-import type { ReferenceCategory, ReferenceRow } from "@/lib/reference-libraries";
 import {
-  createLeaveAdjustment,
-  getEmployeeLeave,
-  type EmployeeLeaveResponse,
-  type LeaveBalance,
-} from "@/lib/leave-api";
+  assignableOrganizationRows,
+  DEFAULT_ORGANIZATION_HIERARCHY,
+  organizationPath,
+  type OrganizationHierarchy,
+  type ReferenceCategory,
+  type ReferenceRow,
+} from "@/lib/reference-libraries";
+import { getEmployeeLeave, type EmployeeLeaveResponse, type LeaveBalance } from "@/lib/leave-api";
 import { cn, formatDisplayDate, formatDtrSignatoryName, formatEmployeeName } from "@/lib/utils";
 
 export const Route = createFileRoute("/employees/$id")({
@@ -209,6 +211,18 @@ const SECTION_BY_TAB: Partial<Record<Tab, string>> = {
   "SERVICE RECORD": "service",
   IPCR: "ipcr",
 };
+
+const SELF_SERVICE_EDITABLE_SECTIONS = new Set([
+  "family",
+  "children",
+  "education",
+  "civilService",
+  "work",
+  "organization",
+  "training",
+  "ipcr",
+]);
+const SYSTEM_MANAGED_SECTIONS = new Set(["salary", "service"]);
 
 type FieldConfig = {
   key: string;
@@ -373,7 +387,10 @@ function EmployeeFile() {
     positions: [],
     salaryGrades: [],
   });
-  const [offices, setOffices] = useState<string[]>([]);
+  const [organizationOptions, setOrganizationOptions] = useState<
+    Array<{ id: number; name: string; label: string }>
+  >([]);
+  const [organizationFieldLabel, setOrganizationFieldLabel] = useState("Organizational unit");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -382,7 +399,6 @@ function EmployeeFile() {
     nonce: number;
   }>({ tab: null, nonce: 0 });
   const [workDownloadRequest, setWorkDownloadRequest] = useState(0);
-  const [leaveAdjustmentRequest, setLeaveAdjustmentRequest] = useState(0);
   const [photoSaving, setPhotoSaving] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -404,20 +420,34 @@ function EmployeeFile() {
   useEffect(() => {
     Promise.all([
       getSettingsOptions(),
-      api<{ libraries: Record<ReferenceCategory, ReferenceRow[]> }>("/api/settings/references"),
+      api<{
+        libraries: Record<ReferenceCategory, ReferenceRow[]>;
+        hierarchy: OrganizationHierarchy;
+      }>("/api/settings/references"),
     ])
       .then(([settings, references]) => {
         setOptions(settings);
-        setOffices(
-          references.libraries.offices
-            .filter((office) => office.isActive)
-            .map((office) => office.name)
-            .sort((left, right) => left.localeCompare(right)),
+        const hierarchy = references.hierarchy || DEFAULT_ORGANIZATION_HIERARCHY;
+        setOrganizationOptions(
+          assignableOrganizationRows(references.libraries, hierarchy)
+            .map((row) => ({
+              id: row.id,
+              name: row.name,
+              label:
+                organizationPath(row, references.libraries, hierarchy)
+                  .map((part) => part.name)
+                  .join(" / ") || row.name,
+            }))
+            .sort((left, right) => left.label.localeCompare(right.label)),
         );
+        const labels = hierarchy.levels
+          .filter((level) => level.enabled && level.assignable)
+          .map((level) => level.label);
+        setOrganizationFieldLabel(labels.length === 1 ? labels[0] : "Organizational unit");
       })
       .catch(() => {
         setOptions({ departments: [], positions: [], salaryGrades: [] });
-        setOffices([]);
+        setOrganizationOptions([]);
       });
   }, []);
 
@@ -451,8 +481,11 @@ function EmployeeFile() {
   const canEditOwnProfile =
     hasPermission("self_service.access") && user?.employeeId === employee.id;
   const canEditProfile = canManageEmployees || canEditOwnProfile;
+  const activeSection = SECTION_BY_TAB[active] || "";
   const canEditSection =
-    canManageEmployees || (canEditOwnProfile && SECTION_BY_TAB[active] === "work");
+    !SYSTEM_MANAGED_SECTIONS.has(activeSection) &&
+    (canManageEmployees ||
+      (canEditOwnProfile && SELF_SERVICE_EDITABLE_SECTIONS.has(activeSection)));
   const activeDetails = TAB_DETAILS[active];
   const ActiveSectionIcon = activeDetails.icon;
 
@@ -554,11 +587,6 @@ function EmployeeFile() {
                 <Pencil className="h-4 w-4" />
                 Update
               </Button>
-            ) : active === "LEAVE BALANCE" && canManageEmployees ? (
-              <Button onClick={() => setLeaveAdjustmentRequest((current) => current + 1)}>
-                <Plus className="h-4 w-4" />
-                Adjust Credits
-              </Button>
             ) : SECTION_BY_TAB[active] && canEditSection ? (
               <Button onClick={requestSectionAdd}>
                 <Plus className="h-4 w-4" />
@@ -645,18 +673,15 @@ function EmployeeFile() {
               <PersonalTab
                 employee={employee}
                 options={options}
-                offices={offices}
+                organizationOptions={organizationOptions}
+                organizationFieldLabel={organizationFieldLabel}
                 canEdit={canEditProfile}
                 selfService={Boolean(canEditOwnProfile && !canManageEmployees)}
                 currentAssignment={currentAssignment}
                 onSaved={(updated) => setEmployee(updated)}
               />
             ) : active === "LEAVE BALANCE" ? (
-              <LeaveBalanceTab
-                employeeId={employee.id}
-                canEdit={canManageEmployees}
-                adjustmentRequestKey={leaveAdjustmentRequest}
-              />
+              <LeaveBalanceTab employeeId={employee.id} />
             ) : (
               <SectionTab
                 employeeId={employee.id}
@@ -909,7 +934,8 @@ function AssignmentValue({ label, value }: { label: string; value: string }) {
 function PersonalTab({
   employee,
   options,
-  offices,
+  organizationOptions,
+  organizationFieldLabel,
   canEdit,
   selfService,
   currentAssignment,
@@ -917,25 +943,37 @@ function PersonalTab({
 }: {
   employee: EmployeeRecord;
   options: SettingsOptions;
-  offices: string[];
+  organizationOptions: Array<{ id: number; name: string; label: string }>;
+  organizationFieldLabel: string;
   canEdit: boolean;
   selfService: boolean;
   currentAssignment: CurrentAssignment;
   onSaved: (employee: EmployeeRecord) => void;
 }) {
   const [form, setForm] = useState<EmployeeRecord>(employee);
-  const officeOptions = Array.from(
-    new Set(
-      [
-        ...offices,
-        employee.department,
-        currentAssignment.substantive?.kind === "Plantilla"
-          ? currentAssignment.substantive.organization
-          : "",
-      ].filter(Boolean),
-    ),
-  );
-  const positions = options.positions.map((position) => position.title);
+  const currentOrganizationValue = form.currentOrganizationId
+    ? String(form.currentOrganizationId)
+    : form.department
+      ? `legacy:${form.department}`
+      : "";
+  const organizationSelectOptions = [
+    ...organizationOptions.map((organization) => ({
+      value: String(organization.id),
+      label: organization.label,
+    })),
+    ...(form.department &&
+    !organizationOptions.some(
+      (organization) =>
+        organization.id === form.currentOrganizationId || organization.name === form.department,
+    )
+      ? [{ value: `legacy:${form.department}`, label: form.department }]
+      : []),
+  ];
+  const positions = options.positions
+    .map((position) => position.title)
+    .sort((left, right) =>
+      left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }),
+    );
   const hasPlantillaOccupancy = currentAssignment.substantive?.kind === "Plantilla";
 
   const set = (key: keyof EmployeeRecord, value: EmployeeRecord[keyof EmployeeRecord]) =>
@@ -972,17 +1010,23 @@ function PersonalTab({
               placeholder="Device user ID / attendance ID"
             />
           </Field>
-          <Field label="Office" required={!hasPlantillaOccupancy}>
+          <Field label={organizationFieldLabel} required={!hasPlantillaOccupancy}>
             <Combobox
-              value={form.department}
-              onValueChange={(value) => set("department", value)}
-              placeholder="Select office"
-              searchPlaceholder="Search offices..."
-              emptyText="No offices found."
-              options={officeOptions.map((office) => ({
-                value: office,
-                label: office,
-              }))}
+              value={currentOrganizationValue}
+              onValueChange={(value) => {
+                const organization = organizationOptions.find(
+                  (option) => String(option.id) === value,
+                );
+                setForm((current) => ({
+                  ...current,
+                  currentOrganizationId: organization?.id || null,
+                  department: organization?.name || value.replace(/^legacy:/, ""),
+                }));
+              }}
+              placeholder={`Select ${organizationFieldLabel.toLowerCase()}`}
+              searchPlaceholder={`Search ${organizationFieldLabel.toLowerCase()}...`}
+              emptyText={`No ${organizationFieldLabel.toLowerCase()} records found.`}
+              options={organizationSelectOptions}
               triggerProps={{ disabled: hasPlantillaOccupancy }}
             />
           </Field>
@@ -1405,12 +1449,19 @@ function SectionTab({
                     label={field.label}
                     className={field.type === "textarea" ? "md:col-span-2" : undefined}
                   >
-                    <SectionInput
-                      field={field}
-                      value={String(form[field.key] ?? "")}
-                      onChange={(value) => set(field.key, value)}
-                      onFileChange={(file) => setFile(field.key, file)}
-                    />
+                    {section === "work" && field.key === "accomplishments" ? (
+                      <RepeatableTextRows
+                        value={String(form.accomplishments ?? "")}
+                        onChange={(value) => set("accomplishments", value)}
+                      />
+                    ) : (
+                      <SectionInput
+                        field={field}
+                        value={String(form[field.key] ?? "")}
+                        onChange={(value) => set(field.key, value)}
+                        onFileChange={(file) => setFile(field.key, file)}
+                      />
+                    )}
                   </Field>
                 );
               })}
@@ -1806,19 +1857,9 @@ function renderSectionValue(
   );
 }
 
-function LeaveBalanceTab({
-  employeeId,
-  canEdit,
-  adjustmentRequestKey,
-}: {
-  employeeId: string;
-  canEdit: boolean;
-  adjustmentRequestKey: number;
-}) {
+function LeaveBalanceTab({ employeeId }: { employeeId: string }) {
   const [data, setData] = useState<EmployeeLeaveResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ leaveTypeId: "", amount: "", reason: "" });
-  const adjustmentPanelRef = useRef<HTMLElement>(null);
 
   const load = () => {
     setLoading(true);
@@ -1830,27 +1871,6 @@ function LeaveBalanceTab({
 
   useEffect(load, [employeeId]);
   useRealtimeRefresh(load, ["leave", "employees"]);
-  useEffect(() => {
-    if (adjustmentRequestKey <= 0 || loading || !canEdit) return;
-    adjustmentPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    adjustmentPanelRef.current?.querySelector<HTMLElement>("button")?.focus();
-  }, [adjustmentRequestKey, canEdit, loading]);
-
-  const submitAdjustment = async () => {
-    try {
-      const result = await createLeaveAdjustment(employeeId, {
-        leaveTypeId: Number(form.leaveTypeId),
-        amount: Number(form.amount),
-        reason: form.reason,
-      });
-      setData(result);
-      setForm({ leaveTypeId: "", amount: "", reason: "" });
-      toast.success("Leave credit adjusted");
-    } catch (error) {
-      toast.error((error as Error).message);
-    }
-  };
-
   if (loading) {
     return (
       <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
@@ -1948,134 +1968,75 @@ function LeaveBalanceTab({
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <div className="border-b border-border px-4 py-3">
-            <h3 className="text-sm font-semibold text-foreground">Recent Leave Credit Activity</h3>
-            <p className="text-xs text-muted-foreground">
-              Latest credit additions, deductions, adjustments, and reversals.
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-3 py-2.5 font-medium">Date</th>
-                  <th className="px-3 py-2.5 font-medium">Leave</th>
-                  <th className="px-3 py-2.5 font-medium">Entry</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Change</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Balance</th>
-                  <th className="px-3 py-2.5 font-medium">Notes</th>
-                  <th className="px-3 py-2.5 font-medium">By</th>
+      <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="text-sm font-semibold text-foreground">Recent Leave Credit Activity</h3>
+          <p className="text-xs text-muted-foreground">
+            Latest credit additions, deductions, adjustments, and reversals.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[820px] text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-3 py-2.5 font-medium">Date</th>
+                <th className="px-3 py-2.5 font-medium">Leave</th>
+                <th className="px-3 py-2.5 font-medium">Entry</th>
+                <th className="px-3 py-2.5 text-right font-medium">Change</th>
+                <th className="px-3 py-2.5 text-right font-medium">Balance</th>
+                <th className="px-3 py-2.5 font-medium">Notes</th>
+                <th className="px-3 py-2.5 font-medium">By</th>
+              </tr>
+            </thead>
+            <tbody>
+              {latestLedgerEntries.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                    No ledger entries recorded yet.
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {latestLedgerEntries.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
-                      No ledger entries recorded yet.
+              ) : (
+                latestLedgerEntries.map((entry) => (
+                  <tr key={entry.id} className="border-b border-border/50 last:border-0">
+                    <td className="px-3 py-2.5 text-muted-foreground">
+                      {formatDisplayDate(entry.createdAt)}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="font-medium">{entry.code}</div>
+                      <div className="max-w-[160px] truncate text-xs text-muted-foreground">
+                        {entry.name}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5">{formatLedgerType(entry.entryType)}</td>
+                    <td
+                      className={cn(
+                        "px-3 py-2.5 text-right font-semibold",
+                        getBalanceTone(entry.balanceDelta),
+                      )}
+                    >
+                      {formatSignedLeaveNumber(entry.balanceDelta)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-primary">
+                      {formatLeaveNumber(entry.balanceAfter)}
+                    </td>
+                    <td className="max-w-[220px] truncate px-3 py-2.5 text-muted-foreground">
+                      {entry.description || "-"}
+                    </td>
+                    <td className="px-3 py-2.5 text-muted-foreground">
+                      {entry.createdByName || "-"}
                     </td>
                   </tr>
-                ) : (
-                  latestLedgerEntries.map((entry) => (
-                    <tr key={entry.id} className="border-b border-border/50 last:border-0">
-                      <td className="px-3 py-2.5 text-muted-foreground">
-                        {formatDisplayDate(entry.createdAt)}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="font-medium">{entry.code}</div>
-                        <div className="max-w-[160px] truncate text-xs text-muted-foreground">
-                          {entry.name}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">{formatLedgerType(entry.entryType)}</td>
-                      <td
-                        className={cn(
-                          "px-3 py-2.5 text-right font-semibold",
-                          getBalanceTone(entry.balanceDelta),
-                        )}
-                      >
-                        {formatSignedLeaveNumber(entry.balanceDelta)}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-semibold text-primary">
-                        {formatLeaveNumber(entry.balanceAfter)}
-                      </td>
-                      <td className="max-w-[220px] truncate px-3 py-2.5 text-muted-foreground">
-                        {entry.description || "-"}
-                      </td>
-                      <td className="px-3 py-2.5 text-muted-foreground">
-                        {entry.createdByName || "-"}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        {data.ledger.length > latestLedgerEntries.length ? (
+          <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+            Showing latest {latestLedgerEntries.length} of {data.ledger.length} ledger entries.
           </div>
-          {data.ledger.length > latestLedgerEntries.length ? (
-            <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
-              Showing latest {latestLedgerEntries.length} of {data.ledger.length} ledger entries.
-            </div>
-          ) : null}
-        </section>
-
-        <section
-          ref={adjustmentPanelRef}
-          className="scroll-mt-24 rounded-xl border border-border bg-card p-4 shadow-sm"
-        >
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-foreground">Leave Credit Adjustment</h3>
-            <p className="text-xs text-muted-foreground">
-              Add credits with a positive value or deduct corrections with a negative value.
-            </p>
-          </div>
-          <div className="grid gap-3">
-            <Field label="Leave Type">
-              <Select
-                value={form.leaveTypeId}
-                onValueChange={(value) => setForm({ ...form, leaveTypeId: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {data.balances.map((balance) => (
-                    <SelectItem key={balance.leaveTypeId} value={String(balance.leaveTypeId)}>
-                      {balance.code} - {balance.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Amount">
-              <Input
-                type="number"
-                step="0.001"
-                value={form.amount}
-                onChange={(event) => setForm({ ...form, amount: event.target.value })}
-              />
-            </Field>
-            <Field label="Reason">
-              <Input
-                value={form.reason}
-                onChange={(event) => setForm({ ...form, reason: event.target.value })}
-              />
-            </Field>
-            <Button
-              disabled={!canEdit}
-              onClick={submitAdjustment}
-              className="w-full bg-blue-600 text-white hover:bg-blue-700"
-            >
-              <Save className="mr-1.5 h-4 w-4" /> Apply Adjustment
-            </Button>
-            {!canEdit ? (
-              <p className="text-xs text-muted-foreground">
-                You can view balances, but your role cannot adjust leave credits.
-              </p>
-            ) : null}
-          </div>
-        </section>
-      </div>
+        ) : null}
+      </section>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">

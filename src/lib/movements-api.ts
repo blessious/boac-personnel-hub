@@ -55,6 +55,7 @@ export type Movement = {
   targetSalaryGradeId: number | null;
   targetSalaryGrade: null | { grade: number; step: number; amount: number };
   targetDepartment: string;
+  targetOrganizationId: number | null;
   remarks: string;
   supportingDocuments: Array<{ name: string; reference: string }>;
   sourceSnapshot: MovementSnapshot;
@@ -84,6 +85,7 @@ export type MovementForm = {
   targetPositionId: string;
   targetSalaryGradeId: string;
   targetDepartment: string;
+  targetOrganizationId: string;
   remarks: string;
   documentsText: string;
 };
@@ -99,6 +101,7 @@ export const emptyMovement: MovementForm = {
   targetPositionId: "",
   targetSalaryGradeId: "",
   targetDepartment: "",
+  targetOrganizationId: "",
   remarks: "",
   documentsText: "",
 };

@@ -24,12 +24,16 @@ import {
 } from "@/lib/reports-api";
 import { cn } from "@/lib/utils";
 import { useRealtimeRefresh } from "@/lib/realtime";
+import { organizationAssignmentLabel } from "@/lib/reference-libraries";
+import { useSettings } from "@/lib/settings-context";
 
 export const Route = createFileRoute("/reports")({
   component: ReportsPage,
 });
 
 function ReportsPage() {
+  const { agency } = useSettings();
+  const organizationLabel = organizationAssignmentLabel(agency.hierarchy);
   const [data, setData] = useState<PersonnelPlantillaResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -76,7 +80,7 @@ function ReportsPage() {
       title="Reports & Analytics"
       subtitle="Personnel statistics, Plantilla occupancy, and export-ready management reports"
     >
-      <div className="space-y-5">
+      <div className="flex flex-col gap-4">
         <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
@@ -162,11 +166,11 @@ function ReportsPage() {
               />
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
               <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
                 <SectionTitle
-                  title="Employees by Department"
-                  subtitle="Active and inactive records by assigned department"
+                  title={`Employees by ${organizationLabel}`}
+                  subtitle={`Active and inactive records by assigned ${organizationLabel.toLowerCase()}`}
                 />
                 <div className="mt-4 space-y-3">
                   {report.charts.byDepartment.length ? (
@@ -182,7 +186,9 @@ function ReportsPage() {
                       />
                     ))
                   ) : (
-                    <EmptyState text="No department statistics available." />
+                    <EmptyState
+                      text={`No ${organizationLabel.toLowerCase()} statistics available.`}
+                    />
                   )}
                 </div>
               </section>
@@ -203,7 +209,7 @@ function ReportsPage() {
               </section>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
               <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
                 <SectionTitle
                   title="Plantilla Occupancy by Division"

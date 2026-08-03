@@ -109,7 +109,18 @@ function LeavePage() {
   const [applicationForm, setApplicationForm] = useState(emptyLeaveForm());
   const [typeForm, setTypeForm] = useState({ code: "", name: "", isPaid: "yes" });
 
-  const activeLeaveTypes = useMemo(() => leaveTypes.filter((item) => item.isActive), [leaveTypes]);
+  const activeLeaveTypes = useMemo(
+    () =>
+      leaveTypes
+        .filter((item) => item.isActive)
+        .sort((left, right) =>
+          left.name.localeCompare(right.name, undefined, {
+            numeric: true,
+            sensitivity: "base",
+          }),
+        ),
+    [leaveTypes],
+  );
   const selectedLeaveType =
     activeLeaveTypes.find((type) => String(type.id) === applicationForm.leaveTypeId) || null;
   const minimumLeaveDate = getMinimumLeaveDate(selectedLeaveType);
@@ -330,7 +341,7 @@ function LeavePage() {
         />
       </div>
 
-      <div className="mb-4 inline-flex w-full rounded-xl bg-muted/50 p-1 md:w-auto">
+      <div className="mb-4 inline-flex w-full rounded-lg bg-muted/50 p-1 md:w-auto">
         {[
           { value: "applications", label: "Applications" },
           { value: "ledger", label: "Credit Ledger" },
@@ -339,7 +350,7 @@ function LeavePage() {
             key={item.value}
             onClick={() => setView(item.value as "applications" | "ledger")}
             className={cn(
-              "flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors md:flex-none md:py-1.5",
+              "flex-1 whitespace-nowrap rounded-md px-3 py-2 text-sm font-semibold transition-colors md:flex-none md:py-1.5",
               view === item.value
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -373,7 +384,7 @@ function LeavePage() {
           }}
         />
       ) : (
-        <div className="border-0 bg-transparent shadow-none md:rounded-xl md:border md:border-border md:bg-card md:shadow-sm">
+        <div className="border-0 bg-transparent shadow-none md:rounded-lg md:border md:border-border md:bg-card md:shadow-sm">
           <div className="flex flex-col gap-3 border-border pb-3 md:border-b md:p-4 xl:flex-row xl:items-center">
             <div className="relative flex-1 md:max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -390,7 +401,7 @@ function LeavePage() {
                   key={item}
                   onClick={() => setStatus(item)}
                   className={cn(
-                    "whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition-colors md:rounded-md md:px-3 md:py-1.5 md:font-medium",
+                    "whitespace-nowrap rounded-md px-4 py-2 text-sm font-semibold transition-colors md:px-3 md:py-1.5 md:font-medium",
                     status === item
                       ? "bg-background text-blue-700 shadow-sm ring-1 ring-blue-100"
                       : "bg-muted/50 text-muted-foreground hover:text-foreground md:bg-transparent",
@@ -439,26 +450,26 @@ function LeavePage() {
 
           <div className="mobile-record-list">
             {loadError ? (
-              <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50 px-4 py-8 text-center text-sm text-amber-900">
+              <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50 px-4 py-8 text-center text-sm text-amber-900">
                 Leave records are unavailable. Use Retry above.
               </div>
             ) : loading ? (
-              <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+              <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
                 Loading leave records...
               </div>
             ) : applications.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+              <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
                 No leave applications found.
               </div>
             ) : (
               applications.map((application) => (
                 <article
                   key={application.id}
-                  className="rounded-xl border border-border bg-white p-3 shadow-sm"
+                  className="rounded-lg border border-border bg-background p-3 shadow-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h3 className="truncate text-sm font-bold text-foreground">
+                      <h3 className="truncate text-sm font-semibold text-foreground">
                         {application.employeeName}
                       </h3>
                       <p className="truncate text-xs text-muted-foreground">
@@ -469,7 +480,7 @@ function LeavePage() {
                   </div>
 
                   <div className="mt-3 grid grid-cols-[2.5rem_1.15fr_1.15fr_0.55fr_1fr] items-center gap-2 border-t border-border/70 pt-3">
-                    <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                    <div className="grid h-9 w-9 place-items-center rounded-md bg-blue-50 text-blue-700 ring-1 ring-blue-100">
                       <FilePlus2 className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
@@ -483,7 +494,7 @@ function LeavePage() {
                       <p>{formatDisplayDate(application.dateTo)}</p>
                     </div>
                     <div className="border-l border-border/70 pl-3 text-center">
-                      <p className="text-sm font-bold text-foreground">
+                      <p className="text-sm font-semibold text-foreground">
                         {formatNumber(application.daysRequested)}
                       </p>
                       <p className="text-xs text-muted-foreground">days</p>
@@ -1134,13 +1145,13 @@ function StatCard({
   trend: "up" | "down";
 }) {
   return (
-    <div className="relative min-h-[7.25rem] overflow-hidden rounded-xl border border-border bg-card p-2.5 text-card-foreground shadow-sm md:min-h-0 md:p-4">
+    <div className="relative min-h-[7.25rem] overflow-hidden rounded-lg border border-border bg-card p-2.5 text-card-foreground shadow-sm md:min-h-0 md:p-4">
       <div className="mb-2 flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold text-foreground/80">{title}</p>
-          <h2 className="mt-1 text-xl font-bold text-foreground md:text-2xl">{value}</h2>
+          <h2 className="mt-1 text-xl font-semibold text-foreground md:text-2xl">{value}</h2>
         </div>
-        <div className={cn("rounded-lg p-1.5 md:p-2", iconBg)}>{icon}</div>
+        <div className={cn("rounded-md p-1.5 md:p-2", iconBg)}>{icon}</div>
       </div>
       <div className="relative z-10 mt-2 flex items-center text-[10px]">
         {subtextDot && <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", subtextDot)} />}
@@ -1190,7 +1201,7 @@ function CreditLedgerPanel({
 }) {
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-[minmax(260px,420px)_1fr] md:items-end">
           <Field label="Employee">
             <Combobox
@@ -1217,7 +1228,7 @@ function CreditLedgerPanel({
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900 shadow-sm">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-900 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1233,11 +1244,11 @@ function CreditLedgerPanel({
           </div>
         </div>
       ) : loading ? (
-        <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
           Loading leave credit ledger...
         </div>
       ) : !data ? (
-        <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
           Select an employee to view leave credits.
         </div>
       ) : (
@@ -1246,7 +1257,7 @@ function CreditLedgerPanel({
             {data.balances.map((balance) => (
               <div
                 key={balance.leaveTypeId}
-                className="rounded-xl border border-border bg-card p-4 shadow-sm"
+                className="rounded-lg border border-border bg-card p-4 shadow-sm"
               >
                 <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {balance.code}
@@ -1266,7 +1277,7 @@ function CreditLedgerPanel({
             ))}
           </div>
 
-          <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
             <div className="border-b border-border px-4 py-3">
               <h3 className="text-sm font-semibold text-foreground">Leave Credit Ledger</h3>
               <p className="text-xs text-muted-foreground">
@@ -1362,12 +1373,12 @@ function LeaveTypeGuidance({ leaveType, className }: { leaveType: LeaveType; cla
     <div className={cn("rounded-lg border border-blue-100 bg-blue-50/60 p-3", className)}>
       <div className="flex flex-wrap gap-2">
         {leaveType.maxDays ? (
-          <Badge variant="outline" className="border-blue-200 bg-white text-blue-700">
+          <Badge variant="outline" className="border-blue-200 bg-background text-blue-700">
             Up to {formatNumber(leaveType.maxDays)} days
           </Badge>
         ) : null}
         {leaveType.advanceNoticeDays ? (
-          <Badge variant="outline" className="border-blue-200 bg-white text-blue-700">
+          <Badge variant="outline" className="border-blue-200 bg-background text-blue-700">
             File {leaveType.advanceNoticeDays} days ahead
           </Badge>
         ) : null}

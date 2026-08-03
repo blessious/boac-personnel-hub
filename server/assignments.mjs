@@ -129,10 +129,45 @@ export async function initializeAssignmentSchema(pool, employeeIdDefinition) {
   ) ENGINE=InnoDB`);
 }
 
-const orgNameSql = "COALESCE(sec.name,divi.name,off.name,s.name)";
-const orgIdSql = "COALESCE(pi.section_ref_id,pi.division_ref_id,pi.office_ref_id,pi.sector_ref_id)";
+const organizationField = {
+  sectors: { id: "pi.sector_ref_id", alias: "s", name: "sector_name" },
+  offices: { id: "pi.office_ref_id", alias: "off", name: "office_name" },
+  divisions: { id: "pi.division_ref_id", alias: "divi", name: "division_name" },
+  sections: { id: "pi.section_ref_id", alias: "sec", name: "section_name" },
+};
+
+async function enabledOrganizationCategories(pool) {
+  const [[agency]] = await pool.query(
+    "SELECT organization_hierarchy_json FROM agency_settings WHERE id=1 LIMIT 1",
+  );
+  try {
+    const parsed =
+      typeof agency?.organization_hierarchy_json === "string"
+        ? JSON.parse(agency.organization_hierarchy_json)
+        : agency?.organization_hierarchy_json;
+    const enabled = (Array.isArray(parsed?.levels) ? parsed.levels : [])
+      .filter((level) => level.enabled && organizationField[level.category])
+      .map((level) => level.category);
+    if (enabled.length) return enabled;
+  } catch {
+    // Use the compatibility order below.
+  }
+  return ["sectors", "offices", "divisions", "sections"];
+}
 
 export async function readCurrentAssignment(pool, employeeId) {
+  const enabledCategories = await enabledOrganizationCategories(pool);
+  const reversedFields = [...enabledCategories]
+    .reverse()
+    .map((category) => organizationField[category]);
+  const orgIdSql =
+    reversedFields.length === 1
+      ? reversedFields[0].id
+      : `COALESCE(${reversedFields.map((field) => field.id).join(",")})`;
+  const orgNameSql =
+    reversedFields.length === 1
+      ? `${reversedFields[0].alias}.name`
+      : `COALESCE(${reversedFields.map((field) => `${field.alias}.name`).join(",")})`;
   const [[plantilla]] = await pool.execute(
     `SELECT po.id,po.date_from,po.movement_type,po.appointment_number,
             pi.id plantilla_item_id,pi.item_number,pi.authorized_salary,
@@ -175,12 +210,9 @@ export async function readCurrentAssignment(pool, employeeId) {
         position: plantilla.position_title,
         organizationId: plantilla.org_unit_ref_id ? Number(plantilla.org_unit_ref_id) : null,
         organization: plantilla.organization_name || "",
-        organizationPath: [
-          plantilla.sector_name,
-          plantilla.office_name,
-          plantilla.division_name,
-          plantilla.section_name,
-        ].filter(Boolean),
+        organizationPath: enabledCategories
+          .map((category) => plantilla[organizationField[category].name])
+          .filter(Boolean),
         salaryGrade: plantilla.grade
           ? {
               ordinance: plantilla.ordinance || "",
@@ -357,6 +389,7 @@ const mapEngagement = (row) => ({
 
 export function createAssignmentHandlers({
   pool,
+  readAssignableOrganization,
   requireRead,
   requireEngagement,
   readBody,
@@ -428,13 +461,8 @@ export function createAssignmentHandlers({
     if (!allowed.has(engagementType)) throw new Error("Select a valid engagement type");
     const organizationId = Number(body.organizationId);
     if (!Number.isInteger(organizationId) || organizationId < 1)
-      throw new Error("Office is required");
-    const [[organization]] = await connection.execute(
-      `SELECT id,name,category,is_active FROM hr_reference_values
-        WHERE id=:organizationId AND category = 'offices'`,
-      { organizationId },
-    );
-    if (!organization || !organization.is_active) throw new Error("Select an active office");
+      throw new Error("Organizational unit is required");
+    const organization = await readAssignableOrganization(organizationId, connection);
     const designation = String(body.designation || "").trim();
     if (!designation) throw new Error("Designation is required");
     const dateFrom = strictDate(body.dateFrom, "Start date", true);

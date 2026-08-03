@@ -1,6 +1,6 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, ChevronLeft, ChevronRight, Stethoscope } from "lucide-react";
+import { LogOut, PanelLeftClose, PanelLeftOpen, Stethoscope } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { listLeaveApplications } from "@/lib/leave-api";
@@ -45,11 +45,10 @@ export function AppSidebar() {
   return (
     <aside
       className={cn(
-        "hidden md:flex h-screen sticky top-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-200 z-30",
-        collapsed ? "w-[72px]" : "w-[260px]",
+        "hidden h-svh shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:sticky md:top-0 md:z-30 md:flex",
+        collapsed ? "w-14" : "w-64",
       )}
     >
-      {/* Logo / Header */}
       <div
         className={cn(
           "relative flex h-14 items-center gap-2 border-b border-sidebar-border px-3 transition-all",
@@ -58,8 +57,9 @@ export function AppSidebar() {
       >
         <div
           className={cn(
-            "grid place-items-center shrink-0 overflow-hidden transition-all",
+            "grid shrink-0 place-items-center overflow-hidden rounded-lg transition-all",
             collapsed ? "absolute left-1/2 h-8 w-8 -translate-x-1/2" : "h-9 w-9",
+            !agency.logoUrl && "bg-primary/10 text-primary",
           )}
         >
           {agency.logoUrl ? (
@@ -69,37 +69,39 @@ export function AppSidebar() {
           )}
         </div>
         {!collapsed && (
-          <div className="leading-tight overflow-hidden flex-1">
-            <div className="truncate text-[13px] font-bold text-sidebar-foreground">
+          <div className="min-w-0 flex-1 overflow-hidden leading-tight">
+            <div className="truncate text-sm font-semibold text-sidebar-foreground">
               {agency.name || "LGU BOAC HRIS"}
             </div>
-            <div className="truncate text-[11px] text-sidebar-foreground/70">
-              {agency.tagline || "Municipality of Boac Marinduque"}
-            </div>
+            <div className="truncate text-xs font-light text-sidebar-foreground/65">HRIS</div>
           </div>
         )}
         <button
           onClick={toggleSidebar}
           className={cn(
-            "grid h-6 w-6 shrink-0 place-items-center rounded-md text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-            collapsed && "absolute right-1 mt-0",
+            "grid h-8 w-8 shrink-0 place-items-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+            collapsed && "absolute right-1 top-3",
           )}
           aria-label="Toggle sidebar"
         >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          {collapsed ? (
+            <PanelLeftOpen className="h-4 w-4" />
+          ) : (
+            <PanelLeftClose className="h-4 w-4" />
+          )}
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar">
-        <nav className="px-2 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">
+        <nav className="space-y-2 px-2 py-3">
           {navSections.map((section) => (
-            <div key={section.label} className={cn(!collapsed && "mb-2 last:mb-0")}>
+            <div key={section.label}>
               {!collapsed && (
-                <div className="px-3 pb-1.5 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-sidebar-foreground/65">
+                <div className="px-2 pb-1.5 pt-2 text-[11px] font-medium uppercase tracking-wider text-sidebar-foreground/50">
                   {section.label}
                 </div>
               )}
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {section.items.map((item) => {
                   const active = isActive(item.to, item.exact);
                   const Icon = item.icon;
@@ -116,26 +118,26 @@ export function AppSidebar() {
                       to={item.to}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+                        "group relative flex h-9 items-center gap-2 overflow-hidden rounded-md px-2.5 text-sm font-medium outline-none ring-sidebar-ring transition-colors focus-visible:ring-2",
                         active
-                          ? "bg-sidebar-primary/15 text-sidebar-primary"
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                           : "text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                        collapsed && "justify-center px-0",
+                        collapsed && "h-10 justify-center px-0",
                       )}
                     >
                       <Icon
                         className={cn(
-                          "h-4 w-4 shrink-0",
+                          "h-4 w-4 shrink-0 transition-transform duration-200 ease-out group-hover:-translate-y-0.5 group-hover:scale-110",
                           active
-                            ? "text-sidebar-primary"
+                            ? "text-sidebar-primary-foreground"
                             : "text-sidebar-foreground/75 group-hover:text-sidebar-accent-foreground",
                         )}
                       />
-                      {!collapsed && <span className="flex-1 leading-snug">{item.label}</span>}
+                      {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
                       {itemNotificationCount > 0 && (
                         <span
                           className={cn(
-                            "inline-flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold shrink-0",
+                            "inline-flex shrink-0 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground",
                             collapsed ? "absolute right-2 top-1 h-4 min-w-4 px-1" : "px-2 py-0.5",
                           )}
                         >
@@ -151,11 +153,11 @@ export function AppSidebar() {
         </nav>
       </div>
 
-      <div className="border-t border-sidebar-border/50 p-2">
+      <div className="border-t border-sidebar-border p-2">
         <button
           onClick={handleLogout}
           className={cn(
-            "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold text-sidebar-foreground/90 transition-all duration-200 hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive",
+            "group flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-sm font-medium text-sidebar-foreground/85 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive",
             collapsed && "justify-center px-0",
           )}
         >

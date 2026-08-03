@@ -90,14 +90,17 @@ import {
   getBiometricRealtimeStatus,
   importAllDtr,
   importSingleDtr,
+  listAttendanceImportExceptions,
   listBiometricDevices,
   listDtrNoters,
   listDtr,
   listAttendanceImportLogs,
   listDtrCorrectionRequests,
+  mapAttendanceImportException,
   openGeneratedFile,
   openGeneratedFileTab,
   refreshDtr,
+  reprocessAttendanceImportExceptions,
   reverseDtrCorrectionRequest,
   syncBiometricNow,
   updateBiometricDevice,
@@ -106,6 +109,7 @@ import {
   type BiometricRealtimeStatus,
   type BiometricDevice,
   type AttendanceImport,
+  type AttendanceImportException,
   type AttendanceImportLog,
   type DtrNoter,
   type DtrEntry,
@@ -115,6 +119,8 @@ import {
   type DtrPayload,
 } from "@/lib/attendance-api";
 import { useAuth } from "@/lib/auth";
+import { organizationAssignmentLabel } from "@/lib/reference-libraries";
+import { useSettings } from "@/lib/settings-context";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import {
@@ -294,15 +300,18 @@ const EMPTY_CORRECTION_FORM: DtrCorrectionPayload = {
 };
 
 function AttendancePage() {
-  const { user, can, hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const { agency } = useSettings();
+  const organizationLabel = organizationAssignmentLabel(agency.hierarchy);
   const canManage = hasPermission("attendance.write");
   const canRead = hasPermission("attendance.read");
-  const canApprove = can("approve");
+  const canReadEmployees = hasPermission("employees.read");
+  const canApprove = hasPermission("attendance.corrections.approve");
   const isEmployee =
     hasPermission("self_service.access") &&
     Boolean(user?.employeeId) &&
     !canManage &&
-    !hasPermission("employees.read");
+    !canReadEmployees;
   const [from, setFrom] = useState(DEFAULT_FROM);
   const [to, setTo] = useState(DEFAULT_TO);
   const [q, setQ] = useState("");
@@ -347,6 +356,10 @@ function AttendancePage() {
   const [importLogId, setImportLogId] = useState("");
   const [importLogSummary, setImportLogSummary] = useState<AttendanceImport | null>(null);
   const [importLogs, setImportLogs] = useState<AttendanceImportLog[]>([]);
+  const [importExceptions, setImportExceptions] = useState<AttendanceImportException[]>([]);
+  const [mappingExceptionId, setMappingExceptionId] = useState("");
+  const [mappingEmployeeId, setMappingEmployeeId] = useState("");
+  const [reprocessingExceptions, setReprocessingExceptions] = useState(false);
 
   const [showImportAllDialog, setShowImportAllDialog] = useState(false);
   const [massImportSource, setMassImportSource] = useState<"biometric" | "file">("biometric");
@@ -522,7 +535,11 @@ function AttendancePage() {
   }, ["attendance"]);
 
   useEffect(() => {
-    if (!canManage && !canRead) return;
+    if (!canReadEmployees) {
+      setEmployees([]);
+      setEmployeeLoadError("");
+      return;
+    }
     let cancelled = false;
 
     const loadEmployees = async () => {
@@ -555,7 +572,7 @@ function AttendancePage() {
     return () => {
       cancelled = true;
     };
-  }, [canManage, canRead]);
+  }, [canReadEmployees]);
 
   useEffect(() => {
     if (!canManage && !isEmployee) return;
@@ -824,10 +841,17 @@ function AttendancePage() {
     setImportLogId(importId);
     setImportLogSummary(null);
     setImportLogs([]);
+    setImportExceptions([]);
+    setMappingExceptionId("");
+    setMappingEmployeeId("");
     try {
-      const result = await listAttendanceImportLogs(importId);
-      setImportLogSummary(result.import);
-      setImportLogs(result.logs);
+      const [logResult, exceptionResult] = await Promise.all([
+        listAttendanceImportLogs(importId),
+        listAttendanceImportExceptions({ importId, status: "all" }),
+      ]);
+      setImportLogSummary(logResult.import);
+      setImportLogs(logResult.logs);
+      setImportExceptions(exceptionResult.exceptions);
     } catch (error) {
       setImportLogError(error instanceof Error ? error.message : "Unable to load import log");
     } finally {
@@ -841,6 +865,43 @@ function AttendancePage() {
         ? String((error as { importId?: unknown }).importId || "")
         : "";
     if (importId) void openImportLog(importId);
+  };
+
+  const mapImportException = async (exceptionId: string) => {
+    if (!mappingEmployeeId) {
+      toast.error("Select the employee for this punch");
+      return;
+    }
+    setBusy(true);
+    try {
+      await mapAttendanceImportException(exceptionId, { employeeId: mappingEmployeeId });
+      toast.success("Import exception mapped");
+      if (importLogId) await openImportLog(importLogId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to map import exception");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reprocessMappedExceptions = async () => {
+    const ids = importExceptions.filter((item) => item.status === "Mapped").map((item) => item.id);
+    if (!ids.length) {
+      toast.error("No mapped exceptions are ready to reprocess");
+      return;
+    }
+    setReprocessingExceptions(true);
+    try {
+      const result = await reprocessAttendanceImportExceptions(ids);
+      toast.success(`Reprocessed ${result.reprocessed} punch(es)`);
+      if (result.refreshed.warnings?.length) toast.warning(result.refreshed.warnings.join("; "));
+      if (importLogId) await openImportLog(importLogId);
+      load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to reprocess exceptions");
+    } finally {
+      setReprocessingExceptions(false);
+    }
   };
 
   const openAdd = () => {
@@ -977,6 +1038,9 @@ function AttendancePage() {
       toast.success(
         `Import DTR complete: ${result.imported} punch(es) imported; ${result.refreshed?.recordsProcessed || 0} DTR row(s) refreshed`,
       );
+      if (result.exceptions) {
+        toast.warning(`${result.exceptions} punch(es) quarantined for employee mapping`);
+      }
       if (result.errors?.length) {
         toast.warning(`${result.errors.length} row(s) had errors. Opening import log.`);
       }
@@ -1189,6 +1253,9 @@ function AttendancePage() {
       toast.success(
         `Imported ${result.imported} punch(es); refreshed ${result.refreshed.recordsProcessed} DTR row(s)`,
       );
+      if (result.exceptions) {
+        toast.warning(`${result.exceptions} punch(es) quarantined for employee mapping`);
+      }
       if (result.errors?.length) {
         toast.warning(`${result.errors.length} row(s) need checking. Opening import log.`);
       }
@@ -1343,9 +1410,11 @@ function AttendancePage() {
     setBusy(true);
     try {
       if (scheduleForm.target === "default") {
-        await bulkUpdateSchedule({
+        const result = await bulkUpdateSchedule({
           employeeIds: scheduleForm.employeeIds,
           shiftTemplateCode,
+          from: scheduleForm.startDate,
+          to: scheduleForm.endDate,
           schedule: {
             amIn: scheduleForm.amIn,
             amOut: scheduleForm.amOut,
@@ -1353,8 +1422,10 @@ function AttendancePage() {
             pmOut: scheduleForm.pmOut,
           },
         });
+        toast.success(`Schedule saved; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+        if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       } else {
-        await bulkUpdateScheduleOverrides({
+        const result = await bulkUpdateScheduleOverrides({
           employeeIds: scheduleForm.employeeIds,
           startDate: scheduleForm.startDate,
           endDate: scheduleForm.endDate,
@@ -1367,8 +1438,9 @@ function AttendancePage() {
             pmOut: scheduleForm.pmOut,
           },
         });
+        toast.success(`Schedule saved; refreshed ${result.refreshed.recordsProcessed} DTR row(s)`);
+        if (result.warnings?.length) toast.warning(result.warnings.join("; "));
       }
-      toast.success(`Schedule saved for ${scheduleForm.employeeIds.length} employee(s)`);
       setShowScheduleDialog(false);
       refresh();
     } catch (err) {
@@ -1483,8 +1555,8 @@ function AttendancePage() {
         description={generationLoader?.description}
         onDismiss={() => setHideGenerationLoader(true)}
       />
-      <div className="space-y-4">
-        <section className="hidden rounded-xl border border-border bg-card p-4 shadow-sm md:block">
+      <div className="flex flex-col gap-4">
+        <section className="hidden rounded-lg border border-border bg-card p-4 shadow-sm md:block">
           <div className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {!isEmployee && (
@@ -1532,7 +1604,7 @@ function AttendancePage() {
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      placeholder="Name, ID, department"
+                      placeholder={`Name, ID, ${organizationLabel.toLowerCase()}`}
                       value={q}
                       onChange={(event) => setQ(event.target.value)}
                       className="h-9 pl-9"
@@ -1541,7 +1613,7 @@ function AttendancePage() {
                 </div>
               )}
             </div>
-            <div className="flex flex-col gap-3 border-t border-border/50 pt-4 mt-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="mt-2 flex flex-col gap-3 border-t border-border/50 pt-4 lg:flex-row lg:items-center lg:justify-between">
               <p className="text-xs text-muted-foreground">Records for {dtrRangeLabel}</p>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button
@@ -1593,12 +1665,12 @@ function AttendancePage() {
             variant="outline"
             size="icon"
             onClick={() => shiftDateRange(-1)}
-            className="h-11 w-11 rounded-xl bg-white shadow-sm"
+            className="h-10 w-10 rounded-md bg-background shadow-sm"
             aria-label="Previous date range"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-[#334155] shadow-sm">
+          <div className="flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-semibold text-foreground shadow-sm">
             <span className="truncate">{dtrRangeLabel}</span>
             <CalendarClock className="h-4 w-4 text-muted-foreground" />
           </div>
@@ -1607,7 +1679,7 @@ function AttendancePage() {
             variant="outline"
             size="icon"
             onClick={() => shiftDateRange(1)}
-            className="h-11 w-11 rounded-xl bg-white shadow-sm"
+            className="h-10 w-10 rounded-md bg-background shadow-sm"
             aria-label="Next date range"
           >
             <ChevronRight className="h-4 w-4" />
@@ -1626,7 +1698,7 @@ function AttendancePage() {
             variant="outline"
             onClick={load}
             disabled={loading}
-            className="h-11 min-w-0 rounded-xl bg-white font-semibold shadow-sm"
+            className="h-10 min-w-0 rounded-md bg-background font-semibold shadow-sm"
           >
             <RefreshCw className="mr-1.5 h-4 w-4" />
             Reload
@@ -1636,7 +1708,7 @@ function AttendancePage() {
               type="button"
               onClick={openImportAll}
               disabled={busy}
-              className="h-11 min-w-0 rounded-xl bg-[#0b57d0] font-semibold text-white shadow-sm hover:bg-[#0647ad]"
+              className="h-10 min-w-0 rounded-md bg-blue-600 font-semibold text-white shadow-sm hover:bg-blue-700"
             >
               <Upload className="mr-1.5 h-4 w-4" />
               Import DTR
@@ -1647,7 +1719,7 @@ function AttendancePage() {
               variant="outline"
               onClick={openExport}
               disabled={busy}
-              className="h-11 min-w-0 rounded-xl bg-white font-semibold shadow-sm"
+              className="h-10 min-w-0 rounded-md bg-background font-semibold shadow-sm"
             >
               <FileText className="mr-1.5 h-4 w-4" />
               View DTR
@@ -1659,7 +1731,7 @@ function AttendancePage() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11 rounded-xl bg-white px-3 font-semibold shadow-sm"
+                  className="h-10 rounded-md bg-background px-3 font-semibold shadow-sm"
                   aria-label="More attendance actions"
                 >
                   More
@@ -1718,7 +1790,7 @@ function AttendancePage() {
             className="m-0 focus-visible:outline-none focus-visible:ring-0"
           >
             {canManage && (
-              <section className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
                 <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1759,13 +1831,20 @@ function AttendancePage() {
                           searchPlaceholder="Search devices..."
                           options={[
                             { value: "all", label: "All active devices" },
-                            ...biometricDevices.map((device) => ({
-                              value: device.id,
-                              label: device.name,
-                              description: `${device.ip_address}:${device.port}`,
-                              disabled: !device.active,
-                              disabledDescription: "Inactive",
-                            })),
+                            ...[...biometricDevices]
+                              .sort((left, right) =>
+                                left.name.localeCompare(right.name, undefined, {
+                                  numeric: true,
+                                  sensitivity: "base",
+                                }),
+                              )
+                              .map((device) => ({
+                                value: device.id,
+                                label: device.name,
+                                description: `${device.ip_address}:${device.port}`,
+                                disabled: !device.active,
+                                disabledDescription: "Inactive",
+                              })),
                           ]}
                         />
                       </div>
@@ -1968,7 +2047,7 @@ function AttendancePage() {
             className="m-0 focus-visible:outline-none focus-visible:ring-0"
           >
             {(canApprove || isEmployee) && (
-              <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+              <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
                 <div className="flex flex-col gap-3 border-b border-border px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <h2 className="text-sm font-semibold text-foreground">DTR Correction Audit</h2>
@@ -2110,7 +2189,7 @@ function AttendancePage() {
             value="records"
             className="m-0 focus-visible:outline-none focus-visible:ring-0"
           >
-            <section className="overflow-hidden border-0 bg-transparent shadow-none md:rounded-xl md:border md:border-border md:bg-card md:shadow-sm">
+            <section className="overflow-hidden border-0 bg-transparent shadow-none md:rounded-lg md:border md:border-border md:bg-card md:shadow-sm">
               <div className="hidden flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:flex">
                 <div className="flex items-center gap-2">
                   <CalendarClock className="h-4 w-4 text-blue-700" />
@@ -2149,7 +2228,7 @@ function AttendancePage() {
                     value={recordSearch}
                     onChange={(event) => setRecordSearch(event.target.value)}
                     placeholder="Search DTR records..."
-                    className="h-11 rounded-xl bg-white pl-10 shadow-sm"
+                    className="h-10 rounded-md bg-background pl-10 shadow-sm"
                   />
                 </div>
                 <p className="text-xs font-medium text-muted-foreground">
@@ -2185,25 +2264,25 @@ function AttendancePage() {
                   return (
                     <article
                       key={entry.id}
-                      className="rounded-xl border border-border bg-white p-3 shadow-sm"
+                      className="rounded-lg border border-border bg-background p-3 shadow-sm"
                     >
                       <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_7.1rem_1.25rem] items-center gap-2.5">
                         <div
-                          className={`grid h-10 w-10 place-items-center rounded-full text-xs font-extrabold ${avatarClass}`}
+                          className={`grid h-10 w-10 place-items-center rounded-full text-xs font-semibold ${avatarClass}`}
                         >
                           {initials}
                         </div>
                         <div className="min-w-0">
-                          <h3 className="break-words text-sm font-extrabold leading-4 text-[#111827]">
+                          <h3 className="break-words text-sm font-semibold leading-4 text-foreground">
                             {entry.employeeName}
                           </h3>
-                          <p className="mt-1 text-xs font-medium text-[#53637f]">
+                          <p className="mt-1 text-xs font-medium text-muted-foreground">
                             {formatDisplayDate(entry.workDate)}
                           </p>
                         </div>
 
                         {entry.displayLabel ? (
-                          <div className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-3 text-center text-xs font-semibold text-blue-800">
+                          <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-3 text-center text-xs font-semibold text-blue-800">
                             {entry.displayLabel}
                           </div>
                         ) : (
@@ -2228,7 +2307,7 @@ function AttendancePage() {
                             onClick={() => openCorrection(entry, "Times")}
                             title="Correct Time Entries"
                             aria-label={`Correct time entries for ${formatDisplayDate(entry.workDate)}`}
-                            className="grid h-8 w-5 place-items-center text-[#64748b]"
+                            className="grid h-8 w-5 place-items-center text-muted-foreground"
                           >
                             <ChevronRight className="h-4 w-4" />
                           </button>
@@ -2238,12 +2317,12 @@ function AttendancePage() {
                             onClick={() => openEdit(entry)}
                             title="Edit DTR"
                             aria-label={`Edit DTR for ${formatDisplayDate(entry.workDate)}`}
-                            className="grid h-8 w-5 place-items-center text-[#64748b]"
+                            className="grid h-8 w-5 place-items-center text-muted-foreground"
                           >
                             <ChevronRight className="h-4 w-4" />
                           </button>
                         ) : (
-                          <ChevronRight className="h-4 w-4 text-[#64748b]" />
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         )}
                       </div>
 
@@ -2285,7 +2364,7 @@ function AttendancePage() {
                   );
                 })}
                 {!entries.length && !loading && (
-                  <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                  <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
                     {debouncedRecordSearch
                       ? "No DTR records match this table search."
                       : "No DTR records found for this filter."}
@@ -2676,13 +2755,20 @@ function AttendancePage() {
                     placeholder="Select biometric device"
                     searchPlaceholder="Search devices..."
                     emptyText="No devices found."
-                    options={biometricDevices.map((device) => ({
-                      value: device.id,
-                      label: device.name,
-                      description: `${device.ip_address}:${device.port}`,
-                      disabled: !device.active,
-                      disabledDescription: "Inactive",
-                    }))}
+                    options={[...biometricDevices]
+                      .sort((left, right) =>
+                        left.name.localeCompare(right.name, undefined, {
+                          numeric: true,
+                          sensitivity: "base",
+                        }),
+                      )
+                      .map((device) => ({
+                        value: device.id,
+                        label: device.name,
+                        description: `${device.ip_address}:${device.port}`,
+                        disabled: !device.active,
+                        disabledDescription: "Inactive",
+                      }))}
                   />
                   <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span>
@@ -2815,13 +2901,20 @@ function AttendancePage() {
                   placeholder="Select biometric device"
                   searchPlaceholder="Search devices..."
                   emptyText="No devices found."
-                  options={biometricDevices.map((device) => ({
-                    value: device.id,
-                    label: device.name,
-                    description: `${device.ip_address}:${device.port}`,
-                    disabled: !device.active,
-                    disabledDescription: "Inactive",
-                  }))}
+                  options={[...biometricDevices]
+                    .sort((left, right) =>
+                      left.name.localeCompare(right.name, undefined, {
+                        numeric: true,
+                        sensitivity: "base",
+                      }),
+                    )
+                    .map((device) => ({
+                      value: device.id,
+                      label: device.name,
+                      description: `${device.ip_address}:${device.port}`,
+                      disabled: !device.active,
+                      disabledDescription: "Inactive",
+                    }))}
                 />
                 {!biometricDevices.length && (
                   <p className="text-xs text-muted-foreground">
@@ -2878,7 +2971,8 @@ function AttendancePage() {
 
             <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
               <strong>All employees</strong> - punches are matched by Employee No. or Biometric ID.
-              Unmatched records are skipped. DTR is refreshed automatically after import.
+              Unmatched records are quarantined for HR mapping. DTR is refreshed automatically after
+              import.
             </div>
           </div>
           <DialogFooter>
@@ -2943,6 +3037,100 @@ function AttendancePage() {
                     </p>
                   </div>
                 </div>
+              )}
+              {importExceptions.length > 0 && (
+                <section className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/20">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="font-semibold text-amber-900 dark:text-amber-200">
+                        Quarantined Punches
+                      </h3>
+                      <p className="text-xs text-amber-800 dark:text-amber-300">
+                        Map unmatched biometric IDs before reprocessing them into DTR.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled={
+                        reprocessingExceptions ||
+                        !importExceptions.some((item) => item.status === "Mapped")
+                      }
+                      onClick={reprocessMappedExceptions}
+                    >
+                      {reprocessingExceptions ? (
+                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                      ) : null}
+                      Reprocess Mapped
+                    </Button>
+                  </div>
+                  <div className="mt-3 overflow-x-auto rounded-md border border-amber-200 bg-background dark:border-amber-900 dark:bg-card">
+                    <table className="w-full min-w-[760px] text-left text-sm">
+                      <thead className="bg-amber-100/70 text-xs uppercase text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                        <tr>
+                          <th className="px-3 py-2">Biometric ID</th>
+                          <th className="px-3 py-2">Punch Time</th>
+                          <th className="px-3 py-2">Status</th>
+                          <th className="px-3 py-2">Mapped Employee</th>
+                          <th className="px-3 py-2 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importExceptions.map((item) => (
+                          <tr
+                            key={item.id}
+                            className="border-t border-amber-100 dark:border-amber-900"
+                          >
+                            <td className="px-3 py-2 font-mono text-xs">
+                              {item.employeeNo || "-"}
+                            </td>
+                            <td className="px-3 py-2">{formatDisplayDateTime(item.punchAt)}</td>
+                            <td className="px-3 py-2">{item.status}</td>
+                            <td className="px-3 py-2">
+                              {item.status === "Open" || item.status === "Mapped" ? (
+                                <Select
+                                  value={
+                                    mappingExceptionId === item.id
+                                      ? mappingEmployeeId
+                                      : item.mappedEmployeeId || ""
+                                  }
+                                  onValueChange={(value) => {
+                                    setMappingExceptionId(item.id);
+                                    setMappingEmployeeId(value);
+                                  }}
+                                >
+                                  <SelectTrigger className="h-9 min-w-[240px] bg-background dark:bg-card">
+                                    <SelectValue placeholder="Select employee" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {employees.map((employee) => (
+                                      <SelectItem key={employee.id} value={employee.id}>
+                                        {formatEmployeeName(employee)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                item.mappedEmployeeName || "-"
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {(item.status === "Open" || item.status === "Mapped") && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={busy}
+                                  onClick={() => mapImportException(item.id)}
+                                >
+                                  Map
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               )}
               <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full min-w-[760px] text-left text-sm">
@@ -3128,12 +3316,19 @@ function AttendancePage() {
                   placeholder="Select noter"
                   searchPlaceholder="Search noters..."
                   emptyText="No noters found."
-                  options={noters.map((noter) => ({
-                    value: noter.id,
-                    label: noter.signatory,
-                    description: [noter.position, noter.office].filter(Boolean).join(" · "),
-                    keywords: [noter.name],
-                  }))}
+                  options={[...noters]
+                    .sort((left, right) =>
+                      left.signatory.localeCompare(right.signatory, undefined, {
+                        numeric: true,
+                        sensitivity: "base",
+                      }),
+                    )
+                    .map((noter) => ({
+                      value: noter.id,
+                      label: noter.signatory,
+                      description: [noter.position, noter.office].filter(Boolean).join(" Â· "),
+                      keywords: [noter.name],
+                    }))}
                 />
               </div>
               <div className="space-y-1.5">
@@ -3246,10 +3441,12 @@ function AttendancePage() {
                 <div className="sticky top-0 z-10 space-y-2 bg-card pb-2">
                   <Select value={scheduleDepartment} onValueChange={setScheduleDepartment}>
                     <SelectTrigger className="h-8">
-                      <SelectValue placeholder="Filter by department" />
+                      <SelectValue placeholder={`Filter by ${organizationLabel.toLowerCase()}`} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All departments</SelectItem>
+                      <SelectItem value="all">
+                        All {organizationLabel.toLowerCase()} records
+                      </SelectItem>
                       {scheduleDepartments.map((department) => (
                         <SelectItem key={department} value={department}>
                           {department}
@@ -3758,13 +3955,13 @@ function DtrMobileTime({
   return (
     <div className="min-w-0">
       <div
-        className={`truncate text-[0.72rem] font-extrabold leading-4 ${
+        className={`truncate text-[0.72rem] font-semibold leading-4 ${
           danger ? "text-red-600" : "text-emerald-600"
         }`}
       >
         {value}
       </div>
-      <div className="mt-0.5 text-[0.55rem] font-bold uppercase leading-3 text-[#64748b]">
+      <div className="mt-0.5 text-[0.55rem] font-semibold uppercase leading-3 text-muted-foreground">
         {label}
       </div>
     </div>
