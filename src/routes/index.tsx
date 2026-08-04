@@ -304,6 +304,7 @@ function Dashboard() {
                     cy="50"
                     r="40"
                     fill="transparent"
+                    className="stat-donut-segment"
                     stroke="#f59e0b"
                     strokeWidth="20"
                     strokeDasharray={`${(joCosTotal / Math.max(totalEmployees, 1)) * 251.2} 251.2`}
@@ -314,7 +315,8 @@ function Dashboard() {
                     cy="50"
                     r="40"
                     fill="transparent"
-                    stroke="currentColor"
+                    className="stat-donut-segment"
+                    stroke="#2563eb"
                     strokeWidth="20"
                     strokeDasharray={`${(permanentRegularTotal / Math.max(totalEmployees, 1)) * 251.2} 251.2`}
                     strokeDashoffset={`${-(joCosTotal / Math.max(totalEmployees, 1)) * 251.2}`}
@@ -327,7 +329,7 @@ function Dashboard() {
               </div>
               <div className="mt-5 w-full space-y-3 md:mt-8">
                 <LegendItem
-                  color="bg-primary"
+                  color="bg-blue-600"
                   label="Permanent / Regular"
                   value={permanentRegularTotal}
                   percent={`(${percentOf(permanentRegularTotal, totalEmployees)}%)`}
@@ -360,7 +362,7 @@ function Dashboard() {
             <div className="mt-5 flex-1 space-y-4">
               {offices.map((office, index) => {
                 const pct = percentOf(office.total, totalEmployees);
-                const colors = ["bg-primary", "bg-amber-500", "bg-emerald-500", "bg-purple-500"];
+                const colors = ["bg-blue-600", "bg-amber-500", "bg-emerald-500", "bg-purple-500"];
                 return (
                   <ProgressBar
                     key={office.department || "Unassigned"}
@@ -398,7 +400,8 @@ function Dashboard() {
                     cy="50"
                     r="40"
                     fill="transparent"
-                    stroke="currentColor"
+                    className="stat-donut-base"
+                    stroke="#2563eb"
                     strokeWidth="20"
                   />
                   <circle
@@ -406,6 +409,7 @@ function Dashboard() {
                     cy="50"
                     r="40"
                     fill="transparent"
+                    className="stat-donut-segment"
                     stroke="#f43f5e"
                     strokeWidth="20"
                     strokeDasharray={`${(femaleTotal / Math.max(genderTotal, 1)) * 251.2} 251.2`}
@@ -426,7 +430,7 @@ function Dashboard() {
                   small
                 />
                 <LegendItem
-                  color="bg-primary"
+                  color="bg-blue-600"
                   label="Male"
                   value={maleTotal}
                   percent={`(${malePct}%)`}
@@ -596,8 +600,8 @@ function AgeBar({
       <div className="h-3 overflow-hidden rounded-full bg-muted">
         <div
           className={cn(
-            "h-full rounded-full transition-all duration-300",
-            active ? "bg-primary" : "bg-primary/70",
+            "stat-bar-fill h-full rounded-full transition-all duration-300",
+            active ? "bg-blue-600" : "bg-blue-500/80",
           )}
           style={{ width }}
         />
@@ -666,7 +670,7 @@ function ProgressBar({
         </div>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div className={cn("h-full rounded-full", color)} style={{ width }} />
+        <div className={cn("stat-bar-fill h-full rounded-full", color)} style={{ width }} />
       </div>
     </div>
   );

@@ -2000,12 +2000,16 @@ function StatCard({
         <span className={subtextColor}>{subtext}</span>
       </div>
       <div className="absolute bottom-2 right-2 z-0 h-7 w-16 opacity-50 md:h-8 md:w-24">
-        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
+        <svg
+          viewBox="0 0 100 30"
+          preserveAspectRatio="none"
+          className="stat-trend-chart h-full w-full"
+        >
           {trend === "up" ? (
             <path
               d="M0,25 C20,20 40,30 60,10 C80,-5 100,5 100,5"
               fill="none"
-              className={chartColor}
+              className={cn("stat-trend-line", chartColor)}
               strokeWidth="2"
               strokeLinecap="round"
             />
@@ -2013,7 +2017,7 @@ function StatCard({
             <path
               d="M0,5 C20,5 40,-5 60,15 C80,30 100,20 100,20"
               fill="none"
-              className={chartColor}
+              className={cn("stat-trend-line", chartColor)}
               strokeWidth="2"
               strokeLinecap="round"
             />

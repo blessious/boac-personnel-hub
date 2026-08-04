@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Textarea } from "@/components/ui/textarea";
+import { TablePagination } from "@/components/ui/table-pagination";
 import { api, isAbortError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useRealtimeRefresh } from "@/lib/realtime";
@@ -135,6 +136,8 @@ function MovementsPage() {
     [q, setQ] = useState(""),
     [status, setStatus] = useState(prepareSearch.status || "needs-action"),
     [actionFilter, setActionFilter] = useState("all"),
+    [page, setPage] = useState(1),
+    [pageSize, setPageSize] = useState(10),
     [loadError, setLoadError] = useState("");
   const apiStatus = DERIVED_QUEUE_STATUSES.has(status) ? "all" : status;
   const queueStatuses = useMemo(() => {
@@ -446,6 +449,18 @@ function MovementsPage() {
     }
     return movements;
   }, [movements, requiresUserAction, status]);
+  const totalPages = Math.max(1, Math.ceil(displayedMovements.length / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const pagedMovements = useMemo(
+    () => displayedMovements.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [displayedMovements, safePage, pageSize],
+  );
+  useEffect(() => {
+    setPage(1);
+  }, [q, status, actionFilter, pageSize]);
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
   const activationFailureCount = useMemo(
     () => movements.filter((movement) => Boolean(movement.activationError)).length,
     [movements],
@@ -691,10 +706,11 @@ function MovementsPage() {
         </div>
       )}
       <div className="mobile-record-list mt-4 md:hidden">
-        {displayedMovements.map((m) => (
+        {pagedMovements.map((m) => (
           <article
             className="rounded-lg border border-border bg-background p-3 shadow-sm"
             key={m.id}
+            onDoubleClick={() => openDetails(m)}
           >
             <div className="grid grid-cols-[minmax(0,1fr)_5rem] items-start gap-3">
               <div className="min-w-0">
@@ -733,10 +749,15 @@ function MovementsPage() {
                 </div>
               </div>
             </div>
-            <div className="mt-3 flex justify-end gap-2">{actionButtons(m)}</div>
+            <div
+              className="mt-3 flex justify-end gap-2"
+              onDoubleClick={(event) => event.stopPropagation()}
+            >
+              {actionButtons(m)}
+            </div>
           </article>
         ))}
-        {!displayedMovements.length && (
+        {!pagedMovements.length && (
           <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
             No personnel movements found.
           </div>
@@ -763,8 +784,12 @@ function MovementsPage() {
             </tr>
           </thead>
           <tbody className={dataTableBodyClass}>
-            {displayedMovements.map((m) => (
-              <tr className={dataTableRowClass} key={m.id}>
+            {pagedMovements.map((m) => (
+              <tr
+                className={cn(dataTableRowClass, "cursor-pointer")}
+                key={m.id}
+                onDoubleClick={() => openDetails(m)}
+              >
                 <td className={cn(dataTableCellClass, "whitespace-nowrap font-medium")}>
                   {m.controlNumber}
                 </td>
@@ -798,12 +823,15 @@ function MovementsPage() {
                     </div>
                   )}
                 </td>
-                <td className={dataTableCellClass}>
+                <td
+                  className={dataTableCellClass}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                >
                   <div className="flex flex-wrap gap-1">{actionButtons(m)}</div>
                 </td>
               </tr>
             ))}
-            {!displayedMovements.length && (
+            {!pagedMovements.length && (
               <tr>
                 <td colSpan={8} className={dataTableEmptyCellClass}>
                   No personnel movements found.
@@ -813,6 +841,16 @@ function MovementsPage() {
           </tbody>
         </table>
       </div>
+      <TablePagination
+        page={safePage}
+        totalPages={totalPages}
+        total={displayedMovements.length}
+        pageSize={pageSize}
+        itemLabel="movements"
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        className="mt-0 rounded-b-lg border border-t-0 border-border bg-card"
+      />
       <MovementDialog
         open={edit !== undefined}
         movement={edit}
@@ -860,9 +898,9 @@ function MovementsPage() {
                       ? "Returning to Draft refreshes the source employee/occupancy snapshot and clears prior approvals."
                       : decision?.action === "unsubmit"
                         ? "Unsubmitting pulls this movement back to Draft before review starts."
-                      : decision?.action === "reject"
-                        ? "Record the reason for this decision."
-                        : "Confirm this workflow step before the movement continues."}
+                        : decision?.action === "reject"
+                          ? "Record the reason for this decision."
+                          : "Confirm this workflow step before the movement continues."}
           </p>
           <div className="space-y-1">
             <Label>
@@ -937,22 +975,22 @@ function MovementDetailDialog({
   const after = movement?.afterSnapshot || null;
   return (
     <Dialog open={!!movement} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
+      <DialogContent className="max-w-6xl overflow-hidden p-4 sm:p-5">
         {movement && (
           <>
-            <DialogHeader>
+            <DialogHeader className="space-y-1">
               <DialogTitle>Review movement - {movement.controlNumber}</DialogTitle>
             </DialogHeader>
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
-              <div className="space-y-4">
-                <section className="rounded-lg border p-4">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_15rem]">
+              <div className="space-y-3">
+                <section className="rounded-lg border p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h3 className="text-base font-semibold">{movement.employeeName}</h3>
+                      <h3 className="text-sm font-semibold">{movement.employeeName}</h3>
                     </div>
                     <Status value={movement.status} />
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-x-3 gap-y-2 sm:grid-cols-4">
                     <DetailValue label="Personnel action" value={movement.actionType} />
                     <DetailValue label="Effectivity" value={dateRange(movement)} />
                     <DetailValue label="Authority" value={movement.authorityNumber || "-"} />
@@ -963,7 +1001,7 @@ function MovementDetailDialog({
                   </div>
                 </section>
 
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid gap-3 lg:grid-cols-2">
                   <SnapshotCard title="Current record" snapshot={source} />
                   <SnapshotCard
                     title={movement.status === "Posted" ? "Posted result" : "Proposed change"}
@@ -984,9 +1022,9 @@ function MovementDetailDialog({
                   />
                 </div>
 
-                <section className="rounded-lg border p-4">
-                  <h3 className="mb-3 text-sm font-semibold">Remarks and document references</h3>
-                  <div className="space-y-3 text-sm">
+                <section className="rounded-lg border p-3">
+                  <h3 className="mb-2 text-sm font-semibold">Remarks and document references</h3>
+                  <div className="grid gap-3 text-sm lg:grid-cols-[1fr_1fr_1.2fr]">
                     <DetailValue label="Remarks" value={movement.remarks || "-"} />
                     <DetailValue label="Decision remarks" value={movement.decisionRemarks || "-"} />
                     <div>
@@ -996,7 +1034,7 @@ function MovementDetailDialog({
                       {movement.supportingDocuments.length ? (
                         <div className="mt-1 space-y-1">
                           {movement.supportingDocuments.map((doc, index) => (
-                            <div className="rounded border bg-muted/30 px-3 py-2" key={index}>
+                            <div className="rounded border bg-muted/30 px-2 py-1.5" key={index}>
                               <span className="font-medium">{doc.name || "Document"}</span>
                               {doc.reference && (
                                 <span className="text-muted-foreground"> - {doc.reference}</span>
@@ -1012,10 +1050,10 @@ function MovementDetailDialog({
                 </section>
               </div>
 
-              <aside className="space-y-4">
-                <section className="rounded-lg border p-4">
-                  <h3 className="mb-3 text-sm font-semibold">Workflow</h3>
-                  <div className="space-y-2 text-sm">
+              <aside className="space-y-3">
+                <section className="rounded-lg border p-3">
+                  <h3 className="mb-2 text-sm font-semibold">Workflow</h3>
+                  <div className="space-y-1.5 text-sm">
                     <DetailValue label="Prepared by" value={movement.preparedBy || "-"} />
                     <DetailValue label="Reviewed by" value={movement.reviewedBy || "-"} />
                     <DetailValue label="Approved by" value={movement.approvedBy || "-"} />
@@ -1035,11 +1073,11 @@ function MovementDetailDialog({
                   </div>
                 )}
 
-                <section className="rounded-lg border p-4">
-                  <h3 className="mb-3 text-sm font-semibold">Action history</h3>
-                  <div className="max-h-64 space-y-2 overflow-y-auto">
+                <section className="rounded-lg border p-3">
+                  <h3 className="mb-2 text-sm font-semibold">Action history</h3>
+                  <div className="space-y-1.5">
                     {events.map((event) => (
-                      <div className="rounded border bg-muted/20 p-2 text-sm" key={event.id}>
+                      <div className="rounded border bg-muted/20 p-2 text-xs" key={event.id}>
                         <div className="font-medium">
                           {event.eventType}: {event.fromStatus || "New"} to {event.toStatus}
                         </div>
@@ -1125,9 +1163,11 @@ function MovementDetailDialog({
 
 function DetailValue({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
-      <div className="text-xs font-medium uppercase text-muted-foreground">{label}</div>
-      <div className="mt-1 break-words text-sm text-foreground">{value}</div>
+    <div className="min-w-0">
+      <div className="text-[10px] font-medium uppercase leading-tight text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-0.5 break-words text-xs leading-snug text-foreground">{value}</div>
     </div>
   );
 }
@@ -1144,9 +1184,9 @@ function SnapshotCard({
   const employee = snapshot?.employee;
   const occupancy = snapshot?.occupancy;
   return (
-    <section className="rounded-lg border p-4">
-      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
-      <div className="grid gap-3 text-sm">
+    <section className="rounded-lg border p-3">
+      <h3 className="mb-2 text-sm font-semibold">{title}</h3>
+      <div className="grid gap-x-3 gap-y-2 text-sm sm:grid-cols-2">
         {employee || occupancy ? (
           <>
             <DetailValue label="Position" value={employee?.position || "-"} />
@@ -1597,12 +1637,16 @@ function StatCard({
         <span className={subtextColor}>{subtext}</span>
       </div>
       <div className="absolute bottom-2 right-2 z-0 h-7 w-16 opacity-50 md:h-8 md:w-24">
-        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-full w-full">
+        <svg
+          viewBox="0 0 100 30"
+          preserveAspectRatio="none"
+          className="stat-trend-chart h-full w-full"
+        >
           {trend === "up" ? (
             <path
               d="M0,25 C20,20 40,30 60,10 C80,-5 100,5 100,5"
               fill="none"
-              className={chartColor}
+              className={cn("stat-trend-line", chartColor)}
               strokeWidth="2"
               strokeLinecap="round"
             />
@@ -1610,7 +1654,7 @@ function StatCard({
             <path
               d="M0,5 C20,5 40,-5 60,15 C80,30 100,20 100,20"
               fill="none"
-              className={chartColor}
+              className={cn("stat-trend-line", chartColor)}
               strokeWidth="2"
               strokeLinecap="round"
             />

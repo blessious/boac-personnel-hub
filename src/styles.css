@@ -647,6 +647,86 @@ html.theme-transitioning *::after {
   }
 }
 
+.stat-trend-chart {
+  overflow: visible;
+}
+
+.stat-trend-line {
+  stroke-dasharray: 112;
+  stroke-dashoffset: 112;
+  filter: drop-shadow(0 0 0.35rem color-mix(in oklab, currentColor 35%, transparent));
+  animation:
+    stat-trend-draw 1100ms cubic-bezier(0.22, 1, 0.36, 1) 90ms forwards,
+    stat-trend-breathe 3200ms ease-in-out 1250ms infinite;
+  will-change: stroke-dashoffset, opacity, transform;
+}
+
+.stat-bar-fill {
+  transform-origin: left center;
+  animation: stat-bar-grow 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.stat-donut-base {
+  transform-origin: center;
+  animation: stat-donut-settle 950ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform;
+}
+
+.stat-donut-segment {
+  transform-origin: center;
+  animation:
+    stat-donut-sweep 1150ms cubic-bezier(0.22, 1, 0.36, 1) both,
+    stat-donut-settle 950ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: stroke-dashoffset, opacity, transform;
+}
+
+@keyframes stat-trend-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes stat-bar-grow {
+  from {
+    opacity: 0.35;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes stat-donut-settle {
+  from {
+    opacity: 0.2;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes stat-donut-sweep {
+  from {
+    stroke-dashoffset: 251.2;
+  }
+}
+
+@keyframes stat-trend-breathe {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-0.08rem);
+  }
+}
+
 @media (max-width: 767px) {
   :root {
     --radius: 1rem;
@@ -1293,8 +1373,21 @@ html.theme-transitioning *::after {
   .login-page-fade-out,
   .dash-sidebar-enter,
   .dash-content-enter,
-  .dash-card-stagger {
+  .dash-card-stagger,
+  .stat-trend-line,
+  .stat-bar-fill,
+  .stat-donut-base,
+  .stat-donut-segment {
     animation-duration: 1ms !important;
     animation-delay: 0s !important;
+  }
+
+  .stat-trend-line,
+  .stat-bar-fill,
+  .stat-donut-base,
+  .stat-donut-segment {
+    stroke-dashoffset: 0;
+    opacity: 0.82;
+    transform: none;
   }
 }

@@ -298,7 +298,7 @@ function MetricCard({
   tone: "blue" | "green" | "indigo" | "amber";
 }) {
   const toneClass = {
-    blue: "bg-muted text-primary",
+    blue: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-100",
     green: "bg-emerald-50 text-emerald-700",
     indigo: "bg-indigo-50 text-indigo-700",
     amber: "bg-amber-50 text-amber-700",
@@ -357,10 +357,13 @@ function StackedBarRow({
         <span className="shrink-0 text-muted-foreground">{formatNumber(total)}</span>
       </div>
       <div className="h-7 rounded-md bg-muted">
-        <div className="flex h-7 overflow-hidden rounded-md" style={{ width: `${width}%` }}>
+        <div
+          className="stat-bar-fill flex h-7 overflow-hidden rounded-md"
+          style={{ width: `${width}%` }}
+        >
           <div
             title={`${firstLabel}: ${first}`}
-            className="bg-primary"
+            className="bg-blue-600"
             style={{ width: `${firstWidth}%` }}
           />
           <div
@@ -397,7 +400,7 @@ function CompactSeries({ title, rows }: { title: string; rows: CountSeries[] }) 
               </div>
               <div className="mt-1 h-1.5 rounded-full bg-background">
                 <div
-                  className="h-1.5 rounded-full bg-primary"
+                  className="stat-bar-fill h-1.5 rounded-full bg-blue-600"
                   style={{ width: `${max ? (row.total / max) * 100 : 0}%` }}
                 />
               </div>
@@ -420,7 +423,7 @@ function SalaryGradeRow({ row }: { row: CountSeries }) {
       <div className="font-semibold text-foreground">SG {row.label}</div>
       <div className="h-2 overflow-hidden rounded-full bg-muted">
         <div
-          className="h-full rounded-full bg-primary"
+          className="stat-bar-fill h-full rounded-full bg-blue-600"
           style={{ width: `${active ? (occupied / active) * 100 : 0}%` }}
         />
       </div>
