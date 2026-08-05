@@ -279,7 +279,8 @@ export function createEmployee(employee: CreateEmployeeInput) {
   return api<{
     employee: EmployeeRecord;
     account?: EmployeeAccountCredentials;
-    appointmentDraftId?: string;
+    appointmentMovementId?: string;
+    appointmentStatus?: "Scheduled" | "Posted" | "Approved";
     engagementId?: string;
   }>("/api/employees", {
     method: "POST",

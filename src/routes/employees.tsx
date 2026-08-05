@@ -641,8 +641,10 @@ function EmployeesPage() {
               engagement: nonPlantillaEngagement,
             });
       toast.success(
-        result.appointmentDraftId
-          ? "Personal record and appointment draft created"
+        result.appointmentMovementId
+          ? result.appointmentStatus === "Scheduled"
+            ? "Personal record created and appointment scheduled"
+            : "Employee added to Plantilla"
           : result.engagementId
             ? "Employee and non-Plantilla engagement created"
             : "Personal record created",
@@ -1468,7 +1470,7 @@ function EmployeesPage() {
                     }
                     description={
                       plantillaOrigin
-                        ? "The selected vacancy will be reserved through an appointment draft."
+                        ? "The selected vacancy will be filled by the appointment."
                         : "Choose exactly one onboarding path before entering assignment details."
                     }
                   />
@@ -1491,7 +1493,7 @@ function EmployeesPage() {
                       >
                         <div className="font-semibold">Plantilla appointment</div>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          Create a personal record, inactive account, and appointment draft.
+                          Create a personal record, account, and Plantilla appointment.
                         </div>
                       </button>
                       <button
@@ -1894,7 +1896,7 @@ function EmployeesPage() {
                   />
                   <ReviewDetail
                     label="Employee account"
-                    value="Inactive until the appointment is posted and effective"
+                    value="Activated when the appointment is current; scheduled if future dated"
                     wide
                   />
                 </>

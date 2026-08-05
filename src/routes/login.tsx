@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router"
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Eye, EyeOff, Loader2, Lock, ShieldCheck, User } from "lucide-react";
+import { Building, Eye, EyeOff, Loader2, Lock, ShieldCheck, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth, type PermissionKey, type User as AuthUser } from "@/lib/auth";
@@ -12,8 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import strhLogo from "@/assets/branding/STRH-logo.png";
-import strhCover from "@/assets/branding/STRH-cover.jpg";
 
 const schema = z.object({
   username: z.string().trim().min(1, "Username required").max(50),
@@ -144,8 +142,6 @@ function LoginPage() {
   const [setupRequired, setSetupRequired] = useState(false);
   const [checkingSetup, setCheckingSetup] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [exiting, setExiting] = useState(false);
-  const pendingRedirectRef = useRef<string | null>(null);
   const passwordInputRef = useRef<HTMLInputElement | null>(null);
 
   const form = useForm<FormData>({
@@ -162,8 +158,8 @@ function LoginPage() {
     },
   });
   const passwordField = form.register("password");
-  const logoSrc = agencyLoaded ? agency.logoUrl || strhLogo : "";
-  const bannerSrc = agencyLoaded ? agency.bannerUrl || strhCover : "";
+  const logoSrc = agencyLoaded ? agency.logoUrl || "" : "";
+  const bannerSrc = agencyLoaded ? agency.bannerUrl || "" : "";
   const agencyLabel = agency.name || "LGU BOAC";
   const agencyName = agency.tagline || "Municipality of Boac Marinduque";
 
@@ -185,8 +181,8 @@ function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (user && !exiting) {
-      navigate({ to: "/" });
+    if (user) {
+      doNavigate(search.redirect || "/", user, true);
       return;
     }
     if (!user) {
@@ -195,21 +191,21 @@ function LoginPage() {
         if (passwordInputRef.current) passwordInputRef.current.value = "";
       }, 0);
     }
-  }, [user, navigate, form, exiting]);
+  }, [user, search.redirect, navigate, form]);
 
-  const doNavigate = (redirect: string, redirectUser: AuthUser) => {
+  const doNavigate = (redirect: string, redirectUser: AuthUser, replace = false) => {
     const target = allowedRedirectForUser(redirect, redirectUser);
     if (target.startsWith("/employees/")) {
       const id = target.split("/").filter(Boolean).at(-1);
       if (id) {
-        navigate({ to: "/employees/$id", params: { id } });
+        navigate({ to: "/employees/$id", params: { id }, replace });
         return;
       }
     }
     if (isKnownRoute(target)) {
-      navigate({ to: target });
+      navigate({ to: target, replace });
     } else {
-      navigate({ to: "/" });
+      navigate({ to: "/", replace });
     }
   };
 
@@ -220,12 +216,7 @@ function LoginPage() {
       form.reset({ username: "", password: "" });
       toast.success("Welcome back!");
       const redirect = search.redirect || "/";
-      // Start exit animation, then navigate after it finishes
-      pendingRedirectRef.current = redirect;
-      setExiting(true);
-      setTimeout(() => {
-        doNavigate(pendingRedirectRef.current || "/", loggedInUser);
-      }, 600);
+      doNavigate(redirect, loggedInUser, true);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -248,11 +239,7 @@ function LoginPage() {
         confirmPassword: "",
       });
       toast.success("Super Admin account created");
-      pendingRedirectRef.current = "/";
-      setExiting(true);
-      setTimeout(() => {
-        doNavigate("/", loggedInUser);
-      }, 600);
+      doNavigate("/", loggedInUser, true);
     } catch (e) {
       toast.error((e as Error).message);
       api<{ setupRequired: boolean }>("/api/auth/bootstrap-status")
@@ -263,33 +250,39 @@ function LoginPage() {
     }
   };
 
+  if (!agencyLoaded) {
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-white dark:bg-[#07111f] md:bg-[#f5f9ff] md:dark:bg-[#07111f]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#0b57d0]/60 dark:text-blue-500/60" />
+      </main>
+    );
+  }
+
   return (
-    <main
-      className={`relative flex min-h-dvh overflow-hidden bg-white text-[#08275b] dark:bg-[#07111f] dark:text-slate-100 md:bg-[#f5f9ff] md:px-8 md:py-5 md:dark:bg-[#07111f] lg:px-10${exiting ? " login-page-fade-out" : ""}`}
-    >
+    <main className="relative flex min-h-dvh overflow-hidden bg-white text-[#08275b] dark:bg-[#07111f] dark:text-slate-100 md:bg-[#f5f9ff] md:px-8 md:py-5 md:dark:bg-[#07111f] lg:px-10">
       <div
-        className="absolute inset-x-0 top-0 h-[52dvh] bg-cover bg-center opacity-100 transition-opacity duration-500 dark:opacity-40 md:inset-0 md:h-auto md:bg-left-bottom md:opacity-85 md:dark:opacity-30"
+        className="absolute inset-x-0 top-0 h-[52dvh] bg-cover bg-center opacity-100 dark:opacity-60 md:inset-0 md:h-auto md:bg-left-bottom md:opacity-100 md:dark:opacity-60"
         style={bannerSrc ? { backgroundImage: `url(${bannerSrc})` } : undefined}
       />
-      <div className="absolute inset-x-0 top-0 h-[52dvh] bg-[linear-gradient(180deg,rgba(246,250,255,0.60)_0%,rgba(246,250,255,0.50)_42%,rgba(246,250,255,0.86)_100%)] dark:bg-[linear-gradient(180deg,rgba(7,17,31,0.30)_0%,rgba(7,17,31,0.56)_48%,rgba(7,17,31,0.96)_100%)] md:inset-0 md:h-auto md:bg-[linear-gradient(100deg,rgba(246,250,255,0.94)_0%,rgba(246,250,255,0.88)_39%,rgba(246,250,255,0.70)_57%,rgba(246,250,255,0.94)_74%,rgba(246,250,255,0.98)_100%)] md:dark:bg-[linear-gradient(100deg,rgba(7,17,31,0.94)_0%,rgba(7,17,31,0.86)_42%,rgba(7,17,31,0.62)_60%,rgba(7,17,31,0.90)_78%,rgba(7,17,31,0.98)_100%)]" />
+      <div className="absolute inset-x-0 top-0 h-[52dvh] bg-[linear-gradient(180deg,rgba(246,250,255,0.40)_0%,rgba(246,250,255,0.30)_42%,rgba(246,250,255,0.76)_100%)] dark:bg-[linear-gradient(180deg,rgba(7,17,31,0.20)_0%,rgba(7,17,31,0.40)_48%,rgba(7,17,31,0.86)_100%)] md:inset-0 md:h-auto md:bg-[linear-gradient(100deg,rgba(246,250,255,0.85)_0%,rgba(246,250,255,0.75)_39%,rgba(246,250,255,0.40)_57%,rgba(246,250,255,0.85)_74%,rgba(246,250,255,0.95)_100%)] md:dark:bg-[linear-gradient(100deg,rgba(7,17,31,0.85)_0%,rgba(7,17,31,0.75)_42%,rgba(7,17,31,0.40)_60%,rgba(7,17,31,0.85)_78%,rgba(7,17,31,0.95)_100%)]" />
       <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_38%_18%,rgba(0,75,170,0.10),transparent_28%),linear-gradient(135deg,rgba(255,255,255,0)_0%,rgba(0,65,160,0.04)_100%)] dark:bg-[radial-gradient(circle_at_38%_18%,rgba(37,99,235,0.16),transparent_30%),linear-gradient(135deg,rgba(7,17,31,0)_0%,rgba(2,6,23,0.35)_100%)] md:block" />
       <div className="absolute -bottom-12 left-0 right-0 hidden h-24 rotate-[-2deg] bg-[#0047c7] md:block" />
       <div className="absolute -bottom-20 left-0 right-0 hidden h-24 rotate-[1.5deg] bg-[#0036a5] md:block" />
       <ThemeToggle className="absolute right-5 top-5 z-20 border-white/60 bg-white/80 text-[#16417e] shadow-[0_8px_24px_rgba(8,29,66,0.14)] dark:border-white/10 dark:bg-slate-950/65 dark:text-slate-200 md:right-9 md:top-8" />
 
       <section className="relative z-10 mx-auto flex min-h-dvh w-full flex-col justify-end md:grid md:min-h-[calc(100vh-2.5rem)] md:max-w-6xl md:grid-cols-1 md:items-center md:gap-8 lg:grid-cols-[1fr_410px]">
-        <div
-          className={`flex min-h-[52dvh] flex-col justify-between px-6 pb-9 pt-8 text-[#08275b] dark:text-slate-100 md:h-full md:min-h-[22rem] md:px-0 md:py-2 lg:py-6${exiting ? " login-exit-left" : " login-enter-left"}`}
-        >
+        <div className="login-enter-left flex min-h-[52dvh] flex-col justify-between px-6 pb-9 pt-8 text-[#08275b] dark:text-slate-100 md:h-full md:min-h-[22rem] md:px-0 md:py-2 lg:py-6">
           <div className="flex items-center gap-3">
             {logoSrc ? (
               <img
                 src={logoSrc}
                 alt={agencyName}
-                className="h-11 w-11 rounded-full object-contain shadow-sm"
+                className="h-11 w-11 rounded-full bg-white object-contain shadow-sm"
               />
             ) : (
-              <div className="h-11 w-11 rounded-full bg-white/55 shadow-sm dark:bg-white/10" />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100/60 text-[#0b3f98] shadow-sm dark:bg-white/10 dark:text-blue-200">
+                <Building className="h-5 w-5" />
+              </div>
             )}
             <div className="max-w-64 leading-tight">
               <div className="text-sm font-extrabold text-[#0b3f98] dark:text-blue-200">
@@ -329,9 +322,7 @@ function LoginPage() {
           </div>
         </div>
 
-        <div
-          className={`flex justify-center md:justify-center lg:justify-end${exiting ? " login-exit-right" : " login-enter-right"}`}
-        >
+        <div className="login-enter-right flex justify-center md:justify-center lg:justify-end">
           <div className="w-full rounded-t-[2rem] border border-white bg-white px-6 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-7 shadow-[0_-18px_46px_rgba(8,29,66,0.18)] dark:border-white/10 dark:bg-[#111c2b] dark:shadow-[0_-18px_46px_rgba(0,0,0,0.42)] md:max-w-[410px] md:rounded-xl md:border-white/80 md:bg-white/95 md:p-7 md:shadow-[0_24px_70px_rgba(21,56,112,0.18)] md:backdrop-blur md:dark:border-white/10 md:dark:bg-[#111c2b]/95 md:dark:shadow-[0_24px_70px_rgba(0,0,0,0.42)]">
             <div className="mb-7">
               <h2 className="text-2xl font-extrabold tracking-normal text-[#0b2454] dark:text-slate-50">

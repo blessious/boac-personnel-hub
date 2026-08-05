@@ -617,6 +617,7 @@ export function createMovementHandlers({
   handlers.create = async (req, res) => {
     const user = await requireEmployeeWrite(req, res);
     if (!user) return;
+    let connection;
     try {
       const body = await readBody(req),
         data = await validate(body),
@@ -627,20 +628,83 @@ export function createMovementHandlers({
             .trim()
             .toUpperCase() ||
           `PA-${new Date().getFullYear()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
-      await pool.execute(
-        `INSERT INTO personnel_movements(id,control_number,employee_id,action_type,effective_date,end_date,authority_number,authority_date,target_plantilla_item_id,target_position_id,target_salary_grade_id,target_department,target_org_unit_ref_id,remarks,supporting_documents,source_snapshot_json,prepared_by) VALUES(:id,:controlNumber,:employeeId,:actionType,:effectiveDate,:endDate,:authorityNumber,:authorityDate,:targetPlantillaItemId,:targetPositionId,:targetSalaryGradeId,:targetDepartment,:targetOrganizationId,:remarks,:supportingDocuments,:sourceSnapshot,:userId)`,
-        { id, controlNumber, ...data, sourceSnapshot: JSON.stringify(source), userId: user.id },
+      const approvalNotRequired = true;
+      const approvalBypassRemarks = "Created from personnel movement; approval not required";
+      let automaticPost = null;
+      connection = await pool.getConnection();
+      await connection.beginTransaction();
+      await connection.execute(
+        `INSERT INTO personnel_movements
+          (id,control_number,employee_id,action_type,status,effective_date,end_date,authority_number,
+           authority_date,target_plantilla_item_id,target_position_id,target_salary_grade_id,
+           target_department,target_org_unit_ref_id,remarks,supporting_documents,source_snapshot_json,
+           prepared_by,submitted_by,reviewed_by,approved_by,submitted_at,reviewed_at,approved_at,
+           decision_remarks)
+         VALUES(:id,:controlNumber,:employeeId,:actionType,:status,:effectiveDate,:endDate,
+           :authorityNumber,:authorityDate,:targetPlantillaItemId,:targetPositionId,
+           :targetSalaryGradeId,:targetDepartment,:targetOrganizationId,:remarks,
+           :supportingDocuments,:sourceSnapshot,:userId,:submittedBy,:reviewedBy,:approvedBy,
+           :submittedAt,:reviewedAt,:approvedAt,:decisionRemarks)`,
+        {
+          id,
+          controlNumber,
+          ...data,
+          status: approvalNotRequired ? "Approved" : "Draft",
+          sourceSnapshot: JSON.stringify(source),
+          userId: user.id,
+          submittedBy: approvalNotRequired ? user.id : null,
+          reviewedBy: approvalNotRequired ? user.id : null,
+          approvedBy: approvalNotRequired ? user.id : null,
+          submittedAt: approvalNotRequired ? new Date() : null,
+          reviewedAt: approvalNotRequired ? new Date() : null,
+          approvedAt: approvalNotRequired ? new Date() : null,
+          decisionRemarks: approvalNotRequired ? approvalBypassRemarks : null,
+        },
       );
-      await event(pool, id, "Created", null, "Draft", user.id, data.remarks, source);
+      await event(
+        connection,
+        id,
+        "Created",
+        null,
+        approvalNotRequired ? "Approved" : "Draft",
+        user.id,
+        data.remarks || (approvalNotRequired ? approvalBypassRemarks : null),
+        source,
+      );
+      if (approvalNotRequired) {
+        automaticPost = await handlers.post(req, null, id, user, approvalBypassRemarks, {
+          connection,
+        });
+      }
+      await connection.commit();
       await logAudit(
         user.id,
         "movement.create",
         { id, controlNumber, employeeId: data.employeeId, actionType: data.actionType },
         req,
       );
+      if (automaticPost) {
+        await logAudit(
+          user.id,
+          automaticPost.status === "Scheduled" ? "movement.schedule" : "movement.post",
+          {
+            id,
+            employeeId: data.employeeId,
+            actionType: data.actionType,
+            ...(automaticPost.effectiveDate ? { effectiveDate: automaticPost.effectiveDate } : {}),
+          },
+          req,
+        );
+        publishRealtime({ kind: "refresh", topic: "movements", path: "/api/movements" });
+        publishRealtime({ kind: "refresh", topic: "employees", path: "/api/employees" });
+        publishRealtime({ kind: "refresh", topic: "plantilla", path: "/api/plantilla" });
+      }
       return json(res, 201, { movement: await read(id) });
     } catch (error) {
+      if (connection) await connection.rollback().catch(() => {});
       return fail(res, error);
+    } finally {
+      if (connection) connection.release();
     }
   };
   handlers.update = async (req, res, id) => {

@@ -228,6 +228,7 @@ type FieldConfig = {
   key: string;
   label: string;
   type?: "text" | "date" | "number" | "textarea" | "select" | "file";
+  format?: "currency";
   options?: string[];
 };
 
@@ -325,19 +326,19 @@ const SECTION_FIELDS: Record<string, FieldConfig[]> = {
     { key: "ordinance", label: "Ordinance" },
     { key: "grade", label: "Salary Grade", type: "number" },
     { key: "step", label: "Step", type: "number" },
-    { key: "amount", label: "Salary Amount", type: "number" },
-    { key: "previousAmount", label: "Previous Amount", type: "number" },
+    { key: "amount", label: "Salary Amount", type: "number", format: "currency" },
+    { key: "previousAmount", label: "Previous Amount", type: "number", format: "currency" },
     { key: "tax", label: "Tax Exemption" },
-    { key: "gross", label: "Gross Amount", type: "number" },
+    { key: "gross", label: "Gross Amount", type: "number", format: "currency" },
     {
       key: "type",
       label: "Income Type",
       type: "select",
       options: ["Step Increment", "Not Step Increment"],
     },
-    { key: "pera", label: "PERA", type: "number" },
-    { key: "rata", label: "RATA", type: "number" },
-    { key: "cata", label: "CATA", type: "number" },
+    { key: "pera", label: "PERA", type: "number", format: "currency" },
+    { key: "rata", label: "RATA", type: "number", format: "currency" },
+    { key: "cata", label: "CATA", type: "number", format: "currency" },
   ],
   service: [
     { key: "from", label: "Service From", type: "date" },
@@ -1409,6 +1410,7 @@ function SectionTab({
         <WorkExperienceRecords rows={rows} canEdit={canEdit} onEdit={edit} onDelete={remove} />
       ) : (
         <RecordTable
+          section={section}
           fields={fields}
           rows={rows}
           canEdit={canEdit}
@@ -1581,6 +1583,17 @@ function plainValue(value: unknown) {
   return normalized || "-";
 }
 
+function formatCurrencyValue(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "";
+  const amount = Number(normalized.replace(/,/g, ""));
+  if (!Number.isFinite(amount)) return normalized;
+  return `PHP ${amount.toLocaleString("en-PH", {
+    minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 function WesDetail({ label, value, wide }: { label: string; value: unknown; wide?: boolean }) {
   return (
     <div className={cn("min-w-0 border-b border-border/60 pb-3", wide && "lg:col-span-2")}>
@@ -1716,18 +1729,24 @@ function WorkExperienceRecords({
 }
 
 function RecordTable({
+  section,
   fields,
   rows,
   canEdit,
   onEdit,
   onDelete,
 }: {
+  section: string;
   fields: FieldConfig[];
   rows: SectionRow[];
   canEdit: boolean;
   onEdit: (row: SectionRow) => void;
   onDelete: (row: SectionRow) => void;
 }) {
+  if (section === "salary") {
+    return <SalaryRecordTable rows={rows} canEdit={canEdit} onEdit={onEdit} onDelete={onDelete} />;
+  }
+
   const visibleFields = fields.slice(0, 6);
   return (
     <div className="my-2 overflow-hidden rounded-xl border border-border bg-card">
@@ -1835,12 +1854,218 @@ function RecordTable({
   );
 }
 
+function SalaryRecordTable({
+  rows,
+  canEdit,
+  onEdit,
+  onDelete,
+}: {
+  rows: SectionRow[];
+  canEdit: boolean;
+  onEdit: (row: SectionRow) => void;
+  onDelete: (row: SectionRow) => void;
+}) {
+  const moneyField = (key: string, payload: SectionRow["payload"]) =>
+    formatCurrencyValue(payload[key] ?? "");
+  const salaryDateField: FieldConfig = { key: "date", label: "Date", type: "date" };
+
+  return (
+    <div className="my-2 overflow-hidden rounded-xl border border-border bg-card">
+      <div className="mobile-record-list">
+        {rows.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+            No records found.
+          </div>
+        ) : (
+          rows.map((row) => (
+            <article key={row.id} className="mobile-record-card">
+              <div className="mobile-record-card__grid">
+                <div className="mobile-record-card__field">
+                  <span className="mobile-record-card__label">Date</span>
+                  <span className="mobile-record-card__value">
+                    {renderSectionValue(salaryDateField, row.payload) || "-"}
+                  </span>
+                </div>
+                <div className="mobile-record-card__field">
+                  <span className="mobile-record-card__label">Description</span>
+                  <span className="mobile-record-card__value">
+                    {plainValue(row.payload.description)}
+                  </span>
+                </div>
+                <div className="mobile-record-card__field">
+                  <span className="mobile-record-card__label">Ordinance</span>
+                  <span className="mobile-record-card__value">
+                    {plainValue(row.payload.ordinance)}
+                  </span>
+                </div>
+                <div className="mobile-record-card__field">
+                  <span className="mobile-record-card__label">SG / Step</span>
+                  <span className="mobile-record-card__value">
+                    {plainValue(
+                      row.payload.grade || row.payload.step
+                        ? `SG ${row.payload.grade || "-"}, Step ${row.payload.step || "-"}`
+                        : "",
+                    )}
+                  </span>
+                </div>
+                <div className="mobile-record-card__field">
+                  <span className="mobile-record-card__label">Salary Amount</span>
+                  <span className="mobile-record-card__value">
+                    {moneyField("amount", row.payload) || "-"}
+                  </span>
+                </div>
+                <div className="mobile-record-card__field">
+                  <span className="mobile-record-card__label">Previous Amount</span>
+                  <span className="mobile-record-card__value">
+                    {moneyField("previousAmount", row.payload) || "-"}
+                  </span>
+                </div>
+                <div className="mobile-record-card__field">
+                  <span className="mobile-record-card__label">Gross Amount</span>
+                  <span className="mobile-record-card__value">
+                    {moneyField("gross", row.payload) || "-"}
+                  </span>
+                </div>
+                <div className="mobile-record-card__field">
+                  <span className="mobile-record-card__label">PERA / RATA / CATA</span>
+                  <span className="mobile-record-card__value">
+                    {[
+                      moneyField("pera", row.payload),
+                      moneyField("rata", row.payload),
+                      moneyField("cata", row.payload),
+                    ]
+                      .map((value) => value || "-")
+                      .join(" / ")}
+                  </span>
+                </div>
+              </div>
+              {canEdit && (
+                <div className="mobile-record-card__actions">
+                  <Button variant="outline" size="sm" onClick={() => onEdit(row)}>
+                    <Pencil className="mr-1.5 h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onDelete(row)}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="mr-1.5 h-4 w-4" />
+                    Delete
+                  </Button>
+                </div>
+              )}
+            </article>
+          ))
+        )}
+      </div>
+
+      <div className="mobile-desktop-table overflow-x-auto">
+        <table className="w-full min-w-[980px] text-sm">
+          <thead>
+            <tr className="border-b border-border bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <th className="px-3 py-2.5 font-medium">Date</th>
+              <th className="px-3 py-2.5 font-medium">Description</th>
+              <th className="px-3 py-2.5 font-medium">Ordinance</th>
+              <th className="px-3 py-2.5 font-medium">SG / Step</th>
+              <th className="px-3 py-2.5 text-right font-medium">Salary Amount</th>
+              <th className="px-3 py-2.5 text-right font-medium">Previous</th>
+              <th className="px-3 py-2.5 text-right font-medium">Gross</th>
+              <th className="px-3 py-2.5 text-right font-medium">PERA</th>
+              <th className="px-3 py-2.5 text-right font-medium">RATA</th>
+              <th className="px-3 py-2.5 text-right font-medium">CATA</th>
+              {canEdit && <th className="px-3 py-2.5 text-right font-medium">Actions</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={canEdit ? 11 : 10}
+                  className="px-3 py-8 text-center text-sm text-muted-foreground"
+                >
+                  No records found.
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, index) => (
+                <tr
+                  key={row.id}
+                  className={cn(
+                    "border-b border-border/50 last:border-0 hover:bg-muted/30",
+                    index % 2 === 1 && "bg-muted/10",
+                  )}
+                >
+                  <td className="whitespace-nowrap px-3 py-2.5">
+                    {renderSectionValue(salaryDateField, row.payload) || "-"}
+                  </td>
+                  <td className="max-w-[180px] truncate px-3 py-2.5">
+                    {plainValue(row.payload.description)}
+                  </td>
+                  <td className="max-w-[220px] truncate px-3 py-2.5">
+                    {plainValue(row.payload.ordinance)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5">
+                    {plainValue(
+                      row.payload.grade || row.payload.step
+                        ? `SG ${row.payload.grade || "-"}, Step ${row.payload.step || "-"}`
+                        : "",
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right font-medium">
+                    {moneyField("amount", row.payload) || "-"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                    {moneyField("previousAmount", row.payload) || "-"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                    {moneyField("gross", row.payload) || "-"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                    {moneyField("pera", row.payload) || "-"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                    {moneyField("rata", row.payload) || "-"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                    {moneyField("cata", row.payload) || "-"}
+                  </td>
+                  {canEdit && (
+                    <td className="px-3 py-2.5 text-right">
+                      <div className="inline-flex gap-1">
+                        <button
+                          onClick={() => onEdit(row)}
+                          className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => onDelete(row)}
+                          className="grid h-7 w-7 place-items-center rounded-md text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function renderSectionValue(
   field: FieldConfig,
   payload: Record<string, string | number | boolean | null>,
 ) {
   const value = String(payload[field.key] ?? "");
   if (field.type === "date") return formatDisplayDate(value, "");
+  if (field.format === "currency") return formatCurrencyValue(value);
   if (field.type !== "file") return value;
   const data = String(payload[`${field.key}Data`] ?? "");
   if (!value) return "";

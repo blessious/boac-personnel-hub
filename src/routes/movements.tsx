@@ -320,8 +320,24 @@ function MovementsPage() {
   const save = async () => {
     setBusy(true);
     try {
-      await saveMovement(form, edit?.id);
-      toast.success(edit ? "Movement updated" : "Movement prepared");
+      const result = await saveMovement(form, edit?.id);
+      if (
+        !edit &&
+        form.actionType === "Original Appointment" &&
+        form.targetPlantillaItemId
+      ) {
+        toast.success(
+          result.movement.status === "Scheduled"
+            ? "Employee appointment scheduled"
+            : "Employee added to Plantilla",
+        );
+      } else if (!edit) {
+        toast.success(
+          result.movement.status === "Scheduled" ? "Movement scheduled" : "Movement posted",
+        );
+      } else {
+        toast.success("Movement updated");
+      }
       setEdit(undefined);
       await load();
     } catch (e) {
@@ -338,16 +354,16 @@ function MovementsPage() {
         const result = await transitionMovement(m.id, "approve", remarks);
         toast.success(
           result.movement.status === "Scheduled"
-            ? "Movement reviewed, approved, and scheduled"
-            : "Movement reviewed, approved, and posted",
+            ? "Movement processed and scheduled"
+            : "Movement processed and posted",
         );
       } else {
         const result = await transitionMovement(m.id, action, remarks);
         toast.success(
           action === "approve"
             ? result.movement.status === "Scheduled"
-              ? "Movement approved and scheduled"
-              : "Movement approved and posted"
+              ? "Movement scheduled"
+              : "Movement posted"
             : `Movement ${action} completed`,
         );
       }
@@ -576,7 +592,7 @@ function MovementsPage() {
   return (
     <AppShell
       title="Employee Movements"
-      subtitle="Prepare, review, approve, post, and reverse governed personnel actions"
+      subtitle="Prepare, post, schedule, and reverse governed personnel actions"
     >
       <div className="grid grid-cols-3 gap-2 md:gap-3 lg:grid-cols-6">
         <StatCard
@@ -590,9 +606,9 @@ function MovementsPage() {
           trend="up"
         />
         <StatCard
-          title="Submitted"
+          title="Legacy submitted"
           value={summary["Submitted"] || 0}
-          subtext="Pending review"
+          subtext="Legacy queue"
           subtextColor="text-muted-foreground"
           icon={<Send className="h-5 w-5 text-blue-600" />}
           iconBg="bg-blue-50 dark:bg-blue-500/15"
@@ -600,9 +616,9 @@ function MovementsPage() {
           trend="up"
         />
         <StatCard
-          title="Reviewed"
+          title="Legacy reviewed"
           value={summary["Reviewed"] || 0}
-          subtext="Pending approval"
+          subtext="Legacy queue"
           subtextColor="text-muted-foreground"
           icon={<Clock3 className="h-5 w-5 text-purple-600" />}
           iconBg="bg-purple-50 dark:bg-purple-500/15"
@@ -610,9 +626,9 @@ function MovementsPage() {
           trend="up"
         />
         <StatCard
-          title="Ready"
+          title="Scheduled"
           value={(summary["Approved"] || 0) + (summary["Scheduled"] || 0)}
-          subtext="Approved/scheduled"
+          subtext="Scheduled"
           subtextColor="text-muted-foreground"
           icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
           iconBg="bg-emerald-50 dark:bg-emerald-500/15"
@@ -890,12 +906,12 @@ function MovementsPage() {
                 : "Posting atomically updates the employee and Plantilla occupancy. If the effective date is in the future, the movement will be scheduled for automatic posting."
               : decision?.action === "reverse"
                 ? "Reversal restores the recorded before-state and is blocked if a later movement exists."
-                : decision?.action === "reviewApprove"
-                  ? "This records review and final approval in sequence, then immediately posts the movement. A future-effective movement will be scheduled automatically."
+              : decision?.action === "reviewApprove"
+                  ? "This processes the legacy queued movement and posts it. A future-effective movement will be scheduled automatically."
                   : decision?.action === "approve"
-                    ? "Final approval immediately posts the movement. A future-effective movement will be scheduled automatically."
+                    ? "This posts the legacy queued movement. A future-effective movement will be scheduled automatically."
                     : decision?.action === "return"
-                      ? "Returning to Draft refreshes the source employee/occupancy snapshot and clears prior approvals."
+                      ? "Returning to Draft refreshes the source employee/occupancy snapshot and clears prior workflow actions."
                       : decision?.action === "unsubmit"
                         ? "Unsubmitting pulls this movement back to Draft before review starts."
                         : decision?.action === "reject"
@@ -941,12 +957,12 @@ function MovementsPage() {
 }
 
 function WorkflowStrip() {
-  const steps = ["Plantilla", "Movement Draft", "Review", "Approve", "Post"];
+  const steps = ["Prepare", "Post", "Schedule", "Reverse"];
   return (
     <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground">
       {steps.map((step, index) => (
         <div className="flex items-center gap-2" key={step}>
-          <span className={index === 1 ? "text-foreground" : ""}>{step}</span>
+          <span className={index === 0 ? "text-foreground" : ""}>{step}</span>
           {index < steps.length - 1 && <ChevronRight className="h-3.5 w-3.5" />}
         </div>
       ))}
@@ -1056,7 +1072,7 @@ function MovementDetailDialog({
                   <div className="space-y-1.5 text-sm">
                     <DetailValue label="Prepared by" value={movement.preparedBy || "-"} />
                     <DetailValue label="Reviewed by" value={movement.reviewedBy || "-"} />
-                    <DetailValue label="Approved by" value={movement.approvedBy || "-"} />
+                    <DetailValue label="Processed by" value={movement.approvedBy || "-"} />
                     <DetailValue label="Posted by" value={movement.postedBy || "-"} />
                     <DetailValue
                       label="Scheduled at"
@@ -1118,7 +1134,7 @@ function MovementDetailDialog({
                       Reject
                     </Button>
                     <Button onClick={() => onDecision(movement, "reviewApprove")}>
-                      Review, approve and post
+                      Process and post
                     </Button>
                   </>
                 )}
@@ -1134,9 +1150,7 @@ function MovementDetailDialog({
                     >
                       Reject
                     </Button>
-                    <Button onClick={() => onDecision(movement, "approve")}>
-                      Approve and post
-                    </Button>
+                    <Button onClick={() => onDecision(movement, "approve")}>Post movement</Button>
                   </>
                 )}
                 {canPost && canPostMovement(movement) && (
@@ -1315,28 +1329,6 @@ function MovementDialog({
                 `Step ${step.step} - PHP ${step.amount.toLocaleString()} monthly`,
               ])}
             />
-            <Field label="Authority / appointment number">
-              <Input
-                value={form.authorityNumber}
-                onChange={(e) => setForm({ ...form, authorityNumber: e.target.value })}
-              />
-            </Field>
-            <Field label="Authority date">
-              <Input
-                type="date"
-                value={form.authorityDate}
-                onChange={(e) => setForm({ ...form, authorityDate: e.target.value })}
-              />
-            </Field>
-            <div className="sm:col-span-2">
-              <Field label="Document references (one per line: Name | reference/location)">
-                <Textarea
-                  rows={3}
-                  value={form.documentsText}
-                  onChange={(e) => setForm({ ...form, documentsText: e.target.value })}
-                />
-              </Field>
-            </div>
             <div className="sm:col-span-2">
               <Field label="Remarks">
                 <Textarea
@@ -1361,7 +1353,7 @@ function MovementDialog({
               }
               onClick={save}
             >
-              Save draft
+              {movement ? "Save draft" : "Add employee"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1452,19 +1444,6 @@ function MovementDialog({
               />
             </Field>
           )}
-          <Field label="Authority / appointment number">
-            <Input
-              value={form.authorityNumber}
-              onChange={(e) => setForm({ ...form, authorityNumber: e.target.value })}
-            />
-          </Field>
-          <Field label="Authority date">
-            <Input
-              type="date"
-              value={form.authorityDate}
-              onChange={(e) => setForm({ ...form, authorityDate: e.target.value })}
-            />
-          </Field>
           {needsItem && (
             <SelectField
               label="Target vacant plantilla item"
@@ -1555,15 +1534,6 @@ function MovementDialog({
             </div>
           )}
           <div className="sm:col-span-2">
-            <Field label="Document references (one per line: Name | reference/location)">
-              <Textarea
-                rows={3}
-                value={form.documentsText}
-                onChange={(e) => setForm({ ...form, documentsText: e.target.value })}
-              />
-            </Field>
-          </div>
-          <div className="sm:col-span-2">
             <Field label={separation ? "Separation remarks" : "Remarks"}>
               <Textarea
                 rows={3}
@@ -1586,7 +1556,7 @@ function MovementDialog({
             }
             onClick={save}
           >
-            Save draft
+            {movement ? "Save draft" : "Post movement"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1706,8 +1676,8 @@ function Status({ value }: { value: string }) {
   return <span className={`rounded-full px-2 py-1 text-xs font-medium ${tone}`}>{value}</span>;
 }
 function actionLabel(x: string) {
-  if (x === "reviewApprove") return "Review, approve and post";
-  if (x === "approve") return "Approve and post";
+  if (x === "reviewApprove") return "Process and post";
+  if (x === "approve") return "Post movement";
   if (x === "unsubmit") return "Unsubmit";
   return titleCase(x);
 }

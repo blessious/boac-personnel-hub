@@ -110,7 +110,7 @@ const pendingMovementLabel = (movement: NonNullable<PlantillaItem["pendingMoveme
     movement.status === "Draft"
       ? "Movement draft"
       : movement.status === "Submitted" || movement.status === "Reviewed"
-        ? "Awaiting approval"
+        ? "Awaiting action"
         : movement.status === "Approved"
           ? "Awaiting posting"
           : `Scheduled for ${formatDisplayDate(movement.effectiveDate)}`;
@@ -444,8 +444,21 @@ function PlantillaPage() {
   const savePreparedMovement = async () => {
     setBusy(true);
     try {
-      await saveMovement(movementForm);
-      toast.success("Movement prepared");
+      const result = await saveMovement(movementForm);
+      if (
+        movementForm.actionType === "Original Appointment" &&
+        movementForm.targetPlantillaItemId
+      ) {
+        toast.success(
+          result.movement.status === "Scheduled"
+            ? "Employee appointment scheduled"
+            : "Employee added to Plantilla",
+        );
+      } else {
+        toast.success(
+          result.movement.status === "Scheduled" ? "Movement scheduled" : "Movement posted",
+        );
+      }
       setMovementEdit(undefined);
       await load();
     } catch (error) {
@@ -514,7 +527,11 @@ function PlantillaPage() {
           supportingDocuments: [],
         },
       });
-      toast.success("Personal record and appointment draft created");
+      toast.success(
+        result.appointmentStatus === "Scheduled"
+          ? "Personal record created and appointment scheduled"
+          : "Employee added to Plantilla",
+      );
       if (result.account) {
         setCreatedAccount({
           employeeName: formatEmployeeName(result.employee),
@@ -1387,28 +1404,6 @@ function MovementDialog({
                 `Step ${step.step} - PHP ${step.amount.toLocaleString()} monthly`,
               ])}
             />
-            <F l="Authority / appointment number">
-              <Input
-                value={form.authorityNumber}
-                onChange={(event) => setForm({ ...form, authorityNumber: event.target.value })}
-              />
-            </F>
-            <F l="Authority date">
-              <Input
-                type="date"
-                value={form.authorityDate}
-                onChange={(event) => setForm({ ...form, authorityDate: event.target.value })}
-              />
-            </F>
-            <div className="sm:col-span-2">
-              <F l="Document references (one per line: Name | reference/location)">
-                <Textarea
-                  rows={3}
-                  value={form.documentsText}
-                  onChange={(event) => setForm({ ...form, documentsText: event.target.value })}
-                />
-              </F>
-            </div>
             <div className="sm:col-span-2">
               <F l="Remarks">
                 <Textarea
@@ -1433,7 +1428,7 @@ function MovementDialog({
               }
               onClick={save}
             >
-              Save draft
+              Add employee
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1527,19 +1522,6 @@ function MovementDialog({
               />
             </F>
           )}
-          <F l="Authority / appointment number">
-            <Input
-              value={form.authorityNumber}
-              onChange={(event) => setForm({ ...form, authorityNumber: event.target.value })}
-            />
-          </F>
-          <F l="Authority date">
-            <Input
-              type="date"
-              value={form.authorityDate}
-              onChange={(event) => setForm({ ...form, authorityDate: event.target.value })}
-            />
-          </F>
           {needsItem && (
             <Sel
               l="Target vacant plantilla item"
@@ -1623,15 +1605,6 @@ function MovementDialog({
             />
           )}
           <div className="sm:col-span-2">
-            <F l="Document references (one per line: Name | reference/location)">
-              <Textarea
-                rows={3}
-                value={form.documentsText}
-                onChange={(event) => setForm({ ...form, documentsText: event.target.value })}
-              />
-            </F>
-          </div>
-          <div className="sm:col-span-2">
             <F l={separation ? "Separation remarks" : "Remarks"}>
               <Textarea
                 rows={3}
@@ -1656,7 +1629,7 @@ function MovementDialog({
             }
             onClick={save}
           >
-            Save draft
+            Post movement
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1788,7 +1761,7 @@ function NewPlantillaEmployeeDialog({
             Cancel
           </Button>
           <Button disabled={busy} onClick={save}>
-            Create appointment draft
+            Add employee
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1888,7 +1861,7 @@ function PlantillaActionsMenu({
 }
 
 function WorkflowStrip() {
-  const steps = ["Plantilla", "Movement Draft", "Review", "Approve", "Post"];
+  const steps = ["Plantilla", "Post", "Schedule", "Reverse"];
   return (
     <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground">
       {steps.map((step, index) => (

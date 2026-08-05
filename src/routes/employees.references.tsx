@@ -1271,15 +1271,16 @@ function EmployeeReferencesPage() {
                       )}
                     </div>
 
-                    <div className="p-5">
-                      <div className="max-h-[70vh] overflow-auto rounded-lg border border-border">
-                        <table className="w-full min-w-[1280px] text-sm">
+                    <div className="p-3 sm:p-4">
+                      <div className="max-h-[70vh] overflow-y-auto rounded-lg border border-border">
+                        <table className="w-full table-fixed text-xs">
                           <thead className="sticky top-0 z-10 bg-card">
                             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                              <th className="w-24 px-4 py-3 font-medium">Grade</th>
+                              <th className="w-16 px-2 py-2 font-medium sm:w-20 sm:px-3">Grade</th>
                               {Array.from({ length: EXPECTED_SALARY_STEPS }, (_unused, index) => (
-                                <th key={index + 1} className="px-4 py-3 text-right font-medium">
-                                  Step {index + 1}
+                                <th key={index + 1} className="px-1.5 py-2 text-right font-medium">
+                                  <span className="hidden sm:inline">Step </span>
+                                  {index + 1}
                                 </th>
                               ))}
                             </tr>
@@ -1288,14 +1289,14 @@ function EmployeeReferencesPage() {
                             {selectedOrdinance ? (
                               salaryRowsByGrade.map((gradeRow) => (
                                 <tr key={gradeRow.grade} className="border-b border-border/70">
-                                  <td className="sticky left-0 bg-card px-4 py-2.5 font-semibold">
+                                  <td className="sticky left-0 bg-card px-2 py-2 font-semibold sm:px-3">
                                     SG-{gradeRow.grade}
                                   </td>
                                   {gradeRow.steps.map(({ step, row }) => (
                                     <td
                                       key={step}
                                       className={cn(
-                                        "group min-w-36 px-3 py-2.5 align-top",
+                                        "group px-1.5 py-2 align-top",
                                         row
                                           ? "bg-background"
                                           : "bg-amber-50/60 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200",
@@ -1370,7 +1371,7 @@ function EmployeeReferencesPage() {
                                           </div>
                                         ) : (
                                           <div className="text-right">
-                                            <div className="font-mono text-sm">
+                                            <div className="truncate font-mono text-[11px] leading-5 sm:text-xs">
                                               {formatMoney(row.amount)}
                                             </div>
                                             <div className="mt-1 flex justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">

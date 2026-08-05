@@ -10320,7 +10320,8 @@ async function handleCreateEmployee(req, res) {
 
     let account = null;
     let accountResult = null;
-    let appointmentDraftId = null;
+    let appointmentMovementId = null;
+    let appointmentPostResult = null;
     let engagementId = null;
     if (body.appointment && body.engagement)
       throw httpError(400, "Choose either a Plantilla appointment or a non-Plantilla engagement");
@@ -10410,7 +10411,7 @@ async function handleCreateEmployee(req, res) {
           409,
           `Target Plantilla item already has pending movement ${pendingMovement.control_number} (${pendingMovement.status})`,
         );
-      appointmentDraftId = crypto.randomUUID();
+      appointmentMovementId = crypto.randomUUID();
       const controlNumber =
         String(appointment.controlNumber || "")
           .trim()
@@ -10435,14 +10436,16 @@ async function handleCreateEmployee(req, res) {
         : [];
       await connection.execute(
         `INSERT INTO personnel_movements
-          (id,control_number,employee_id,action_type,effective_date,authority_number,authority_date,
+          (id,control_number,employee_id,action_type,status,effective_date,authority_number,authority_date,
            target_plantilla_item_id,target_position_id,target_salary_grade_id,target_department,remarks,
-           supporting_documents,source_snapshot_json,prepared_by)
-         VALUES (:id,:controlNumber,:employeeId,'Original Appointment',:effectiveDate,:authorityNumber,
+           supporting_documents,source_snapshot_json,prepared_by,submitted_by,reviewed_by,approved_by,
+           submitted_at,reviewed_at,approved_at,decision_remarks)
+         VALUES (:id,:controlNumber,:employeeId,'Original Appointment','Approved',:effectiveDate,:authorityNumber,
           :authorityDate,:targetPlantillaItemId,:targetPositionId,:targetSalaryGradeId,:targetDepartment,
-          :remarks,:supportingDocuments,:sourceSnapshot,:userId)`,
+          :remarks,:supportingDocuments,:sourceSnapshot,:userId,:userId,:userId,:userId,
+          NOW(),NOW(),NOW(),:decisionRemarks)`,
         {
-          id: appointmentDraftId,
+          id: appointmentMovementId,
           controlNumber,
           employeeId: id,
           effectiveDate,
@@ -10456,19 +10459,30 @@ async function handleCreateEmployee(req, res) {
           supportingDocuments: JSON.stringify(supportingDocuments),
           sourceSnapshot: JSON.stringify(sourceSnapshot),
           userId: user.id,
+          decisionRemarks: "Created from Plantilla add employee; approval not required",
         },
       );
       await connection.execute(
         `INSERT INTO personnel_movement_events
           (id,movement_id,event_type,from_status,to_status,actor_id,remarks,snapshot_json)
-         VALUES (:id,:movementId,'Created from vacancy',NULL,'Draft',:userId,:remarks,:snapshot)`,
+         VALUES (:id,:movementId,'Created from vacancy',NULL,'Approved',:userId,:remarks,:snapshot)`,
         {
           id: crypto.randomUUID(),
-          movementId: appointmentDraftId,
+          movementId: appointmentMovementId,
           userId: user.id,
-          remarks: String(appointment.remarks || "").trim() || null,
+          remarks:
+            String(appointment.remarks || "").trim() ||
+            "Created from Plantilla add employee; approval not required",
           snapshot: JSON.stringify({ source: sourceSnapshot, targetItemId: targetPlantillaItemId }),
         },
+      );
+      appointmentPostResult = await movementHandlers.post(
+        req,
+        null,
+        appointmentMovementId,
+        user,
+        "Created from Plantilla add employee; approval not required",
+        { connection },
       );
     }
     if (body.engagement) {
@@ -10572,13 +10586,28 @@ async function handleCreateEmployee(req, res) {
         req,
       );
     }
-    if (appointmentDraftId) {
+    if (appointmentMovementId) {
       await logAudit(
         user.id,
         "movement.create_from_vacancy",
-        { id: appointmentDraftId, employeeId: id },
+        { id: appointmentMovementId, employeeId: id },
         req,
       );
+      if (appointmentPostResult) {
+        await logAudit(
+          user.id,
+          appointmentPostResult.status === "Scheduled" ? "movement.schedule" : "movement.post",
+          {
+            id: appointmentMovementId,
+            employeeId: id,
+            actionType: "Original Appointment",
+            ...(appointmentPostResult.effectiveDate
+              ? { effectiveDate: appointmentPostResult.effectiveDate }
+              : {}),
+          },
+          req,
+        );
+      }
     }
     if (engagementId) {
       await logAudit(
@@ -10594,7 +10623,7 @@ async function handleCreateEmployee(req, res) {
       excludeUserId: user.id,
       topic: "employees",
       title: "Employee added",
-      message: `${formatEmployeeName(data)} (${employeeNo}) was added${appointmentDraftId ? " with a Plantilla appointment draft" : engagementId ? " with a non-Plantilla engagement" : ""}.`,
+      message: `${formatEmployeeName(data)} (${employeeNo}) was added${appointmentMovementId ? " with a Plantilla appointment" : engagementId ? " with a non-Plantilla engagement" : ""}.`,
       path: "/employees",
       sourceType: "employee",
       sourceId: id,
@@ -10602,7 +10631,12 @@ async function handleCreateEmployee(req, res) {
     return json(res, 201, {
       employee,
       ...(account ? { account } : {}),
-      ...(appointmentDraftId ? { appointmentDraftId } : {}),
+      ...(appointmentMovementId
+        ? {
+            appointmentMovementId,
+            appointmentStatus: appointmentPostResult?.status || "Approved",
+          }
+        : {}),
       ...(engagementId ? { engagementId } : {}),
     });
   } catch (error) {
@@ -12705,15 +12739,13 @@ async function handleRenameSalaryGradeTable(req, res) {
     await connection.execute(
       `UPDATE employee_salary_records
           SET payload = JSON_SET(payload, '$.ordinance', :newOrdinance)
-        WHERE JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) = 'Salary Grade Table Activation'
-          AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.ordinance')) = :oldOrdinance`,
+        WHERE JSON_UNQUOTE(JSON_EXTRACT(payload, '$.ordinance')) = :oldOrdinance`,
       { oldOrdinance, newOrdinance },
     );
     await connection.execute(
       `UPDATE employee_salary_records
           SET payload = JSON_SET(payload, '$.previousOrdinance', :newOrdinance)
-        WHERE JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) = 'Salary Grade Table Activation'
-          AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.previousOrdinance')) = :oldOrdinance`,
+        WHERE JSON_UNQUOTE(JSON_EXTRACT(payload, '$.previousOrdinance')) = :oldOrdinance`,
       { oldOrdinance, newOrdinance },
     );
 
