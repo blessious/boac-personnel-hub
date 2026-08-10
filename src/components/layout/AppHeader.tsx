@@ -8,12 +8,13 @@ import {
   Menu,
   ShieldCheck,
   CheckCheck,
+  ChevronRight,
   Loader2,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +38,7 @@ import { toast } from "sonner";
 import { useNavigate, Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { listLeaveApplications } from "@/lib/leave-api";
 import { listDtrCorrectionRequests } from "@/lib/attendance-api";
 import { navNotificationCount, useRealtime } from "@/lib/realtime";
@@ -156,12 +158,56 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
     navigate({ to: "/login", search: {}, replace: true });
   };
 
-  const isActive = (to: string, exact?: boolean) =>
-    exact ? path === to : path === to || path.startsWith(to + "/");
+  const isActive = useCallback(
+    (to: string, exact?: boolean) =>
+      exact ? path === to : path === to || path.startsWith(to + "/"),
+    [path],
+  );
 
-  const mobileNav = navForPermissions(user?.permissions);
-  const mobileNavSections = groupNavItems(mobileNav);
+  const mobileNav = useMemo(() => navForPermissions(user?.permissions), [user?.permissions]);
+  const mobileNavSections = useMemo(() => groupNavItems(mobileNav), [mobileNav]);
+  const activeMobileSectionLabels = useMemo(
+    () =>
+      mobileNavSections
+        .filter((section) => section.items.some((item) => isActive(item.to, item.exact)))
+        .map((section) => section.label),
+    [isActive, mobileNavSections],
+  );
+  const [openMobileSections, setOpenMobileSections] = useState<Set<string>>(
+    () => new Set(activeMobileSectionLabels),
+  );
   const breadcrumbs = routeBreadcrumbs(path);
+
+  useEffect(() => {
+    if (activeMobileSectionLabels.length === 0) return;
+    setOpenMobileSections((current) => {
+      if (activeMobileSectionLabels.every((label) => current.has(label))) {
+        return current;
+      }
+      const next = new Set(current);
+      activeMobileSectionLabels.forEach((label) => next.add(label));
+      return next;
+    });
+  }, [activeMobileSectionLabels]);
+
+  const toggleMobileSection = (label: string) => {
+    setOpenMobileSections((current) => {
+      const next = new Set(current);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  };
+
+  const itemNotificationCount = (to: string) => {
+    const unreadCount = navNotificationCount(notifications, to);
+    if (to === "/leave") return Math.max(pendingLeaveCount, unreadCount);
+    if (to === "/attendance") return Math.max(pendingDtrCount, unreadCount);
+    return unreadCount;
+  };
 
   return (
     <>
@@ -175,7 +221,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
             </SheetTrigger>
             <SheetContent
               side="left"
-              className="flex w-[min(88vw,340px)] flex-col border-r border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
+              className="flex w-[min(88vw,340px)] flex-col border-r border-sidebar-border bg-sidebar p-0 font-sans text-sidebar-foreground"
             >
               <div className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-4">
                 <div
@@ -193,69 +239,107 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                   )}
                 </div>
                 <div className="min-w-0 flex-1 leading-tight">
-                  <div className="break-words text-sm font-semibold">{agency.name} PMIS</div>
-                  <div className="break-words text-[11px] text-muted-foreground">
+                  <div className="break-words text-sm font-semibold text-sidebar-foreground">
+                    {agency.name} PMIS
+                  </div>
+                  <div className="break-words text-[11px] text-sidebar-foreground/65">
                     {agency.tagline}
                   </div>
                 </div>
               </div>
-              <div className="px-4 pt-5 pb-2 text-[10px] tracking-widest uppercase text-muted-foreground">
+              <div className="px-4 pb-2 pt-5 text-[10px] uppercase tracking-widest text-sidebar-foreground/65">
                 Menu
               </div>
-              <nav className="flex-1 space-y-3 overflow-y-auto px-4 py-2">
-                {mobileNavSections.map((section) => (
-                  <div key={section.label}>
-                    <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-                      {section.label}
-                    </div>
-                    <div className="space-y-1.5">
-                      {section.items.map((item) => {
-                        const active = isActive(item.to, item.exact);
-                        const Icon = item.icon;
-                        const unreadCountForItem = navNotificationCount(notifications, item.to);
-                        const itemPendingCount =
-                          item.to === "/leave"
-                            ? Math.max(pendingLeaveCount, unreadCountForItem)
-                            : item.to === "/attendance"
-                              ? Math.max(pendingDtrCount, unreadCountForItem)
-                              : unreadCountForItem;
-                        return (
-                          <Link
-                            key={item.to}
-                            to={item.to}
-                            onClick={() => setMobileMenuOpen(false)}
-                            className={cn(
-                              "group flex min-h-12 items-center gap-3 rounded-2xl px-3.5 py-3 text-[14px] font-medium transition-all duration-200",
-                              active
-                                ? "bg-primary text-primary-foreground shadow-sm"
-                                : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                            )}
-                          >
-                            <Icon
-                              className={cn(
-                                "h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110",
-                                active
-                                  ? "text-primary-foreground"
-                                  : "text-muted-foreground group-hover:text-foreground",
-                              )}
-                            />
-                            <span className="truncate">{item.label}</span>
-                            {itemPendingCount > 0 && (
-                              <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">
-                                {itemPendingCount > 99 ? "99+" : itemPendingCount}
-                              </span>
-                            )}
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+              <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-2">
+                {mobileNavSections.map((section) => {
+                  const open = openMobileSections.has(section.label);
+                  const sectionActive = section.items.some((item) => isActive(item.to, item.exact));
+                  const SectionIcon = section.icon;
+                  const sectionNotificationCount = section.items.reduce(
+                    (total, item) => total + itemNotificationCount(item.to),
+                    0,
+                  );
+
+                  return (
+                    <Collapsible
+                      key={section.label}
+                      open={open}
+                      onOpenChange={() => toggleMobileSection(section.label)}
+                    >
+                      <CollapsibleTrigger
+                        className={cn(
+                          "group flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[14px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          sectionActive
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        )}
+                      >
+                        <SectionIcon
+                          className={cn(
+                            "h-4 w-4 shrink-0 transition-colors",
+                            sectionActive
+                              ? "text-sidebar-accent-foreground"
+                              : "text-sidebar-foreground/70 group-hover:text-sidebar-accent-foreground",
+                          )}
+                        />
+                        <span className="min-w-0 flex-1 truncate">{section.label}</span>
+                        {sectionNotificationCount > 0 && (
+                          <span className="inline-flex shrink-0 items-center justify-center rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-destructive-foreground">
+                            {sectionNotificationCount > 99 ? "99+" : sectionNotificationCount}
+                          </span>
+                        )}
+                        <ChevronRight
+                          className={cn(
+                            "h-4 w-4 shrink-0 text-sidebar-foreground/60 transition-transform duration-200",
+                            open && "rotate-90",
+                          )}
+                        />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="ml-[15px] space-y-0.5 border-l border-sidebar-border py-1 pl-[18px]">
+                          {section.items.map((item) => {
+                            const active = isActive(item.to, item.exact);
+                            const notificationCount = itemNotificationCount(item.to);
+
+                            return (
+                              <Link
+                                key={item.to}
+                                to={item.to}
+                                onClick={() => setMobileMenuOpen(false)}
+                                aria-current={active ? "page" : undefined}
+                                className={cn(
+                                  "flex h-8 items-center gap-2 rounded-md px-2 text-[14px] font-medium transition-colors duration-200",
+                                  active
+                                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                    : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "min-w-0 flex-1 truncate",
+                                    active && "font-semibold",
+                                  )}
+                                >
+                                  {item.label}
+                                </span>
+                                {notificationCount > 0 && (
+                                  <span className="inline-flex shrink-0 items-center justify-center rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-destructive-foreground">
+                                    {notificationCount > 99 ? "99+" : notificationCount}
+                                  </span>
+                                )}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  );
+                })}
               </nav>
               <div className="border-t border-sidebar-border/50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                 <button
                   onClick={handleLogout}
-                  className="group flex min-h-11 w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-destructive/10 hover:text-destructive"
+                  className="group flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-sidebar-foreground/85 transition-all duration-200 hover:bg-destructive/10 hover:text-destructive"
                 >
                   <LogOut className="h-[18px] w-[18px] transition-transform duration-200 group-hover:-translate-x-1" />
                   <span>Log Out</span>

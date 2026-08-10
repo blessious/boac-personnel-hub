@@ -1,6 +1,7 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, PanelLeftClose, PanelLeftOpen, Stethoscope } from "lucide-react";
+import { ChevronRight, LogOut, PanelLeftClose, PanelLeftOpen, Stethoscope } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useSettings } from "@/lib/settings-context";
 import { listLeaveApplications } from "@/lib/leave-api";
@@ -8,14 +9,15 @@ import { listDtrCorrectionRequests } from "@/lib/attendance-api";
 import { navNotificationCount, useRealtime } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
 import { groupNavItems, navForPermissions } from "@/components/layout/navigation";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 export function AppSidebar() {
   const { agency, sidebarCollapsed: collapsed, toggleSidebar } = useSettings();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const { user, logout, hasPermission } = useAuth();
-  const nav = navForPermissions(user?.permissions);
-  const navSections = groupNavItems(nav);
+  const nav = useMemo(() => navForPermissions(user?.permissions), [user?.permissions]);
+  const navSections = useMemo(() => groupNavItems(nav), [nav]);
   const canSeeLeaveNotifications = hasPermission("approvals.manage");
   const { notifications } = useRealtime();
 
@@ -34,8 +36,52 @@ export function AppSidebar() {
   const pendingLeaveCount = leaveNotifications?.summary.pending || 0;
   const pendingDtrCount = dtrNotifications?.requests.length || 0;
 
-  const isActive = (to: string, exact?: boolean) =>
-    exact ? path === to : path === to || path.startsWith(to + "/");
+  const isActive = useCallback(
+    (to: string, exact?: boolean) =>
+      exact ? path === to : path === to || path.startsWith(to + "/"),
+    [path],
+  );
+
+  const activeSectionLabels = useMemo(
+    () =>
+      navSections
+        .filter((section) => section.items.some((item) => isActive(item.to, item.exact)))
+        .map((section) => section.label),
+    [isActive, navSections],
+  );
+
+  const [openSections, setOpenSections] = useState<Set<string>>(() => new Set(activeSectionLabels));
+
+  useEffect(() => {
+    if (activeSectionLabels.length === 0) return;
+    setOpenSections((current) => {
+      if (activeSectionLabels.every((label) => current.has(label))) {
+        return current;
+      }
+      const next = new Set(current);
+      activeSectionLabels.forEach((label) => next.add(label));
+      return next;
+    });
+  }, [activeSectionLabels]);
+
+  const toggleSection = (label: string) => {
+    setOpenSections((current) => {
+      const next = new Set(current);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  };
+
+  const itemNotificationCount = (to: string) => {
+    const unreadCount = navNotificationCount(notifications, to);
+    if (to === "/leave") return Math.max(pendingLeaveCount, unreadCount);
+    if (to === "/attendance") return Math.max(pendingDtrCount, unreadCount);
+    return unreadCount;
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -45,7 +91,7 @@ export function AppSidebar() {
   return (
     <aside
       className={cn(
-        "hidden h-svh shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:sticky md:top-0 md:z-30 md:flex",
+        "hidden h-svh shrink-0 flex-col border-r border-sidebar-border bg-sidebar font-sans text-sidebar-foreground transition-[width] duration-200 md:sticky md:top-0 md:z-30 md:flex",
         collapsed ? "w-14" : "w-64",
       )}
     >
@@ -93,63 +139,120 @@ export function AppSidebar() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">
-        <nav className="space-y-2 px-2 py-3">
-          {navSections.map((section) => (
-            <div key={section.label}>
-              {!collapsed && (
-                <div className="px-2 pb-1.5 pt-2 text-[11px] font-medium uppercase tracking-wider text-sidebar-foreground/50">
-                  {section.label}
-                </div>
-              )}
-              <div className="space-y-0.5">
-                {section.items.map((item) => {
-                  const active = isActive(item.to, item.exact);
-                  const Icon = item.icon;
-                  const unreadCount = navNotificationCount(notifications, item.to);
-                  const itemNotificationCount =
-                    item.to === "/leave"
-                      ? Math.max(pendingLeaveCount, unreadCount)
-                      : item.to === "/attendance"
-                        ? Math.max(pendingDtrCount, unreadCount)
-                        : unreadCount;
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      aria-current={active ? "page" : undefined}
+        <nav className={cn("px-2 py-3", collapsed ? "space-y-0.5" : "space-y-1")}>
+          {collapsed
+            ? nav.map((item) => {
+                const active = isActive(item.to, item.exact);
+                const Icon = item.icon;
+                const notificationCount = itemNotificationCount(item.to);
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    title={item.label}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "group relative flex h-10 items-center justify-center overflow-hidden rounded-md text-sm font-medium outline-none ring-sidebar-ring transition-colors focus-visible:ring-2",
+                      active
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    )}
+                  >
+                    <Icon
                       className={cn(
-                        "group relative flex h-9 items-center gap-2 overflow-hidden rounded-md px-2.5 text-sm font-medium outline-none ring-sidebar-ring transition-colors focus-visible:ring-2",
+                        "h-4 w-4 shrink-0 transition-colors",
                         active
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                          : "text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                        collapsed && "h-10 justify-center px-0",
+                          ? "text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground/70 group-hover:text-sidebar-accent-foreground",
+                      )}
+                    />
+                    {notificationCount > 0 && (
+                      <span className="absolute right-1.5 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+                        {notificationCount > 99 ? "99+" : notificationCount}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })
+            : navSections.map((section) => {
+                const open = openSections.has(section.label);
+                const sectionActive = section.items.some((item) => isActive(item.to, item.exact));
+                const SectionIcon = section.icon;
+                const sectionNotificationCount = section.items.reduce(
+                  (total, item) => total + itemNotificationCount(item.to),
+                  0,
+                );
+
+                return (
+                  <Collapsible
+                    key={section.label}
+                    open={open}
+                    onOpenChange={() => toggleSection(section.label)}
+                  >
+                    <CollapsibleTrigger
+                      className={cn(
+                        "group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[14px] font-medium outline-none ring-sidebar-ring transition-colors focus-visible:ring-2",
+                        sectionActive
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                       )}
                     >
-                      <Icon
+                      <SectionIcon
                         className={cn(
-                          "h-4 w-4 shrink-0 transition-transform duration-200 ease-out group-hover:-translate-y-0.5 group-hover:scale-110",
-                          active
-                            ? "text-sidebar-primary-foreground"
-                            : "text-sidebar-foreground/75 group-hover:text-sidebar-accent-foreground",
+                          "h-4 w-4 shrink-0 transition-colors",
+                          sectionActive
+                            ? "text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/70 group-hover:text-sidebar-accent-foreground",
                         )}
                       />
-                      {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
-                      {itemNotificationCount > 0 && (
-                        <span
-                          className={cn(
-                            "inline-flex shrink-0 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground",
-                            collapsed ? "absolute right-2 top-1 h-4 min-w-4 px-1" : "px-2 py-0.5",
-                          )}
-                        >
-                          {itemNotificationCount > 99 ? "99+" : itemNotificationCount}
+                      <span className="min-w-0 flex-1 truncate">{section.label}</span>
+                      {sectionNotificationCount > 0 && (
+                        <span className="inline-flex shrink-0 items-center justify-center rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-destructive-foreground">
+                          {sectionNotificationCount > 99 ? "99+" : sectionNotificationCount}
                         </span>
                       )}
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+                      <ChevronRight
+                        className={cn(
+                          "h-4 w-4 shrink-0 text-sidebar-foreground/60 transition-transform duration-200",
+                          open && "rotate-90",
+                        )}
+                      />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="ml-[15px] space-y-0.5 border-l border-sidebar-border py-1 pl-[18px]">
+                        {section.items.map((item) => {
+                          const active = isActive(item.to, item.exact);
+                          const notificationCount = itemNotificationCount(item.to);
+                          return (
+                            <Link
+                              key={item.to}
+                              to={item.to}
+                              aria-current={active ? "page" : undefined}
+                              className={cn(
+                                "relative flex h-8 items-center gap-2 overflow-hidden rounded-md px-2 text-[14px] font-medium outline-none ring-sidebar-ring transition-colors focus-visible:ring-2",
+                                active
+                                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                  : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                              )}
+                            >
+                              <span
+                                className={cn("min-w-0 flex-1 truncate", active && "font-semibold")}
+                              >
+                                {item.label}
+                              </span>
+                              {notificationCount > 0 && (
+                                <span className="inline-flex shrink-0 items-center justify-center rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-destructive-foreground">
+                                  {notificationCount > 99 ? "99+" : notificationCount}
+                                </span>
+                              )}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              })}
         </nav>
       </div>
 

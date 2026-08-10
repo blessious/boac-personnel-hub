@@ -12,6 +12,7 @@ import {
   Settings,
   ShieldCheck,
   UserCircle,
+  UserCog,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -43,6 +44,8 @@ export type AppNavItem = {
 
 export type AppNavSection = {
   label: string;
+  shortLabel: string;
+  icon: LucideIcon;
   items: AppNavItem[];
 };
 
@@ -64,7 +67,7 @@ export const APP_NAV: AppNavItem[] = [
   },
   {
     to: "/employees",
-    label: "Employee Management",
+    label: "Employees",
     shortLabel: "Employees",
     icon: Users,
     exact: true,
@@ -79,8 +82,8 @@ export const APP_NAV: AppNavItem[] = [
   },
   {
     to: "/attendance",
-    label: "Attendance",
-    shortLabel: "Attendance",
+    label: "DTR",
+    shortLabel: "DTR",
     icon: CalendarDays,
     permission: "attendance.read",
   },
@@ -93,7 +96,7 @@ export const APP_NAV: AppNavItem[] = [
   },
   {
     to: "/plantilla",
-    label: "Plantilla & PSIPOP",
+    label: "Plantilla",
     shortLabel: "Plantilla",
     icon: Landmark,
     permission: "plantilla.read",
@@ -121,8 +124,8 @@ export const APP_NAV: AppNavItem[] = [
   },
   {
     to: "/self-service",
-    label: "Self-Service Portal",
-    shortLabel: "Services",
+    label: "Self-Service",
+    shortLabel: "Self-Service",
     icon: MonitorSmartphone,
     permission: "self_service.access",
   },
@@ -135,15 +138,15 @@ export const APP_NAV: AppNavItem[] = [
   },
   {
     to: "/reports",
-    label: "Reports & Analytics",
-    shortLabel: "Reports",
+    label: "Analytics",
+    shortLabel: "Analytics",
     icon: BarChart3,
     permission: "reports.view",
   },
   {
     to: "/admin",
-    label: "System Administration",
-    shortLabel: "Admin",
+    label: "Users & Roles",
+    shortLabel: "Users",
     icon: ShieldCheck,
     permission: "admin.users",
   },
@@ -156,39 +159,57 @@ export const APP_NAV: AppNavItem[] = [
   },
 ];
 
-const NAV_SECTION_ORDER = [
-  "Overview",
-  "Employee Records",
-  "Attendance & Leave",
-  "Reports",
-  "Administration",
-] as const;
-
-function sectionForNavItem(item: AppNavItem): (typeof NAV_SECTION_ORDER)[number] {
-  if (item.to === "/") return "Overview";
-  if (
-    [
-      "/employees",
-      "/employees/references",
-      "/my-profile",
-      "/plantilla",
-      "/movements",
-      "/service-records",
-    ].includes(item.to)
-  ) {
-    return "Employee Records";
-  }
-  if (["/attendance", "/schedules", "/leave", "/self-service", "/requests"].includes(item.to)) {
-    return "Attendance & Leave";
-  }
-  if (item.to === "/reports") return "Reports";
-  return "Administration";
-}
+const NAV_SECTIONS: Array<{
+  label: string;
+  shortLabel: string;
+  icon: LucideIcon;
+  routes: AppNavItem["to"][];
+}> = [
+  {
+    label: "Dashboard",
+    shortLabel: "Dashboard",
+    icon: LayoutDashboard,
+    routes: ["/"],
+  },
+  {
+    label: "Employee Records",
+    shortLabel: "Records",
+    icon: Users,
+    routes: ["/employees", "/my-profile", "/employees/references", "/service-records"],
+  },
+  {
+    label: "Plantilla & Movements",
+    shortLabel: "Plantilla",
+    icon: Landmark,
+    routes: ["/plantilla", "/movements"],
+  },
+  {
+    label: "Attendance & Leave",
+    shortLabel: "Attendance",
+    icon: CalendarDays,
+    routes: ["/attendance", "/schedules", "/leave", "/self-service", "/requests"],
+  },
+  {
+    label: "Reports",
+    shortLabel: "Reports",
+    icon: BarChart3,
+    routes: ["/reports"],
+  },
+  {
+    label: "System",
+    shortLabel: "System",
+    icon: UserCog,
+    routes: ["/admin", "/settings"],
+  },
+];
 
 export function groupNavItems(items: AppNavItem[]): AppNavSection[] {
-  return NAV_SECTION_ORDER.map((label) => ({
-    label,
-    items: items.filter((item) => sectionForNavItem(item) === label),
+  const itemByRoute = new Map(items.map((item) => [item.to, item]));
+  return NAV_SECTIONS.map((section) => ({
+    label: section.label,
+    shortLabel: section.shortLabel,
+    icon: section.icon,
+    items: section.routes.map((route) => itemByRoute.get(route)).filter(Boolean) as AppNavItem[],
   })).filter((section) => section.items.length > 0);
 }
 
