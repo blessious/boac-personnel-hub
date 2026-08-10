@@ -12,6 +12,7 @@ import {
   FileDown,
   FileSpreadsheet,
   FileText,
+  Lock,
   Loader2,
   Pencil,
   Plus,
@@ -271,6 +272,7 @@ const EMPTY_DTR_FORM: DtrPayload = {
   pmOut: "",
   remarks: "",
   shiftTemplateCode: "manual",
+  lockDtr: false,
 };
 
 const STATUS_CLASS: Record<string, string> = {
@@ -503,7 +505,7 @@ function AttendancePage() {
     }
     setCorrectionError("");
     listDtrCorrectionRequests({
-      employeeId: isEmployee ? undefined : selectedEmployeeId,
+      employeeId: isEmployee || selectedEmployeeId === "all" ? undefined : selectedEmployeeId,
       status: correctionStatus === "all" ? undefined : correctionStatus,
       requestType: correctionType === "all" ? undefined : correctionType,
       q: correctionQuery,
@@ -922,6 +924,7 @@ function AttendancePage() {
       pmOut: entry.pmOut,
       remarks: entry.remarks,
       shiftTemplateCode: entry.shiftCode || "manual",
+      lockDtr: false,
     });
     setShowDtrDialog(true);
   };
@@ -946,6 +949,7 @@ function AttendancePage() {
       }
       setShowDtrDialog(false);
       load();
+      loadCorrections();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to save DTR");
     } finally {
@@ -2288,10 +2292,26 @@ function AttendancePage() {
                         ) : (
                           <div className="space-y-1">
                             <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-center">
-                              <DtrMobileTime label="AM In" value={formatDtrTime(entry.amIn)} />
-                              <DtrMobileTime label="AM Out" value={formatDtrTime(entry.amOut)} />
-                              <DtrMobileTime label="PM In" value={formatDtrTime(entry.pmIn)} />
-                              <DtrMobileTime label="PM Out" value={formatDtrTime(entry.pmOut)} />
+                              <DtrMobileTime
+                                label="AM In"
+                                value={formatDtrTime(entry.amIn)}
+                                locked={entry.lockFields?.amIn}
+                              />
+                              <DtrMobileTime
+                                label="AM Out"
+                                value={formatDtrTime(entry.amOut)}
+                                locked={entry.lockFields?.amOut}
+                              />
+                              <DtrMobileTime
+                                label="PM In"
+                                value={formatDtrTime(entry.pmIn)}
+                                locked={entry.lockFields?.pmIn}
+                              />
+                              <DtrMobileTime
+                                label="PM Out"
+                                value={formatDtrTime(entry.pmOut)}
+                                locked={entry.lockFields?.pmOut}
+                              />
                             </div>
                             {entry.lateMinutes ? (
                               <div className="text-center text-[0.65rem] font-bold text-destructive">
@@ -2434,25 +2454,37 @@ function AttendancePage() {
                                 className="px-3 py-3 text-center font-medium text-emerald-600"
                                 title={labels.amIn}
                               >
-                                {formatDtrTime(entry.amIn)}
+                                <span className="inline-flex items-center justify-center gap-1">
+                                  {entry.lockFields?.amIn && <Lock className="h-3 w-3" />}
+                                  {formatDtrTime(entry.amIn)}
+                                </span>
                               </td>
                               <td
                                 className="px-3 py-3 text-center font-medium text-emerald-600"
                                 title={labels.amOut}
                               >
-                                {formatDtrTime(entry.amOut)}
+                                <span className="inline-flex items-center justify-center gap-1">
+                                  {entry.lockFields?.amOut && <Lock className="h-3 w-3" />}
+                                  {formatDtrTime(entry.amOut)}
+                                </span>
                               </td>
                               <td
                                 className="px-3 py-3 text-center font-medium text-emerald-600"
                                 title={labels.pmIn}
                               >
-                                {formatDtrTime(entry.pmIn)}
+                                <span className="inline-flex items-center justify-center gap-1">
+                                  {entry.lockFields?.pmIn && <Lock className="h-3 w-3" />}
+                                  {formatDtrTime(entry.pmIn)}
+                                </span>
                               </td>
                               <td
                                 className="px-3 py-3 text-center font-medium text-emerald-600"
                                 title={labels.pmOut}
                               >
-                                {formatDtrTime(entry.pmOut)}
+                                <span className="inline-flex items-center justify-center gap-1">
+                                  {entry.lockFields?.pmOut && <Lock className="h-3 w-3" />}
+                                  {formatDtrTime(entry.pmOut)}
+                                </span>
                               </td>
                             </>
                           )}
@@ -2617,6 +2649,18 @@ function AttendancePage() {
                   className="min-h-11"
                 />
               </div>
+              {editing && (
+                <div className="col-span-2 flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                  <div className="min-w-0">
+                    <Label htmlFor="dtr-lock-edited-times">Lock DTR</Label>
+                  </div>
+                  <Switch
+                    id="dtr-lock-edited-times"
+                    checked={Boolean(form.lockDtr)}
+                    onCheckedChange={(lockDtr) => setForm({ ...form, lockDtr })}
+                  />
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter className="grid grid-cols-2 gap-2 border-t border-border bg-background px-4 py-3 sm:flex sm:justify-end sm:space-x-2">
@@ -3904,6 +3948,12 @@ function AuditValues({
     label?: string;
     status?: string;
     remarks?: string;
+    lockFields?: {
+      amIn?: boolean;
+      amOut?: boolean;
+      pmIn?: boolean;
+      pmOut?: boolean;
+    };
   };
 }) {
   return (
@@ -3914,16 +3964,32 @@ function AuditValues({
       ) : (
         <div className="grid grid-cols-2 gap-2 text-sm">
           <span>
-            AM In: <b>{formatDtrTime(values.amIn)}</b>
+            AM In:{" "}
+            <b className="inline-flex items-center gap-1">
+              {values.lockFields?.amIn && <Lock className="h-3 w-3" />}
+              {formatDtrTime(values.amIn)}
+            </b>
           </span>
           <span>
-            AM Out: <b>{formatDtrTime(values.amOut)}</b>
+            AM Out:{" "}
+            <b className="inline-flex items-center gap-1">
+              {values.lockFields?.amOut && <Lock className="h-3 w-3" />}
+              {formatDtrTime(values.amOut)}
+            </b>
           </span>
           <span>
-            PM In: <b>{formatDtrTime(values.pmIn)}</b>
+            PM In:{" "}
+            <b className="inline-flex items-center gap-1">
+              {values.lockFields?.pmIn && <Lock className="h-3 w-3" />}
+              {formatDtrTime(values.pmIn)}
+            </b>
           </span>
           <span>
-            PM Out: <b>{formatDtrTime(values.pmOut)}</b>
+            PM Out:{" "}
+            <b className="inline-flex items-center gap-1">
+              {values.lockFields?.pmOut && <Lock className="h-3 w-3" />}
+              {formatDtrTime(values.pmOut)}
+            </b>
           </span>
         </div>
       )}
@@ -3947,19 +4013,22 @@ function DtrMobileTime({
   label,
   value,
   danger = false,
+  locked = false,
 }: {
   label: string;
   value: string;
   danger?: boolean;
+  locked?: boolean;
 }) {
   return (
     <div className="min-w-0">
       <div
-        className={`truncate text-[0.72rem] font-semibold leading-4 ${
+        className={`flex items-center justify-center gap-1 truncate text-[0.72rem] font-semibold leading-4 ${
           danger ? "text-red-600" : "text-emerald-600"
         }`}
       >
-        {value}
+        {locked && <Lock className="h-3 w-3 shrink-0" />}
+        <span className="truncate">{value}</span>
       </div>
       <div className="mt-0.5 text-[0.55rem] font-semibold uppercase leading-3 text-muted-foreground">
         {label}

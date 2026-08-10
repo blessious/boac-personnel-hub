@@ -1598,7 +1598,7 @@ const EMPLOYEE_SECTION_NUMBER_FIELDS = new Set([
 const EMPLOYEE_SECTION_FILE_FIELDS = new Set(["file"]);
 const MAX_SECTION_TEXT_LENGTH = 5000;
 const MAX_SECTION_FILE_BYTES = 8 * 1024 * 1024;
-const MAX_PROFILE_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_PROFILE_IMAGE_BYTES = 50 * 1024 * 1024;
 const MAX_BRANDING_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_LOGO_IMAGE_DIMENSIONS = { width: 2048, height: 2048 };
 const MAX_ICON_IMAGE_DIMENSIONS = { width: 1024, height: 1024 };
@@ -3137,6 +3137,58 @@ function calculateAttendanceStats(entry) {
   return { status, lateMinutes, undertimeMinutes };
 }
 
+function dtrLockFields(row = {}) {
+  return {
+    amIn: Boolean(row.amInLocked ?? row.am_in_locked),
+    amOut: Boolean(row.amOutLocked ?? row.am_out_locked),
+    pmIn: Boolean(row.pmInLocked ?? row.pm_in_locked),
+    pmOut: Boolean(row.pmOutLocked ?? row.pm_out_locked),
+  };
+}
+
+function dtrLockFieldsEqual(left = {}, right = {}) {
+  return ["amIn", "amOut", "pmIn", "pmOut"].every(
+    (key) => Boolean(left?.[key]) === Boolean(right?.[key]),
+  );
+}
+
+function calculateAttendanceStatsForShift(entry, shift) {
+  if (!shift) return calculateAttendanceStats(entry);
+  const amIn = minutesFromTime(entry.amIn);
+  const amOut = minutesFromTime(entry.amOut);
+  const pmIn = minutesFromTime(entry.pmIn);
+  const pmOut = minutesFromTime(entry.pmOut);
+  const punches = [amIn, amOut, pmIn, pmOut].filter((value) => value !== null);
+  let status = "Absent";
+  if (punches.length > 0) status = "Incomplete";
+
+  if (shift.type === "split" && shift.breakStart && shift.breakEnd) {
+    const start = minutesFromTime(shift.startTime);
+    const breakEnd = minutesFromTime(shift.breakEnd);
+    const end = minutesFromTime(shift.endTime);
+    const lateMinutes =
+      (amIn !== null && start !== null ? Math.max(0, amIn - start) : 0) +
+      (pmIn !== null && breakEnd !== null ? Math.max(0, pmIn - breakEnd) : 0);
+    const undertimeMinutes =
+      pmOut !== null && end !== null ? Math.max(0, end - pmOut) : 0;
+    if (amIn !== null && amOut !== null && pmIn !== null && pmOut !== null) {
+      status = lateMinutes > 0 ? "Late" : "Present";
+    }
+    return { status, lateMinutes, undertimeMinutes };
+  }
+
+  const actualIn = shift.type === "night" ? pmIn : amIn;
+  const actualOut = shift.type === "night" ? amOut : pmOut;
+  const start = minutesFromTime(shift.startTime);
+  const end = minutesFromTime(shift.endTime);
+  const lateMinutes =
+    actualIn !== null && start !== null ? Math.max(0, actualIn - start) : 0;
+  const undertimeMinutes =
+    actualOut !== null && end !== null ? Math.max(0, end - actualOut) : 0;
+  if (actualIn !== null && actualOut !== null) status = lateMinutes > 0 ? "Late" : "Present";
+  return { status, lateMinutes, undertimeMinutes };
+}
+
 function attendanceDtrRow(row) {
   return {
     id: row.id,
@@ -3164,6 +3216,12 @@ function attendanceDtrRow(row) {
     shiftType: row.shift_type || "",
     reviewFlags: [],
     locked: Boolean(row.locked),
+    lockFields: {
+      amIn: Boolean(row.am_in_locked),
+      amOut: Boolean(row.am_out_locked),
+      pmIn: Boolean(row.pm_in_locked),
+      pmOut: Boolean(row.pm_out_locked),
+    },
     importId: row.import_id || "",
     editedByName: row.edited_by_name || "",
     editedAt: row.edited_at || "",
@@ -3205,6 +3263,7 @@ function dtrCorrectionRequestRow(row) {
       label: applied.displayLabel || "",
       status: applied.status || "",
       remarks: applied.remarks || "",
+      lockFields: applied.lockFields || {},
     },
     reason: row.reason || "",
     status: row.status,
@@ -3240,6 +3299,12 @@ function dtrAuditSnapshot(row) {
     remarks: row.remarks || "",
     displayLabel: row.display_label || "",
     displayLabelRequestId: row.display_label_request_id || "",
+    lockFields: {
+      amIn: Boolean(row.am_in_locked),
+      amOut: Boolean(row.am_out_locked),
+      pmIn: Boolean(row.pm_in_locked),
+      pmOut: Boolean(row.pm_out_locked),
+    },
   };
 }
 
@@ -3260,7 +3325,7 @@ function correctionOriginalStillMatches(request, existing) {
 function dtrSnapshotsMatch(left, right) {
   if (Boolean(left?.exists) !== Boolean(right?.exists)) return false;
   if (!left?.exists) return true;
-  return [
+  const scalarMatch = [
     "id",
     "amIn",
     "amOut",
@@ -3274,6 +3339,7 @@ function dtrSnapshotsMatch(left, right) {
     "displayLabel",
     "displayLabelRequestId",
   ].every((key) => String(left?.[key] ?? "") === String(right?.[key] ?? ""));
+  return scalarMatch && dtrLockFieldsEqual(left?.lockFields, right?.lockFields);
 }
 
 async function insertDtrCorrectionEvent(connection, event) {
@@ -4065,6 +4131,16 @@ async function initializeDatabase() {
     "idx_employees_dashboard_position",
     "INDEX idx_employees_dashboard_position (department, position, emp_status)",
   );
+  await ensureIndex(
+    "employees",
+    "idx_employees_list_scope_name",
+    "INDEX idx_employees_list_scope_name (is_hidden, lastname, firstname, employee_no)",
+  );
+  await ensureIndex(
+    "employees",
+    "idx_employees_list_filters",
+    "INDEX idx_employees_list_filters (is_hidden, department, status, emp_status, gender)",
+  );
 
   const employeeIdDefinition = await getEmployeeIdDefinition();
   const nullableEmployeeIdDefinition = employeeIdDefinition.replace(/\s+NOT NULL$/i, " NULL");
@@ -4474,6 +4550,10 @@ async function initializeDatabase() {
       shift_template_id BIGINT UNSIGNED NULL,
       review_flags JSON NULL,
       locked TINYINT(1) NOT NULL DEFAULT 0,
+      am_in_locked TINYINT(1) NOT NULL DEFAULT 0,
+      am_out_locked TINYINT(1) NOT NULL DEFAULT 0,
+      pm_in_locked TINYINT(1) NOT NULL DEFAULT 0,
+      pm_out_locked TINYINT(1) NOT NULL DEFAULT 0,
       import_id CHAR(36) NULL,
       edited_by INT UNSIGNED NULL,
       edited_at DATETIME NULL,
@@ -4493,6 +4573,19 @@ async function initializeDatabase() {
   await ensureColumn("dtr_entries", "display_label_request_id", "CHAR(36) NULL");
   await ensureColumn("dtr_entries", "shift_template_id", "BIGINT UNSIGNED NULL");
   await ensureColumn("dtr_entries", "review_flags", "JSON NULL");
+  await ensureColumn("dtr_entries", "am_in_locked", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureColumn("dtr_entries", "am_out_locked", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureColumn("dtr_entries", "pm_in_locked", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureColumn("dtr_entries", "pm_out_locked", "TINYINT(1) NOT NULL DEFAULT 0");
+  await pool.query(`
+    UPDATE dtr_entries
+    SET am_in_locked = 1, am_out_locked = 1, pm_in_locked = 1, pm_out_locked = 1
+    WHERE locked = 1
+      AND am_in_locked = 0
+      AND am_out_locked = 0
+      AND pm_in_locked = 0
+      AND pm_out_locked = 0
+  `);
   await ensureIndex(
     "dtr_entries",
     "idx_dtr_entries_shift_template",
@@ -6212,8 +6305,9 @@ async function insertAttendancePunches(
 }
 
 async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true) {
-  const stats = calculateAttendanceStats(entry);
   const source = entry.source || "Imported";
+  const lockFields = entry.lockFields || {};
+  const stats = calculateAttendanceStats(entry);
   const params = {
     id: entry.id || crypto.randomUUID(),
     employeeId: entry.employeeId,
@@ -6230,20 +6324,61 @@ async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true
     importId: entry.importId || null,
     shiftTemplateId: entry.shiftTemplateId || null,
     reviewFlags: JSON.stringify(entry.reviewFlags || []),
+    amInLocked: lockFields.amIn ? 1 : 0,
+    amOutLocked: lockFields.amOut ? 1 : 0,
+    pmInLocked: lockFields.pmIn ? 1 : 0,
+    pmOutLocked: lockFields.pmOut ? 1 : 0,
     editedBy: source === "Imported" ? null : userId,
   };
-  const protectedUpdate = preserveAdjusted
-    ? `am_in = IF(locked = 0 AND source = 'Imported', VALUES(am_in), am_in),
-       am_out = IF(locked = 0 AND source = 'Imported', VALUES(am_out), am_out),
-       pm_in = IF(locked = 0 AND source = 'Imported', VALUES(pm_in), pm_in),
-       pm_out = IF(locked = 0 AND source = 'Imported', VALUES(pm_out), pm_out),
-       status = IF(locked = 0 AND source = 'Imported', VALUES(status), status),
-       late_minutes = IF(locked = 0 AND source = 'Imported', VALUES(late_minutes), late_minutes),
-       undertime_minutes = IF(locked = 0 AND source = 'Imported', VALUES(undertime_minutes), undertime_minutes),
-       import_id = IF(locked = 0 AND source = 'Imported', VALUES(import_id), import_id),
-       shift_template_id = IF(locked = 0 AND source = 'Imported', VALUES(shift_template_id), shift_template_id),
-       review_flags = IF(locked = 0 AND source = 'Imported', VALUES(review_flags), review_flags)`
-    : `am_in = VALUES(am_in),
+
+  if (preserveAdjusted) {
+    const [[existing]] = await connection.execute(
+      `SELECT * FROM dtr_entries
+       WHERE employee_id = :employeeId AND work_date = :workDate
+       LIMIT 1 FOR UPDATE`,
+      { employeeId: entry.employeeId, workDate: entry.workDate },
+    );
+    if (existing) {
+      if (existing.display_label) return;
+      const existingLocks = dtrLockFields(existing);
+      const hasLockedSlot = Object.values(existingLocks).some(Boolean);
+      const mergedEntry = {
+        ...entry,
+        amIn: existingLocks.amIn ? formatTime(existing.am_in) : params.amIn,
+        amOut: existingLocks.amOut ? formatTime(existing.am_out) : params.amOut,
+        pmIn: existingLocks.pmIn ? formatTime(existing.pm_in) : params.pmIn,
+        pmOut: existingLocks.pmOut ? formatTime(existing.pm_out) : params.pmOut,
+      };
+      const mergedStats = hasLockedSlot
+        ? calculateAttendanceStatsForShift(mergedEntry, entry.shift || null)
+        : stats;
+      await connection.execute(
+        `UPDATE dtr_entries
+         SET am_in = :amIn, am_out = :amOut, pm_in = :pmIn, pm_out = :pmOut,
+             status = :status, late_minutes = :lateMinutes, undertime_minutes = :undertimeMinutes,
+             source = :source, import_id = :importId, shift_template_id = :shiftTemplateId,
+             review_flags = :reviewFlags
+         WHERE id = :id`,
+        {
+          id: existing.id,
+          amIn: mergedEntry.amIn || null,
+          amOut: mergedEntry.amOut || null,
+          pmIn: mergedEntry.pmIn || null,
+          pmOut: mergedEntry.pmOut || null,
+          status: mergedStats.status,
+          lateMinutes: mergedStats.lateMinutes,
+          undertimeMinutes: mergedStats.undertimeMinutes,
+          source: hasLockedSlot ? existing.source || "Adjusted" : "Imported",
+          importId: entry.importId || null,
+          shiftTemplateId: entry.shiftTemplateId || existing.shift_template_id || null,
+          reviewFlags: JSON.stringify(entry.reviewFlags || []),
+        },
+      );
+      return;
+    }
+  }
+
+  const protectedUpdate = `am_in = VALUES(am_in),
        am_out = VALUES(am_out),
        pm_in = VALUES(pm_in),
        pm_out = VALUES(pm_out),
@@ -6255,6 +6390,10 @@ async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true
        source = VALUES(source),
        remarks = VALUES(remarks),
        import_id = VALUES(import_id),
+       am_in_locked = VALUES(am_in_locked),
+       am_out_locked = VALUES(am_out_locked),
+       pm_in_locked = VALUES(pm_in_locked),
+       pm_out_locked = VALUES(pm_out_locked),
        edited_by = VALUES(edited_by),
        edited_at = NOW()`;
 
@@ -6262,11 +6401,11 @@ async function upsertDtrEntry(connection, entry, userId, preserveAdjusted = true
     `INSERT INTO dtr_entries (
        id, employee_id, work_date, am_in, am_out, pm_in, pm_out, status,
        late_minutes, undertime_minutes, source, remarks, import_id, shift_template_id,
-       review_flags, edited_by, edited_at
+       review_flags, am_in_locked, am_out_locked, pm_in_locked, pm_out_locked, edited_by, edited_at
      ) VALUES (
        :id, :employeeId, :workDate, :amIn, :amOut, :pmIn, :pmOut, :status,
        :lateMinutes, :undertimeMinutes, :source, :remarks, :importId, :shiftTemplateId,
-       :reviewFlags, :editedBy,
+       :reviewFlags, :amInLocked, :amOutLocked, :pmInLocked, :pmOutLocked, :editedBy,
        IF(:editedBy IS NULL, NULL, NOW())
      )
      ON DUPLICATE KEY UPDATE ${protectedUpdate}`,
@@ -6544,12 +6683,13 @@ async function refreshDtrEntries({ employeeId, from, to, userId }) {
      FROM dtr_entries
      WHERE employee_id IN (${employeeIds.map(() => "?").join(",")})
        AND work_date IN (${dutyDates.map(() => "?").join(",")})
-       AND (locked = 1 OR source <> 'Imported')`,
+       AND (am_in_locked = 1 OR am_out_locked = 1 OR pm_in_locked = 1 OR pm_out_locked = 1
+            OR display_label IS NOT NULL)`,
     [...employeeIds, ...dutyDates],
   );
   const preservedCount = Number(preservedRows[0]?.count || 0);
   if (preservedCount) {
-    warnings.push(`${preservedCount} locked or adjusted DTR row(s) were preserved`);
+    warnings.push(`${preservedCount} locked or labeled DTR row(s) were partially preserved`);
   }
   const connection = await pool.getConnection();
   let recordsProcessed = 0;
@@ -6568,6 +6708,7 @@ async function refreshDtrEntries({ employeeId, from, to, userId }) {
           {
             ...entry,
             employeeId: employee.id,
+            shift,
           },
           userId,
           true,
@@ -9635,10 +9776,6 @@ async function handleDecideDtrCorrectionRequest(req, res, id) {
          LIMIT 1 FOR UPDATE`,
         { employeeId: request.employee_id, workDate: request.work_date },
       );
-      if (existing?.locked) {
-        await connection.rollback();
-        return json(res, 409, { error: "Unlock the DTR entry before approving this request" });
-      }
       if (!correctionOriginalStillMatches(request, existing)) {
         await connection.rollback();
         return json(res, 409, {
@@ -9649,6 +9786,21 @@ async function handleDecideDtrCorrectionRequest(req, res, id) {
 
       beforeSnapshot = dtrAuditSnapshot(existing);
       if (request.request_type === "Times") {
+        const existingLocks = dtrLockFields(existing);
+        const requestedLocks = {
+          amIn: formatTime(request.original_am_in) !== formatTime(request.requested_am_in)
+            ? true
+            : existingLocks.amIn,
+          amOut: formatTime(request.original_am_out) !== formatTime(request.requested_am_out)
+            ? true
+            : existingLocks.amOut,
+          pmIn: formatTime(request.original_pm_in) !== formatTime(request.requested_pm_in)
+            ? true
+            : existingLocks.pmIn,
+          pmOut: formatTime(request.original_pm_out) !== formatTime(request.requested_pm_out)
+            ? true
+            : existingLocks.pmOut,
+        };
         await upsertDtrEntry(
           connection,
           {
@@ -9661,6 +9813,7 @@ async function handleDecideDtrCorrectionRequest(req, res, id) {
             pmOut: request.requested_pm_out,
             source: "Adjusted",
             remarks: reviewRemarks || request.reason,
+            lockFields: requestedLocks,
           },
           user.id,
           false,
@@ -9845,10 +9998,6 @@ async function handleReverseDtrCorrectionRequest(req, res, id) {
        LIMIT 1 FOR UPDATE`,
       { employeeId: request.employee_id, workDate: request.work_date },
     );
-    if (current?.locked) {
-      await connection.rollback();
-      return json(res, 409, { error: "Unlock the DTR entry before reversing this approval" });
-    }
     if (!dtrSnapshotsMatch(dtrAuditSnapshot(current), appliedSnapshot)) {
       await connection.rollback();
       return json(res, 409, {
@@ -9860,6 +10009,13 @@ async function handleReverseDtrCorrectionRequest(req, res, id) {
     if (!beforeSnapshot.exists) {
       await connection.execute(`DELETE FROM dtr_entries WHERE id = :id`, { id: current.id });
     } else {
+      const restoredLockFields = {
+        amIn: false,
+        amOut: false,
+        pmIn: false,
+        pmOut: false,
+        ...(beforeSnapshot.lockFields || {}),
+      };
       await connection.execute(
         `UPDATE dtr_entries
          SET am_in = :amIn, am_out = :amOut, pm_in = :pmIn, pm_out = :pmOut,
@@ -9867,6 +10023,8 @@ async function handleReverseDtrCorrectionRequest(req, res, id) {
              undertime_minutes = :undertimeMinutes, source = :source, remarks = :remarks,
              display_label = :displayLabel,
              display_label_request_id = :displayLabelRequestId,
+             locked = :locked, am_in_locked = :amInLocked, am_out_locked = :amOutLocked,
+             pm_in_locked = :pmInLocked, pm_out_locked = :pmOutLocked,
              edited_by = :editedBy, edited_at = NOW()
          WHERE id = :id`,
         {
@@ -9882,6 +10040,11 @@ async function handleReverseDtrCorrectionRequest(req, res, id) {
           remarks: beforeSnapshot.remarks || null,
           displayLabel: beforeSnapshot.displayLabel || null,
           displayLabelRequestId: beforeSnapshot.displayLabelRequestId || null,
+          locked: Object.values(restoredLockFields).every(Boolean) ? 1 : 0,
+          amInLocked: restoredLockFields.amIn ? 1 : 0,
+          amOutLocked: restoredLockFields.amOut ? 1 : 0,
+          pmInLocked: restoredLockFields.pmIn ? 1 : 0,
+          pmOutLocked: restoredLockFields.pmOut ? 1 : 0,
           editedBy: user.id,
         },
       );
@@ -9897,6 +10060,10 @@ async function handleReverseDtrCorrectionRequest(req, res, id) {
           undertime_minutes: beforeSnapshot.undertimeMinutes,
           display_label: beforeSnapshot.displayLabel,
           display_label_request_id: beforeSnapshot.displayLabelRequestId,
+          am_in_locked: restoredLockFields.amIn ? 1 : 0,
+          am_out_locked: restoredLockFields.amOut ? 1 : 0,
+          pm_in_locked: restoredLockFields.pmIn ? 1 : 0,
+          pm_out_locked: restoredLockFields.pmOut ? 1 : 0,
         })
       : { exists: false };
     await connection.execute(
@@ -9996,54 +10163,154 @@ async function handleUpdateDtrEntry(req, res, id) {
   const user = await requireAttendanceWrite(req, res);
   if (!user) return;
   const body = await readBody(req);
-  const [existingRows] = await pool.execute(`SELECT * FROM dtr_entries WHERE id = :id LIMIT 1`, {
-    id,
-  });
-  if (!existingRows[0]) return json(res, 404, { error: "DTR entry not found" });
-  if (existingRows[0].locked)
-    return json(res, 409, { error: "Locked DTR entries cannot be edited" });
-
-  const existing = existingRows[0];
-  let shiftTemplateId = existing.shift_template_id || null;
-  if (Object.prototype.hasOwnProperty.call(body, "shiftTemplateCode")) {
-    try {
-      shiftTemplateId = await resolveShiftTemplateIdByCode(body.shiftTemplateCode);
-    } catch (error) {
-      return json(res, error.statusCode || 400, { error: error.message });
+  const connection = await pool.getConnection();
+  let employeeId = "";
+  let workDate = "";
+  try {
+    await connection.beginTransaction();
+    const [[existing]] = await connection.execute(
+      `SELECT * FROM dtr_entries WHERE id = :id LIMIT 1 FOR UPDATE`,
+      { id },
+    );
+    if (!existing) {
+      await connection.rollback();
+      return json(res, 404, { error: "DTR entry not found" });
     }
-  }
-  const entry = {
-    employeeId: existing.employee_id,
-    workDate: normalizeDate(body.workDate || body.date || existing.work_date),
-    amIn: normalizeTimeInput(body.amIn ?? body.am_in ?? existing.am_in),
-    amOut: normalizeTimeInput(body.amOut ?? body.am_out ?? existing.am_out),
-    pmIn: normalizeTimeInput(body.pmIn ?? body.pm_in ?? existing.pm_in),
-    pmOut: normalizeTimeInput(body.pmOut ?? body.pm_out ?? existing.pm_out),
-    shiftTemplateId,
-  };
-  const stats = calculateAttendanceStats(entry);
-  await pool.execute(
-    `UPDATE dtr_entries
-     SET work_date = :workDate, am_in = :amIn, am_out = :amOut, pm_in = :pmIn, pm_out = :pmOut,
-         status = :status, late_minutes = :lateMinutes, undertime_minutes = :undertimeMinutes,
-         source = 'Adjusted', remarks = :remarks, shift_template_id = :shiftTemplateId,
-         edited_by = :editedBy, edited_at = NOW()
-     WHERE id = :id`,
-    {
+
+    let shiftTemplateId = existing.shift_template_id || null;
+    if (Object.prototype.hasOwnProperty.call(body, "shiftTemplateCode")) {
+      try {
+        shiftTemplateId = await resolveShiftTemplateIdByCode(body.shiftTemplateCode);
+      } catch (error) {
+        await connection.rollback();
+        return json(res, error.statusCode || 400, { error: error.message });
+      }
+    }
+    const entry = {
+      employeeId: existing.employee_id,
+      workDate: normalizeDate(body.workDate || body.date || existing.work_date),
+      amIn: normalizeTimeInput(body.amIn ?? body.am_in ?? existing.am_in),
+      amOut: normalizeTimeInput(body.amOut ?? body.am_out ?? existing.am_out),
+      pmIn: normalizeTimeInput(body.pmIn ?? body.pm_in ?? existing.pm_in),
+      pmOut: normalizeTimeInput(body.pmOut ?? body.pm_out ?? existing.pm_out),
+      shiftTemplateId,
+    };
+    const beforeSnapshot = dtrAuditSnapshot(existing);
+    const existingLocks = dtrLockFields(existing);
+    const changedSlots = {
+      amIn: formatTime(existing.am_in) !== formatTime(entry.amIn),
+      amOut: formatTime(existing.am_out) !== formatTime(entry.amOut),
+      pmIn: formatTime(existing.pm_in) !== formatTime(entry.pmIn),
+      pmOut: formatTime(existing.pm_out) !== formatTime(entry.pmOut),
+    };
+    const shouldLockEditedSlots = Boolean(body.lockDtr);
+    const nextLocks = {
+      amIn: changedSlots.amIn ? shouldLockEditedSlots : existingLocks.amIn,
+      amOut: changedSlots.amOut ? shouldLockEditedSlots : existingLocks.amOut,
+      pmIn: changedSlots.pmIn ? shouldLockEditedSlots : existingLocks.pmIn,
+      pmOut: changedSlots.pmOut ? shouldLockEditedSlots : existingLocks.pmOut,
+    };
+    const stats = calculateAttendanceStats(entry);
+    const allSlotsLocked = Object.values(nextLocks).every(Boolean);
+    await connection.execute(
+      `UPDATE dtr_entries
+       SET work_date = :workDate, am_in = :amIn, am_out = :amOut, pm_in = :pmIn, pm_out = :pmOut,
+           status = :status, late_minutes = :lateMinutes, undertime_minutes = :undertimeMinutes,
+           source = 'Adjusted', remarks = :remarks, shift_template_id = :shiftTemplateId,
+           locked = :locked, am_in_locked = :amInLocked, am_out_locked = :amOutLocked,
+           pm_in_locked = :pmInLocked, pm_out_locked = :pmOutLocked,
+           edited_by = :editedBy, edited_at = NOW()
+       WHERE id = :id`,
+      {
+        id,
+        ...entry,
+        status: body.status || stats.status,
+        lateMinutes: stats.lateMinutes,
+        undertimeMinutes: stats.undertimeMinutes,
+        remarks: body.remarks || "",
+        locked: allSlotsLocked ? 1 : 0,
+        amInLocked: nextLocks.amIn ? 1 : 0,
+        amOutLocked: nextLocks.amOut ? 1 : 0,
+        pmInLocked: nextLocks.pmIn ? 1 : 0,
+        pmOutLocked: nextLocks.pmOut ? 1 : 0,
+        editedBy: user.id,
+      },
+    );
+    const [[applied]] = await connection.execute(`SELECT * FROM dtr_entries WHERE id = :id`, {
       id,
-      ...entry,
-      status: body.status || stats.status,
-      lateMinutes: stats.lateMinutes,
-      undertimeMinutes: stats.undertimeMinutes,
-      remarks: body.remarks || "",
-      editedBy: user.id,
-    },
-  );
+    });
+    const appliedSnapshot = dtrAuditSnapshot(applied);
+    const requestId = crypto.randomUUID();
+    await connection.execute(
+      `INSERT INTO dtr_correction_requests (
+         id, employee_id, dtr_entry_id, work_date, request_type,
+         original_am_in, original_am_out, original_pm_in, original_pm_out,
+         requested_am_in, requested_am_out, requested_pm_in, requested_pm_out,
+         reason, status, reviewed_by, review_remarks, reviewed_at, created_by,
+         pre_approval_snapshot, applied_snapshot, request_ip, review_ip
+       ) VALUES (
+         :requestId, :employeeId, :dtrEntryId, :workDate, 'Times',
+         :originalAmIn, :originalAmOut, :originalPmIn, :originalPmOut,
+         :requestedAmIn, :requestedAmOut, :requestedPmIn, :requestedPmOut,
+         :reason, 'Approved', :reviewedBy, :reviewRemarks, NOW(), :createdBy,
+         :beforeSnapshot, :appliedSnapshot, :requestIp, :reviewIp
+       )`,
+      {
+        requestId,
+        employeeId: existing.employee_id,
+        dtrEntryId: id,
+        workDate: entry.workDate,
+        originalAmIn: existing.am_in || null,
+        originalAmOut: existing.am_out || null,
+        originalPmIn: existing.pm_in || null,
+        originalPmOut: existing.pm_out || null,
+        requestedAmIn: entry.amIn || null,
+        requestedAmOut: entry.amOut || null,
+        requestedPmIn: entry.pmIn || null,
+        requestedPmOut: entry.pmOut || null,
+        reason: body.remarks || "Direct admin DTR edit",
+        reviewedBy: user.id,
+        reviewRemarks: body.remarks || "Direct admin DTR edit",
+        createdBy: user.id,
+        beforeSnapshot: JSON.stringify(beforeSnapshot),
+        appliedSnapshot: JSON.stringify(appliedSnapshot),
+        requestIp: getIp(req),
+        reviewIp: getIp(req),
+      },
+    );
+    await insertDtrCorrectionEvent(connection, {
+      requestId,
+      eventType: "Approved",
+      fromStatus: "Pending",
+      toStatus: "Approved",
+      actorId: user.id,
+      remarks: body.remarks || "Direct admin DTR edit",
+      ipAddress: getIp(req),
+      original: beforeSnapshot,
+      requested: {
+        amIn: formatTime(entry.amIn),
+        amOut: formatTime(entry.amOut),
+        pmIn: formatTime(entry.pmIn),
+        pmOut: formatTime(entry.pmOut),
+        lockFields: nextLocks,
+      },
+      applied: appliedSnapshot,
+    });
+    await connection.commit();
+    employeeId = existing.employee_id;
+    workDate = entry.workDate;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
   await logAudit(user.id, "attendance.dtr.update", { id }, req);
   const [rows] = await readAttendanceRows({
-    employeeId: existing.employee_id,
-    from: entry.workDate,
-    to: entry.workDate,
+    employeeId,
+    from: workDate,
+    to: workDate,
     limit: 1,
   });
   return json(res, 200, { entry: rows });
@@ -10056,8 +10323,6 @@ async function handleDeleteDtrEntry(req, res, id) {
     id,
   });
   if (!existingRows[0]) return json(res, 404, { error: "DTR entry not found" });
-  if (existingRows[0].locked)
-    return json(res, 409, { error: "Locked DTR entries cannot be deleted" });
   await pool.execute(`DELETE FROM dtr_entries WHERE id = :id`, { id });
   await logAudit(user.id, "attendance.dtr.delete", { id }, req);
   return json(res, 200, { ok: true });
@@ -14658,6 +14923,9 @@ async function route(req, res) {
     /^\/api\/movements\/([A-Za-z0-9-]+)\/(submit|unsubmit|review|approve|reject|return|post|reverse)$/,
   );
   const plantillaItemMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)$/);
+  const plantillaDisconnectMatch = url.pathname.match(
+    /^\/api\/plantilla\/([A-Za-z0-9-]+)\/disconnect$/,
+  );
   const plantillaHistoryMatch = url.pathname.match(/^\/api\/plantilla\/([A-Za-z0-9-]+)\/history$/);
   const engagementMatch = url.pathname.match(/^\/api\/engagements\/([A-Za-z0-9-]+)$/);
   const engagementActionMatch = url.pathname.match(
@@ -14929,6 +15197,8 @@ async function route(req, res) {
     return plantillaHandlers.create(req, res);
   if (req.method === "PATCH" && plantillaItemMatch)
     return plantillaHandlers.update(req, res, plantillaItemMatch[1]);
+  if (req.method === "POST" && plantillaDisconnectMatch)
+    return plantillaHandlers.vacate(req, res, plantillaDisconnectMatch[1]);
   if (req.method === "DELETE" && plantillaItemMatch)
     return plantillaHandlers.remove(req, res, plantillaItemMatch[1]);
   if (req.method === "GET" && plantillaHistoryMatch)

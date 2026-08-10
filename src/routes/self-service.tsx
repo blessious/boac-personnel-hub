@@ -189,7 +189,7 @@ export function EmployeeDashboardHome() {
           title="We could not load your dashboard"
           description={error}
           actionLabel="Try again"
-          onAction={() => window.location.reload()}
+          onAction={loadDashboard}
         />
       ) : !employee ? (
         <EmptyProfile
@@ -420,7 +420,7 @@ export function EmployeeProfileHome() {
           title="We could not load your employee profile"
           description={error}
           actionLabel="Try again"
-          onAction={() => window.location.reload()}
+          onAction={loadProfile}
         />
       ) : !employee ? (
         <EmptyProfile

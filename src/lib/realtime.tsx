@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import {
@@ -46,6 +46,29 @@ const RealtimeContext = createContext<RealtimeContextValue>({
   markRead: async () => undefined,
   markAllRead: async () => undefined,
 });
+
+const TOPIC_QUERY_KEYS: Record<string, unknown[][]> = {
+  employees: [["employees"], ["dashboard"]],
+  plantilla: [["plantilla"], ["employees", "onboarding-options", "plantilla"], ["dashboard"]],
+  movements: [["movements"], ["plantilla"], ["dashboard"]],
+  engagements: [["plantilla"], ["dashboard"]],
+  attendance: [["attendance"], ["dtr-correction-notifications"]],
+  leave: [["leave"], ["leave-notifications"]],
+  settings: [["settings"], ["employees", "onboarding-options", "organizations"]],
+  admin: [["admin"]],
+  notifications: [["leave-notifications"], ["dtr-correction-notifications"]],
+};
+
+function invalidateTopicQueries(
+  queryClient: QueryClient,
+  topic: string,
+) {
+  if (topic === "system") return;
+  const queryKeys = TOPIC_QUERY_KEYS[topic] || [];
+  queryKeys.forEach((queryKey) => {
+    queryClient.invalidateQueries({ queryKey, refetchType: "active" });
+  });
+}
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -90,7 +113,6 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       setConnected(true);
       if (hasConnected) {
         refreshNotifications();
-        queryClient.invalidateQueries({ refetchType: "active" });
         window.dispatchEvent(
           new CustomEvent("hris:realtime", {
             detail: { topic: "system", kind: "refresh" } as RealtimeEvent,
@@ -105,7 +127,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         window.dispatchEvent(new CustomEvent("hris:realtime", { detail: event }));
         if (invalidateTimer.current !== null) window.clearTimeout(invalidateTimer.current);
         invalidateTimer.current = window.setTimeout(() => {
-          queryClient.invalidateQueries({ refetchType: "active" });
+          invalidateTopicQueries(queryClient, event.topic);
         }, 180);
         if (event.kind === "notification") {
           if (!knownNotificationIds.current.has(event.id)) {

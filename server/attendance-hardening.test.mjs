@@ -20,6 +20,10 @@ const migrationSource = readFileSync(
   new URL("./migrations/2026-08-03_attendance_import_exceptions.sql", import.meta.url),
   "utf8",
 );
+const fieldLockMigrationSource = readFileSync(
+  new URL("./migrations/2026-08-10_dtr_field_locks.sql", import.meta.url),
+  "utf8",
+);
 
 test("DTR correction approval uses the configurable attendance permission", () => {
   assert.match(serverSource, /key:\s*"attendance\.corrections\.approve"/);
@@ -56,4 +60,33 @@ test("attendance bulk operations enforce bounded date ranges", () => {
   assert.match(serverSource, /validateAttendanceRange\(from,\s*to,\s*"Refresh date range"\)/);
   assert.match(serverSource, /validateAttendanceRange\(startDate,\s*endDate,\s*"Schedule override range"\)/);
   assert.match(serverSource, /validateAttendanceRange\(from,\s*to,\s*"Biometric sync range"\)/);
+});
+
+test("DTR edit locks are tracked per time slot and exposed through the API", () => {
+  for (const column of ["am_in_locked", "am_out_locked", "pm_in_locked", "pm_out_locked"]) {
+    assert.match(serverSource, new RegExp(`${column} TINYINT\\(1\\) NOT NULL DEFAULT 0`));
+    assert.match(serverSource, new RegExp(`ensureColumn\\("dtr_entries", "${column}"`));
+    assert.match(fieldLockMigrationSource, new RegExp(column));
+  }
+  assert.match(serverSource, /lockFields:\s*\{\s*amIn:\s*Boolean\(row\.am_in_locked\)/);
+  assert.match(attendanceApiSource, /lockFields:\s*\{\s*amIn:\s*boolean;/);
+  assert.match(attendanceApiSource, /lockDtr\?:\s*boolean/);
+});
+
+test("DTR refresh merges locked slots and recomputes attendance stats", () => {
+  assert.match(serverSource, /const existingLocks = dtrLockFields\(existing\)/);
+  assert.match(serverSource, /amIn:\s*existingLocks\.amIn \? formatTime\(existing\.am_in\) : params\.amIn/);
+  assert.match(serverSource, /calculateAttendanceStatsForShift\(mergedEntry,\s*entry\.shift \|\| null\)/);
+  assert.match(serverSource, /locked or labeled DTR row\(s\) were partially preserved/);
+  assert.doesNotMatch(serverSource, /source <> 'Imported'\)/);
+});
+
+test("DTR correction audit includes all employees and direct admin edits", () => {
+  assert.match(
+    attendanceRouteSource,
+    /employeeId:\s*isEmployee \|\| selectedEmployeeId === "all" \? undefined : selectedEmployeeId/,
+  );
+  assert.match(serverSource, /Direct admin DTR edit/);
+  assert.match(serverSource, /INSERT INTO dtr_correction_requests \(/);
+  assert.match(serverSource, /insertDtrCorrectionEvent\(connection,\s*\{\s*requestId,\s*eventType:\s*"Approved"/);
 });

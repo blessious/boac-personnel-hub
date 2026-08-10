@@ -31,6 +31,11 @@ const addDays = (v, n) => {
 const jsonValue = (v) => (typeof v === "string" ? JSON.parse(v || "null") : v);
 const overlaps = (aFrom, aTo, bFrom, bTo) =>
   aFrom <= (bTo || "9999-12-31") && bFrom <= (aTo || "9999-12-31");
+const latestServiceTime = (record) => record.serviceTo || "9999-12-31";
+const latestServiceFirst = (a, b) =>
+  latestServiceTime(b).localeCompare(latestServiceTime(a)) ||
+  b.serviceFrom.localeCompare(a.serviceFrom) ||
+  a.source.localeCompare(b.source);
 
 export async function initializeServiceRecordSchema(pool, employeeIdDefinition) {
   await pool.query(`CREATE TABLE IF NOT EXISTS service_record_entries (
@@ -266,23 +271,24 @@ export function createServiceRecordHandlers({
     );
     const automatic = automaticRows(employee, movementRows, gradeMap);
     const manualMapped = manual.map(manualRow);
-    const records = [...manualMapped, ...automatic].sort(
+    const chronologicalRecords = [...manualMapped, ...automatic].sort(
       (a, b) => a.serviceFrom.localeCompare(b.serviceFrom) || a.source.localeCompare(b.source),
     );
     const warnings = [];
-    for (let i = 0; i < records.length; i++)
-      for (let j = i + 1; j < records.length; j++)
+    for (let i = 0; i < chronologicalRecords.length; i++)
+      for (let j = i + 1; j < chronologicalRecords.length; j++)
         if (
           overlaps(
-            records[i].serviceFrom,
-            records[i].serviceTo,
-            records[j].serviceFrom,
-            records[j].serviceTo,
+            chronologicalRecords[i].serviceFrom,
+            chronologicalRecords[i].serviceTo,
+            chronologicalRecords[j].serviceFrom,
+            chronologicalRecords[j].serviceTo,
           )
         )
           warnings.push(
-            `Overlapping periods: ${records[i].serviceFrom} (${records[i].source}) and ${records[j].serviceFrom} (${records[j].source})`,
+            `Overlapping periods: ${chronologicalRecords[i].serviceFrom} (${chronologicalRecords[i].source}) and ${chronologicalRecords[j].serviceFrom} (${chronologicalRecords[j].source})`,
           );
+    const records = [...chronologicalRecords].sort(latestServiceFirst);
     return { employee, records, warnings };
   };
   const payload = (b) => {

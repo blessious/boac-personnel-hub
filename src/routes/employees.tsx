@@ -309,7 +309,7 @@ function EmployeesPage() {
 
   const employees = employeeListQuery.data?.employees ?? [];
   const total = employeeListQuery.data?.total ?? 0;
-  const loading = employeeListQuery.isLoading || employeeListQuery.isFetching;
+  const loading = employeeListQuery.isLoading;
   const error = employeeListQuery.error instanceof Error ? employeeListQuery.error.message : "";
   const options: SettingsOptions = settingsQuery.data ?? {
     departments: [],

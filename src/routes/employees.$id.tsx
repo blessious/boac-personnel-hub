@@ -233,7 +233,7 @@ type FieldConfig = {
 };
 
 const MAX_201_FILE_BYTES = 8 * 1024 * 1024;
-const MAX_PROFILE_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_PROFILE_IMAGE_BYTES = 50 * 1024 * 1024;
 
 const SECTION_FIELDS: Record<string, FieldConfig[]> = {
   family: [
@@ -395,11 +395,7 @@ function EmployeeFile() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [sectionActionRequest, setSectionActionRequest] = useState<{
-    tab: Tab | null;
-    nonce: number;
-  }>({ tab: null, nonce: 0 });
-  const [workDownloadRequest, setWorkDownloadRequest] = useState(0);
+  const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
   const [photoSaving, setPhotoSaving] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -417,6 +413,10 @@ function EmployeeFile() {
   };
 
   useEffect(load, [id]);
+  useEffect(() => {
+    setPendingPhotoUrl(null);
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  }, [id]);
   useRealtimeRefresh(load, ["employees", "settings"]);
   useEffect(() => {
     Promise.all([
@@ -497,11 +497,10 @@ function EmployeeFile() {
       return;
     }
     if (file.size > MAX_PROFILE_IMAGE_BYTES) {
-      toast.error("Photo must be 2 MB or smaller");
+      toast.error("Photo must be 50 MB or smaller");
       return;
     }
 
-    setPhotoSaving(true);
     try {
       const photoUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -509,19 +508,23 @@ function EmployeeFile() {
         reader.onerror = () => reject(new Error("Unable to read the selected photo"));
         reader.readAsDataURL(file);
       });
-      const result = await updateEmployee(employee.id, { photoUrl });
-      setEmployee(result.employee);
-      toast.success("Employee photo updated");
+      setPendingPhotoUrl(photoUrl);
+      toast.info("Photo selected. Click Update to save it.");
     } catch (photoError) {
-      toast.error(photoError instanceof Error ? photoError.message : "Unable to update photo");
+      toast.error(photoError instanceof Error ? photoError.message : "Unable to read photo");
     } finally {
-      setPhotoSaving(false);
       if (photoInputRef.current) photoInputRef.current.value = "";
     }
   };
 
   const deleteHeaderPhoto = async () => {
-    if (!canEditProfile || !employee.photoUrl || photoSaving) return;
+    if (!canEditProfile || photoSaving) return;
+    if (pendingPhotoUrl !== null) {
+      setPendingPhotoUrl(null);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+      return;
+    }
+    if (!employee.photoUrl) return;
     if (!window.confirm("Delete this employee photo?")) return;
 
     setPhotoSaving(true);
@@ -535,12 +538,6 @@ function EmployeeFile() {
       setPhotoSaving(false);
     }
   };
-
-  const requestSectionAdd = () =>
-    setSectionActionRequest((current) => ({
-      tab: active,
-      nonce: current.nonce + 1,
-    }));
 
   return (
     <AppShell
@@ -574,24 +571,10 @@ function EmployeeFile() {
           </nav>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {active === "WORK EXPERIENCE" && (
-              <Button
-                variant="outline"
-                onClick={() => setWorkDownloadRequest((current) => current + 1)}
-              >
-                <Download className="h-4 w-4" />
-                Generate WES
-              </Button>
-            )}
             {active === "PERSONAL" && canEditProfile ? (
               <Button type="submit" form="employee-personal-form">
                 <Pencil className="h-4 w-4" />
                 Update
-              </Button>
-            ) : SECTION_BY_TAB[active] && canEditSection ? (
-              <Button onClick={requestSectionAdd}>
-                <Plus className="h-4 w-4" />
-                Add Record
               </Button>
             ) : null}
           </div>
@@ -600,6 +583,7 @@ function EmployeeFile() {
         <EmployeeSummaryCard
           assignment={currentAssignment}
           employee={employee}
+          previewPhotoUrl={pendingPhotoUrl}
           canEditPhoto={canEditProfile}
           photoSaving={photoSaving}
           photoInputRef={photoInputRef}
@@ -679,7 +663,11 @@ function EmployeeFile() {
                 canEdit={canEditProfile}
                 selfService={Boolean(canEditOwnProfile && !canManageEmployees)}
                 currentAssignment={currentAssignment}
-                onSaved={(updated) => setEmployee(updated)}
+                pendingPhotoUrl={pendingPhotoUrl}
+                onSaved={(updated) => {
+                  setEmployee(updated);
+                  setPendingPhotoUrl(null);
+                }}
               />
             ) : active === "LEAVE BALANCE" ? (
               <LeaveBalanceTab employeeId={employee.id} />
@@ -691,8 +679,6 @@ function EmployeeFile() {
                 rows={sections[SECTION_BY_TAB[active] || ""] || []}
                 canEdit={canEditSection}
                 onChange={load}
-                addRequestKey={sectionActionRequest.tab === active ? sectionActionRequest.nonce : 0}
-                downloadRequestKey={active === "WORK EXPERIENCE" ? workDownloadRequest : 0}
               />
             )}
           </div>
@@ -750,6 +736,7 @@ function EmployeeFileStepper({ active, onChange }: { active: Tab; onChange: (tab
 function EmployeeSummaryCard({
   assignment,
   employee,
+  previewPhotoUrl,
   canEditPhoto,
   photoSaving,
   photoInputRef,
@@ -758,6 +745,7 @@ function EmployeeSummaryCard({
 }: {
   assignment: CurrentAssignment;
   employee: EmployeeRecord;
+  previewPhotoUrl: string | null;
   canEditPhoto: boolean;
   photoSaving: boolean;
   photoInputRef: RefObject<HTMLInputElement | null>;
@@ -765,15 +753,16 @@ function EmployeeSummaryCard({
   onDeletePhoto: () => void;
 }) {
   const substantive = assignment.substantive;
+  const displayPhotoUrl = previewPhotoUrl ?? employee.photoUrl;
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
         <div className="flex min-w-0 flex-1 items-center gap-4">
           <div className="group relative shrink-0">
             <Avatar className="h-20 w-20 border border-border ring-4 ring-muted/60">
-              {employee.photoUrl && (
+              {displayPhotoUrl && (
                 <AvatarImage
-                  src={employee.photoUrl}
+                  src={displayPhotoUrl}
                   alt={formatEmployeeName(employee)}
                   className="object-cover"
                 />
@@ -796,10 +785,10 @@ function EmployeeSummaryCard({
                   </button>
                   <button
                     type="button"
-                    disabled={photoSaving || !employee.photoUrl}
+                    disabled={photoSaving || !displayPhotoUrl}
                     onClick={onDeletePhoto}
                     aria-label="Delete employee photo"
-                    title="Delete photo"
+                    title={previewPhotoUrl ? "Clear selected photo" : "Delete photo"}
                     className="grid h-7 flex-1 place-items-center border-l border-white/25 hover:bg-red-600/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white disabled:opacity-40"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -940,6 +929,7 @@ function PersonalTab({
   canEdit,
   selfService,
   currentAssignment,
+  pendingPhotoUrl,
   onSaved,
 }: {
   employee: EmployeeRecord;
@@ -949,6 +939,7 @@ function PersonalTab({
   canEdit: boolean;
   selfService: boolean;
   currentAssignment: CurrentAssignment;
+  pendingPhotoUrl: string | null;
   onSaved: (employee: EmployeeRecord) => void;
 }) {
   const [form, setForm] = useState<EmployeeRecord>(employee);
@@ -982,7 +973,10 @@ function PersonalTab({
 
   const save = async () => {
     try {
-      const result = await updateEmployee(employee.id, { ...form, photoUrl: undefined });
+      const result = await updateEmployee(employee.id, {
+        ...form,
+        photoUrl: pendingPhotoUrl ?? undefined,
+      });
       onSaved(result.employee);
       setForm(result.employee);
       toast.success("Personal information saved");
@@ -1292,8 +1286,6 @@ function SectionTab({
   rows,
   canEdit,
   onChange,
-  addRequestKey,
-  downloadRequestKey,
 }: {
   employeeId: string;
   section: string;
@@ -1301,8 +1293,6 @@ function SectionTab({
   rows: SectionRow[];
   canEdit: boolean;
   onChange: () => void;
-  addRequestKey: number;
-  downloadRequestKey: number;
 }) {
   const fields = useMemo(() => SECTION_FIELDS[section] || [], [section]);
   const dateRange = SECTION_DATE_RANGES[section];
@@ -1310,6 +1300,7 @@ function SectionTab({
   const [form, setForm] = useState<Record<string, string | number | boolean | null>>(blank);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [wesGenerating, setWesGenerating] = useState(false);
   const generatingWesRef = useRef(false);
 
   useEffect(() => {
@@ -1317,15 +1308,18 @@ function SectionTab({
     setEditingId(null);
     setShowForm(false);
   }, [blank]);
-  useEffect(() => {
-    if (addRequestKey <= 0 || !canEdit) return;
+
+  const openAddForm = () => {
+    if (!canEdit) return;
     setForm(blank);
     setEditingId(null);
     setShowForm(true);
-  }, [addRequestKey, blank, canEdit]);
-  useEffect(() => {
-    if (downloadRequestKey <= 0 || section !== "work" || generatingWesRef.current) return;
+  };
+
+  const generateWes = () => {
+    if (section !== "work" || generatingWesRef.current) return;
     generatingWesRef.current = true;
+    setWesGenerating(true);
     generateEmployeeWesDocx(employeeId)
       .then((result) => {
         toast.success("Work Experience Sheet generated");
@@ -1338,8 +1332,9 @@ function SectionTab({
       )
       .finally(() => {
         generatingWesRef.current = false;
+        setWesGenerating(false);
       });
-  }, [downloadRequestKey, employeeId, section]);
+  };
 
   const set = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const setFile = (key: string, file: File | null) => {
@@ -1406,6 +1401,20 @@ function SectionTab({
   };
   return (
     <div>
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        {section === "work" && (
+          <Button variant="outline" onClick={generateWes} disabled={wesGenerating}>
+            <Download className="h-4 w-4" />
+            {wesGenerating ? "Generating WES" : "Generate WES"}
+          </Button>
+        )}
+        {canEdit && (
+          <Button onClick={openAddForm}>
+            <Plus className="h-4 w-4" />
+            Add Record
+          </Button>
+        )}
+      </div>
       {section === "work" ? (
         <WorkExperienceRecords rows={rows} canEdit={canEdit} onEdit={edit} onDelete={remove} />
       ) : (
@@ -1561,6 +1570,39 @@ function workDateTime(row: SectionRow) {
   const dateFrom = String(row.payload.dateFrom || "");
   const startTime = dateFrom ? new Date(dateFrom).getTime() : 0;
   return Number.isFinite(startTime) ? startTime : 0;
+}
+
+function dateTimeValue(value: unknown, presentOnEmpty = false) {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (!raw) return presentOnEmpty ? Number.MAX_SAFE_INTEGER : 0;
+  if (raw === "present" || raw === "current") return Number.MAX_SAFE_INTEGER;
+  const time = new Date(raw).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function latestSectionTime(section: string, row: SectionRow) {
+  if (section === "salary") {
+    return dateTimeValue(row.payload.date);
+  }
+  const range = SECTION_DATE_RANGES[section];
+  if (range) {
+    return Math.max(
+      dateTimeValue(row.payload[range.to], Boolean(range.allowOpenEnded)),
+      dateTimeValue(row.payload[range.from]),
+    );
+  }
+  const dateField = SECTION_FIELDS[section]?.find((field) => field.type === "date");
+  return dateField ? dateTimeValue(row.payload[dateField.key]) : dateTimeValue(row.updatedAt);
+}
+
+function latestRowsFirst(section: string, rows: SectionRow[]) {
+  return [...rows].sort((left, right) => {
+    const byDate = latestSectionTime(section, right) - latestSectionTime(section, left);
+    if (byDate !== 0) return byDate;
+    return dateTimeValue(right.updatedAt || right.createdAt) - dateTimeValue(left.updatedAt || left.createdAt);
+  });
 }
 
 function formatRecordDate(value: unknown, present = false) {
@@ -1748,15 +1790,16 @@ function RecordTable({
   }
 
   const visibleFields = fields.slice(0, 6);
+  const sortedRows = latestRowsFirst(section, rows);
   return (
     <div className="my-2 overflow-hidden rounded-xl border border-border bg-card">
       <div className="mobile-record-list">
-        {rows.length === 0 ? (
+        {sortedRows.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
             No records found.
           </div>
         ) : (
-          rows.map((row) => (
+          sortedRows.map((row) => (
             <article key={row.id} className="mobile-record-card">
               <div className="mobile-record-card__grid">
                 {visibleFields.map((field) => (
@@ -1803,7 +1846,7 @@ function RecordTable({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {sortedRows.length === 0 ? (
               <tr>
                 <td
                   colSpan={visibleFields.length + 1}
@@ -1813,7 +1856,7 @@ function RecordTable({
                 </td>
               </tr>
             ) : (
-              rows.map((row, index) => (
+              sortedRows.map((row, index) => (
                 <tr
                   key={row.id}
                   className={cn(
@@ -1868,16 +1911,17 @@ function SalaryRecordTable({
   const moneyField = (key: string, payload: SectionRow["payload"]) =>
     formatCurrencyValue(payload[key] ?? "");
   const salaryDateField: FieldConfig = { key: "date", label: "Date", type: "date" };
+  const sortedRows = latestRowsFirst("salary", rows);
 
   return (
     <div className="my-2 overflow-hidden rounded-xl border border-border bg-card">
       <div className="mobile-record-list">
-        {rows.length === 0 ? (
+        {sortedRows.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
             No records found.
           </div>
         ) : (
-          rows.map((row) => (
+          sortedRows.map((row) => (
             <article key={row.id} className="mobile-record-card">
               <div className="mobile-record-card__grid">
                 <div className="mobile-record-card__field">
@@ -1979,7 +2023,7 @@ function SalaryRecordTable({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {sortedRows.length === 0 ? (
               <tr>
                 <td
                   colSpan={canEdit ? 11 : 10}
@@ -1989,7 +2033,7 @@ function SalaryRecordTable({
                 </td>
               </tr>
             ) : (
-              rows.map((row, index) => (
+              sortedRows.map((row, index) => (
                 <tr
                   key={row.id}
                   className={cn(

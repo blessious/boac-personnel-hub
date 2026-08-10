@@ -171,7 +171,12 @@ const employeeSnapshot = (employee, occupancy = null) => ({
     department: employee.department,
     position: employee.position,
     itemNo: employee.item_no,
+    status: employee.status,
     empStatus: employee.emp_status,
+    lifecycleState: employee.lifecycle_state || "Active",
+    currentOrganizationId: employee.current_org_unit_ref_id
+      ? Number(employee.current_org_unit_ref_id)
+      : null,
   },
   occupancy: occupancy
     ? {
@@ -621,7 +626,7 @@ export function createPlantillaHandlers({
       );
       if (Number(occupancy.total || 0) > 0)
         throw Error(
-          "This item has occupancy history. Mark it Inactive or Abolished instead of deleting it.",
+          "This item has occupancy history and cannot be deleted. Mark it Inactive or Abolished instead.",
         );
       const [[movement]] = await c.execute(
         "SELECT COUNT(*) total FROM personnel_movements WHERE target_plantilla_item_id=:id",
@@ -629,7 +634,7 @@ export function createPlantillaHandlers({
       );
       if (Number(movement.total || 0) > 0)
         throw Error(
-          "This item is referenced by employee movements. Mark it Inactive or Abolished instead of deleting it.",
+          "This item is referenced by employee movements and cannot be deleted. Mark it Inactive or Abolished instead.",
         );
       await c.execute("DELETE FROM plantilla_item_history WHERE plantilla_item_id=:id", { id });
       await c.execute("DELETE FROM plantilla_items WHERE id=:id", { id });
@@ -677,7 +682,7 @@ export function createPlantillaHandlers({
       if (!i) throw Error("Plantilla item not found");
       if (i.item_status !== "Active") throw Error("Only active items can be occupied");
       const [[e]] = await c.execute(
-        "SELECT id,employee_no,department,position,item_no,emp_status FROM employees WHERE id=:employeeId AND is_hidden=0 FOR UPDATE",
+        "SELECT id,employee_no,department,position,item_no,status,emp_status,lifecycle_state,current_org_unit_ref_id FROM employees WHERE id=:employeeId AND is_hidden=0 FOR UPDATE",
         { employeeId },
       );
       if (!e) throw Error("Select a valid employee");
@@ -713,18 +718,24 @@ export function createPlantillaHandlers({
                 position=:title,
                 department=COALESCE(:office,department),
                 date_employed=COALESCE(date_employed,:dateEmployed),
-                emp_status='Active'
+                emp_status='Active',
+                lifecycle_state='Active',
+                current_org_unit_ref_id=COALESCE(:sectionId,:divisionId,:officeId,:sectorId,current_org_unit_ref_id)
           WHERE id=:employeeId`,
         {
           itemNumber: i.item_number,
           title: i.position_title,
           office: i.office_name || i.organization_name || null,
           dateEmployed: dateFrom,
+          sectionId: i.section_ref_id,
+          divisionId: i.division_ref_id,
+          officeId: i.office_ref_id,
+          sectorId: i.sector_ref_id,
           employeeId,
         },
       );
       const [[updatedEmployee]] = await c.execute(
-        "SELECT id,employee_no,department,position,item_no,emp_status FROM employees WHERE id=:employeeId",
+        "SELECT id,employee_no,department,position,item_no,status,emp_status,lifecycle_state,current_org_unit_ref_id FROM employees WHERE id=:employeeId",
         { employeeId },
       );
       const after = employeeSnapshot(updatedEmployee, {
@@ -776,7 +787,7 @@ export function createPlantillaHandlers({
     const c = await pool.getConnection();
     try {
       const b = await readBody(req),
-        dateTo = date(b.dateTo, "Vacancy date", true);
+        dateTo = date(b.dateTo, "Disconnect date", true);
       await c.beginTransaction();
       const [[o]] = await c.execute(
         "SELECT po.*,pi.item_number,pi.position_id,pi.salary_grade_id,pi.authorized_salary FROM plantilla_occupancies po JOIN plantilla_items pi ON pi.id=po.plantilla_item_id WHERE po.plantilla_item_id=:id AND po.status='Active' FOR UPDATE",
@@ -786,7 +797,7 @@ export function createPlantillaHandlers({
       const from = day(o.date_from);
       if (dateTo < from) throw Error("Vacancy date cannot be earlier than assignment date");
       const [[employeeBefore]] = await c.execute(
-        "SELECT id,employee_no,department,position,item_no,emp_status FROM employees WHERE id=:employeeId FOR UPDATE",
+        "SELECT id,employee_no,department,position,item_no,status,emp_status,lifecycle_state,current_org_unit_ref_id FROM employees WHERE id=:employeeId FOR UPDATE",
         { employeeId: o.employee_id },
       );
       const before = employeeSnapshot(employeeBefore, o);
@@ -795,11 +806,23 @@ export function createPlantillaHandlers({
         { dateTo, userId: u.id, remarks: String(b.remarks || "").trim() || null, oid: o.id },
       );
       await c.execute(
-        "UPDATE employees SET item_no=NULL WHERE id=:employeeId AND item_no=:itemNumber",
-        { employeeId: o.employee_id, itemNumber: o.item_number },
+        `UPDATE employees
+            SET item_no=NULL,
+                department='',
+                position='',
+                status='Unassigned',
+                emp_status='Inactive',
+                lifecycle_state='Inactive',
+                current_org_unit_ref_id=NULL
+          WHERE id=:employeeId`,
+        { employeeId: o.employee_id },
+      );
+      await c.execute(
+        "UPDATE users SET is_active=0 WHERE employee_id=:employeeId",
+        { employeeId: o.employee_id },
       );
       const [[employeeAfter]] = await c.execute(
-        "SELECT id,employee_no,department,position,item_no,emp_status FROM employees WHERE id=:employeeId",
+        "SELECT id,employee_no,department,position,item_no,status,emp_status,lifecycle_state,current_org_unit_ref_id FROM employees WHERE id=:employeeId",
         { employeeId: o.employee_id },
       );
       const after = employeeSnapshot(employeeAfter, null);
@@ -812,22 +835,22 @@ export function createPlantillaHandlers({
         targetPlantillaItemId: null,
         targetPositionId: null,
         targetSalaryGradeId: null,
-        remarks: String(b.remarks || "").trim() || "Plantilla item vacated by direct action",
+        remarks: String(b.remarks || "").trim() || "Employee disconnected from Plantilla item",
         before,
         after,
         userId: u.id,
-        decisionRemarks: `Direct vacancy effective ${dateTo}`,
+        decisionRemarks: `Direct disconnect effective ${dateTo}`,
       });
       const item = await read(id, c);
       await history(
         c,
         id,
-        "Vacated",
+        "Disconnected",
         { occupancyId: o.id, employeeId: o.employee_id, dateTo },
         u.id,
       );
       await c.commit();
-      await logAudit(u.id, "plantilla.vacate", { id, employeeId: o.employee_id }, req);
+      await logAudit(u.id, "plantilla.disconnect", { id, employeeId: o.employee_id }, req);
       return json(res, 200, { item });
     } catch (e) {
       await c.rollback().catch(() => {});

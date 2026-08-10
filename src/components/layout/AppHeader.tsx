@@ -45,7 +45,7 @@ import { navNotificationCount, useRealtime } from "@/lib/realtime";
 import { cn, formatDisplayDateTime } from "@/lib/utils";
 import { APP_NAV, groupNavItems, navForPermissions } from "@/components/layout/navigation";
 
-const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024;
+const MAX_PROFILE_PHOTO_BYTES = 50 * 1024 * 1024;
 const PROFILE_PHOTO_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
 function routeBreadcrumbs(path: string) {
@@ -142,7 +142,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
       return;
     }
     if (file.size > MAX_PROFILE_PHOTO_BYTES) {
-      toast.error("Profile photo must be 2 MB or smaller");
+      toast.error("Profile photo must be 50 MB or smaller");
       return;
     }
 

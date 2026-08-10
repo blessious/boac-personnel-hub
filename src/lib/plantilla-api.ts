@@ -103,3 +103,8 @@ export const savePlantilla = (value: PlantillaPayload, id?: string) =>
   });
 export const deletePlantilla = (id: string) =>
   api<{ ok: true }>(`/api/plantilla/${id}`, { method: "DELETE" });
+export const disconnectPlantillaEmployee = (id: string, dateTo: string, remarks: string) =>
+  api<{ item: PlantillaItem }>(`/api/plantilla/${id}/disconnect`, {
+    method: "POST",
+    body: JSON.stringify({ dateTo, remarks }),
+  });

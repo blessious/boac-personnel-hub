@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ArrowRightLeft,
   Archive,
+  Ban,
   BriefcaseBusiness,
   ChevronRight,
   History,
@@ -55,9 +56,11 @@ import { api, isAbortError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import {
+  EMPLOYMENT_STATUSES,
   createEmployee,
   listEmployees,
   type EmployeeAccountCredentials,
+  type EmploymentStatus,
   type EmployeeRecord,
   type SettingsOptions,
 } from "@/lib/employees-api";
@@ -70,6 +73,7 @@ import {
 import {
   emptyPlantilla,
   deletePlantilla,
+  disconnectPlantillaEmployee,
   listPlantilla,
   savePlantilla,
   type PlantillaItem,
@@ -130,8 +134,13 @@ const ITEM_ACTIONS = new Set(["Original Appointment", "Promotion", "Transfer"]);
 const PROFILE_ACTIONS = new Set(["Detail", "Designation"]);
 const TEMPORARY_ACTIONS = new Set(["Detail", "Designation", "Reassignment", "Job Rotation"]);
 const SEPARATIONS = new Set(["Resignation", "Retirement", "Termination", "Death"]);
-const displayPlantillaClassification = (name: string) =>
-  name.trim().toLowerCase() === "plantilla" ? "Permanent" : name;
+const displayPlantillaClassification = (name: string): EmploymentStatus => {
+  const normalized = name.trim();
+  if (!normalized || normalized.toLowerCase() === "plantilla") return "Permanent";
+  return EMPLOYMENT_STATUSES.includes(normalized as (typeof EMPLOYMENT_STATUSES)[number])
+    ? (normalized as (typeof EMPLOYMENT_STATUSES)[number])
+    : "Permanent";
+};
 const formatEmployeeName = (employee: {
   lastname?: string;
   firstname?: string;
@@ -243,15 +252,14 @@ function PlantillaPage() {
     },
     [engagementStatus],
   );
-  useEffect(() => {
-    const controller = new AbortController();
+  const loadConfig = useCallback((signal?: AbortSignal) => {
     Promise.all([
-      api<SettingsOptions>("/api/settings", { signal: controller.signal }),
+      api<SettingsOptions>("/api/settings", { signal }),
       api<{
         libraries: Record<ReferenceCategory, ReferenceRow[]>;
         hierarchy: OrganizationHierarchy;
-      }>("/api/settings/references", { signal: controller.signal }),
-      loadAllEmployees(controller.signal),
+      }>("/api/settings/references", { signal }),
+      loadAllEmployees(signal),
     ])
       .then(([s, r, e]) => {
         setSettings(s);
@@ -266,9 +274,14 @@ function PlantillaPage() {
           toast.error(e.message);
         }
       });
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadConfig(controller.signal);
 
     return () => controller.abort();
-  }, []);
+  }, [loadConfig]);
   useEffect(() => {
     const controller = new AbortController();
     const t = setTimeout(() => load(controller.signal), 200);
@@ -384,10 +397,68 @@ function PlantillaPage() {
       setBusy(false);
     }
   };
+  const payloadFromItem = (item: PlantillaItem, overrides: Partial<PlantillaPayload> = {}) => ({
+    itemNumber: item.itemNumber,
+    positionId: item.positionId ? String(item.positionId) : "",
+    salaryGradeId: item.salaryGradeId ? String(item.salaryGradeId) : "",
+    sectorId: item.sectorId ? String(item.sectorId) : "",
+    officeId: item.officeId ? String(item.officeId) : "",
+    divisionId: item.divisionId ? String(item.divisionId) : "",
+    sectionId: item.sectionId ? String(item.sectionId) : "",
+    plantillaTypeId: item.plantillaTypeId ? String(item.plantillaTypeId) : "",
+    budgetCodeId: item.budgetCodeId ? String(item.budgetCodeId) : "",
+    authorizedSalary: item.authorizedSalary == null ? "" : String(item.authorizedSalary),
+    itemStatus: item.itemStatus,
+    effectiveFrom: item.effectiveFrom || "",
+    effectiveTo: item.effectiveTo || "",
+    notes: item.notes,
+    ...overrides,
+  });
+  const updateItemStatus = async (item: PlantillaItem, itemStatus: "Inactive" | "Abolished") => {
+    if (
+      !window.confirm(
+        `Mark plantilla item ${item.itemNumber} as ${itemStatus}? This keeps its occupancy and movement history but removes it from active vacancy workflows.`,
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await savePlantilla(payloadFromItem(item, { itemStatus }), item.id);
+      toast.success(`Plantilla item marked ${itemStatus}`);
+      await load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const disconnectEmployee = async (item: PlantillaItem) => {
+    if (!item.occupant) return;
+    const dateTo = window.prompt("Disconnect date (YYYY-MM-DD)", today());
+    if (!dateTo) return;
+    const remarks = window.prompt("Disconnect remarks", "Employee disconnected from Plantilla item");
+    if (remarks === null) return;
+    if (
+      !window.confirm(
+        `Disconnect ${item.occupant.employeeName || item.occupant.employeeNo} from plantilla item ${item.itemNumber}? The employee will become an inactive unassigned record.`,
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await disconnectPlantillaEmployee(item.id, dateTo, remarks);
+      toast.success("Employee disconnected from Plantilla item");
+      await Promise.all([load(), loadAllEmployees().then(setEmployees)]);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const remove = async (item: PlantillaItem) => {
     if (
       !window.confirm(
-        `Delete plantilla item ${item.itemNumber}? This is only allowed for mistaken entries with no occupancy or movement history. Used items should be marked Inactive or Abolished.`,
+        `Delete plantilla item ${item.itemNumber}? Delete is only for mistaken entries that were never occupied and never used by a movement. Used items must be marked Inactive or Abolished instead.`,
       )
     )
       return;
@@ -659,7 +730,7 @@ function PlantillaPage() {
         <ErrorPanel
           title="Unable to load Plantilla references"
           message={configError}
-          onRetry={() => window.location.reload()}
+          onRetry={() => loadConfig()}
         />
       )}
       <div className="mt-5 grid gap-2 md:flex md:flex-wrap">
@@ -801,6 +872,8 @@ function PlantillaPage() {
                 onPrepareExistingPerson={prepareExistingPerson}
                 onHistory={showHistory}
                 onEdit={openEdit}
+                onDisconnect={disconnectEmployee}
+                onStatusChange={updateItemStatus}
                 onDelete={remove}
               />
             </div>
@@ -876,6 +949,8 @@ function PlantillaPage() {
                     onPrepareExistingPerson={prepareExistingPerson}
                     onHistory={showHistory}
                     onEdit={openEdit}
+                    onDisconnect={disconnectEmployee}
+                    onStatusChange={updateItemStatus}
                     onDelete={remove}
                   />
                 </td>
@@ -1777,6 +1852,8 @@ function PlantillaActionsMenu({
   onPrepareExistingPerson,
   onHistory,
   onEdit,
+  onDisconnect,
+  onStatusChange,
   onDelete,
 }: {
   item: PlantillaItem;
@@ -1786,9 +1863,13 @@ function PlantillaActionsMenu({
   onPrepareExistingPerson: (item: PlantillaItem) => void;
   onHistory: (item: PlantillaItem) => void;
   onEdit: (item: PlantillaItem) => void;
+  onDisconnect: (item: PlantillaItem) => void;
+  onStatusChange: (item: PlantillaItem, itemStatus: "Inactive" | "Abolished") => void;
   onDelete: (item: PlantillaItem) => void;
 }) {
   const canPrepareMovement = canManage && item.itemStatus === "Active" && !item.pendingMovement;
+  const canDisconnect = canManage && item.itemStatus === "Active" && Boolean(item.occupant);
+  const canRetireItem = canManage && item.itemStatus === "Active" && !item.occupant;
 
   return (
     <div className="inline-flex items-center justify-end gap-2">
@@ -1844,6 +1925,24 @@ function PlantillaActionsMenu({
                 <BriefcaseBusiness className="mr-2 h-4 w-4" />
                 Edit
               </DropdownMenuItem>
+              {canDisconnect && (
+                <DropdownMenuItem disabled={busy} onClick={() => onDisconnect(item)}>
+                  <Archive className="mr-2 h-4 w-4" />
+                  Disconnect employee
+                </DropdownMenuItem>
+              )}
+              {canRetireItem && (
+                <>
+                  <DropdownMenuItem disabled={busy} onClick={() => onStatusChange(item, "Inactive")}>
+                    <Archive className="mr-2 h-4 w-4" />
+                    Mark Inactive
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={busy} onClick={() => onStatusChange(item, "Abolished")}>
+                    <Ban className="mr-2 h-4 w-4" />
+                    Mark Abolished
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuItem
                 disabled={busy}
                 onClick={() => onDelete(item)}

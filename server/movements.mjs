@@ -301,7 +301,7 @@ export function createMovementHandlers({
   };
   const currentSnapshot = async (employeeId, connection = pool, lock = false) => {
     const [[employee]] = await connection.execute(
-      `SELECT id,employee_no,department,position,item_no,emp_status,lifecycle_state,current_org_unit_ref_id
+      `SELECT id,employee_no,department,position,item_no,status,emp_status,lifecycle_state,current_org_unit_ref_id
          FROM employees WHERE id=:employeeId ${lock ? "FOR UPDATE" : ""}`,
       { employeeId },
     );
@@ -330,6 +330,7 @@ export function createMovementHandlers({
         department: employee.department,
         position: employee.position,
         itemNo: employee.item_no,
+        status: employee.status,
         empStatus: employee.emp_status,
         lifecycleState: employee.lifecycle_state || "Active",
         currentOrganizationId: employee.current_org_unit_ref_id
@@ -1134,7 +1135,15 @@ export function createMovementHandlers({
           },
         );
         await connection.execute(
-          "UPDATE employees SET item_no=NULL,emp_status='Inactive',lifecycle_state='Inactive',current_org_unit_ref_id=NULL WHERE id=:employeeId",
+          `UPDATE employees
+              SET item_no=NULL,
+                  department='',
+                  position='',
+                  status='Unassigned',
+                  emp_status='Inactive',
+                  lifecycle_state='Inactive',
+                  current_org_unit_ref_id=NULL
+            WHERE id=:employeeId`,
           { employeeId: movement.employee_id },
         );
         await connection.execute("UPDATE users SET is_active=0 WHERE employee_id=:employeeId", {
@@ -1488,7 +1497,7 @@ export function createMovementHandlers({
           { id: after.temporaryAssignmentId, userId: user.id },
         );
       await connection.execute(
-        `UPDATE employees SET department=:department,position=:position,item_no=:itemNo,emp_status=:empStatus,
+        `UPDATE employees SET department=:department,position=:position,item_no=:itemNo,status=COALESCE(:status,status),emp_status=:empStatus,
           lifecycle_state=:lifecycleState,current_org_unit_ref_id=:currentOrganizationId WHERE id=:employeeId`,
         { ...before.employee, employeeId: movement.employee_id },
       );

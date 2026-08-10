@@ -26,6 +26,12 @@ export type DtrEntry = {
   shiftType: string;
   reviewFlags: string[];
   locked: boolean;
+  lockFields: {
+    amIn: boolean;
+    amOut: boolean;
+    pmIn: boolean;
+    pmOut: boolean;
+  };
   importId: string;
   editedByName: string;
   editedAt: string;
@@ -68,6 +74,12 @@ export type DtrCorrectionRequest = {
     label: string;
     status: string;
     remarks: string;
+    lockFields?: {
+      amIn?: boolean;
+      amOut?: boolean;
+      pmIn?: boolean;
+      pmOut?: boolean;
+    };
   };
   reason: string;
   status: DtrCorrectionStatus;
@@ -172,6 +184,7 @@ export type DtrPayload = {
   status?: string;
   remarks?: string;
   shiftTemplateCode?: string;
+  lockDtr?: boolean;
 };
 
 export type DtrNoter = {

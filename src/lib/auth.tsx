@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { AUTH_EXPIRED_EVENT, api, resetAuthExpiredSignal } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export type Role = "Super Admin" | "Admin" | "HR" | "Approver" | "Employee" | "Viewer";
@@ -108,12 +108,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let alive = true;
     api<{ user: User | null }>("/api/auth/me")
       .then(({ user }) => {
-        if (alive) setUser(user);
+        if (alive) {
+          resetAuthExpiredSignal();
+          setUser(user);
+        }
       })
       .catch((error) => {
         if (alive) {
+          const status =
+            typeof error === "object" && error && "status" in error
+              ? Number(error.status)
+              : 0;
           setUser(null);
-          setBootstrapError(error instanceof Error ? error.message : "Unable to load your session");
+          setBootstrapError(
+            status === 401
+              ? null
+              : error instanceof Error
+                ? error.message
+                : "Unable to load your session",
+          );
         }
       })
       .finally(() => {
@@ -127,11 +140,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => loadSession(), [loadSession]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handleAuthExpired = () => {
+      setBootstrapError(null);
+      setUser(null);
+      setReady(true);
+      void queryClient.cancelQueries();
+      queryClient.removeQueries();
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+  }, [queryClient]);
+
   const login = async (username: string, password: string, expectedRole?: Role) => {
     const result = await api<{ user: User }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password, role: expectedRole }),
     });
+    resetAuthExpiredSignal();
     setUser(result.user);
     return result.user;
   };
