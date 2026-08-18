@@ -82,6 +82,7 @@ export const listPlantilla = (
   occupancy = "all",
   options: RequestInit = {},
   organizationId = "",
+  pagination: { page?: number; pageSize?: number } = {},
 ) =>
   api<{
     items: PlantillaItem[];
@@ -92,8 +93,14 @@ export const listPlantilla = (
       occupied: number;
       vacant: number;
     };
+    pagination: {
+      total: number;
+      page: number;
+      pageSize: number;
+      totalPages: number;
+    };
   }>(
-    `/api/plantilla?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}&occupancy=${encodeURIComponent(occupancy)}&organizationId=${encodeURIComponent(organizationId)}`,
+    `/api/plantilla?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}&occupancy=${encodeURIComponent(occupancy)}&organizationId=${encodeURIComponent(organizationId)}&page=${encodeURIComponent(String(pagination.page || 1))}&pageSize=${encodeURIComponent(String(pagination.pageSize || 10))}`,
     options,
   );
 export const savePlantilla = (value: PlantillaPayload, id?: string) =>

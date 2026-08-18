@@ -21,6 +21,7 @@ import { api } from "@/lib/api";
 import { type AgencySettings, useSettings } from "@/lib/settings-context";
 import { cn } from "@/lib/utils";
 import { useRealtimeRefresh } from "@/lib/realtime";
+import { imageDimensions, readFileDataUrl, resizeImageDataUrl } from "@/lib/image-utils";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -86,24 +87,6 @@ function agencyEquals(a: AgencySettings, b: AgencySettings) {
   );
 }
 
-function imageDimensions(dataUrl: string) {
-  return new Promise<{ width: number; height: number }>((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-    image.onerror = () => reject(new Error("Image file could not be read"));
-    image.src = dataUrl;
-  });
-}
-
-function readFileDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Image file could not be read"));
-    reader.onloadend = () => resolve(String(reader.result || ""));
-    reader.readAsDataURL(file);
-  });
-}
-
 async function readImageDataUrl(
   file: File | undefined,
   spec: BrandingSpec,
@@ -119,7 +102,10 @@ async function readImageDataUrl(
     return;
   }
   try {
-    const dataUrl = await readFileDataUrl(file);
+    const dataUrl =
+      spec.maxWidth && spec.maxHeight
+        ? await resizeImageDataUrl(file, { maxWidth: spec.maxWidth, maxHeight: spec.maxHeight })
+        : await readFileDataUrl(file);
     const dimensions = await imageDimensions(dataUrl);
     if (
       spec.maxWidth &&

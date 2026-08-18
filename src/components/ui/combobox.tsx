@@ -37,7 +37,8 @@ type ComboboxProps = {
   triggerProps?: Omit<
     ButtonHTMLAttributes<HTMLButtonElement>,
     "children" | "onChange" | "onClick" | "value"
-  >;
+  > &
+    Record<`data-${string}`, unknown>;
 };
 
 function Combobox({

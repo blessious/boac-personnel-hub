@@ -180,6 +180,12 @@ function PlantillaPage() {
     [busy, setBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    pageSize: 10,
+    totalPages: 1,
+  });
   const [listError, setListError] = useState("");
   const [configError, setConfigError] = useState("");
   const [edit, setEdit] = useState<PlantillaItem | null | undefined>(undefined),
@@ -220,11 +226,25 @@ function PlantillaPage() {
   const load = useCallback(
     async (signal?: AbortSignal) => {
       try {
-        const x = await listPlantilla(q, status, occupancy, { signal }, officeId);
+        const x = await listPlantilla(q, status, occupancy, { signal }, officeId, {
+          page,
+          pageSize,
+        });
         if (signal?.aborted) return;
         setItems(x.items);
         setSummary(x.summary);
+        setPagination(
+          x.pagination || {
+            total: x.items.length,
+            page,
+            pageSize,
+            totalPages: Math.max(1, Math.ceil(x.items.length / pageSize)),
+          },
+        );
         setListError("");
+        if (x.pagination && x.pagination.total > 0 && page > x.pagination.totalPages) {
+          setPage(x.pagination.totalPages);
+        }
       } catch (e) {
         if (!isAbortError(e)) {
           const message = (e as Error).message;
@@ -233,7 +253,7 @@ function PlantillaPage() {
         }
       }
     },
-    [q, status, occupancy, officeId],
+    [q, status, occupancy, officeId, page, pageSize],
   );
   const loadEngagements = useCallback(
     async (signal?: AbortSignal) => {
@@ -290,11 +310,8 @@ function PlantillaPage() {
       controller.abort();
     };
   }, [load]);
-  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
-  const paginatedItems = useMemo(
-    () => items.slice((page - 1) * pageSize, page * pageSize),
-    [items, page, pageSize],
-  );
+  const totalPages = Math.max(1, pagination.totalPages);
+  const paginatedItems = items;
   useEffect(() => {
     setPage(1);
   }, [q, status, occupancy, officeId, pageSize]);
@@ -436,7 +453,10 @@ function PlantillaPage() {
     if (!item.occupant) return;
     const dateTo = window.prompt("Disconnect date (YYYY-MM-DD)", today());
     if (!dateTo) return;
-    const remarks = window.prompt("Disconnect remarks", "Employee disconnected from Plantilla item");
+    const remarks = window.prompt(
+      "Disconnect remarks",
+      "Employee disconnected from Plantilla item",
+    );
     if (remarks === null) return;
     if (
       !window.confirm(
@@ -967,9 +987,9 @@ function PlantillaPage() {
         </table>
       </div>
       <TablePagination
-        page={page}
+        page={pagination.page || page}
         totalPages={totalPages}
-        total={items.length}
+        total={pagination.total}
         pageSize={pageSize}
         itemLabel="Plantilla items"
         onPageChange={setPage}
@@ -1933,11 +1953,17 @@ function PlantillaActionsMenu({
               )}
               {canRetireItem && (
                 <>
-                  <DropdownMenuItem disabled={busy} onClick={() => onStatusChange(item, "Inactive")}>
+                  <DropdownMenuItem
+                    disabled={busy}
+                    onClick={() => onStatusChange(item, "Inactive")}
+                  >
                     <Archive className="mr-2 h-4 w-4" />
                     Mark Inactive
                   </DropdownMenuItem>
-                  <DropdownMenuItem disabled={busy} onClick={() => onStatusChange(item, "Abolished")}>
+                  <DropdownMenuItem
+                    disabled={busy}
+                    onClick={() => onStatusChange(item, "Abolished")}
+                  >
                     <Ban className="mr-2 h-4 w-4" />
                     Mark Abolished
                   </DropdownMenuItem>

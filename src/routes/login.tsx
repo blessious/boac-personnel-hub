@@ -198,7 +198,16 @@ function LoginPage() {
     if (target.startsWith("/employees/")) {
       const id = target.split("/").filter(Boolean).at(-1);
       if (id) {
-        navigate({ to: "/employees/$id", params: { id }, replace });
+        navigate({
+          to: "/employees/$id",
+          params: { id },
+          search: {
+            department: undefined,
+            onboard: undefined,
+            targetPlantillaItemId: undefined,
+          },
+          replace,
+        });
         return;
       }
     }

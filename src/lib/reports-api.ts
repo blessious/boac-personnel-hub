@@ -59,6 +59,7 @@ export interface PersonnelPlantillaReport {
   };
   tables: {
     plantillaItems: PlantillaItemReportRow[];
+    plantillaItemsTotal: number;
   };
 }
 

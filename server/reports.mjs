@@ -36,7 +36,7 @@ async function tableExists(pool, table) {
   return number(rows[0]?.total) > 0;
 }
 
-async function buildPersonnelPlantillaReport(pool) {
+async function buildPersonnelPlantillaReport(pool, { itemLimit = 0 } = {}) {
   const hasPlantilla = await tableExists(pool, "plantilla_items");
   const [[employeeTotals]] = await pool.query(`
     SELECT
@@ -139,6 +139,7 @@ async function buildPersonnelPlantillaReport(pool) {
   let plantillaByDivision = [];
   let plantillaBySalaryGrade = [];
   let plantillaItems = [];
+  let plantillaItemsTotal = 0;
 
   if (hasPlantilla) {
     const [[summary]] = await pool.query(`
@@ -161,6 +162,7 @@ async function buildPersonnelPlantillaReport(pool) {
         ? Math.round((number(summary.vacant) / number(summary.active)) * 1000) / 10
         : 0,
     };
+    plantillaItemsTotal = plantillaSummary.authorized;
 
     const [divisionRows] = await pool.query(`
       SELECT COALESCE(NULLIF(TRIM(d.name), ''), COALESCE(NULLIF(TRIM(pi.notes), ''), 'Unspecified')) AS label,
@@ -205,6 +207,7 @@ async function buildPersonnelPlantillaReport(pool) {
       total: number(row.total),
     }));
 
+    const itemLimitSql = itemLimit ? ` LIMIT ${Math.max(1, Math.min(100, Number(itemLimit)))}` : "";
     const [items] = await pool.query(`
       SELECT pi.item_number AS itemNumber,
              p.title AS positionTitle,
@@ -236,6 +239,7 @@ async function buildPersonnelPlantillaReport(pool) {
       LEFT JOIN plantilla_occupancies po ON po.plantilla_item_id = pi.id AND po.status = 'Active'
       LEFT JOIN employees e ON e.id = po.employee_id AND e.is_hidden = 0
       ORDER BY pi.item_status, pi.item_number
+      ${itemLimitSql}
     `);
     plantillaItems = items.map((item) => ({
       itemNumber: item.itemNumber || "",
@@ -287,6 +291,7 @@ async function buildPersonnelPlantillaReport(pool) {
     },
     tables: {
       plantillaItems,
+      plantillaItemsTotal,
     },
   };
 }
@@ -313,7 +318,7 @@ export function createReportHandlers({
     if (!user) return;
     try {
       const [[agency]] = await pool.query("SELECT name,tagline FROM agency_settings WHERE id=1");
-      const report = await buildPersonnelPlantillaReport(pool);
+      const report = await buildPersonnelPlantillaReport(pool, { itemLimit: 12 });
       await logAudit(user.id, "reports.personnel_plantilla_view", {}, req);
       return json(res, 200, { agency, report });
     } catch (error) {

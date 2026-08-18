@@ -21,7 +21,8 @@ export type EmploymentStatus =
   | (typeof EMPLOYMENT_STATUSES)[number]
   | "JO/COS"
   | "Job Order"
-  | "Contract of Service";
+  | "Contract of Service"
+  | "Other";
 export type EmployeeLevel = (typeof EMPLOYEE_LEVELS)[number];
 export type Gender = (typeof GENDERS)[number];
 export type CivilStatus = (typeof CIVIL_STATUSES)[number];

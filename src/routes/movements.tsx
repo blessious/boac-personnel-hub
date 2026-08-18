@@ -120,6 +120,13 @@ const DERIVED_QUEUE_STATUSES = new Set([
   "ready-post",
   "activation-failed",
 ]);
+const EMPTY_MOVEMENTS_SEARCH = {
+  prepare: undefined,
+  employeeId: undefined,
+  targetPlantillaItemId: undefined,
+  actionType: undefined,
+  status: undefined,
+};
 const today = () => new Date().toISOString().slice(0, 10);
 const canPostMovement = (movement: Movement) =>
   movement.status === "Approved" ||
@@ -140,6 +147,13 @@ function MovementsPage() {
     [pageSize, setPageSize] = useState(10),
     [loadError, setLoadError] = useState("");
   const apiStatus = DERIVED_QUEUE_STATUSES.has(status) ? "all" : status;
+  const usesDerivedQueue = DERIVED_QUEUE_STATUSES.has(status);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    pageSize: 10,
+    totalPages: 1,
+  });
   const queueStatuses = useMemo(() => {
     if (canPrepare)
       return [
@@ -176,11 +190,36 @@ function MovementsPage() {
   const load = useCallback(
     async (signal?: AbortSignal) => {
       try {
-        const x = await listMovements(q, apiStatus, actionFilter, { signal });
+        const x = await listMovements(
+          q,
+          apiStatus,
+          actionFilter,
+          { signal },
+          {
+            page: usesDerivedQueue ? 1 : page,
+            pageSize: usesDerivedQueue ? 100 : pageSize,
+          },
+        );
         if (signal?.aborted) return;
         setMovements(x.movements);
         setSummary(x.summary);
+        setPagination(
+          x.pagination || {
+            total: x.movements.length,
+            page,
+            pageSize,
+            totalPages: Math.max(1, Math.ceil(x.movements.length / pageSize)),
+          },
+        );
         setLoadError("");
+        if (
+          !usesDerivedQueue &&
+          x.pagination &&
+          x.pagination.total > 0 &&
+          page > x.pagination.totalPages
+        ) {
+          setPage(x.pagination.totalPages);
+        }
       } catch (e) {
         if (!isAbortError(e)) {
           const message = (e as Error).message;
@@ -189,7 +228,7 @@ function MovementsPage() {
         }
       }
     },
-    [q, apiStatus, actionFilter],
+    [q, apiStatus, actionFilter, page, pageSize, usesDerivedQueue],
   );
   useEffect(() => {
     if (!user) return;
@@ -208,7 +247,7 @@ function MovementsPage() {
     const controller = new AbortController();
     Promise.all([
       api<SettingsOptions>("/api/settings", { signal: controller.signal }),
-      listPlantilla("", "Active", "all", { signal: controller.signal }),
+      listPlantilla("", "Active", "all", { signal: controller.signal }, "", { pageSize: 100 }),
       loadAllEmployees(controller.signal),
       api<{
         libraries: Record<ReferenceCategory, ReferenceRow[]>;
@@ -270,7 +309,7 @@ function MovementsPage() {
     if (prepareSearch.prepare !== "1") return;
     if (!canPrepare) {
       toast.error("Only HR users can prepare personnel movements");
-      navigate({ search: {}, replace: true });
+      navigate({ search: EMPTY_MOVEMENTS_SEARCH, replace: true });
       return;
     }
     openForm(undefined, {
@@ -280,7 +319,7 @@ function MovementsPage() {
         (prepareSearch.targetPlantillaItemId ? "Original Appointment" : "Transfer"),
       targetPlantillaItemId: prepareSearch.targetPlantillaItemId || "",
     });
-    navigate({ search: {}, replace: true });
+    navigate({ search: EMPTY_MOVEMENTS_SEARCH, replace: true });
   }, [
     canPrepare,
     navigate,
@@ -321,11 +360,7 @@ function MovementsPage() {
     setBusy(true);
     try {
       const result = await saveMovement(form, edit?.id);
-      if (
-        !edit &&
-        form.actionType === "Original Appointment" &&
-        form.targetPlantillaItemId
-      ) {
+      if (!edit && form.actionType === "Original Appointment" && form.targetPlantillaItemId) {
         toast.success(
           result.movement.status === "Scheduled"
             ? "Employee appointment scheduled"
@@ -436,7 +471,9 @@ function MovementsPage() {
       canPrepare &&
       movement.status === "Submitted" &&
       (user?.role === "Super Admin" ||
-        (movement.preparedById && user?.id && Number(movement.preparedById) === Number(user.id))),
+        Boolean(
+          movement.preparedById && user?.id && Number(movement.preparedById) === Number(user.id),
+        )),
     [canPrepare, user?.id, user?.role],
   );
   const requiresUserAction = useCallback(
@@ -465,18 +502,26 @@ function MovementsPage() {
     }
     return movements;
   }, [movements, requiresUserAction, status]);
-  const totalPages = Math.max(1, Math.ceil(displayedMovements.length / pageSize));
-  const safePage = Math.min(Math.max(1, page), totalPages);
+  const total = usesDerivedQueue ? displayedMovements.length : pagination.total;
+  const totalPages = usesDerivedQueue
+    ? Math.max(1, Math.ceil(displayedMovements.length / pageSize))
+    : Math.max(1, pagination.totalPages);
+  const safePage = usesDerivedQueue
+    ? Math.min(Math.max(1, page), totalPages)
+    : pagination.page || page;
   const pagedMovements = useMemo(
-    () => displayedMovements.slice((safePage - 1) * pageSize, safePage * pageSize),
-    [displayedMovements, safePage, pageSize],
+    () =>
+      usesDerivedQueue
+        ? displayedMovements.slice((safePage - 1) * pageSize, safePage * pageSize)
+        : displayedMovements,
+    [displayedMovements, safePage, pageSize, usesDerivedQueue],
   );
   useEffect(() => {
     setPage(1);
   }, [q, status, actionFilter, pageSize]);
   useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+    if (usesDerivedQueue && page > totalPages) setPage(totalPages);
+  }, [page, totalPages, usesDerivedQueue]);
   const activationFailureCount = useMemo(
     () => movements.filter((movement) => Boolean(movement.activationError)).length,
     [movements],
@@ -860,7 +905,7 @@ function MovementsPage() {
       <TablePagination
         page={safePage}
         totalPages={totalPages}
-        total={displayedMovements.length}
+        total={total}
         pageSize={pageSize}
         itemLabel="movements"
         onPageChange={setPage}
@@ -906,7 +951,7 @@ function MovementsPage() {
                 : "Posting atomically updates the employee and Plantilla occupancy. If the effective date is in the future, the movement will be scheduled for automatic posting."
               : decision?.action === "reverse"
                 ? "Reversal restores the recorded before-state and is blocked if a later movement exists."
-              : decision?.action === "reviewApprove"
+                : decision?.action === "reviewApprove"
                   ? "This processes the legacy queued movement and posts it. A future-effective movement will be scheduled automatically."
                   : decision?.action === "approve"
                     ? "This posts the legacy queued movement. A future-effective movement will be scheduled automatically."

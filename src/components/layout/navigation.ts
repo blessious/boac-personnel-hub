@@ -263,7 +263,7 @@ export function navForPermissions(permissions: PermissionKey[] | undefined) {
   return APP_NAV.filter((item) => {
     if (item.to === "/admin") {
       return ["admin.users", "admin.audit", "admin.errors", "role_permissions.manage"].some(
-        (permission) => allowed.has(permission),
+        (permission) => allowed.has(permission as PermissionKey),
       );
     }
     if (item.to === "/attendance") {

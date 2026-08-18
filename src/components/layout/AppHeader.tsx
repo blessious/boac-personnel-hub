@@ -44,6 +44,7 @@ import { listDtrCorrectionRequests } from "@/lib/attendance-api";
 import { navNotificationCount, useRealtime } from "@/lib/realtime";
 import { cn, formatDisplayDateTime } from "@/lib/utils";
 import { APP_NAV, groupNavItems, navForPermissions } from "@/components/layout/navigation";
+import { resizeImageDataUrl } from "@/lib/image-utils";
 
 const MAX_PROFILE_PHOTO_BYTES = 50 * 1024 * 1024;
 const PROFILE_PHOTO_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -135,7 +136,7 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
     }
   };
 
-  const handleProfilePhoto = (file: File | undefined) => {
+  const handleProfilePhoto = async (file: File | undefined) => {
     if (!file) return;
     if (!PROFILE_PHOTO_TYPES.has(file.type.toLowerCase())) {
       toast.error("Profile photo must be PNG, JPEG, WebP, or GIF");
@@ -146,16 +147,17 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () =>
-      setFormData((current) => ({ ...current, photoUrl: String(reader.result || "") }));
-    reader.onerror = () => toast.error("Unable to read the selected photo");
-    reader.readAsDataURL(file);
+    try {
+      const photoUrl = await resizeImageDataUrl(file, { maxWidth: 512, maxHeight: 512 });
+      setFormData((current) => ({ ...current, photoUrl }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to read the selected photo");
+    }
   };
 
   const handleLogout = async () => {
     await logout();
-    navigate({ to: "/login", search: {}, replace: true });
+    navigate({ to: "/login", search: { redirect: "/" }, replace: true });
   };
 
   const isActive = useCallback(
@@ -233,7 +235,12 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                   )}
                 >
                   {agency.logoUrl ? (
-                    <img src={agency.logoUrl} alt="Logo" className="h-full w-full object-contain" />
+                    <img
+                      src={agency.logoUrl}
+                      alt="Logo"
+                      decoding="async"
+                      className="h-full w-full object-contain"
+                    />
                   ) : (
                     <ShieldCheck className="h-5 w-5" />
                   )}
@@ -413,7 +420,14 @@ export function AppHeader({ title, subtitle }: { title: string; subtitle?: strin
                     onClick={async () => {
                       await markRead(notification.id);
                       if (notification.path) {
-                        navigate({ to: notification.path as "/employees" });
+                        navigate({
+                          to: notification.path as "/employees",
+                          search: {
+                            department: undefined,
+                            onboard: undefined,
+                            targetPlantillaItemId: undefined,
+                          },
+                        });
                       }
                     }}
                     className={cn(

@@ -408,7 +408,15 @@ export function EmployeeProfileHome() {
       toast.info("No employee record is linked to this account yet");
       return;
     }
-    navigate({ to: "/employees/$id", params: { id: user.employeeId } });
+    navigate({
+      to: "/employees/$id",
+      params: { id: user.employeeId },
+      search: {
+        department: undefined,
+        onboard: undefined,
+        targetPlantillaItemId: undefined,
+      },
+    });
   };
 
   return (
@@ -999,8 +1007,11 @@ function ProfileHeader({
             </h3>
             <div className="mt-4 flex flex-wrap gap-2">
               <ProfileChip icon={IdCard} label={`ID: ${valueOrDash(employee.employeeId)}`} />
-              <ProfileChip icon={Building2} label={valueOrDash(employee.department)} />
-              <ProfileChip icon={ShieldCheck} label={valueOrDash(employmentStatus)} />
+              <ProfileChip
+                icon={Building2}
+                label={valueOrDash(String(employee.department || ""))}
+              />
+              <ProfileChip icon={ShieldCheck} label={valueOrDash(String(employmentStatus || ""))} />
             </div>
             <div className="mt-8 flex justify-start">
               <Button
@@ -1383,32 +1394,35 @@ function WorkExperienceSheetPanel({
                 />
               </FormField>
               {WES_FIELDS.filter((field) => field.key !== "dateFrom" && field.key !== "dateTo").map(
-                (field) => (
-                  <FormField
-                    key={field.key}
-                    label={field.label}
-                    className={field.type === "textarea" ? "md:col-span-2" : undefined}
-                  >
-                    {field.key === "accomplishments" ? (
-                      <RepeatableTextRows
-                        value={form.accomplishments || ""}
-                        onChange={(value) => set("accomplishments", value)}
-                      />
-                    ) : field.type === "textarea" ? (
-                      <Textarea
-                        value={form[field.key] || ""}
-                        onChange={(event) => set(field.key, event.target.value)}
-                        rows={4}
-                      />
-                    ) : (
-                      <Input
-                        type={field.type || "text"}
-                        value={form[field.key] || ""}
-                        onChange={(event) => set(field.key, event.target.value)}
-                      />
-                    )}
-                  </FormField>
-                ),
+                (field) => {
+                  const fieldType = "type" in field ? field.type : undefined;
+                  return (
+                    <FormField
+                      key={field.key}
+                      label={field.label}
+                      className={fieldType === "textarea" ? "md:col-span-2" : undefined}
+                    >
+                      {field.key === "accomplishments" ? (
+                        <RepeatableTextRows
+                          value={form.accomplishments || ""}
+                          onChange={(value) => set("accomplishments", value)}
+                        />
+                      ) : fieldType === "textarea" ? (
+                        <Textarea
+                          value={form[field.key] || ""}
+                          onChange={(event) => set(field.key, event.target.value)}
+                          rows={4}
+                        />
+                      ) : (
+                        <Input
+                          type={fieldType || "text"}
+                          value={form[field.key] || ""}
+                          onChange={(event) => set(field.key, event.target.value)}
+                        />
+                      )}
+                    </FormField>
+                  );
+                },
               )}
             </div>
           </div>
@@ -1909,7 +1923,7 @@ function formatDtrTime(value?: string | null) {
 }
 
 function valueOrDash(value?: string | number | null) {
-  return value === undefined || value === null || value === "" ? "-" : value;
+  return value === undefined || value === null || value === "" ? "-" : String(value);
 }
 
 function countRows(rows?: SectionRow[]) {

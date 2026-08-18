@@ -3169,8 +3169,7 @@ function calculateAttendanceStatsForShift(entry, shift) {
     const lateMinutes =
       (amIn !== null && start !== null ? Math.max(0, amIn - start) : 0) +
       (pmIn !== null && breakEnd !== null ? Math.max(0, pmIn - breakEnd) : 0);
-    const undertimeMinutes =
-      pmOut !== null && end !== null ? Math.max(0, end - pmOut) : 0;
+    const undertimeMinutes = pmOut !== null && end !== null ? Math.max(0, end - pmOut) : 0;
     if (amIn !== null && amOut !== null && pmIn !== null && pmOut !== null) {
       status = lateMinutes > 0 ? "Late" : "Present";
     }
@@ -3181,10 +3180,8 @@ function calculateAttendanceStatsForShift(entry, shift) {
   const actualOut = shift.type === "night" ? amOut : pmOut;
   const start = minutesFromTime(shift.startTime);
   const end = minutesFromTime(shift.endTime);
-  const lateMinutes =
-    actualIn !== null && start !== null ? Math.max(0, actualIn - start) : 0;
-  const undertimeMinutes =
-    actualOut !== null && end !== null ? Math.max(0, end - actualOut) : 0;
+  const lateMinutes = actualIn !== null && start !== null ? Math.max(0, actualIn - start) : 0;
+  const undertimeMinutes = actualOut !== null && end !== null ? Math.max(0, end - actualOut) : 0;
   if (actualIn !== null && actualOut !== null) status = lateMinutes > 0 ? "Late" : "Present";
   return { status, lateMinutes, undertimeMinutes };
 }
@@ -6776,7 +6773,7 @@ async function handleListDtrEntries(req, res, url) {
                 SUM(level = 'Warning') AS warning_count
          FROM attendance_import_logs
          GROUP BY import_id
-       ) logs ON BINARY logs.import_id = BINARY ai.id
+       ) logs ON logs.import_id = ai.id
        ORDER BY ai.imported_at DESC
        LIMIT 12`,
     );
@@ -6803,6 +6800,10 @@ async function handleListDtrEntries(req, res, url) {
 async function handleListAttendanceImportLogs(req, res, importId) {
   const user = await requireAttendanceWrite(req, res);
   if (!user) return;
+  const url = new URL(req.url, "http://localhost");
+  const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+  const pageSize = Math.min(200, Math.max(10, Number(url.searchParams.get("pageSize") || 50)));
+  const offset = (page - 1) * pageSize;
 
   const [imports] = await pool.execute(
     `SELECT ai.*, u.name AS imported_by_name,
@@ -6818,24 +6819,37 @@ async function handleListAttendanceImportLogs(req, res, importId) {
               SUM(level = 'Warning') AS warning_count
        FROM attendance_import_logs
        GROUP BY import_id
-     ) logs ON BINARY logs.import_id = BINARY ai.id
-     WHERE BINARY ai.id = BINARY :importId
+     ) logs ON logs.import_id = ai.id
+     WHERE ai.id = :importId
      LIMIT 1`,
     { importId },
   );
   if (!imports[0]) return json(res, 404, { error: "Import log not found" });
 
+  const [[countRow]] = await pool.execute(
+    `SELECT COUNT(*) AS total
+       FROM attendance_import_logs
+      WHERE import_id = :importId`,
+    { importId },
+  );
   const [logs] = await pool.execute(
     `SELECT id, level, source_row_number, employee_no, message, details, created_at
      FROM attendance_import_logs
-     WHERE BINARY import_id = BINARY :importId
-     ORDER BY id ASC`,
+     WHERE import_id = :importId
+     ORDER BY id ASC
+     LIMIT ${pageSize} OFFSET ${offset}`,
     { importId },
   );
 
   return json(res, 200, {
     import: attendanceImportRow(imports[0]),
     logs: logs.map(attendanceImportLogRow),
+    pagination: {
+      total: Number(countRow.total || 0),
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(Number(countRow.total || 0) / pageSize)),
+    },
   });
 }
 
@@ -6843,14 +6857,20 @@ async function handleListAttendanceImportExceptions(req, res, url) {
   const user = await requireAttendanceWrite(req, res);
   if (!user) return;
   const status = String(url.searchParams.get("status") || "Open").trim();
-  if (status && status !== "all" && !["Open", "Mapped", "Reprocessed", "Ignored"].includes(status)) {
+  if (
+    status &&
+    status !== "all" &&
+    !["Open", "Mapped", "Reprocessed", "Ignored"].includes(status)
+  ) {
     return json(res, 400, { error: "Invalid exception status" });
   }
-  const exceptions = await readAttendanceImportExceptions({
+  const result = await readAttendanceImportExceptions({
     importId: String(url.searchParams.get("importId") || "").trim(),
     status,
+    page: url.searchParams.get("page"),
+    pageSize: url.searchParams.get("pageSize"),
   });
-  return json(res, 200, { exceptions });
+  return json(res, 200, result);
 }
 
 async function handleMapAttendanceImportException(req, res, id) {
@@ -6860,9 +6880,12 @@ async function handleMapAttendanceImportException(req, res, id) {
   const employeeId = String(body.employeeId || "").trim();
   const notes = String(body.notes || "").trim();
   if (!employeeId) return json(res, 400, { error: "Employee mapping is required" });
-  const [[employee]] = await pool.execute(`SELECT id FROM employees WHERE id = :employeeId LIMIT 1`, {
-    employeeId,
-  });
+  const [[employee]] = await pool.execute(
+    `SELECT id FROM employees WHERE id = :employeeId LIMIT 1`,
+    {
+      employeeId,
+    },
+  );
   if (!employee) return json(res, 404, { error: "Employee not found" });
   const [result] = await pool.execute(
     `UPDATE attendance_import_exceptions
@@ -7407,7 +7430,15 @@ async function insertAttendanceImportException(
   );
 }
 
-async function readAttendanceImportExceptions({ importId = "", status = "Open" } = {}) {
+async function readAttendanceImportExceptions({
+  importId = "",
+  status = "Open",
+  page = 1,
+  pageSize = 50,
+} = {}) {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safePageSize = Math.min(200, Math.max(10, Number(pageSize) || 50));
+  const offset = (safePage - 1) * safePageSize;
   const where = [];
   const params = {};
   if (importId) {
@@ -7419,6 +7450,12 @@ async function readAttendanceImportExceptions({ importId = "", status = "Open" }
     params.status = status;
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const [[countRow]] = await pool.execute(
+    `SELECT COUNT(*) AS total
+       FROM attendance_import_exceptions aie
+       ${whereSql}`,
+    params,
+  );
   const [rows] = await pool.execute(
     `SELECT aie.*, resolver.name AS resolved_by_name,
             ${EMPLOYEE_DISPLAY_NAME_SQL.replaceAll("e.", "mapped_employee.")} AS mapped_employee_name
@@ -7428,10 +7465,19 @@ async function readAttendanceImportExceptions({ importId = "", status = "Open" }
      ${whereSql}
      ORDER BY CASE aie.status WHEN 'Open' THEN 0 WHEN 'Mapped' THEN 1 ELSE 2 END,
               aie.created_at DESC
-     LIMIT 500`,
+     LIMIT ${safePageSize} OFFSET ${offset}`,
     params,
   );
-  return rows.map(attendanceImportExceptionRow);
+  const total = Number(countRow.total || 0);
+  return {
+    exceptions: rows.map(attendanceImportExceptionRow),
+    pagination: {
+      total,
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.max(1, Math.ceil(total / safePageSize)),
+    },
+  };
 }
 
 async function importParsedPunches({
@@ -7557,9 +7603,9 @@ async function importParsedPunches({
           ? `${errors.length} row(s) had errors`
           : exceptions
             ? `${exceptions} punch row(s) quarantined for mapping`
-          : body.notes
-            ? String(body.notes)
-            : null,
+            : body.notes
+              ? String(body.notes)
+              : null,
       },
     );
     importLogs.push({
@@ -8295,9 +8341,12 @@ async function handleDeleteEmployeeScheduleOverride(req, res, employeeId, workDa
   if (!user) return;
   const normalizedDate = normalizeDate(workDate);
   if (!employeeId || !normalizedDate) return json(res, 400, { error: "Invalid schedule override" });
-  const [[employee]] = await pool.execute(`SELECT id FROM employees WHERE id = :employeeId LIMIT 1`, {
-    employeeId,
-  });
+  const [[employee]] = await pool.execute(
+    `SELECT id FROM employees WHERE id = :employeeId LIMIT 1`,
+    {
+      employeeId,
+    },
+  );
   if (!employee) return json(res, 404, { error: "Employee not found" });
 
   const connection = await pool.getConnection();
@@ -8454,7 +8503,12 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
   await logAudit(
     user.id,
     overrides ? "attendance.schedule_override_bulk" : "attendance.schedule_bulk",
-    { employeeIds: employeeIds.length, shiftTemplateCode: shiftTemplateCode || null, from: refreshFrom, to: refreshTo },
+    {
+      employeeIds: employeeIds.length,
+      shiftTemplateCode: shiftTemplateCode || null,
+      from: refreshFrom,
+      to: refreshTo,
+    },
     req,
   );
   const refreshed = { recordsProcessed: 0, punchesProcessed: 0, warnings: [] };
@@ -8851,7 +8905,11 @@ async function handleAdmsIclock(req, res, url) {
       {
         level: result.skipped || result.exceptions ? "Warning" : "Success",
         message: `Stored ${result.inserted} new punch(es); skipped ${result.skipped}; quarantined ${result.exceptions}`,
-        details: { inserted: result.inserted, skipped: result.skipped, exceptions: result.exceptions },
+        details: {
+          inserted: result.inserted,
+          skipped: result.skipped,
+          exceptions: result.exceptions,
+        },
       },
     ]);
     const now = new Date().toISOString();
@@ -9456,6 +9514,7 @@ async function handlePreviewDtrPdf(req, res, fileName) {
 }
 
 async function readDtrCorrectionRequests({
+  id = "",
   employeeId = "",
   status = "",
   requestType = "",
@@ -9463,9 +9522,18 @@ async function readDtrCorrectionRequests({
   q = "",
   from = "",
   to = "",
+  page = 1,
+  pageSize = 25,
 }) {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safePageSize = Math.min(100, Math.max(10, Number(pageSize) || 25));
+  const offset = (safePage - 1) * safePageSize;
   const where = [];
   const params = {};
+  if (id) {
+    where.push("r.id = :id");
+    params.id = id;
+  }
   if (employeeId) {
     where.push("r.employee_id = :employeeId");
     params.employeeId = employeeId;
@@ -9498,6 +9566,16 @@ async function readDtrCorrectionRequests({
     params.to = to;
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const [[countRow]] = await pool.execute(
+    `SELECT COUNT(*) AS total
+       FROM dtr_correction_requests r
+ INNER JOIN employees e ON e.id = r.employee_id
+      ${whereSql}`,
+    params,
+  );
+  const correctionOrderSql = status
+    ? "ORDER BY r.created_at DESC"
+    : "ORDER BY CASE r.status WHEN 'Pending' THEN 0 ELSE 1 END, r.created_at DESC";
   const [rows] = await pool.execute(
     `SELECT r.*, e.employee_no, e.department,
             ${EMPLOYEE_DISPLAY_NAME_SQL} AS employee_name,
@@ -9510,12 +9588,22 @@ async function readDtrCorrectionRequests({
      LEFT JOIN users reviewer ON reviewer.id = r.reviewed_by
      LEFT JOIN users reverser ON reverser.id = r.reversed_by
      ${whereSql}
-     ORDER BY CASE r.status WHEN 'Pending' THEN 0 ELSE 1 END, r.created_at DESC
-     LIMIT 500`,
+     ${correctionOrderSql}
+     LIMIT ${safePageSize} OFFSET ${offset}`,
     params,
   );
   const requests = rows.map(dtrCorrectionRequestRow);
-  if (!requests.length) return requests;
+  const total = Number(countRow.total || 0);
+  const result = {
+    requests,
+    pagination: {
+      total,
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.max(1, Math.ceil(total / safePageSize)),
+    },
+  };
+  if (!requests.length) return result;
   const placeholders = requests.map(() => "?").join(", ");
   const [eventRows] = await pool.query(
     `SELECT ev.*, actor.name AS actor_name
@@ -9544,10 +9632,11 @@ async function readDtrCorrectionRequests({
     events.push(event);
     eventsByRequest.set(row.request_id, events);
   }
-  return requests.map((request) => ({
+  result.requests = requests.map((request) => ({
     ...request,
     events: eventsByRequest.get(request.id) || [],
   }));
+  return result;
 }
 
 async function handleListDtrCorrectionRequests(req, res, url) {
@@ -9571,7 +9660,7 @@ async function handleListDtrCorrectionRequests(req, res, url) {
   if (requestType && !["Times", "Label"].includes(requestType)) {
     return json(res, 400, { error: "Invalid request type" });
   }
-  const requests = await readDtrCorrectionRequests({
+  const result = await readDtrCorrectionRequests({
     employeeId,
     status,
     requestType,
@@ -9581,8 +9670,10 @@ async function handleListDtrCorrectionRequests(req, res, url) {
       .slice(0, 100),
     from: normalizeDate(url.searchParams.get("from")),
     to: normalizeDate(url.searchParams.get("to")),
+    page: url.searchParams.get("page"),
+    pageSize: url.searchParams.get("pageSize"),
   });
-  return json(res, 200, { requests });
+  return json(res, 200, result);
 }
 
 async function handleCreateDtrCorrectionRequest(req, res) {
@@ -9718,7 +9809,12 @@ async function handleCreateDtrCorrectionRequest(req, res) {
     { id, employeeId, workDate, requestType },
     req,
   );
-  const requests = await readDtrCorrectionRequests({ employeeId, from: workDate, to: workDate });
+  const { requests } = await readDtrCorrectionRequests({
+    id,
+    employeeId,
+    from: workDate,
+    to: workDate,
+  });
   const createdRequest = requests.find((item) => item.id === id);
   await notifyRoles({
     topic: "attendance",
@@ -9788,18 +9884,22 @@ async function handleDecideDtrCorrectionRequest(req, res, id) {
       if (request.request_type === "Times") {
         const existingLocks = dtrLockFields(existing);
         const requestedLocks = {
-          amIn: formatTime(request.original_am_in) !== formatTime(request.requested_am_in)
-            ? true
-            : existingLocks.amIn,
-          amOut: formatTime(request.original_am_out) !== formatTime(request.requested_am_out)
-            ? true
-            : existingLocks.amOut,
-          pmIn: formatTime(request.original_pm_in) !== formatTime(request.requested_pm_in)
-            ? true
-            : existingLocks.pmIn,
-          pmOut: formatTime(request.original_pm_out) !== formatTime(request.requested_pm_out)
-            ? true
-            : existingLocks.pmOut,
+          amIn:
+            formatTime(request.original_am_in) !== formatTime(request.requested_am_in)
+              ? true
+              : existingLocks.amIn,
+          amOut:
+            formatTime(request.original_am_out) !== formatTime(request.requested_am_out)
+              ? true
+              : existingLocks.amOut,
+          pmIn:
+            formatTime(request.original_pm_in) !== formatTime(request.requested_pm_in)
+              ? true
+              : existingLocks.pmIn,
+          pmOut:
+            formatTime(request.original_pm_out) !== formatTime(request.requested_pm_out)
+              ? true
+              : existingLocks.pmOut,
         };
         await upsertDtrEntry(
           connection,
@@ -9906,7 +10006,7 @@ async function handleDecideDtrCorrectionRequest(req, res, id) {
   }
 
   await logAudit(user.id, "attendance.correction_request.decision", { id, status }, req);
-  const requests = await readDtrCorrectionRequests({});
+  const { requests } = await readDtrCorrectionRequests({ id });
   const decidedRequest = requests.find((item) => item.id === id);
   if (decidedRequest) {
     await notifyEmployees({
@@ -10093,7 +10193,7 @@ async function handleReverseDtrCorrectionRequest(req, res, id) {
   }
 
   await logAudit(user.id, "attendance.correction_request.reverse", { id, reason }, req);
-  const requests = await readDtrCorrectionRequests({ employeeId });
+  const { requests } = await readDtrCorrectionRequests({ id, employeeId });
   const reversedRequest = requests.find((item) => item.id === id);
   if (reversedRequest) {
     await notifyEmployees({
@@ -11727,6 +11827,9 @@ async function handleListLeaveApplications(req, res, url) {
   if (!user) return;
   const status = String(url.searchParams.get("status") || "").trim();
   const q = String(url.searchParams.get("q") || "").trim();
+  const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+  const pageSize = Math.min(100, Math.max(10, Number(url.searchParams.get("pageSize") || 25)));
+  const offset = (page - 1) * pageSize;
   const where = [];
   const params = {};
   if (status && status !== "all") {
@@ -11740,6 +11843,17 @@ async function handleListLeaveApplications(req, res, url) {
     params.q = `%${q}%`;
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const [[countRow]] = await pool.execute(
+    `SELECT COUNT(*) AS total
+       FROM leave_applications la
+ INNER JOIN employees e ON e.id = la.employee_id
+      ${whereSql}`,
+    params,
+  );
+  const leaveOrderSql =
+    status && status !== "all"
+      ? "ORDER BY la.created_at DESC"
+      : "ORDER BY FIELD(la.status, 'Pending', 'Approved', 'Disapproved', 'Cancelled'), la.created_at DESC";
   const [rows] = await pool.execute(
     `SELECT la.*, lt.code AS leave_code, lt.name AS leave_name,
             e.employee_no, e.firstname, e.middlename, e.lastname, e.name_ext, e.department, e.position,
@@ -11751,8 +11865,8 @@ async function handleListLeaveApplications(req, res, url) {
      LEFT JOIN users u ON u.id = la.approver_id
      LEFT JOIN users ru ON ru.id = la.recommended_by
      ${whereSql}
-     ORDER BY FIELD(la.status, 'Pending', 'Approved', 'Disapproved', 'Cancelled'), la.created_at DESC
-     LIMIT 300`,
+     ${leaveOrderSql}
+     LIMIT ${pageSize} OFFSET ${offset}`,
     params,
   );
   const [[summary]] = await pool.query(`
@@ -11766,6 +11880,12 @@ async function handleListLeaveApplications(req, res, url) {
   `);
   return json(res, 200, {
     applications: rows.map(leaveApplicationRow),
+    pagination: {
+      total: Number(countRow.total || 0),
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(Number(countRow.total || 0) / pageSize)),
+    },
     summary: {
       total: Number(summary.total || 0),
       pending: Number(summary.pending || 0),

@@ -116,9 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch((error) => {
         if (alive) {
           const status =
-            typeof error === "object" && error && "status" in error
-              ? Number(error.status)
-              : 0;
+            typeof error === "object" && error && "status" in error ? Number(error.status) : 0;
           setUser(null);
           setBootstrapError(
             status === 401

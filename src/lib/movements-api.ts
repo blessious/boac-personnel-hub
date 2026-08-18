@@ -121,9 +121,20 @@ export const listMovements = (
   status = "all",
   actionType = "all",
   options: RequestInit = {},
+  pagination: { page?: number; pageSize?: number } = {},
 ) =>
-  api<{ movements: Movement[]; summary: Record<string, number>; actionTypes: string[] }>(
-    `/api/movements?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}&actionType=${encodeURIComponent(actionType)}`,
+  api<{
+    movements: Movement[];
+    summary: Record<string, number>;
+    actionTypes: string[];
+    pagination: {
+      total: number;
+      page: number;
+      pageSize: number;
+      totalPages: number;
+    };
+  }>(
+    `/api/movements?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}&actionType=${encodeURIComponent(actionType)}&page=${encodeURIComponent(String(pagination.page || 1))}&pageSize=${encodeURIComponent(String(pagination.pageSize || 10))}`,
     options,
   );
 export const saveMovement = (form: MovementForm, id?: string) =>

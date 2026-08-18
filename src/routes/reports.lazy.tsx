@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createLazyFileRoute } from "@tanstack/react-router";
 import {
   AlertCircle,
   BarChart3,
@@ -27,7 +27,7 @@ import { useRealtimeRefresh } from "@/lib/realtime";
 import { organizationAssignmentLabel } from "@/lib/reference-libraries";
 import { useSettings } from "@/lib/settings-context";
 
-export const Route = createFileRoute("/reports")({
+export const Route = createLazyFileRoute("/reports")({
   component: ReportsPage,
 });
 
@@ -48,7 +48,7 @@ function ReportsPage() {
     () => maxStacked(report?.charts.plantillaByDivision || [], "occupied", "vacant"),
     [report?.charts.plantillaByDivision],
   );
-  const plantillaRows = report?.tables.plantillaItems.slice(0, 12) || [];
+  const plantillaRows = report?.tables.plantillaItems || [];
 
   const load = () => {
     setLoading(true);
@@ -259,7 +259,7 @@ function ReportsPage() {
                   subtitle="First 12 items shown here; full listing is included in the exported file"
                 />
                 <span className="text-xs text-muted-foreground">
-                  {formatNumber(report.tables.plantillaItems.length)} encoded item records
+                  {formatNumber(report.tables.plantillaItemsTotal)} encoded item records
                 </span>
               </div>
               <PlantillaPreview rows={plantillaRows} />
@@ -463,7 +463,7 @@ function PlantillaPreview({ rows }: { rows: PlantillaItemReportRow[] }) {
               </td>
               <td className="px-4 py-3">{valueOrDash(row.itemStatus)}</td>
               <td className="px-4 py-3">
-                <WorkflowStatusBadge status={valueOrDash(row.occupancyStatus)} />
+                <WorkflowStatusBadge status={row.occupancyStatus || "-"} />
               </td>
               <td className="px-4 py-3 text-muted-foreground">{valueOrDash(row.occupantName)}</td>
             </tr>

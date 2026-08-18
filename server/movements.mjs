@@ -549,7 +549,9 @@ export function createMovementHandlers({
     if (!(await requireEmployeeRead(req, res))) return;
     const q = String(url.searchParams.get("q") || "").trim(),
       status = String(url.searchParams.get("status") || ""),
-      actionType = String(url.searchParams.get("actionType") || "");
+      actionType = String(url.searchParams.get("actionType") || ""),
+      page = Math.max(1, Number(url.searchParams.get("page") || 1)),
+      pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get("pageSize") || 10)));
     const where = [],
       params = {};
     if (q) {
@@ -566,10 +568,26 @@ export function createMovementHandlers({
       where.push("m.action_type=:actionType");
       params.actionType = actionType;
     }
+    const whereSql = where.length ? " WHERE " + where.join(" AND ") : "";
+    const offset = (page - 1) * pageSize;
+    const [[countRow]] = await pool.execute(
+      `SELECT COUNT(*) AS total
+         FROM personnel_movements m
+   INNER JOIN employees e ON e.id=m.employee_id
+        ${whereSql}`,
+      params,
+    );
+    const movementSelectSql =
+      q || actionType !== "" || (status && status !== "all")
+        ? MOVEMENT_SELECT
+        : MOVEMENT_SELECT.replace(
+            "FROM personnel_movements m",
+            "FROM personnel_movements m FORCE INDEX (idx_personnel_movements_created_control)",
+          );
     const [rows] = await pool.execute(
-      MOVEMENT_SELECT +
-        (where.length ? " WHERE " + where.join(" AND ") : "") +
-        " ORDER BY m.created_at DESC,m.control_number DESC",
+      movementSelectSql +
+        whereSql +
+        ` ORDER BY m.created_at DESC,m.control_number DESC LIMIT ${pageSize} OFFSET ${offset}`,
       params,
     );
     const [counts] = await pool.query(
@@ -579,6 +597,12 @@ export function createMovementHandlers({
       movements: rows.map(movementRow),
       summary: Object.fromEntries(counts.map((x) => [x.status, Number(x.total)])),
       actionTypes: MOVEMENT_ACTION_TYPES,
+      pagination: {
+        total: Number(countRow.total || 0),
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(Number(countRow.total || 0) / pageSize)),
+      },
     });
   };
   handlers.events = async (req, res, id) => {

@@ -53,11 +53,7 @@ interface StepperProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 function Stepper({ steps, value, onValueChange, className, children, ...props }: StepperProps) {
-  const definitionRef = useRef<ReturnType<typeof Stepperize.defineStepper> | null>(null);
-
-  if (!definitionRef.current) {
-    definitionRef.current = Stepperize.defineStepper(steps);
-  }
+  const definitionRef = useRef(Stepperize.defineStepper(steps));
 
   const stepper = definitionRef.current.useStepper({
     defaultStep: steps[0]?.id,

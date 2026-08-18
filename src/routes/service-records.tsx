@@ -794,6 +794,8 @@ function AvatarInitials({
         <img
           src={employee.photoUrl}
           alt={formatEmployeeName(employee)}
+          loading="lazy"
+          decoding="async"
           className="h-full w-full rounded-full object-cover"
         />
       ) : (

@@ -29,7 +29,10 @@ test("DTR correction approval uses the configurable attendance permission", () =
   assert.match(serverSource, /key:\s*"attendance\.corrections\.approve"/);
   assert.match(authSource, /"attendance\.corrections\.approve"/);
   assert.match(serverSource, /hasPermission\(user,\s*"attendance\.corrections\.approve"\)/);
-  assert.doesNotMatch(serverSource, /canApproveCorrections\s*=\s*await hasPermission\(user,\s*"approvals\.manage"\)/);
+  assert.doesNotMatch(
+    serverSource,
+    /canApproveCorrections\s*=\s*await hasPermission\(user,\s*"approvals\.manage"\)/,
+  );
   assert.match(attendanceRouteSource, /hasPermission\("attendance\.corrections\.approve"\)/);
 });
 
@@ -58,7 +61,10 @@ test("attendance bulk operations enforce bounded date ranges", () => {
   assert.match(serverSource, /const ATTENDANCE_MAX_RANGE_DAYS = 62/);
   assert.match(serverSource, /validateAttendanceRange\(from,\s*to,\s*"Import date range"\)/);
   assert.match(serverSource, /validateAttendanceRange\(from,\s*to,\s*"Refresh date range"\)/);
-  assert.match(serverSource, /validateAttendanceRange\(startDate,\s*endDate,\s*"Schedule override range"\)/);
+  assert.match(
+    serverSource,
+    /validateAttendanceRange\(startDate,\s*endDate,\s*"Schedule override range"\)/,
+  );
   assert.match(serverSource, /validateAttendanceRange\(from,\s*to,\s*"Biometric sync range"\)/);
 });
 
@@ -75,8 +81,14 @@ test("DTR edit locks are tracked per time slot and exposed through the API", () 
 
 test("DTR refresh merges locked slots and recomputes attendance stats", () => {
   assert.match(serverSource, /const existingLocks = dtrLockFields\(existing\)/);
-  assert.match(serverSource, /amIn:\s*existingLocks\.amIn \? formatTime\(existing\.am_in\) : params\.amIn/);
-  assert.match(serverSource, /calculateAttendanceStatsForShift\(mergedEntry,\s*entry\.shift \|\| null\)/);
+  assert.match(
+    serverSource,
+    /amIn:\s*existingLocks\.amIn \? formatTime\(existing\.am_in\) : params\.amIn/,
+  );
+  assert.match(
+    serverSource,
+    /calculateAttendanceStatsForShift\(mergedEntry,\s*entry\.shift \|\| null\)/,
+  );
   assert.match(serverSource, /locked or labeled DTR row\(s\) were partially preserved/);
   assert.doesNotMatch(serverSource, /source <> 'Imported'\)/);
 });
@@ -88,5 +100,8 @@ test("DTR correction audit includes all employees and direct admin edits", () =>
   );
   assert.match(serverSource, /Direct admin DTR edit/);
   assert.match(serverSource, /INSERT INTO dtr_correction_requests \(/);
-  assert.match(serverSource, /insertDtrCorrectionEvent\(connection,\s*\{\s*requestId,\s*eventType:\s*"Approved"/);
+  assert.match(
+    serverSource,
+    /insertDtrCorrectionEvent\(connection,\s*\{\s*requestId,\s*eventType:\s*"Approved"/,
+  );
 });

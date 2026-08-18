@@ -85,7 +85,7 @@ export function AppSidebar() {
 
   const handleLogout = async () => {
     await logout();
-    navigate({ to: "/login", search: {}, replace: true });
+    navigate({ to: "/login", search: { redirect: "/" }, replace: true });
   };
 
   return (
@@ -109,7 +109,12 @@ export function AppSidebar() {
           )}
         >
           {agency.logoUrl ? (
-            <img src={agency.logoUrl} alt="Logo" className="h-full w-full object-contain" />
+            <img
+              src={agency.logoUrl}
+              alt="Logo"
+              decoding="async"
+              className="h-full w-full object-contain"
+            />
           ) : (
             <Stethoscope className={cn("text-primary", collapsed ? "h-5 w-5" : "h-6 w-6")} />
           )}

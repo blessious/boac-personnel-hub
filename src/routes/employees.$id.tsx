@@ -83,6 +83,7 @@ import {
 } from "@/lib/reference-libraries";
 import { getEmployeeLeave, type EmployeeLeaveResponse, type LeaveBalance } from "@/lib/leave-api";
 import { cn, formatDisplayDate, formatDtrSignatoryName, formatEmployeeName } from "@/lib/utils";
+import { resizeImageDataUrl } from "@/lib/image-utils";
 
 export const Route = createFileRoute("/employees/$id")({
   component: EmployeeFile,
@@ -502,14 +503,8 @@ function EmployeeFile() {
     }
 
     try {
-      const photoUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error("Unable to read the selected photo"));
-        reader.readAsDataURL(file);
-      });
+      const photoUrl = await resizeImageDataUrl(file, { maxWidth: 768, maxHeight: 768 });
       setPendingPhotoUrl(photoUrl);
-      toast.info("Photo selected. Click Update to save it.");
     } catch (photoError) {
       toast.error(photoError instanceof Error ? photoError.message : "Unable to read photo");
     } finally {
@@ -1601,7 +1596,10 @@ function latestRowsFirst(section: string, rows: SectionRow[]) {
   return [...rows].sort((left, right) => {
     const byDate = latestSectionTime(section, right) - latestSectionTime(section, left);
     if (byDate !== 0) return byDate;
-    return dateTimeValue(right.updatedAt || right.createdAt) - dateTimeValue(left.updatedAt || left.createdAt);
+    return (
+      dateTimeValue(right.updatedAt || right.createdAt) -
+      dateTimeValue(left.updatedAt || left.createdAt)
+    );
   });
 }
 

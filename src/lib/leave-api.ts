@@ -143,12 +143,23 @@ export function createLeaveType(payload: { code: string; name: string; isPaid: b
   });
 }
 
-export function listLeaveApplications(params: { status?: string; q?: string } = {}) {
+export function listLeaveApplications(
+  params: { status?: string; q?: string; page?: number; pageSize?: number } = {},
+  options: RequestInit = {},
+) {
   const query = new URLSearchParams();
   if (params.status && params.status !== "all") query.set("status", params.status);
   if (params.q) query.set("q", params.q);
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("pageSize", String(params.pageSize));
   return api<{
     applications: LeaveApplication[];
+    pagination: {
+      total: number;
+      page: number;
+      pageSize: number;
+      totalPages: number;
+    };
     summary: {
       total: number;
       pending: number;
@@ -156,7 +167,7 @@ export function listLeaveApplications(params: { status?: string; q?: string } = 
       disapproved: number;
       cancelled: number;
     };
-  }>(`/api/leave/applications?${query.toString()}`);
+  }>(`/api/leave/applications?${query.toString()}`, options);
 }
 
 export function createLeaveApplication(payload: CreateLeaveApplicationPayload) {

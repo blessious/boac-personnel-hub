@@ -91,6 +91,7 @@ import {
   getSettingsOptions,
   listEmployees,
   type EmployeeAccountCredentials,
+  type EmploymentStatus,
   type EmployeeRecord,
   type SettingsOptions,
   type DashboardResponse,
@@ -159,6 +160,11 @@ const NON_PLANTILLA_ENGAGEMENT_TYPES: EngagementPayload["engagementType"][] = [
   "Contractual",
   "Casual",
 ];
+const EMPTY_EMPLOYEES_SEARCH = {
+  department: undefined,
+  onboard: undefined,
+  targetPlantillaItemId: undefined,
+};
 const optionCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 type OnboardingMode = "plantilla" | "engagement" | "";
 type AddEmployeeStep = "identity" | "assignment";
@@ -192,10 +198,10 @@ const today = () => {
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
-const employmentStatusForPlantillaType = (plantillaType?: string) => {
+const employmentStatusForPlantillaType = (plantillaType?: string): EmploymentStatus => {
   const classification = plantillaType?.trim();
   if (!classification || classification.toLowerCase() === "plantilla") return "Permanent";
-  return classification;
+  return classification as EmploymentStatus;
 };
 const emptyAppointment = () => ({
   targetPlantillaItemId: "",
@@ -290,7 +296,8 @@ function EmployeesPage() {
   });
   const plantillaOptionsQuery = useQuery({
     queryKey: ["employees", "onboarding-options", "plantilla"],
-    queryFn: ({ signal }) => listPlantilla("", "Active", "vacant", { signal }),
+    queryFn: ({ signal }) =>
+      listPlantilla("", "Active", "vacant", { signal }, "", { pageSize: 100 }),
     staleTime: 5 * 60_000,
   });
   const organizationOptionsQuery = useQuery({
@@ -371,7 +378,7 @@ function EmployeesPage() {
     setAddFormErrors({});
     setIsAddDialogDirty(false);
     setShowAddDialog(true);
-    navigate({ search: {}, replace: true });
+    navigate({ search: EMPTY_EMPLOYEES_SEARCH, replace: true });
   }, [navigate, search.onboard, search.targetPlantillaItemId]);
 
   useEffect(() => {
@@ -879,7 +886,13 @@ function EmployeesPage() {
                 setDept(value);
                 setPage(1);
                 navigate({
-                  search: value === "all" ? {} : { department: value },
+                  search:
+                    value === "all"
+                      ? EMPTY_EMPLOYEES_SEARCH
+                      : {
+                          ...EMPTY_EMPLOYEES_SEARCH,
+                          department: value,
+                        },
                   replace: true,
                 });
               }}
@@ -1019,7 +1032,7 @@ function EmployeesPage() {
                   setGender("all");
                   setArchiveScope("active");
                   setPage(1);
-                  navigate({ search: {}, replace: true });
+                  navigate({ search: EMPTY_EMPLOYEES_SEARCH, replace: true });
                 }}
               >
                 Clear filters
@@ -1072,7 +1085,11 @@ function EmployeesPage() {
                           className={cn(dataTableRowClass, "cursor-pointer")}
                           title="Double-click to open 201 file"
                           onDoubleClick={() =>
-                            navigate({ to: "/employees/$id", params: { id: employee.id } })
+                            navigate({
+                              to: "/employees/$id",
+                              params: { id: employee.id },
+                              search: true,
+                            })
                           }
                         >
                           <td className={cn(dataTableCellClass, "min-w-[250px]")}>
@@ -1087,6 +1104,8 @@ function EmployeesPage() {
                                   <img
                                     src={employee.photoUrl}
                                     alt={formatEmployeeName(employee)}
+                                    loading="lazy"
+                                    decoding="async"
                                     className="h-full w-full object-cover rounded-full"
                                   />
                                 ) : (
@@ -1189,6 +1208,8 @@ function EmployeesPage() {
                             <img
                               src={employee.photoUrl}
                               alt={formatEmployeeName(employee)}
+                              loading="lazy"
+                              decoding="async"
                               className="h-full w-full rounded-full object-cover"
                             />
                           ) : (
@@ -1661,7 +1682,7 @@ function EmployeesPage() {
                             onValueChange={(value) => {
                               const engagementType = value as AddEngagementForm["engagementType"];
                               setEngagement({ ...engagement, engagementType });
-                              setForm({ ...form, status: engagementType });
+                              if (engagementType) setForm({ ...form, status: engagementType });
                               setIsAddDialogDirty(true);
                               setAddFormErrors((current) => ({
                                 ...current,
@@ -2029,6 +2050,7 @@ function EmployeeActionLink({
     <Link
       to={to}
       params={params}
+      search={EMPTY_EMPLOYEES_SEARCH}
       className={cn(employeeActionButtonClass, className)}
       title={label}
       aria-label={label}

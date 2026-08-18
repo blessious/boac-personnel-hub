@@ -279,7 +279,10 @@ export function listDtrCorrectionRequests(
     q?: string;
     from?: string;
     to?: string;
+    page?: number;
+    pageSize?: number;
   } = {},
+  options: RequestInit = {},
 ) {
   const query = new URLSearchParams();
   if (params.employeeId) query.set("employeeId", params.employeeId);
@@ -289,9 +292,12 @@ export function listDtrCorrectionRequests(
   if (params.q) query.set("q", params.q);
   if (params.from) query.set("from", params.from);
   if (params.to) query.set("to", params.to);
-  return api<{ requests: DtrCorrectionRequest[] }>(
-    `/api/attendance/correction-requests?${query.toString()}`,
-  );
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("pageSize", String(params.pageSize));
+  return api<{
+    requests: DtrCorrectionRequest[];
+    pagination: { total: number; page: number; pageSize: number; totalPages: number };
+  }>(`/api/attendance/correction-requests?${query.toString()}`, options);
 }
 
 export function createDtrCorrectionRequest(payload: DtrCorrectionPayload) {
@@ -402,22 +408,35 @@ export function importSingleDtr(payload: {
   });
 }
 
-export function listAttendanceImportLogs(importId: string) {
-  return api<{ import: AttendanceImport; logs: AttendanceImportLog[] }>(
-    `/api/attendance/imports/${importId}/logs`,
-  );
+export function listAttendanceImportLogs(
+  importId: string,
+  params: { page?: number; pageSize?: number } = {},
+) {
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("pageSize", String(params.pageSize));
+  return api<{
+    import: AttendanceImport;
+    logs: AttendanceImportLog[];
+    pagination: { total: number; page: number; pageSize: number; totalPages: number };
+  }>(`/api/attendance/imports/${importId}/logs?${query.toString()}`);
 }
 
 export function listAttendanceImportExceptions(params: {
   importId?: string;
   status?: "Open" | "Mapped" | "Reprocessed" | "Ignored" | "all";
+  page?: number;
+  pageSize?: number;
 }) {
   const query = new URLSearchParams();
   if (params.importId) query.set("importId", params.importId);
   if (params.status) query.set("status", params.status);
-  return api<{ exceptions: AttendanceImportException[] }>(
-    `/api/attendance/import-exceptions?${query.toString()}`,
-  );
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("pageSize", String(params.pageSize));
+  return api<{
+    exceptions: AttendanceImportException[];
+    pagination: { total: number; page: number; pageSize: number; totalPages: number };
+  }>(`/api/attendance/import-exceptions?${query.toString()}`);
 }
 
 export function mapAttendanceImportException(

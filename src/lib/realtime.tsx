@@ -59,10 +59,7 @@ const TOPIC_QUERY_KEYS: Record<string, unknown[][]> = {
   notifications: [["leave-notifications"], ["dtr-correction-notifications"]],
 };
 
-function invalidateTopicQueries(
-  queryClient: QueryClient,
-  topic: string,
-) {
+function invalidateTopicQueries(queryClient: QueryClient, topic: string) {
   if (topic === "system") return;
   const queryKeys = TOPIC_QUERY_KEYS[topic] || [];
   queryKeys.forEach((queryKey) => {

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -42,7 +42,9 @@ import {
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { TablePagination } from "@/components/ui/table-pagination";
 import { useAuth } from "@/lib/auth";
+import { isAbortError } from "@/lib/api";
 import { listEmployees, type EmployeeRecord } from "@/lib/employees-api";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import {
@@ -72,6 +74,7 @@ function LeavePage() {
   const canApprove = can("approve");
   const [status, setStatus] = useState("all");
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
   const [applications, setApplications] = useState<LeaveApplication[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
@@ -92,6 +95,14 @@ function LeavePage() {
     approved: 0,
     disapproved: 0,
     cancelled: 0,
+  });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    pageSize: 25,
+    totalPages: 1,
   });
   const [loading, setLoading] = useState(true);
   const [showApplication, setShowApplication] = useState(false);
@@ -132,26 +143,51 @@ function LeavePage() {
     ? Number(applicationForm.daysRequested)
     : calculatedDays;
 
-  const load = () => {
-    setLoading(true);
-    setLoadError("");
-    Promise.all([listLeaveApplications({ status, q }), listLeaveTypes(), listAllLeaveEmployees()])
-      .then(([leaveResult, typeResult, employeeResult]) => {
-        setApplications(leaveResult.applications);
-        setSummary(leaveResult.summary);
-        setLeaveTypes(typeResult.leaveTypes);
-        setEmployees(employeeResult.employees);
-        setLedgerEmployeeId((current) => current || employeeResult.employees[0]?.id || "");
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : "Unable to load leave records";
-        setLoadError(message);
-        toast.error(message);
-      })
-      .finally(() => setLoading(false));
-  };
+  const load = useCallback(
+    (signal?: AbortSignal) => {
+      setLoading(true);
+      setLoadError("");
+      Promise.all([
+        listLeaveApplications({ status, q: debouncedQ, page, pageSize }, { signal }),
+        listLeaveTypes(),
+        listAllLeaveEmployees(),
+      ])
+        .then(([leaveResult, typeResult, employeeResult]) => {
+          setApplications(leaveResult.applications);
+          setPagination(leaveResult.pagination);
+          setSummary(leaveResult.summary);
+          setLeaveTypes(typeResult.leaveTypes);
+          setEmployees(employeeResult.employees);
+          setLedgerEmployeeId((current) => current || employeeResult.employees[0]?.id || "");
+          if (leaveResult.pagination.total > 0 && page > leaveResult.pagination.totalPages) {
+            setPage(leaveResult.pagination.totalPages);
+          }
+        })
+        .catch((error) => {
+          if (isAbortError(error)) return;
+          const message = error instanceof Error ? error.message : "Unable to load leave records";
+          setLoadError(message);
+          toast.error(message);
+        })
+        .finally(() => {
+          if (!signal?.aborted) setLoading(false);
+        });
+    },
+    [debouncedQ, page, pageSize, status],
+  );
 
-  useEffect(load, [status, q]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQ(q.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [q]);
+  useEffect(() => {
+    setPage(1);
+  }, [status, debouncedQ, pageSize]);
+  useEffect(() => {
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
   useRealtimeRefresh(load, ["leave", "employees"]);
 
   useEffect(() => {
@@ -440,7 +476,7 @@ function LeavePage() {
                     <p className="text-xs">{loadError}</p>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+                <Button variant="outline" size="sm" onClick={() => load()} disabled={loading}>
                   <RefreshCw className="mr-1.5 h-4 w-4" />
                   Retry
                 </Button>
@@ -734,6 +770,17 @@ function LeavePage() {
               </tbody>
             </table>
           </div>
+          <TablePagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            pageSize={pageSize}
+            itemLabel="leave applications"
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            maxPageSize={100}
+            className="mt-0 rounded-b-lg border border-t-0 border-border bg-card"
+          />
         </div>
       )}
 

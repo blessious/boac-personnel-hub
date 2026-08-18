@@ -130,7 +130,7 @@ const selectSql = `SELECT pi.*,p.title position_title,sg.ordinance,sg.grade,sg.s
   END,
   NULLIF(TRIM(e.lastname), ''),
   NULLIF(TRIM(e.name_ext), '')
- )) employee_name FROM plantilla_items pi
+ )) employee_name FROM plantilla_items pi FORCE INDEX (item_number)
  JOIN positions p ON p.id=pi.position_id LEFT JOIN salary_grades sg ON sg.id=pi.salary_grade_id
  LEFT JOIN hr_reference_values s ON s.id=pi.sector_ref_id LEFT JOIN hr_reference_values o ON o.id=pi.office_ref_id
  LEFT JOIN hr_reference_values d ON d.id=pi.division_ref_id LEFT JOIN hr_reference_values se ON se.id=pi.section_ref_id
@@ -488,6 +488,8 @@ export function createPlantillaHandlers({
     const q = String(url.searchParams.get("q") || "").trim(),
       status = String(url.searchParams.get("status") || ""),
       occ = String(url.searchParams.get("occupancy") || ""),
+      page = Math.max(1, Number(url.searchParams.get("page") || 1)),
+      pageSize = Math.min(100, Math.max(1, Number(url.searchParams.get("pageSize") || 10))),
       organizationId = String(
         url.searchParams.get("organizationId") || url.searchParams.get("officeId") || "",
       ).trim();
@@ -513,10 +515,19 @@ export function createPlantillaHandlers({
       );
       p.organizationId = Number(organizationId);
     }
+    const whereSql = where.length ? " WHERE " + where.join(" AND ") : "";
+    const offset = (page - 1) * pageSize;
+    const [[countRow]] = await pool.execute(
+      `SELECT COUNT(*) AS total
+         FROM plantilla_items pi
+   INNER JOIN positions p ON p.id=pi.position_id
+    LEFT JOIN plantilla_occupancies po ON po.plantilla_item_id=pi.id AND po.status='Active'
+    LEFT JOIN employees e ON e.id=po.employee_id
+        ${whereSql}`,
+      p,
+    );
     const [rs] = await pool.execute(
-      selectSql +
-        (where.length ? " WHERE " + where.join(" AND ") : "") +
-        " ORDER BY pi.item_number",
+      selectSql + whereSql + ` ORDER BY pi.item_number LIMIT ${pageSize} OFFSET ${offset}`,
       p,
     );
     const [[s]] = await pool.query(
@@ -525,6 +536,12 @@ export function createPlantillaHandlers({
     return json(res, 200, {
       items: rs.map(map).sort((a, b) => itemNumberCollator.compare(a.itemNumber, b.itemNumber)),
       summary: Object.fromEntries(Object.entries(s).map(([k, v]) => [k, Number(v || 0)])),
+      pagination: {
+        total: Number(countRow.total || 0),
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(Number(countRow.total || 0) / pageSize)),
+      },
     });
   };
   handlers.create = async (req, res) => {
@@ -817,10 +834,9 @@ export function createPlantillaHandlers({
           WHERE id=:employeeId`,
         { employeeId: o.employee_id },
       );
-      await c.execute(
-        "UPDATE users SET is_active=0 WHERE employee_id=:employeeId",
-        { employeeId: o.employee_id },
-      );
+      await c.execute("UPDATE users SET is_active=0 WHERE employee_id=:employeeId", {
+        employeeId: o.employee_id,
+      });
       const [[employeeAfter]] = await c.execute(
         "SELECT id,employee_no,department,position,item_no,status,emp_status,lifecycle_state,current_org_unit_ref_id FROM employees WHERE id=:employeeId",
         { employeeId: o.employee_id },

@@ -349,8 +349,17 @@ function AttendancePage() {
   const [reviewRemarks, setReviewRemarks] = useState("");
   const [reverseReason, setReverseReason] = useState("");
   const [correctionQuery, setCorrectionQuery] = useState("");
+  const [debouncedCorrectionQuery, setDebouncedCorrectionQuery] = useState("");
   const [correctionStatus, setCorrectionStatus] = useState<DtrCorrectionStatus | "all">("all");
   const [correctionType, setCorrectionType] = useState<"all" | "Times" | "Label">("all");
+  const [correctionPage, setCorrectionPage] = useState(1);
+  const [correctionPageSize, setCorrectionPageSize] = useState(25);
+  const [correctionPagination, setCorrectionPagination] = useState({
+    total: 0,
+    page: 1,
+    pageSize: 25,
+    totalPages: 1,
+  });
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importLogOpen, setImportLogOpen] = useState(false);
   const [importLogLoading, setImportLogLoading] = useState(false);
@@ -359,6 +368,22 @@ function AttendancePage() {
   const [importLogSummary, setImportLogSummary] = useState<AttendanceImport | null>(null);
   const [importLogs, setImportLogs] = useState<AttendanceImportLog[]>([]);
   const [importExceptions, setImportExceptions] = useState<AttendanceImportException[]>([]);
+  const [importLogPage, setImportLogPage] = useState(1);
+  const [importLogPageSize, setImportLogPageSize] = useState(50);
+  const [importLogPagination, setImportLogPagination] = useState({
+    total: 0,
+    page: 1,
+    pageSize: 50,
+    totalPages: 1,
+  });
+  const [importExceptionPage, setImportExceptionPage] = useState(1);
+  const [importExceptionPageSize, setImportExceptionPageSize] = useState(50);
+  const [importExceptionPagination, setImportExceptionPagination] = useState({
+    total: 0,
+    page: 1,
+    pageSize: 50,
+    totalPages: 1,
+  });
   const [mappingExceptionId, setMappingExceptionId] = useState("");
   const [mappingEmployeeId, setMappingEmployeeId] = useState("");
   const [reprocessingExceptions, setReprocessingExceptions] = useState(false);
@@ -508,11 +533,19 @@ function AttendancePage() {
       employeeId: isEmployee || selectedEmployeeId === "all" ? undefined : selectedEmployeeId,
       status: correctionStatus === "all" ? undefined : correctionStatus,
       requestType: correctionType === "all" ? undefined : correctionType,
-      q: correctionQuery,
+      q: debouncedCorrectionQuery,
       from,
       to,
+      page: correctionPage,
+      pageSize: correctionPageSize,
     })
-      .then((result) => setCorrectionRequests(result.requests))
+      .then((result) => {
+        setCorrectionRequests(result.requests);
+        setCorrectionPagination(result.pagination);
+        if (result.pagination.total > 0 && correctionPage > result.pagination.totalPages) {
+          setCorrectionPage(result.pagination.totalPages);
+        }
+      })
       .catch((error) => {
         const message = error instanceof Error ? error.message : "Unable to load DTR requests";
         setCorrectionRequests([]);
@@ -521,13 +554,32 @@ function AttendancePage() {
       });
   };
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedCorrectionQuery(correctionQuery.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [correctionQuery]);
+
+  useEffect(() => {
+    setCorrectionPage(1);
+  }, [
+    selectedEmployeeId,
+    correctionStatus,
+    correctionType,
+    debouncedCorrectionQuery,
+    from,
+    to,
+    correctionPageSize,
+  ]);
+
   useEffect(loadCorrections, [
     canApprove,
     isEmployee,
     selectedEmployeeId,
     correctionStatus,
     correctionType,
-    correctionQuery,
+    debouncedCorrectionQuery,
+    correctionPage,
+    correctionPageSize,
     from,
     to,
   ]);
@@ -836,7 +888,22 @@ function AttendancePage() {
     }
   };
 
-  const openImportLog = async (importId: string) => {
+  const openImportLog = async (
+    importId: string,
+    options: {
+      logPage?: number;
+      logPageSize?: number;
+      exceptionPage?: number;
+      exceptionPageSize?: number;
+    } = {},
+  ) => {
+    const isSameImport = importId === importLogId;
+    const nextLogPage = options.logPage || (isSameImport ? importLogPage : 1);
+    const nextExceptionPage = options.exceptionPage || (isSameImport ? importExceptionPage : 1);
+    const nextLogPageSize = options.logPageSize || importLogPageSize;
+    const nextExceptionPageSize = options.exceptionPageSize || importExceptionPageSize;
+    setImportLogPage(nextLogPage);
+    setImportExceptionPage(nextExceptionPage);
     setImportLogOpen(true);
     setImportLogLoading(true);
     setImportLogError("");
@@ -848,12 +915,28 @@ function AttendancePage() {
     setMappingEmployeeId("");
     try {
       const [logResult, exceptionResult] = await Promise.all([
-        listAttendanceImportLogs(importId),
-        listAttendanceImportExceptions({ importId, status: "all" }),
+        listAttendanceImportLogs(importId, { page: nextLogPage, pageSize: nextLogPageSize }),
+        listAttendanceImportExceptions({
+          importId,
+          status: "all",
+          page: nextExceptionPage,
+          pageSize: nextExceptionPageSize,
+        }),
       ]);
       setImportLogSummary(logResult.import);
       setImportLogs(logResult.logs);
+      setImportLogPagination(logResult.pagination);
       setImportExceptions(exceptionResult.exceptions);
+      setImportExceptionPagination(exceptionResult.pagination);
+      if (logResult.pagination.total > 0 && nextLogPage > logResult.pagination.totalPages) {
+        setImportLogPage(logResult.pagination.totalPages);
+      }
+      if (
+        exceptionResult.pagination.total > 0 &&
+        nextExceptionPage > exceptionResult.pagination.totalPages
+      ) {
+        setImportExceptionPage(exceptionResult.pagination.totalPages);
+      }
     } catch (error) {
       setImportLogError(error instanceof Error ? error.message : "Unable to load import log");
     } finally {
@@ -878,7 +961,7 @@ function AttendancePage() {
     try {
       await mapAttendanceImportException(exceptionId, { employeeId: mappingEmployeeId });
       toast.success("Import exception mapped");
-      if (importLogId) await openImportLog(importLogId);
+      if (importLogId) await openImportLog(importLogId, { exceptionPage: importExceptionPage });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to map import exception");
     } finally {
@@ -897,7 +980,7 @@ function AttendancePage() {
       const result = await reprocessAttendanceImportExceptions(ids);
       toast.success(`Reprocessed ${result.reprocessed} punch(es)`);
       if (result.refreshed.warnings?.length) toast.warning(result.refreshed.warnings.join("; "));
-      if (importLogId) await openImportLog(importLogId);
+      if (importLogId) await openImportLog(importLogId, { exceptionPage: importExceptionPage });
       load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to reprocess exceptions");
@@ -2185,6 +2268,17 @@ function AttendancePage() {
                     </tbody>
                   </table>
                 </div>
+                <TablePagination
+                  page={correctionPagination.page}
+                  totalPages={correctionPagination.totalPages}
+                  total={correctionPagination.total}
+                  pageSize={correctionPageSize}
+                  itemLabel="DTR requests"
+                  onPageChange={setCorrectionPage}
+                  onPageSizeChange={setCorrectionPageSize}
+                  maxPageSize={100}
+                  className="border-t border-border bg-card"
+                />
               </section>
             )}
           </TabsContent>
@@ -3174,6 +3268,29 @@ function AttendancePage() {
                       </tbody>
                     </table>
                   </div>
+                  <TablePagination
+                    page={importExceptionPagination.page}
+                    totalPages={importExceptionPagination.totalPages}
+                    total={importExceptionPagination.total}
+                    pageSize={importExceptionPageSize}
+                    itemLabel="quarantined punches"
+                    onPageChange={(nextPage) => {
+                      setImportExceptionPage(nextPage);
+                      if (importLogId) void openImportLog(importLogId, { exceptionPage: nextPage });
+                    }}
+                    onPageSizeChange={(nextPageSize) => {
+                      setImportExceptionPageSize(nextPageSize);
+                      setImportExceptionPage(1);
+                      if (importLogId)
+                        void openImportLog(importLogId, {
+                          exceptionPage: 1,
+                          exceptionPageSize: nextPageSize,
+                        });
+                    }}
+                    maxPageSize={200}
+                    pageSizeOptions={[25, 50, 100, 200]}
+                    className="mt-3 rounded-md border border-amber-200 bg-background dark:border-amber-900 dark:bg-card"
+                  />
                 </section>
               )}
               <div className="overflow-x-auto rounded-lg border border-border">
@@ -3216,6 +3333,26 @@ function AttendancePage() {
                   </tbody>
                 </table>
               </div>
+              <TablePagination
+                page={importLogPagination.page}
+                totalPages={importLogPagination.totalPages}
+                total={importLogPagination.total}
+                pageSize={importLogPageSize}
+                itemLabel="import log entries"
+                onPageChange={(nextPage) => {
+                  setImportLogPage(nextPage);
+                  if (importLogId) void openImportLog(importLogId, { logPage: nextPage });
+                }}
+                onPageSizeChange={(nextPageSize) => {
+                  setImportLogPageSize(nextPageSize);
+                  setImportLogPage(1);
+                  if (importLogId)
+                    void openImportLog(importLogId, { logPage: 1, logPageSize: nextPageSize });
+                }}
+                maxPageSize={200}
+                pageSizeOptions={[25, 50, 100, 200]}
+                className="rounded-lg border bg-card"
+              />
             </div>
           )}
         </DialogContent>

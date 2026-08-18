@@ -8,13 +8,14 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
+import { createFileRoute } from '@tanstack/react-router'
+
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ServiceRecordsRouteImport } from './routes/service-records'
 import { Route as SelfServiceRouteImport } from './routes/self-service'
 import { Route as SchedulesRouteImport } from './routes/schedules'
 import { Route as RequestsRouteImport } from './routes/requests'
-import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as PlantillaRouteImport } from './routes/plantilla'
 import { Route as MyProfileRouteImport } from './routes/my-profile'
 import { Route as MovementsRouteImport } from './routes/movements'
@@ -28,6 +29,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as EmployeesReferencesRouteImport } from './routes/employees.references'
 import { Route as EmployeesIdRouteImport } from './routes/employees.$id'
 
+const ReportsLazyRouteImport = createFileRoute('/reports')()
+
+const ReportsLazyRoute = ReportsLazyRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/reports.lazy').then((d) => d.Route))
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -51,11 +59,6 @@ const SchedulesRoute = SchedulesRouteImport.update({
 const RequestsRoute = RequestsRouteImport.update({
   id: '/requests',
   path: '/requests',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReportsRoute = ReportsRouteImport.update({
-  id: '/reports',
-  path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PlantillaRoute = PlantillaRouteImport.update({
@@ -130,12 +133,12 @@ export interface FileRoutesByFullPath {
   '/movements': typeof MovementsRoute
   '/my-profile': typeof MyProfileRoute
   '/plantilla': typeof PlantillaRoute
-  '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
   '/schedules': typeof SchedulesRoute
   '/self-service': typeof SelfServiceRoute
   '/service-records': typeof ServiceRecordsRoute
   '/settings': typeof SettingsRoute
+  '/reports': typeof ReportsLazyRoute
   '/employees/$id': typeof EmployeesIdRoute
   '/employees/references': typeof EmployeesReferencesRoute
 }
@@ -150,12 +153,12 @@ export interface FileRoutesByTo {
   '/movements': typeof MovementsRoute
   '/my-profile': typeof MyProfileRoute
   '/plantilla': typeof PlantillaRoute
-  '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
   '/schedules': typeof SchedulesRoute
   '/self-service': typeof SelfServiceRoute
   '/service-records': typeof ServiceRecordsRoute
   '/settings': typeof SettingsRoute
+  '/reports': typeof ReportsLazyRoute
   '/employees/$id': typeof EmployeesIdRoute
   '/employees/references': typeof EmployeesReferencesRoute
 }
@@ -171,12 +174,12 @@ export interface FileRoutesById {
   '/movements': typeof MovementsRoute
   '/my-profile': typeof MyProfileRoute
   '/plantilla': typeof PlantillaRoute
-  '/reports': typeof ReportsRoute
   '/requests': typeof RequestsRoute
   '/schedules': typeof SchedulesRoute
   '/self-service': typeof SelfServiceRoute
   '/service-records': typeof ServiceRecordsRoute
   '/settings': typeof SettingsRoute
+  '/reports': typeof ReportsLazyRoute
   '/employees/$id': typeof EmployeesIdRoute
   '/employees/references': typeof EmployeesReferencesRoute
 }
@@ -193,12 +196,12 @@ export interface FileRouteTypes {
     | '/movements'
     | '/my-profile'
     | '/plantilla'
-    | '/reports'
     | '/requests'
     | '/schedules'
     | '/self-service'
     | '/service-records'
     | '/settings'
+    | '/reports'
     | '/employees/$id'
     | '/employees/references'
   fileRoutesByTo: FileRoutesByTo
@@ -213,12 +216,12 @@ export interface FileRouteTypes {
     | '/movements'
     | '/my-profile'
     | '/plantilla'
-    | '/reports'
     | '/requests'
     | '/schedules'
     | '/self-service'
     | '/service-records'
     | '/settings'
+    | '/reports'
     | '/employees/$id'
     | '/employees/references'
   id:
@@ -233,12 +236,12 @@ export interface FileRouteTypes {
     | '/movements'
     | '/my-profile'
     | '/plantilla'
-    | '/reports'
     | '/requests'
     | '/schedules'
     | '/self-service'
     | '/service-records'
     | '/settings'
+    | '/reports'
     | '/employees/$id'
     | '/employees/references'
   fileRoutesById: FileRoutesById
@@ -254,16 +257,23 @@ export interface RootRouteChildren {
   MovementsRoute: typeof MovementsRoute
   MyProfileRoute: typeof MyProfileRoute
   PlantillaRoute: typeof PlantillaRoute
-  ReportsRoute: typeof ReportsRoute
   RequestsRoute: typeof RequestsRoute
   SchedulesRoute: typeof SchedulesRoute
   SelfServiceRoute: typeof SelfServiceRoute
   ServiceRecordsRoute: typeof ServiceRecordsRoute
   SettingsRoute: typeof SettingsRoute
+  ReportsLazyRoute: typeof ReportsLazyRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/reports': {
+      id: '/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof ReportsLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -297,13 +307,6 @@ declare module '@tanstack/react-router' {
       path: '/requests'
       fullPath: '/requests'
       preLoaderRoute: typeof RequestsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reports': {
-      id: '/reports'
-      path: '/reports'
-      fullPath: '/reports'
-      preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/plantilla': {
@@ -418,12 +421,12 @@ const rootRouteChildren: RootRouteChildren = {
   MovementsRoute: MovementsRoute,
   MyProfileRoute: MyProfileRoute,
   PlantillaRoute: PlantillaRoute,
-  ReportsRoute: ReportsRoute,
   RequestsRoute: RequestsRoute,
   SchedulesRoute: SchedulesRoute,
   SelfServiceRoute: SelfServiceRoute,
   ServiceRecordsRoute: ServiceRecordsRoute,
   SettingsRoute: SettingsRoute,
+  ReportsLazyRoute: ReportsLazyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
