@@ -7,6 +7,9 @@ export type ScheduleEmployee = {
   lastname: string;
   firstname: string;
   department: string;
+  organizationUnitId: number | null;
+  organizationUnitName: string;
+  organizationPath: string[];
   position: string;
   empStatus: string;
   scheduleAmIn: string;
@@ -57,6 +60,16 @@ export type ScheduleListResponse = {
   };
 };
 
+export type ScheduleOverrideListResponse = {
+  overrides: ScheduleOverride[];
+  pagination: {
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
+};
+
 export type ScheduleMutationResponse = {
   ok: boolean;
   updated: number;
@@ -64,9 +77,21 @@ export type ScheduleMutationResponse = {
   warnings: string[];
 };
 
+export type ScheduleFilterSelection = {
+  allFiltered: true;
+  filters: {
+    q?: string;
+    department?: string;
+    orgUnitId?: string;
+    empStatus?: string;
+  };
+};
+
 export function listSchedules(params: {
   q?: string;
   department?: string;
+  orgUnitId?: string;
+  empStatus?: string;
   from?: string;
   to?: string;
   page?: number;
@@ -75,6 +100,8 @@ export function listSchedules(params: {
   const query = new URLSearchParams();
   if (params.q) query.set("q", params.q);
   if (params.department && params.department !== "all") query.set("department", params.department);
+  if (params.orgUnitId && params.orgUnitId !== "all") query.set("orgUnitId", params.orgUnitId);
+  if (params.empStatus && params.empStatus !== "all") query.set("empStatus", params.empStatus);
   if (params.from) query.set("from", params.from);
   if (params.to) query.set("to", params.to);
   if (params.page) query.set("page", String(params.page));
@@ -83,7 +110,8 @@ export function listSchedules(params: {
 }
 
 export function updateDefaultSchedules(payload: {
-  employeeIds: string[];
+  employeeIds?: string[];
+  selection?: ScheduleFilterSelection;
   shiftTemplateCode?: string;
   from: string;
   to: string;
@@ -96,7 +124,8 @@ export function updateDefaultSchedules(payload: {
 }
 
 export function updateScheduleOverrides(payload: {
-  employeeIds: string[];
+  employeeIds?: string[];
+  selection?: ScheduleFilterSelection;
   startDate: string;
   endDate: string;
   skipWeekends: boolean;
@@ -107,6 +136,30 @@ export function updateScheduleOverrides(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function listScheduleOverrides(params: {
+  q?: string;
+  department?: string;
+  orgUnitId?: string;
+  empStatus?: string;
+  from: string;
+  to: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const query = new URLSearchParams();
+  if (params.q) query.set("q", params.q);
+  if (params.department && params.department !== "all") query.set("department", params.department);
+  if (params.orgUnitId && params.orgUnitId !== "all") query.set("orgUnitId", params.orgUnitId);
+  if (params.empStatus && params.empStatus !== "all") query.set("empStatus", params.empStatus);
+  query.set("from", params.from);
+  query.set("to", params.to);
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("pageSize", String(params.pageSize));
+  return api<ScheduleOverrideListResponse>(
+    `/api/attendance/schedule/overrides?${query.toString()}`,
+  );
 }
 
 export function deleteScheduleOverride(employeeId: string, workDate: string) {

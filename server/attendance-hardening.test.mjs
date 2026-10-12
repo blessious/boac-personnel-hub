@@ -53,6 +53,11 @@ test("schedule mutations return refresh counts and warnings", () => {
   assert.match(serverSource, /warnings:\s*refreshed\.warnings/);
   assert.match(schedulesApiSource, /type ScheduleMutationResponse/);
   assert.match(schedulesApiSource, /refreshed:\s*\{\s*recordsProcessed:\s*number/);
+  assert.match(schedulesApiSource, /type ScheduleFilterSelection/);
+  assert.match(schedulesApiSource, /listScheduleOverrides/);
+  assert.match(schedulesApiSource, /orgUnitId\?:\s*string/);
+  assert.match(serverSource, /resolveScheduleEmployeeIdsFromSelection/);
+  assert.match(serverSource, /handleListEmployeeScheduleOverrides/);
   assert.match(attendanceApiSource, /bulkUpdateSchedule\(payload:\s*\{/);
   assert.match(attendanceApiSource, /from:\s*string;\s*\n\s*to:\s*string;/);
 });
@@ -77,6 +82,11 @@ test("DTR edit locks are tracked per time slot and exposed through the API", () 
   assert.match(serverSource, /lockFields:\s*\{\s*amIn:\s*Boolean\(row\.am_in_locked\)/);
   assert.match(attendanceApiSource, /lockFields:\s*\{\s*amIn:\s*boolean;/);
   assert.match(attendanceApiSource, /lockDtr\?:\s*boolean/);
+});
+
+test("ADMS live punches require an active configured device", () => {
+  assert.match(serverSource, /WHERE is_active = 1 AND ip_address = :remoteIp/);
+  assert.match(serverSource, /Ignored ADMS ATTLOG from inactive or unconfigured device/);
 });
 
 test("DTR refresh merges locked slots and recomputes attendance stats", () => {

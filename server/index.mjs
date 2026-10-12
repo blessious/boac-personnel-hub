@@ -1122,36 +1122,6 @@ const DEFAULT_REFERENCE_VALUES = [
   },
 ];
 
-const OBSOLETE_HOSPITAL_REFERENCE_VALUES = [
-  ["sectors", "EXEC"],
-  ["sectors", "MED"],
-  ["sectors", "NURS"],
-  ["sectors", "HOPSS"],
-  ["sectors", "ADMIN"],
-  ["offices", "OMCC"],
-  ["offices", "MED-OFF"],
-  ["offices", "NURS-OFF"],
-  ["offices", "HOPSS-OFF"],
-  ["offices", "ADMIN-OFF"],
-  ["divisions", "MCC-DIV"],
-  ["divisions", "MED-DIV"],
-  ["divisions", "NURS-DIV"],
-  ["divisions", "ANC-DIV"],
-  ["divisions", "SUP-DIV"],
-  ["divisions", "ADMIN-DIV"],
-  ["divisions", "FIN-DIV"],
-  ["sections", "ER"],
-  ["sections", "OPD"],
-  ["sections", "WARD"],
-  ["sections", "PHARM"],
-  ["sections", "LAB"],
-  ["sections", "RAD"],
-  ["sections", "HR"],
-  ["sections", "GSS"],
-  ["budget-codes", "INCOME"],
-  ["budget-codes", "DOH-GAA"],
-];
-
 const OFFICE_SECTOR_PARENT_CODES = {
   EXEC_ADMIN: [
     "CAO",
@@ -4107,6 +4077,7 @@ async function initializeDatabase() {
   await ensureColumn("employees", "is_dtr_noter", "TINYINT(1) NOT NULL DEFAULT 0");
   await ensureColumn("employees", "regular", "TINYINT(1) NOT NULL DEFAULT 1");
   await ensureColumn("employees", "is_hidden", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureColumn("employees", "current_org_unit_ref_id", "INT UNSIGNED NULL");
   await ensureColumn("salary_grades", "is_active", "TINYINT(1) NOT NULL DEFAULT 0");
   await ensureIndex(
     "salary_grades",
@@ -4137,6 +4108,11 @@ async function initializeDatabase() {
     "employees",
     "idx_employees_list_filters",
     "INDEX idx_employees_list_filters (is_hidden, department, status, emp_status, gender)",
+  );
+  await ensureIndex(
+    "employees",
+    "idx_employees_current_org_unit",
+    "INDEX idx_employees_current_org_unit (current_org_unit_ref_id)",
   );
 
   const employeeIdDefinition = await getEmployeeIdDefinition();
@@ -4357,6 +4333,7 @@ async function initializeDatabase() {
       CONSTRAINT fk_attendance_imports_imported_by FOREIGN KEY (imported_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;
   `);
+  const attendanceImportIdDefinition = await getAttendanceImportIdDefinition();
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS attendance_import_logs (
@@ -4376,7 +4353,7 @@ async function initializeDatabase() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS attendance_import_exceptions (
       id CHAR(36) NOT NULL PRIMARY KEY,
-      import_id CHAR(36) NOT NULL,
+      import_id ${attendanceImportIdDefinition},
       employee_no VARCHAR(80) NULL,
       punch_at DATETIME NULL,
       source VARCHAR(40) NOT NULL,
@@ -4890,6 +4867,23 @@ async function getEmployeeIdDefinition() {
   return `${columnType}${charset}${collation} NOT NULL`;
 }
 
+async function getAttendanceImportIdDefinition() {
+  const [rows] = await pool.execute(
+    `SELECT COLUMN_TYPE, CHARACTER_SET_NAME, COLLATION_NAME
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = 'attendance_imports' AND COLUMN_NAME = 'id'
+     LIMIT 1`,
+    { schema: DB_NAME },
+  );
+  const column = rows[0];
+  if (!column) return "CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL";
+
+  const columnType = String(column.COLUMN_TYPE || "CHAR(36)");
+  const charset = column.CHARACTER_SET_NAME ? ` CHARACTER SET ${column.CHARACTER_SET_NAME}` : "";
+  const collation = column.COLLATION_NAME ? ` COLLATE ${column.COLLATION_NAME}` : "";
+  return `${columnType}${charset}${collation} NOT NULL`;
+}
+
 async function seedConfigTables() {
   await pool.execute(
     `INSERT INTO agency_settings (id, name, tagline, logo_url, icon_url, banner_url)
@@ -4941,26 +4935,6 @@ async function seedConfigTables() {
       }
     }
   }
-
-  const obsoleteConditions = OBSOLETE_HOSPITAL_REFERENCE_VALUES.map(
-    () => "(category = ? AND code = ?)",
-  ).join(" OR ");
-  const obsoleteParams = OBSOLETE_HOSPITAL_REFERENCE_VALUES.flat();
-  await pool.query(
-    `UPDATE hr_reference_values
-     SET parent_id = NULL
-     WHERE parent_id IN (
-       SELECT id FROM (
-         SELECT id FROM hr_reference_values WHERE ${obsoleteConditions}
-       ) obsolete
-     )`,
-    obsoleteParams,
-  );
-  await pool.query(
-    `DELETE FROM hr_reference_values
-     WHERE ${obsoleteConditions}`,
-    obsoleteParams,
-  );
 
   const [[referenceCount]] = await pool.query(`SELECT COUNT(*) AS count FROM hr_reference_values`);
   if (Number(referenceCount.count || 0) === 0) {
@@ -8175,6 +8149,12 @@ async function handleRefreshDtr(req, res) {
 }
 
 function scheduleRow(row) {
+  const organizationPath = [
+    row.org_level_3_name,
+    row.org_level_2_name,
+    row.org_level_1_name,
+    row.org_unit_name,
+  ].filter(Boolean);
   return {
     employeeId: String(row.employee_id),
     employeeNo: String(row.employee_no || ""),
@@ -8182,6 +8162,9 @@ function scheduleRow(row) {
     lastname: row.lastname || "",
     firstname: row.firstname || "",
     department: row.department || "",
+    organizationUnitId: row.org_unit_id ? Number(row.org_unit_id) : null,
+    organizationUnitName: row.org_unit_name || row.department || "",
+    organizationPath,
     position: row.position || "",
     empStatus: row.emp_status || "Active",
     scheduleAmIn: formatTime(row.schedule_am_in) || "08:00",
@@ -8190,6 +8173,100 @@ function scheduleRow(row) {
     schedulePmOut: formatTime(row.schedule_pm_out) || "17:00",
     overrideCount: Number(row.override_count || 0),
   };
+}
+
+async function scheduleOrganizationFilter(orgUnitId) {
+  if (!orgUnitId || orgUnitId === "all") return null;
+  const id = Number(orgUnitId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid organization filter");
+  const [rows] = await pool.execute(
+    `SELECT id, name, parent_id FROM hr_reference_values
+     WHERE category IN ('sectors','offices','divisions','sections')`,
+  );
+  const selected = rows.find((row) => Number(row.id) === id);
+  if (!selected) throw new Error("Organization filter not found");
+  const childrenByParent = new Map();
+  for (const row of rows) {
+    const parentId = row.parent_id ? Number(row.parent_id) : null;
+    if (!parentId) continue;
+    if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+    childrenByParent.get(parentId).push(Number(row.id));
+  }
+  const ids = [];
+  const queue = [id];
+  const visited = new Set();
+  while (queue.length) {
+    const current = queue.shift();
+    if (visited.has(current)) continue;
+    visited.add(current);
+    ids.push(current);
+    queue.push(...(childrenByParent.get(current) || []));
+  }
+  return { ids, name: selected.name || "" };
+}
+
+async function buildScheduleEmployeeFilter(input = {}) {
+  const source =
+    input instanceof URLSearchParams
+      ? {
+          q: input.get("q"),
+          department: input.get("department"),
+          orgUnitId: input.get("orgUnitId"),
+          empStatus: input.get("empStatus"),
+        }
+      : input;
+  const q = String(source.q || "").trim();
+  const department = String(source.department || "all").trim();
+  const empStatus = String(source.empStatus || "all").trim();
+  const organization = await scheduleOrganizationFilter(source.orgUnitId);
+  const where = ["1 = 1"];
+  const params = {};
+  if (q) {
+    where.push(`(
+      e.employee_no LIKE :search OR e.lastname LIKE :search OR e.firstname LIKE :search
+      OR e.middlename LIKE :search OR e.department LIKE :search OR e.position LIKE :search
+    )`);
+    params.search = `%${q}%`;
+  }
+  if (empStatus && empStatus !== "all") {
+    where.push("e.emp_status = :empStatus");
+    params.empStatus = empStatus;
+  }
+  if (organization) {
+    const placeholders = organization.ids.map((id, index) => {
+      const key = `orgUnitId${index}`;
+      params[key] = id;
+      return `:${key}`;
+    });
+    params.orgUnitName = organization.name;
+    where.push(`(e.current_org_unit_ref_id IN (${placeholders.join(",")}) OR e.department = :orgUnitName)`);
+  } else if (department && department !== "all") {
+    where.push("e.department = :department");
+    params.department = department;
+  }
+  return {
+    whereSql: where.join(" AND "),
+    params,
+    normalized: {
+      q,
+      department,
+      orgUnitId: organization ? String(source.orgUnitId) : "",
+      empStatus,
+    },
+  };
+}
+
+async function resolveScheduleEmployeeIdsFromSelection(selection) {
+  if (!selection?.allFiltered) return [];
+  const { whereSql, params } = await buildScheduleEmployeeFilter(selection.filters || {});
+  const [rows] = await pool.execute(
+    `SELECT e.id
+     FROM employees e
+     WHERE ${whereSql}
+     ORDER BY e.lastname, e.firstname`,
+    params,
+  );
+  return rows.map((employee) => String(employee.id));
 }
 
 function scheduleOverrideRow(row) {
@@ -8232,8 +8309,6 @@ async function handleListEmployeeSchedules(req, res, url) {
     return;
   }
 
-  const q = String(url.searchParams.get("q") || "").trim();
-  const department = String(url.searchParams.get("department") || "all").trim();
   const from = normalizeDate(url.searchParams.get("from"));
   const to = normalizeDate(url.searchParams.get("to"));
   const page = Math.max(1, Number(url.searchParams.get("page") || 1));
@@ -8246,19 +8321,13 @@ async function handleListEmployeeSchedules(req, res, url) {
     return json(res, 400, { error: "Start date cannot be after end date" });
   }
 
-  const where = ["1 = 1"];
-  const params = {};
-  if (q) {
-    where.push(`(
-      e.employee_no LIKE :search OR e.lastname LIKE :search OR e.firstname LIKE :search
-      OR e.middlename LIKE :search OR e.department LIKE :search OR e.position LIKE :search
-    )`);
-    params.search = `%${q}%`;
+  let filter;
+  try {
+    filter = await buildScheduleEmployeeFilter(url.searchParams);
+  } catch (error) {
+    return json(res, 400, { error: error.message });
   }
-  if (department && department !== "all") {
-    where.push("e.department = :department");
-    params.department = department;
-  }
+  const params = { ...filter.params };
 
   const overrideCountWhere = from && to ? "WHERE work_date BETWEEN :fromDate AND :toDate" : "";
   if (from && to) {
@@ -8266,24 +8335,30 @@ async function handleListEmployeeSchedules(req, res, url) {
     params.toDate = to;
   }
 
-  const whereSql = where.join(" AND ");
   const [countRows] = await pool.execute(
-    `SELECT COUNT(*) AS total FROM employees e WHERE ${whereSql}`,
+    `SELECT COUNT(*) AS total FROM employees e WHERE ${filter.whereSql}`,
     params,
   );
   const [employees] = await pool.execute(
     `SELECT e.id AS employee_id, e.employee_no, e.lastname, e.firstname,
             e.middlename, e.name_ext, e.department, e.position, e.emp_status,
             e.schedule_am_in, e.schedule_am_out, e.schedule_pm_in, e.schedule_pm_out,
+            org0.id AS org_unit_id, org0.name AS org_unit_name,
+            org1.name AS org_level_1_name, org2.name AS org_level_2_name,
+            org3.name AS org_level_3_name,
             COALESCE(override_counts.override_count, 0) AS override_count
      FROM employees e
+     LEFT JOIN hr_reference_values org0 ON org0.id = e.current_org_unit_ref_id
+     LEFT JOIN hr_reference_values org1 ON org1.id = org0.parent_id
+     LEFT JOIN hr_reference_values org2 ON org2.id = org1.parent_id
+     LEFT JOIN hr_reference_values org3 ON org3.id = org2.parent_id
      LEFT JOIN (
        SELECT employee_id, COUNT(*) AS override_count
        FROM employee_schedule_overrides
        ${overrideCountWhere}
        GROUP BY employee_id
      ) override_counts ON override_counts.employee_id = e.id
-     WHERE ${whereSql}
+     WHERE ${filter.whereSql}
      ORDER BY e.lastname, e.firstname
      LIMIT ${pageSize} OFFSET ${offset}`,
     params,
@@ -8332,6 +8407,65 @@ async function handleListEmployeeSchedules(req, res, url) {
       page,
       pageSize,
       totalPages: Math.max(1, Math.ceil(Number(countRows[0]?.total || 0) / pageSize)),
+    },
+  });
+}
+
+async function handleListEmployeeScheduleOverrides(req, res, url) {
+  const user = await requireAttendanceRead(req, res);
+  if (!user) return;
+  if (!(await hasPermission(user, "employees.read"))) {
+    json(res, 403, { error: "HR schedule access required" });
+    return;
+  }
+
+  const from = normalizeDate(url.searchParams.get("from"));
+  const to = normalizeDate(url.searchParams.get("to"));
+  const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+  const pageSize = Math.min(100, Math.max(10, Number(url.searchParams.get("pageSize") || 50)));
+  const offset = (page - 1) * pageSize;
+  if (!from || !to) return json(res, 400, { error: "Start and end dates are required" });
+  if (from > to) return json(res, 400, { error: "Start date cannot be after end date" });
+
+  let filter;
+  try {
+    filter = await buildScheduleEmployeeFilter(url.searchParams);
+  } catch (error) {
+    return json(res, 400, { error: error.message });
+  }
+  const params = { ...filter.params, fromDate: from, toDate: to };
+  const [countRows] = await pool.execute(
+    `SELECT COUNT(*) AS total
+     FROM employee_schedule_overrides eso
+     INNER JOIN employees e ON e.id = eso.employee_id
+     WHERE eso.work_date BETWEEN :fromDate AND :toDate
+       AND ${filter.whereSql}`,
+    params,
+  );
+  const [rows] = await pool.execute(
+    `SELECT eso.id, eso.employee_id, e.lastname, e.firstname, e.middlename, e.name_ext, e.department,
+            DATE_FORMAT(eso.work_date, '%Y-%m-%d') AS work_date,
+            eso.am_in, eso.am_out, eso.pm_in, eso.pm_out, eso.updated_at,
+            st.id AS shift_template_id, st.code AS shift_code, st.name AS shift_name
+     FROM employee_schedule_overrides eso
+     INNER JOIN employees e ON e.id = eso.employee_id
+     LEFT JOIN employee_shift_assignments esa
+       ON esa.employee_id = eso.employee_id AND esa.duty_date = eso.work_date
+     LEFT JOIN shift_templates st ON st.id = esa.shift_template_id
+     WHERE eso.work_date BETWEEN :fromDate AND :toDate
+       AND ${filter.whereSql}
+     ORDER BY eso.work_date DESC, e.lastname, e.firstname
+     LIMIT ${pageSize} OFFSET ${offset}`,
+    params,
+  );
+  const total = Number(countRows[0]?.total || 0);
+  return json(res, 200, {
+    overrides: rows.map(scheduleOverrideRow),
+    pagination: {
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
     },
   });
 }
@@ -8401,9 +8535,16 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
   const user = await requireAttendanceWrite(req, res);
   if (!user) return;
   const body = await readBody(req);
-  const employeeIds = Array.isArray(body.employeeIds)
+  let employeeIds = Array.isArray(body.employeeIds)
     ? Array.from(new Set(body.employeeIds.map(String).filter(Boolean)))
     : [];
+  if (!employeeIds.length) {
+    try {
+      employeeIds = await resolveScheduleEmployeeIdsFromSelection(body.selection);
+    } catch (error) {
+      return json(res, 400, { error: error.message });
+    }
+  }
   const schedule = body.schedule || {};
   if (!employeeIds.length) return json(res, 400, { error: "Select at least one employee" });
   const [existingEmployees] = await pool.query(
@@ -8844,6 +8985,7 @@ async function handleAdmsIclock(req, res, url) {
   const table = String(url.searchParams.get("table") || "").toUpperCase();
   const serial = String(url.searchParams.get("SN") || url.searchParams.get("sn") || "").trim();
   const remote = req.socket?.remoteAddress || "";
+  const remoteIp = String(remote).replace(/^::ffff:/, "").split("%")[0];
   const sourceDevice = serial ? `ADMS ${serial}` : `ADMS ${remote || "device"}`;
   const rawData = await readRawBody(req);
   text(res, 200, "OK");
@@ -8851,6 +8993,19 @@ async function handleAdmsIclock(req, res, url) {
   if (table !== "ATTLOG") return;
   const punches = parseAdmsAttlog(rawData);
   if (!punches.length) return;
+  const [[configuredDevice]] = await pool.execute(
+    `SELECT id FROM biometric_devices
+     WHERE is_active = 1 AND ip_address = :remoteIp
+     LIMIT 1`,
+    { remoteIp },
+  );
+  if (!configuredDevice) {
+    addBiometricSyncLog(
+      "warning",
+      `Ignored ADMS ATTLOG from inactive or unconfigured device ${sourceDevice}`,
+    );
+    return;
+  }
 
   biometricSyncStartedAt = Date.now();
   setBiometricSyncStatus({
@@ -15233,6 +15388,8 @@ async function route(req, res) {
     return handleListEmployeeSchedules(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/attendance/schedule/bulk")
     return handleBulkEmployeeSchedule(req, res, false);
+  if (req.method === "GET" && url.pathname === "/api/attendance/schedule/overrides")
+    return handleListEmployeeScheduleOverrides(req, res, url);
   if (req.method === "POST" && url.pathname === "/api/attendance/schedule/overrides")
     return handleBulkEmployeeSchedule(req, res, true);
   if (req.method === "DELETE" && scheduleOverrideMatch)
