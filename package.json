@@ -12,7 +12,11 @@
     "test:attendance-hardening": "node --test server/attendance-hardening.test.mjs",
     "test:lifecycle": "node --test server/employee-lifecycle.test.mjs",
     "test:permissions": "node scripts/permission-matrix-audit.mjs",
+    "test:security": "node --test --test-concurrency=1 server/security/*.test.mjs",
+    "test:security:browser": "node server/security/serve.mjs",
     "test:exports": "node scripts/export-smoke-test.mjs",
+    "diagnose": "node installation/windows/diagnose-hospital.mjs",
+    "test:installation": "node --test installation/windows/hospital-install.test.mjs",
     "preview": "vite preview --host --port 47101",
     "lint": "eslint .",
     "format": "prettier --write ."

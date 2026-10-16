@@ -14,9 +14,15 @@ import { initializeServiceRecordSchema, createServiceRecordHandlers } from "./se
 import { createReportHandlers } from "./reports.mjs";
 import { initializeAssignmentSchema, createAssignmentHandlers } from "./assignments.mjs";
 import { employeeLifecycleTransition } from "./employee-lifecycle.mjs";
+import { securityTestMode } from "./security-test-mode.mjs";
+
+const SECURITY_TEST_MODE = securityTestMode();
 
 const SERVER_DIR = path.join(process.cwd(), "server");
-const SERVER_ENV_LOCAL_PATH = path.join(SERVER_DIR, ".env.local");
+const SERVER_ENV_LOCAL_PATH = path.join(
+  SECURITY_TEST_MODE ? process.env.HRIS_RUNTIME_DIR : SERVER_DIR,
+  ".env.local",
+);
 
 function parseEnvText(text) {
   const values = {};
@@ -64,9 +70,10 @@ function loadServerEnv() {
   }
 }
 
-loadServerEnv();
+if (!SECURITY_TEST_MODE) loadServerEnv();
 
 const PORT = Number(process.env.HRIS_API_PORT || 47102);
+const API_BIND_HOST = process.env.HRIS_BIND_HOST || (SECURITY_TEST_MODE ? "127.0.0.1" : undefined);
 const DB_HOST = process.env.HRIS_DB_HOST || "localhost";
 const DB_USER = process.env.HRIS_DB_USER || "root";
 const DB_PASSWORD = process.env.HRIS_DB_PASSWORD || "";
@@ -1694,7 +1701,7 @@ async function authorizeDocumentExport(user, fileName, { singleUse = true } = {}
   if (!record) return false;
   const allowed =
     Number(record.created_by) === Number(user.id) ||
-    user.employeeId === record.employeeId ||
+    (Boolean(user.employeeId) && user.employeeId === record.employee_id) ||
     (await hasPermission(user, "employees.read"));
   if (!allowed) return false;
   const [result] = await pool.execute(
@@ -1764,7 +1771,7 @@ function realtimeTopic(pathname) {
   return "system";
 }
 
-function publishRealtime(event) {
+async function publishRealtime(event) {
   const payload = {
     id: event.id || `${Date.now()}-${++realtimeSequence}`,
     kind: event.kind || "refresh",
@@ -1777,8 +1784,29 @@ function publishRealtime(event) {
     readAt: event.readAt || null,
     createdAt: event.createdAt || new Date().toISOString(),
   };
+  // Broadcast invalidations need a topic, never a record identifier or private path.
+  if (payload.kind === "refresh" && !event.userIds?.length && !event.employeeIds?.length) {
+    payload.path = "";
+    payload.sourceType = "";
+    payload.sourceId = "";
+    payload.title = "";
+    payload.message = "";
+  }
   const encoded = `id: ${payload.id}\ndata: ${JSON.stringify(payload)}\n\n`;
   for (const [clientId, client] of realtimeClients) {
+    try {
+      const currentUser = await getSessionUser(client.req);
+      if (!currentUser || currentUser.mustChangePassword) {
+        client.res.end();
+        realtimeClients.delete(clientId);
+        continue;
+      }
+      client.user = currentUser;
+    } catch {
+      client.res.end();
+      realtimeClients.delete(clientId);
+      continue;
+    }
     if (event.excludeUserId && client.user.id === event.excludeUserId) continue;
     if (event.roles?.length && !event.roles.includes(client.user.role)) continue;
     if (event.userIds?.length && !event.userIds.includes(client.user.id)) continue;
@@ -1948,9 +1976,16 @@ async function handleRealtimeEvents(req, res) {
     "X-Accel-Buffering": "no",
   });
   res.write(`event: connected\ndata: {"ok":true}\n\n`);
-  realtimeClients.set(clientId, { res, user });
-  const heartbeat = setInterval(() => {
+  realtimeClients.set(clientId, { res, user, req });
+  const heartbeat = setInterval(async () => {
     try {
+      const currentUser = await getSessionUser(req);
+      if (!currentUser || currentUser.mustChangePassword) {
+        clearInterval(heartbeat);
+        realtimeClients.delete(clientId);
+        res.end();
+        return;
+      }
       res.write(`: heartbeat ${Date.now()}\n\n`);
     } catch {
       clearInterval(heartbeat);
@@ -5064,6 +5099,13 @@ async function requireUser(req, res) {
     json(res, 401, { error: "Not authenticated" });
     return null;
   }
+  if (
+    user.mustChangePassword &&
+    new URL(req.url, "http://localhost").pathname !== "/api/auth/change-password"
+  ) {
+    json(res, 403, { error: "Change your temporary password before accessing the system" });
+    return null;
+  }
   return user;
 }
 
@@ -5277,8 +5319,8 @@ async function handleLogout(req, res) {
 }
 
 async function handleProfileUpdate(req, res) {
-  const user = await getSessionUser(req);
-  if (!user) return json(res, 401, { error: "Not authenticated" });
+  const user = await requireUser(req, res);
+  if (!user) return;
 
   const body = await readBody(req);
   const name = String(body.name || "").trim();
@@ -6234,7 +6276,8 @@ async function resolveAttendanceEmployee(row) {
   const [rows] = await pool.execute(
     `SELECT id, employee_no, firstname, middlename, lastname, name_ext
      FROM employees
-     WHERE id = :employeeDbId OR employee_no = :employeeValue OR biometric_id = :employeeValue
+      WHERE is_hidden = 0
+        AND (id = :employeeDbId OR employee_no = :employeeValue OR biometric_id = :employeeValue)
      LIMIT 1`,
     { employeeDbId, employeeValue },
   );
@@ -6592,7 +6635,9 @@ async function loadScheduleContext(employeeIds, dutyDates) {
 }
 
 async function refreshDtrEntries({ employeeId, from, to, userId }) {
-  const employeeWhere = employeeId ? "WHERE id = :employeeId" : "";
+  const employeeWhere = employeeId
+    ? "WHERE id = :employeeId AND is_hidden = 0"
+    : "WHERE is_hidden = 0";
   const [employees] = await pool.execute(
     `SELECT id, schedule_am_in, schedule_am_out, schedule_pm_in, schedule_pm_out
      FROM employees ${employeeWhere}`,
@@ -6855,7 +6900,7 @@ async function handleMapAttendanceImportException(req, res, id) {
   const notes = String(body.notes || "").trim();
   if (!employeeId) return json(res, 400, { error: "Employee mapping is required" });
   const [[employee]] = await pool.execute(
-    `SELECT id FROM employees WHERE id = :employeeId LIMIT 1`,
+    `SELECT id FROM employees WHERE id = :employeeId AND is_hidden = 0 LIMIT 1`,
     {
       employeeId,
     },
@@ -7036,7 +7081,7 @@ async function handleListDtrNoters(req, res) {
        ))) AS signatory,
        1 AS is_active
      FROM employees
-     WHERE is_dtr_noter = 1 AND emp_status = 'Active'
+      WHERE is_dtr_noter = 1 AND emp_status = 'Active' AND is_hidden = 0
      ORDER BY office ASC, signatory ASC, name ASC`,
   );
   return json(res, 200, { noters: rows.map(dtrNoterRow) });
@@ -7188,6 +7233,7 @@ async function handleDeleteBiometricDevice(req, res, id) {
 }
 
 function checkTcpDevice(ipAddress, port, timeout = 5000) {
+  if (SECURITY_TEST_MODE) return Promise.resolve(false);
   return new Promise((resolve) => {
     const socket = net.createConnection({ host: ipAddress, port, timeout }, () => {
       socket.destroy();
@@ -7469,7 +7515,7 @@ async function importParsedPunches({
   let employeeNoOverride = "";
   if (employeeId) {
     const [[employee]] = await pool.execute(
-      `SELECT id, employee_no FROM employees WHERE id = :employeeId`,
+      `SELECT id, employee_no FROM employees WHERE id = :employeeId AND is_hidden = 0`,
       {
         employeeId,
       },
@@ -7510,7 +7556,9 @@ async function importParsedPunches({
       try {
         if (!employeeNo) throw new Error("Employee number or biometric ID is missing");
         const [[employee]] = await connection.execute(
-          `SELECT id FROM employees WHERE employee_no = :employeeNo OR biometric_id = :employeeNo LIMIT 1`,
+          `SELECT id FROM employees
+           WHERE is_hidden = 0 AND (employee_no = :employeeNo OR biometric_id = :employeeNo)
+           LIMIT 1`,
           { employeeNo },
         );
         if (!employee) {
@@ -8219,7 +8267,10 @@ async function buildScheduleEmployeeFilter(input = {}) {
   const department = String(source.department || "all").trim();
   const empStatus = String(source.empStatus || "all").trim();
   const organization = await scheduleOrganizationFilter(source.orgUnitId);
-  const where = ["1 = 1"];
+  // Schedule management is an active-work roster. Archived employees remain in
+  // their historical records, but must never be returned here or selected by a
+  // filtered bulk schedule operation.
+  const where = ["e.is_hidden = 0"];
   const params = {};
   if (q) {
     where.push(`(
@@ -8387,7 +8438,7 @@ async function handleListEmployeeSchedules(req, res, url) {
 
   const [departmentRows] = await pool.execute(
     `SELECT DISTINCT department FROM employees
-     WHERE department IS NOT NULL AND department <> ''
+     WHERE is_hidden = 0 AND department IS NOT NULL AND department <> ''
      ORDER BY department`,
   );
   const [templateRows] = await pool.execute(
@@ -8476,7 +8527,7 @@ async function handleDeleteEmployeeScheduleOverride(req, res, employeeId, workDa
   const normalizedDate = normalizeDate(workDate);
   if (!employeeId || !normalizedDate) return json(res, 400, { error: "Invalid schedule override" });
   const [[employee]] = await pool.execute(
-    `SELECT id FROM employees WHERE id = :employeeId LIMIT 1`,
+    `SELECT id FROM employees WHERE id = :employeeId AND is_hidden = 0 LIMIT 1`,
     {
       employeeId,
     },
@@ -8548,7 +8599,7 @@ async function handleBulkEmployeeSchedule(req, res, overrides = false) {
   const schedule = body.schedule || {};
   if (!employeeIds.length) return json(res, 400, { error: "Select at least one employee" });
   const [existingEmployees] = await pool.query(
-    `SELECT id FROM employees WHERE id IN (${employeeIds.map(() => "?").join(",")})`,
+    `SELECT id FROM employees WHERE is_hidden = 0 AND id IN (${employeeIds.map(() => "?").join(",")})`,
     employeeIds,
   );
   const existingEmployeeIds = new Set(existingEmployees.map((employee) => String(employee.id)));
@@ -8804,6 +8855,7 @@ function truncateTimestampToMinute(value) {
 }
 
 async function fetchBiometricPunches(device, from, to) {
+  if (SECURITY_TEST_MODE) throw new Error("Live biometric retrieval is disabled in security tests");
   const output = await runPythonWith(BIOMETRIC_PYTHON_EXE, [
     BIOMETRIC_FETCH_SCRIPT,
     device.ip_address,
@@ -8924,7 +8976,9 @@ async function insertBiometricPunches({
     await connection.beginTransaction();
     for (const punch of punches) {
       const [[employee]] = await connection.execute(
-        `SELECT id FROM employees WHERE employee_no = :employeeNo OR biometric_id = :employeeNo LIMIT 1`,
+        `SELECT id FROM employees
+         WHERE is_hidden = 0 AND (employee_no = :employeeNo OR biometric_id = :employeeNo)
+         LIMIT 1`,
         { employeeNo: punch.employeeNo },
       );
       if (!employee) {
@@ -9496,7 +9550,7 @@ async function handleGenerateMassDtrPdf(req, res) {
     return json(res, 400, { error: error.message });
   }
 
-  const where = ["department = :office", "emp_status = 'Active'"];
+  const where = ["department = :office", "emp_status = 'Active'", "is_hidden = 0"];
   const params = { office };
   if (employeeType === "regular") where.push("regular = 1");
   if (employeeType === "jobOrder") where.push("regular = 0");
@@ -9851,7 +9905,7 @@ async function handleCreateDtrCorrectionRequest(req, res) {
   if (reason.length > 1000) return json(res, 400, { error: "Reason is too long" });
 
   const [[employee]] = await pool.execute(
-    `SELECT id FROM employees WHERE id = :employeeId LIMIT 1`,
+    `SELECT id FROM employees WHERE id = :employeeId AND is_hidden = 0 LIMIT 1`,
     {
       employeeId,
     },
@@ -13965,7 +14019,9 @@ async function organizationHierarchyPreview(hierarchy, connection = pool) {
   const [employeeRows] = await connection.query(
     `SELECT current_org_unit_ref_id reference_id, COUNT(*) count
      FROM employees
-     WHERE current_org_unit_ref_id IS NOT NULL AND lifecycle_state = 'Active'
+     WHERE current_org_unit_ref_id IS NOT NULL
+       AND lifecycle_state = 'Active'
+       AND is_hidden = 0
      GROUP BY current_org_unit_ref_id`,
   );
   const [engagementRows] = await connection.query(
@@ -14440,7 +14496,7 @@ async function referenceValueUsage(id, category, connection = pool) {
   );
   const [[employees]] = await connection.execute(
     `SELECT
-       SUM(CASE WHEN lifecycle_state = 'Active' THEN 1 ELSE 0 END) active_count,
+       SUM(CASE WHEN lifecycle_state = 'Active' AND is_hidden = 0 THEN 1 ELSE 0 END) active_count,
        COUNT(*) total_count
      FROM employees
      WHERE current_org_unit_ref_id = :id`,
@@ -14868,7 +14924,7 @@ async function handleListAuditLogs(req, res) {
      ${whereSql}`,
     params,
   );
-  const [rows] = await pool.execute(
+  const [rows] = await pool.query(
     `SELECT al.id, al.action, al.details, al.ip_address, al.created_at,
             u.username, u.name, u.role
      FROM audit_logs al
@@ -14943,7 +14999,7 @@ async function handleListErrorLogs(req, res) {
      ${errorWhereSql}`,
     errorParams,
   );
-  const [rows] = await pool.execute(
+  const [rows] = await pool.query(
     `SELECT el.id, el.method, el.path, el.message, el.stack, el.ip_address, el.user_agent,
             el.created_at, u.username, u.name, u.role
      FROM error_logs el
@@ -14982,7 +15038,7 @@ async function handleListErrorLogs(req, res) {
      ${importWhereSql}`,
     importParams,
   );
-  const [importLogRows] = await pool.execute(
+  const [importLogRows] = await pool.query(
     `SELECT ail.id, ail.import_id, ail.level, ail.source_row_number, ail.employee_no,
             ail.message, ail.details, ail.created_at,
             ai.source, ai.file_name, ai.period_from, ai.period_to, ai.row_count,
@@ -15607,27 +15663,29 @@ assignmentHandlers = createAssignmentHandlers({
   notifyPermission,
   publishRealtime,
 });
-await cleanupPreviewFiles().catch(() => {});
-await cleanupDocumentExportJobs().catch(() => {});
-await cleanupNotifications().catch(() => {});
-setInterval(() => cleanupPreviewFiles().catch(() => {}), 5 * 60 * 1000).unref();
-setInterval(() => cleanupDocumentExportJobs().catch(() => {}), 60 * 60 * 1000).unref();
-setInterval(() => cleanupNotifications().catch(() => {}), 24 * 60 * 60 * 1000).unref();
-assignmentHandlers
-  .processDue()
-  .catch((error) => console.error("Assignment processor failed", error));
-movementHandlers.processDue().catch((error) => console.error("Movement processor failed", error));
-setInterval(
-  () => {
-    assignmentHandlers
-      .processDue()
-      .catch((error) => console.error("Assignment processor failed", error));
-    movementHandlers
-      .processDue()
-      .catch((error) => console.error("Movement processor failed", error));
-  },
-  5 * 60 * 1000,
-).unref();
+if (!SECURITY_TEST_MODE) {
+  await cleanupPreviewFiles().catch(() => {});
+  await cleanupDocumentExportJobs().catch(() => {});
+  await cleanupNotifications().catch(() => {});
+  setInterval(() => cleanupPreviewFiles().catch(() => {}), 5 * 60 * 1000).unref();
+  setInterval(() => cleanupDocumentExportJobs().catch(() => {}), 60 * 60 * 1000).unref();
+  setInterval(() => cleanupNotifications().catch(() => {}), 24 * 60 * 60 * 1000).unref();
+  assignmentHandlers
+    .processDue()
+    .catch((error) => console.error("Assignment processor failed", error));
+  movementHandlers.processDue().catch((error) => console.error("Movement processor failed", error));
+  setInterval(
+    () => {
+      assignmentHandlers
+        .processDue()
+        .catch((error) => console.error("Assignment processor failed", error));
+      movementHandlers
+        .processDue()
+        .catch((error) => console.error("Movement processor failed", error));
+    },
+    5 * 60 * 1000,
+  ).unref();
+}
 
 const server = http.createServer(async (req, res) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
@@ -15662,7 +15720,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, API_BIND_HOST, () => {
   console.log(`HRIS API listening on http://localhost:${PORT}`);
   console.log(`Using MySQL schema ${DB_NAME} at ${DB_HOST}`);
 });

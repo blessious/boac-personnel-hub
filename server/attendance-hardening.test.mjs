@@ -62,6 +62,23 @@ test("schedule mutations return refresh counts and warnings", () => {
   assert.match(attendanceApiSource, /from:\s*string;\s*\n\s*to:\s*string;/);
 });
 
+test("active attendance workflows exclude archived employees", () => {
+  assert.match(serverSource, /const where = \["e\.is_hidden = 0"\];/);
+  assert.match(
+    serverSource,
+    /SELECT id FROM employees WHERE id = :employeeId AND is_hidden = 0 LIMIT 1/,
+  );
+  assert.match(serverSource, /WHERE is_dtr_noter = 1 AND emp_status = 'Active' AND is_hidden = 0/);
+  assert.match(
+    serverSource,
+    /WHERE is_hidden = 0 AND \(employee_no = :employeeNo OR biometric_id = :employeeNo\)/,
+  );
+  assert.match(
+    serverSource,
+    /const where = \["department = :office", "emp_status = 'Active'", "is_hidden = 0"\];/,
+  );
+});
+
 test("attendance bulk operations enforce bounded date ranges", () => {
   assert.match(serverSource, /const ATTENDANCE_MAX_RANGE_DAYS = 62/);
   assert.match(serverSource, /validateAttendanceRange\(from,\s*to,\s*"Import date range"\)/);

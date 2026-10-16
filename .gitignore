@@ -24,6 +24,8 @@ server/.env.local
 # Runtime-generated server files
 server/exports/
 server/backups/
+runtime/
+installation/windows/backup-settings.json
 server/__pycache__/
 server/prisma/generated/client/*.tmp*
 

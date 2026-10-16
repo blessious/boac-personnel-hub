@@ -5,6 +5,7 @@ import {
   HeadContent,
   Scripts,
   useLocation,
+  useMatches,
   useNavigate,
 } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
@@ -185,6 +186,8 @@ function RootComponent() {
 
 function AppLayout() {
   const location = useLocation();
+  // A destination URL can change before the previous outlet finishes unmounting.
+  const renderedPath = useMatches({ select: (matches) => matches.at(-1)?.pathname || "/" });
   const navigate = useNavigate();
   const { user, ready, bootstrapError, reloadSession } = useAuth();
   const { title, subtitle } = useSettings();
@@ -239,13 +242,20 @@ function AppLayout() {
   }, [deviceProfile.device, deviceProfile.isTouch]);
 
   if (!ready) {
-    return isLoginPage ? <Outlet /> : <SessionSkeleton />;
+    return isLoginPage && renderedPath === "/login" ? <Outlet /> : <SessionSkeleton />;
   }
   if (bootstrapError && !isLoginPage) {
     return <SessionUnavailableComponent message={bootstrapError} onRetry={reloadSession} />;
   }
-  if (!user && !isLoginPage) return <RedirectingToLoginComponent />;
-  if (!authorized) return <AccessDeniedComponent />;
+  if (!user && (!isLoginPage || renderedPath !== "/login")) return <RedirectingToLoginComponent />;
+  if (
+    !authorized ||
+    (user &&
+      renderedPath !== "/login" &&
+      renderedPath !== "/change-password" &&
+      !canAccessPath(user.permissions || [], renderedPath, user.employeeId))
+  )
+    return <AccessDeniedComponent />;
 
   return (
     <>

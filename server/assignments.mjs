@@ -501,7 +501,10 @@ export function createAssignmentHandlers({
     await refreshEngagementStates(pool);
     const employeeId = String(url.searchParams.get("employeeId") || "").trim();
     const status = String(url.searchParams.get("status") || "all");
-    const where = [],
+    // This page manages the current non-Plantilla workforce. Historical
+    // engagement records stay in the database, but archived people are not
+    // actionable roster entries.
+    const where = ["e.is_hidden = 0"],
       params = {};
     if (employeeId) {
       where.push("ne.employee_id=:employeeId");
